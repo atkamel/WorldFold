@@ -36,8 +36,17 @@ class RSSMState:
         return torch.cat([self.h, self.z], dim=-1)
 
 
-def _sample_categorical(logits: torch.Tensor) -> torch.Tensor:
-    """logits: [..., n_categoricals, n_classes] -> straight-through one-hot sample, flattened."""
+def _sample_categorical(logits: torch.Tensor, deterministic: bool = False) -> torch.Tensor:
+    """logits: [..., n_categoricals, n_classes] -> flattened latent.
+
+    Training (deterministic=False): straight-through one-hot sample.
+    Eval (deterministic=True): the distribution's expectation (softmax probs) --
+    same shape, no sampling noise. Inference-time choice only; never used
+    where gradients flow.
+    """
+    if deterministic:
+        probs = torch.softmax(logits, dim=-1)
+        return probs.reshape(*probs.shape[:-2], -1)
     dist = torch.distributions.OneHotCategoricalStraightThrough(logits=logits)
     sample = dist.rsample()
     return sample.reshape(*sample.shape[:-2], -1)
@@ -82,20 +91,23 @@ class RSSM(nn.Module):
     def _posterior(self, h: torch.Tensor, embed: torch.Tensor) -> torch.Tensor:
         return self.posterior_net(torch.cat([h, embed], dim=-1)).reshape(-1, self.n_categoricals, self.n_classes)
 
-    def observe_step(self, prev: RSSMState, prev_action: torch.Tensor, embed: torch.Tensor) -> RSSMState:
+    def observe_step(self, prev: RSSMState, prev_action: torch.Tensor, embed: torch.Tensor,
+                      deterministic: bool = False) -> RSSMState:
         h = self._step_deterministic(prev, prev_action)
         prior_logits = self._prior(h)
         posterior_logits = self._posterior(h, embed)
-        z = _sample_categorical(posterior_logits)
+        z = _sample_categorical(posterior_logits, deterministic)
         return RSSMState(h=h, z=z, prior_logits=prior_logits, posterior_logits=posterior_logits)
 
-    def imagine_step(self, prev: RSSMState, prev_action: torch.Tensor) -> RSSMState:
+    def imagine_step(self, prev: RSSMState, prev_action: torch.Tensor,
+                      deterministic: bool = False) -> RSSMState:
         h = self._step_deterministic(prev, prev_action)
         prior_logits = self._prior(h)
-        z = _sample_categorical(prior_logits)
+        z = _sample_categorical(prior_logits, deterministic)
         return RSSMState(h=h, z=z, prior_logits=prior_logits, posterior_logits=None)
 
-    def observe(self, embeds: torch.Tensor, actions: torch.Tensor, is_first: torch.Tensor) -> list[RSSMState]:
+    def observe(self, embeds: torch.Tensor, actions: torch.Tensor, is_first: torch.Tensor,
+                 deterministic: bool = False) -> list[RSSMState]:
         """Posterior rollout for training. embeds/actions: [batch, time, ...].
 
         is_first[:, t] resets the RSSM state to its initial value before
@@ -117,12 +129,13 @@ class RSSM(nn.Module):
                 posterior_logits=state.posterior_logits,
             )
             action_t = torch.where(reset.bool(), torch.zeros_like(prev_action), prev_action)
-            state = self.observe_step(state, action_t, embeds[:, t])
+            state = self.observe_step(state, action_t, embeds[:, t], deterministic)
             states.append(state)
             prev_action = actions[:, t]
         return states
 
-    def imagine(self, initial_state: RSSMState, actions: torch.Tensor) -> list[RSSMState]:
+    def imagine(self, initial_state: RSSMState, actions: torch.Tensor,
+                 deterministic: bool = False) -> list[RSSMState]:
         """Open-loop rollout for evaluation. actions: [batch, time, action_dim].
 
         Consumes only the initial latent and future actions -- no
@@ -132,6 +145,6 @@ class RSSM(nn.Module):
         state = initial_state
         states = []
         for t in range(time):
-            state = self.imagine_step(state, actions[:, t])
+            state = self.imagine_step(state, actions[:, t], deterministic)
             states.append(state)
         return states

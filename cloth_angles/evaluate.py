@@ -28,6 +28,7 @@ from cloth_angles.data.sequence_replay import SequenceReplay
 from cloth_angles.model.baselines import persistence_predict
 from cloth_angles.model.checkpoint import ExpectedSchema, load_checkpoint
 from cloth_angles.model.world_model import WorldModel
+from cloth_angles.train import split_episodes
 
 
 def parse_args():
@@ -63,7 +64,14 @@ def angle_error(model: WorldModel, angle_hat: torch.Tensor, angle: torch.Tensor)
     return model._angle_error(angle_hat, angle).abs()
 
 
-def one_step_eval(model: WorldModel, replay: SequenceReplay, device, n_sequences: int):
+def one_step_eval(model: WorldModel, replay: SequenceReplay, device, n_sequences: int,
+                   active_threshold_rad: float = 0.02):
+    """One-step MAE for the RSSM vs persistence, overall AND restricted to
+    ACTIVE transitions (per-step mean |wrapped delta| above threshold). The
+    gate metric is the active one: on quasi-static steps persistence is
+    unbeatable by construction (its error IS the per-step motion), so overall
+    MAE mostly measures how much of the data is standing still.
+    """
     obs, actions, next_obs, mask, is_first = replay.sample(n_sequences)
     obs_t = torch.as_tensor(obs, device=device)
     actions_t = torch.as_tensor(actions, device=device)
@@ -71,18 +79,28 @@ def one_step_eval(model: WorldModel, replay: SequenceReplay, device, n_sequences
     mask_t = torch.as_tensor(mask, device=device)
     is_first_t = torch.as_tensor(is_first, device=device)
 
-    with torch.no_grad():
-        output = model.loss(obs_t, actions_t, next_obs_t, mask_t, is_first_t)
-
     n = model.grid_size
-    persistence_hat = persistence_predict(obs_t).reshape(*obs_t.shape[:-1], n, n)
     target = next_obs_t.reshape(*next_obs_t.shape[:-1], n, n)
-    persistence_err = angle_error(model, persistence_hat, target)
-    persistence_mae = (persistence_err.mean(dim=(-2, -1)) * mask_t).sum() / mask_t.sum().clamp(min=1.0)
+
+    with torch.no_grad():
+        angle_hat = model.predicted_angles(obs_t, actions_t, is_first_t)
+    rssm_err = angle_error(model, angle_hat, target).mean(dim=(-2, -1))          # [batch, time]
+
+    persistence_hat = persistence_predict(obs_t).reshape(*obs_t.shape[:-1], n, n)
+    persistence_err = angle_error(model, persistence_hat, target).mean(dim=(-2, -1))
+
+    # activity = per-step mean |wrapped(next - obs)|; persistence_err IS that quantity
+    active_mask = mask_t * (persistence_err > active_threshold_rad).float()
+
+    def masked_mean(err, m):
+        return float((err * m).sum() / m.sum().clamp(min=1.0))
 
     return {
-        "rssm_mae_rad": float(output.mae_radians),
-        "persistence_mae_rad": float(persistence_mae),
+        "rssm_mae_rad": masked_mean(rssm_err, mask_t),
+        "persistence_mae_rad": masked_mean(persistence_err, mask_t),
+        "rssm_active_mae_rad": masked_mean(rssm_err, active_mask),
+        "persistence_active_mae_rad": masked_mean(persistence_err, active_mask),
+        "active_fraction": float(active_mask.sum() / mask_t.sum().clamp(min=1.0)),
     }
 
 
@@ -99,7 +117,8 @@ def open_loop_eval(model: WorldModel, replay: SequenceReplay, device, horizons: 
     with torch.no_grad():
         initial_state = model.initial_state_from_obs(obs_t[:, 0])
         future_actions = actions_t[:, :max_horizon]
-        angle_hat = model.imagine_angles(initial_state, future_actions)  # [batch, horizon, N, N]
+        angle_hat = model.imagine_angles(initial_state, future_actions,
+                                          initial_obs=obs_t[:, 0])  # [batch, horizon, N, N]
 
     target = next_obs_t[:, :max_horizon].reshape(-1, max_horizon, n, n)
     horizon_mask = mask_t[:, :max_horizon]
@@ -168,14 +187,22 @@ def main():
     if not episodes:
         raise RuntimeError(f"no episodes found under {data_cfg['episode_dir']}")
 
-    replay = SequenceReplay(episodes, seq_len=data_cfg["seq_len"], seed=123)
+    # evaluate on the HELD-OUT episodes only, reproducing train.py's episode-level
+    # split (same seed) -- previously this evaluated on train+held-out mixed
+    train_cfg = config["train"]
+    _, held_out_episodes = split_episodes(episodes, data_cfg["held_out_fraction"], train_cfg["seed"])
+    if not held_out_episodes:
+        raise RuntimeError("held-out split is empty; collect more episodes or raise held_out_fraction")
+    replay = SequenceReplay(held_out_episodes, seq_len=data_cfg["seq_len"], seed=123)
 
-    one_step = one_step_eval(model, replay, device, eval_cfg["n_eval_sequences"])
-    print("=== one-step ===")
+    one_step = one_step_eval(model, replay, device, eval_cfg["n_eval_sequences"],
+                              active_threshold_rad=eval_cfg.get("active_threshold_rad", 0.02))
+    print(f"=== one-step (held-out episodes: {len(held_out_episodes)}) ===")
     for k, v in one_step.items():
         print(f"{k}: {v:.4f}")
-    beats_persistence = one_step["rssm_mae_rad"] < one_step["persistence_mae_rad"]
-    print(f"beats persistence: {beats_persistence}")
+    beats_persistence = one_step["rssm_active_mae_rad"] < one_step["persistence_active_mae_rad"]
+    print(f"beats persistence (active transitions, the gate): {beats_persistence}")
+    print(f"beats persistence (overall): {one_step['rssm_mae_rad'] < one_step['persistence_mae_rad']}")
 
     open_loop, angle_hat, target, horizon_mask = open_loop_eval(
         model, replay, device, eval_cfg["open_loop_horizons"], eval_cfg["n_eval_sequences"]

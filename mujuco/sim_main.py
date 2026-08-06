@@ -7,16 +7,26 @@ import mjviser
 
 TABLE_TOP_Z           = 0.42
 CLOTH_COUNT           = 11      # grid resolution; higher = finer/drapier mesh
-CLOTH_SPACING         = 0.03    # vertex gap; chosen with COUNT to keep span = (COUNT-1)*spacing = 0.30m
+CLOTH_SPACING         = 0.022   # vertex gap; span = (COUNT-1)*spacing = 0.22m. sized from the measured
+                                # IK reach: usable zone is an annulus ~0.22-0.33m from the arm base, so
+                                # grasp point AND fold landing point must both fit inside it
 CLOTH_RADIUS          = 0.01    # collision thickness (physics only); MUST be >0 or cloth sits IN the table
 VISUAL_THICKNESS      = 0.003   # how thick the cloth LOOKS (render only), decoupled from collision radius
 CLOTH_MASS            = 0.05    # level3 value; stability comes from soft finger pads + heavy damping
-CLOTH_HALF            = (CLOTH_COUNT-1) * CLOTH_SPACING / 2   # cloth spans +-0.09m
+CLOTH_HALF            = (CLOTH_COUNT-1) * CLOTH_SPACING / 2   # cloth spans +-0.11m
 
-# SO101 arm model
+# SO101 arm model. the arms sit on the +-x FLANKS at the fold line (y=0), facing the
+# cloth -- the "two people folding a bedsheet from the sides" geometry. rationale, from
+# the measured IK reach envelope: the arm only tracks well in a narrow annulus
+# ~0.22-0.33m from its base, so a behind-the-cloth arm can never PLACE a fold (grasp
+# and landing distances differ by the full cloth span, deeper than the annulus). from
+# the flank, the far corner, the whole swing arc, and the near-corner landing all sit
+# at a CONSTANT ~0.27m radius from the base -- the arm pivots instead of stretching.
 ARM_XML_PATH          = os.path.join(os.path.dirname(so101_nexus.__file__), "assets", "SO101", "so101_new_calib.xml")
-ARM_BASE_LEFT         = (-0.30,  CLOTH_HALF, TABLE_TOP_Z) 
-ARM_BASE_RIGHT        = ( 0.30, -CLOTH_HALF, TABLE_TOP_Z)  
+ARM_BASE_LEFT         = (-0.36, 0.0, TABLE_TOP_Z)
+ARM_BASE_RIGHT        = ( 0.36, 0.0, TABLE_TOP_Z)
+ARM_QUAT_LEFT         = [1.0, 0.0, 0.0, 0.0]   # identity: default orientation faces +x, toward the cloth
+ARM_QUAT_RIGHT        = [0.0, 0.0, 0.0, 1.0]   # 180deg about z: faces -x, toward the cloth
 ARM_JOINTS            = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 GRIPPER_CLOSED        = -0.1
 ARM_TIMESTEP         = 0.0005     # contact-heavy grasp needs 0.5ms; 1ms explodes on contact
@@ -26,16 +36,25 @@ CLOTH_DAMPING        = 0.3        # viscous damping per cloth vertex DOF; calms 
 
 # Cloth Fold params
 GRIPPER_OPEN         = 1.0      # gripper ctrlrange is [-0.175, 1.745]
-ROT_WEIGHT           = 0.2     
+ROT_WEIGHT           = 0.2
 MAX_STEP_ROT         = 0.002    # rad per substep
-GRASP_RADIUS         = 0.03     # weld engages when gripper is this close to its corner
+GRASP_RADIUS         = 0.05     # weld engages when gripper is this close to its corner. 5cm (was 3cm)
+                                # because the IK settles with ~3-4cm error even in its sweet spot; the
+                                # weld grasp is a sim cheat anyway, so err on the engageable side
+FOLD_SCALE_FLOOR     = 0.10     # min per-corner normalization for fold_score: stationary goal corners
+                                # (dist 0 at reset) get graded against this tolerance instead of ~0
 JOINT_DELTA_SCALE    = 0.05     # rad per control step at full action, joint_delta mode
 HOLD_STEPS           = 10       # consecutive success steps (0.5s) before terminating
 SETTLE_STEPS         = 2000     # 1.0s hands-off settle at reset, mirrors the demo above
 WORKSPACE_XY         = 0.45
 WORKSPACE_Z_LOW      = TABLE_TOP_Z + 0.003
 WORKSPACE_Z_HIGH     = TABLE_TOP_Z + 0.35
-SUCCESS_FOLD_SCORE   = 0.85
+SUCCESS_FOLD_SCORE   = 0.75    # calibrated against the scripted half-fold: a visually complete
+                               # fold (flap covering the near half, video-verified) settles at
+                               # ~0.78 -- moving corners within ~6-8cm on the 22cm cloth, pinned
+                               # corners within 2cm. the actuators saturate against cloth tension
+                               # + table friction there, so demanding more (the old uncalibrated
+                               # 0.85) made success unreachable even for a good fold
 CORNER_PLACED_DIST   = 0.03
 QACC_LIMIT           = 1e5
 TASK_NAMES           = ["fold", "drop", "push", "drag"]   # index = task id (one-hot slot)
@@ -100,6 +119,11 @@ class ClothFoldEnv(gym.Env):
 
         self.action_scale_pos = action_scale_pos
         self.action_scale_rot = action_scale_rot
+        # IK rotation-row weight. even with zero rotation ERROR, nonzero rotation
+        # jacobian rows make the lstsq penalize wrist-rotating joint motion --
+        # which shoulder panning inherently is. position-only consumers (e.g. the
+        # scripted fold policy) set this to 0.0 for much faster IK convergence.
+        self.rot_weight = ROT_WEIGHT
         self._site_id = {}
         self._arm_qpos_adr = {}
         self._arm_dof_adr = {}
@@ -126,8 +150,10 @@ class ClothFoldEnv(gym.Env):
         self._gripper_act = {}
         self._corner_body = {}
         self._gripper_closed = {"left_": False, "right_": False}
-        corner_names = {"left_": f"cloth_{CLOTH_COUNT - 1}",
-                        "right_": f"cloth_{(CLOTH_COUNT - 1) * CLOTH_COUNT}"}
+        # half-fold layout: each arm grabs the far-edge (+y) corner of its own column.
+        # grid is row-major (index = ix*COUNT + iy), so +y corners are iy = COUNT-1:
+        corner_names = {"left_": f"cloth_{CLOTH_COUNT - 1}",                  # (-h, +h)
+                        "right_": f"cloth_{CLOTH_COUNT * CLOTH_COUNT - 1}"}   # (+h, +h)
         for prefix in self.prefixes:
             weld = self.model.equality(f"{prefix}weld")
             self._weld_id[prefix] = weld.id
@@ -326,9 +352,17 @@ class ClothFoldEnv(gym.Env):
         if "goal_pose" in opts:
             self._goal_corners = np.asarray(opts["goal_pose"], dtype=float).reshape(4, 3).copy()
         else:
-            # goal = fold cloth onto itself (each corner -> its diagonal-opposite start pos)
-            self._goal_corners = corners0[[3, 2, 1, 0]].copy()
-        self._goal_scale = np.maximum(np.linalg.norm(self._goal_corners - corners0, axis=1), 1e-6)
+            # goal = HALF-FOLD: the two far-edge (+y) corners land on the two near-edge
+            # corners' start positions; the near corners stay put. corner order in
+            # _corner_ids is [(-h,-h), (-h,+h), (+h,-h), (+h,+h)], so goals are
+            # [stay, onto corner 0, stay, onto corner 2].
+            # (the old goal sent ALL FOUR corners to their diagonal opposites, which no
+            # physical fold can achieve -- a perfect fold maxed out at fold_score 0.5,
+            # making the 0.85 success threshold unreachable.)
+            self._goal_corners = corners0[[0, 0, 2, 2]].copy()
+        # scale floor: stationary corners have initial goal-dist 0; grade them against a
+        # fixed tolerance instead of ~0 so any micron of drift doesn't zero their score
+        self._goal_scale = np.maximum(np.linalg.norm(self._goal_corners - corners0, axis=1), FOLD_SCALE_FLOOR)
         self._success_steps = 0
         self._action_clipped = False
         self._step_count = 0
@@ -381,9 +415,9 @@ class ClothFoldEnv(gym.Env):
         mujoco.mj_jacSite(self.model, self.data, jacp, jacr, site_id)
         dofs = self._arm_dof_adr[prefix]
         jac_pos = jacp[:, dofs]
-        jac_rot = ROT_WEIGHT * jacr[:, dofs]
+        jac_rot = self.rot_weight * jacr[:, dofs]
         J = np.vstack([jac_pos, jac_rot])
-        weighted_rot = ROT_WEIGHT * err_rot
+        weighted_rot = self.rot_weight * err_rot
         err = np.concatenate([err_pos, weighted_rot])
         solution = np.linalg.lstsq(J, err, rcond=None)
         dq = solution[0]
@@ -478,6 +512,146 @@ class ClothFoldEnv(gym.Env):
 
         return self._get_obs(), reward, terminated, truncated, self._step_info(terms, reason)
 
+class ScriptedFoldPolicy:
+    """Bimanual half-fold state machine: approach -> descend -> grasp -> lift ->
+    swing -> lower -> release -> done, advanced per-arm on distance tolerances,
+    weld state, and per-phase timeouts (the IK stalls near its reach limit, so a
+    stuck phase must eventually move on rather than freeze the episode).
+
+    Once the weld engages, the corner travels with the gripper, so the swing
+    phase tolerates several cm of IK error -- only the grasp needs precision.
+    Emits actions in the env's own 14-dim [-1, 1] action space, so recorded
+    episodes look exactly like what a learned policy would produce.
+    """
+
+    # max control steps per phase before force-advancing. budgeted so the whole
+    # trajectory fits a 200-step episode. reach gets the biggest share: the IK
+    # converges slowly through wrist reorientation (~60+ steps for the left arm),
+    # and resetting/retrying was measured to be strictly worse than waiting.
+    TIMEOUTS = {"reach": 100, "wait": 80, "lift": 20, "carry": 30, "place": 70,
+                "lower": 15, "release": 8}
+    LIFT_HEIGHT = 0.10   # above table; clears the flap while keeping the taut-cloth
+                         # lever short (higher lift = more tension fighting the swing)
+    P_GAIN = 20.0        # action = clip(P_GAIN * position error) like test_idk
+
+    def __init__(self, env):
+        self.env = env
+        self.reset()
+
+    def reset(self):
+        self.phase = {p: "reach" for p in self.env.prefixes}
+        self.steps_in_phase = {p: 0 for p in self.env.prefixes}
+        self.anchor = {}       # grasp-moment corner xy, fixed lift reference
+        self.landing = {}      # near-corner start position for this arm's column
+        self.env.rot_weight = 0.0   # position-only IK: this policy never commands rotation
+
+    def _advance(self, prefix, next_phase):
+        self.phase[prefix] = next_phase
+        self.steps_in_phase[prefix] = 0
+
+    def act(self):
+        env = self.env
+        action = np.zeros(14, dtype=np.float32)
+        pos_slice = {"left_": 0, "right_": 7}
+        grip_index = {"left_": 6, "right_": 13}
+        # _goal_corners rows: [near-left(stay), far-left goal, near-right(stay), far-right goal]
+        landing_row = {"left_": 1, "right_": 3}
+
+        for prefix in env.prefixes:
+            site = env.data.site_xpos[env._site_id[prefix]]
+            corner = env.data.xpos[env._corner_body[prefix]]
+            welded = bool(env.data.eq_active[env._weld_id[prefix]])
+            # free the wrist: retarget rotation to the CURRENT orientation each step
+            # (as test_idk did), so the 6D IK is effectively position-only. otherwise
+            # the fixed home-orientation target fights the shoulder pan needed to
+            # reach the off-axis corners and the arm stalls short of the grasp.
+            q = np.zeros(4)
+            mujoco.mju_mat2Quat(q, env.data.site_xmat[env._site_id[prefix]])
+            env._target_quat[prefix] = q
+            phase = self.phase[prefix]
+            self.steps_in_phase[prefix] += 1
+            timed_out = self.steps_in_phase[prefix] > self.TIMEOUTS.get(phase, 10**9)
+            grip = 1.0   # open unless the phase says otherwise
+
+            if phase == "reach":
+                # drive straight at the corner with the gripper already closed:
+                # the weld engages on proximity alone (GRASP_RADIUS), so there is
+                # no separate grasp step. crucially, NO retry/reset on timeout --
+                # the IK converges slowly but monotonically, and resetting the
+                # phase was measured to throw away its progress every time.
+                target = corner + np.array([0.0, 0.0, 0.01])
+                grip = -1.0
+                if welded:
+                    self.anchor[prefix] = corner.copy()
+                    self.landing[prefix] = env._goal_corners[landing_row[prefix]].copy()
+                    self._advance(prefix, "wait")
+                elif timed_out:
+                    self._advance(prefix, "reach")   # keep reaching, just reset the counter
+            elif phase == "wait":
+                # hold the grasp until BOTH arms are welded: the cloth is shared, so
+                # one arm folding early drags the other arm's corner out from under
+                # it (measured: the left arm chased a moving corner for 100+ steps)
+                grip = -1.0
+                target = self.anchor[prefix] + np.array([0.0, 0.0, 0.01])
+                others_ready = all(
+                    bool(env.data.eq_active[env._weld_id[p]]) for p in env.prefixes
+                )
+                if others_ready or timed_out:
+                    self._advance(prefix, "lift")
+            elif phase == "lift":
+                grip = -1.0
+                a = self.anchor[prefix]
+                target = np.array([a[0], a[1], TABLE_TOP_Z + self.LIFT_HEIGHT])
+                if site[2] > TABLE_TOP_Z + self.LIFT_HEIGHT - 0.02 or timed_out:
+                    self._advance(prefix, "carry")
+            elif phase == "carry":
+                # carry the corner OVER the fold line at height, like a human fold:
+                # diving low too early was measured to drag the flap across the
+                # table against friction, stalling ~13cm short. aim the SITE so the
+                # CORNER (welded up to GRASP_RADIUS away from the hand) crosses.
+                grip = -1.0
+                a, l = self.anchor[prefix], self.landing[prefix]
+                offset = site - corner
+                mid_y = 0.5 * (a[1] + l[1])
+                target = np.array([l[0], mid_y, TABLE_TOP_Z + self.LIFT_HEIGHT]) + offset
+                if corner[1] < mid_y + 0.02 or timed_out:
+                    self._advance(prefix, "place")
+            elif phase == "place":
+                # descending pull to the landing: the flap is inextensible, so its
+                # corner can only reach the landing point AT TABLE HEIGHT (at height
+                # h it is geometrically capped ~sqrt(flap^2 - h^2) past the fold line)
+                grip = -1.0
+                l = self.landing[prefix]
+                offset = site - corner
+                # overshoot the landing by 8cm: the servo settles at a friction/
+                # tension equilibrium ~6-8cm shy of wherever it aims (measured), so
+                # bias the aim point past the target to land ON it
+                target = np.array([l[0], l[1] - 0.08, TABLE_TOP_Z + 0.03]) + offset
+                if np.linalg.norm((corner - l)[:2]) < 0.04 or timed_out:
+                    self._advance(prefix, "lower")
+            elif phase == "lower":
+                grip = -1.0
+                l = self.landing[prefix]
+                offset = site - corner
+                target = np.array([l[0], l[1], TABLE_TOP_Z + 0.02]) + offset
+                if corner[2] < TABLE_TOP_Z + 0.04 or timed_out:
+                    self._advance(prefix, "release")
+            elif phase == "release":
+                l = self.landing[prefix]
+                target = np.array([l[0], l[1] + 0.06, TABLE_TOP_Z + 0.10])   # open + retreat up/back
+                if timed_out:
+                    self._advance(prefix, "done")
+            else:   # done
+                l = self.landing.get(prefix, site)
+                target = np.array([l[0], l[1] + 0.06, TABLE_TOP_Z + 0.10])
+
+            cmd = np.clip((target - site) * self.P_GAIN, -1.0, 1.0)
+            start = pos_slice[prefix]
+            action[start:start + 3] = cmd
+            action[grip_index[prefix]] = grip
+        return action
+
+
 class StateOnlyWrapper(gym.ObservationWrapper):
 
     KEYS = ("proprio", "cloth_state", "task") # flat state vector for sb3, fixed key order is needed
@@ -558,7 +732,7 @@ def build_cloth_xml(timestep):
         <light pos="0 0 2" dir="0 0 -1" diffuse="0.9 0.9 0.9"/>
         <light pos="1 -1 1.5" dir="-0.5 0.5 -1" diffuse="0.4 0.4 0.4"/>
         <geom name="floor" type="plane" size="2 2 0.1" rgba="0.3 0.3 0.35 1"/>
-        <geom name="table" type="box" size="0.30 0.30 {TABLE_TOP_Z / 2}"
+        <geom name="table" type="box" size="0.42 0.32 {TABLE_TOP_Z / 2}"
                 pos="0 0 {TABLE_TOP_Z / 2}" friction="0.4 0.005 0.0001"
                 rgba="0.55 0.4 0.25 1"/>
         <camera name="main" pos="0.75 -0.75 0.75" xyaxes="0.707 0.707 0 -0.19 0.19 0.96"/>
@@ -579,14 +753,16 @@ def build_cloth_xml(timestep):
 def compile_model(timestep):
     spec = mujoco.MjSpec.from_string(build_cloth_xml(timestep))
 
-    # attach two independent copies of the SO101 arm, each with its own name prefix
+    # attach two independent copies of the SO101 arm, each with its own name prefix,
+    # mirrored on the cloth's +-x flanks, each facing inward toward the cloth
     left_spec = mujoco.MjSpec.from_file(ARM_XML_PATH)
     lf = spec.worldbody.add_frame(pos=ARM_BASE_LEFT)
+    lf.quat = ARM_QUAT_LEFT
     lf.attach_body(left_spec.body("base"), "left_", "")
 
     right_spec = mujoco.MjSpec.from_file(ARM_XML_PATH)
     rf = spec.worldbody.add_frame(pos=ARM_BASE_RIGHT)
-    rf.quat = [0.0, 0.0, 0.0, 1.0]   # 180 deg about z, so this arm faces -x toward the cloth
+    rf.quat = ARM_QUAT_RIGHT
     rf.attach_body(right_spec.body("base"), "right_", "")
 
     # SIM-ONLY GRASP CHEAT: a real gripper can't reliably pinch flat cloth, so we fake
@@ -595,9 +771,9 @@ def compile_model(timestep):
     # and flips data.eq_active). WELD is used over CONNECT because its relative pose is
     # settable at runtime -- CONNECT bakes its anchor at compile (home pose), which would
     # hold the cloth ~9cm from the claw. the cloth grid is row-major (index = ix*COUNT+iy),
-    # so the two diagonal corners are:
-    left_corner_body  = f"cloth_{CLOTH_COUNT - 1}"                    # (-h, +h)
-    right_corner_body = f"cloth_{(CLOTH_COUNT - 1) * CLOTH_COUNT}"    # (+h, -h)
+    # so the two far-edge (+y) corners for the half-fold are:
+    left_corner_body  = f"cloth_{CLOTH_COUNT - 1}"                # (-h, +h)
+    right_corner_body = f"cloth_{CLOTH_COUNT * CLOTH_COUNT - 1}"  # (+h, +h)
     for prefix, body in [("left_", left_corner_body), ("right_", right_corner_body)]:
         eq = spec.add_equality()
         eq.type = mujoco.mjtEq.mjEQ_WELD
@@ -739,10 +915,11 @@ def main():
     env = ClothFoldEnv()
     env.reset(seed=0)
     state = {"i": 0}
+    policy = ScriptedFoldPolicy(env)
 
     def step_fn(model, data):
         if state["i"] % env.n_substeps == 0:
-            action = test_idk(env)
+            action = policy.act()
             clipped = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
             env.set_gripper("left_", float(clipped[6]))
             env.set_gripper("right_", float(clipped[13]))
@@ -755,6 +932,7 @@ def main():
 
     def reset_fn(model, data):
         env.reset(seed=0)
+        policy.reset()
         state["i"] = 0
 
     mjviser.Viewer(env.model, env.data, step_fn=step_fn, reset_fn=reset_fn, render_fn=make_render_fn(env.model, env.data)).run()

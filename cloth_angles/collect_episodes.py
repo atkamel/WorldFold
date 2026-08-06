@@ -59,24 +59,20 @@ def still_action(env, rng, t: int) -> np.ndarray:
     return np.zeros(env.action_space.shape, dtype=np.float32)
 
 
+_fold_policy = None
+
+
 def fold_action(env, rng, t: int) -> np.ndarray:
-    """Drives both grippers toward their target corner and closes once close,
-    mirroring test_idk's scripted demo policy in mujuco/sim_main.py (a partial
-    fold attempt, not guaranteed to reach the success threshold).
+    """Full scripted half-fold via sim_main.ScriptedFoldPolicy (approach ->
+    grasp -> lift -> swing -> lower -> release). The policy is stateful (phase
+    machine per arm), so it is (re)built whenever a new episode starts (t == 0)
+    or the env instance changes.
     """
-    action = np.zeros(env.action_space.shape, dtype=np.float32)
-    pos_slice = {"left_": 0, "right_": 7}
-    grip_index = {"left_": 6, "right_": 13}
-    for prefix in env.prefixes:
-        site = env.data.site_xpos[env._site_id[prefix]]
-        corner = env.data.xpos[env._corner_body[prefix]]
-        direction = corner - site
-        cmd = np.clip(direction * 20.0, -1.0, 1.0)
-        start = pos_slice[prefix]
-        action[start:start + 3] = cmd
-        gap = float(np.linalg.norm(direction))
-        action[grip_index[prefix]] = -1.0 if gap < 0.02 else 1.0
-    return action
+    global _fold_policy
+    if t == 0 or _fold_policy is None or _fold_policy.env is not env:
+        from sim_main import ScriptedFoldPolicy  # noqa: PLC0415 -- mujuco/ on sys.path (see module header)
+        _fold_policy = ScriptedFoldPolicy(env)
+    return _fold_policy.act()
 
 
 def recovery_action(env, rng, t: int, perturb_steps: int) -> np.ndarray:
@@ -103,10 +99,12 @@ def collect_episode(env, kind: str, seed: int, grid_size: int, signed: bool, rng
             raise ValueError(f"unknown episode kind {kind!r}")
 
         obs_list.append(angle)
-        env.step(action)
+        _, _, terminated, truncated, _ = env.step(action)
         angle = angle_obs(env, grid_size, signed)
         next_obs_list.append(angle)
         action_list.append(action)
+        if terminated or truncated:
+            break   # success now terminates fold episodes early; don't step a finished env
 
     n2 = grid_size * grid_size
     obs = np.stack(obs_list).astype(np.float32).reshape(-1, n2)

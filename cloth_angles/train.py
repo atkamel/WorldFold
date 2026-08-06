@@ -103,6 +103,7 @@ def main():
         kl_free_bits=model_cfg["kl_free_bits"],
         kl_weight=model_cfg["kl_weight"],
         huber_delta=model_cfg["huber_delta"],
+        decode_mode=model_cfg.get("decode_mode", "absolute"),
     ).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=train_cfg["learning_rate"])

@@ -93,6 +93,7 @@ def load_checkpoint(path, expected: ExpectedSchema, device: torch.device | None 
         kl_free_bits=model_cfg["kl_free_bits"],
         kl_weight=model_cfg["kl_weight"],
         huber_delta=model_cfg["huber_delta"],
+        decode_mode=model_cfg.get("decode_mode", "absolute"),   # pre-delta checkpoints lack the key
     )
     if device is not None:
         model = model.to(device)
