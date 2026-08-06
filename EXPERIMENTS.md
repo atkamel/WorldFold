@@ -475,3 +475,55 @@ most of it (kept as a threats-to-validity lesson; dry-run before trusting
 numbers). (3) Downstream 10-step open-loop MAE ranks raw 0.164 < dpmK 0.279
 < dpm1 0.311, consistent with the reconstruction ordering.
 
+---
+
+## 11. Experiment 2 results (run 2026-08-07) — uncertainty-gated active perception
+
+**Premise check killed the original design (cheaply, on tuning seeds).** The
+§2 plan gated a physical flatten-probe on DPM spread, assuming spread tracks
+crumpledness. Calibration (24 tuning starts, seeds 3100–3123, ~6 min): the
+strata medians are indistinguishable (0.0147 flat vs 0.0167 crumpled), and
+spread is BIMODAL (~0.01 or >0.8, little between). Three FLAT starts under
+heavy occlusion hit spreads 3.1–3.9: flat-vs-folded-under-the-flap is
+genuinely undecidable, and the DPM honestly reports it. Spread measures
+PERCEPTUAL AMBIGUITY given the occlusion, not physical mess. (Note: on this
+testbed the scripted fold reads privileged corner state, so no perception
+signal can causally change fold success until the planner milestone connects
+that wire.)
+
+**Redesign — gate re-observation, the probe matching the signal.** Every
+unit gets look 1 (heavy flap mask); the gate pays for look 2 (independent
+mask; conditioning on the union of visible cells) only when spread₁ > τ=0.5
+(the bimodal gap). Arms single/gated/always derive from the same two looks
+per unit — perfectly paired, no folding needed (9 min for the whole battery).
+Script: `cloth_angles/experiments/exp2_active_perception.py`; artifacts in
+`outputs/cloth_angles/exp2/`.
+
+**Results (40 matched units, belief MAE on look-1 hidden cells, Wilcoxon,
+Bonferroni α=0.0167):**
+
+| arm | easy | ambiguous | all | mean looks |
+|---|---|---|---|---|
+| single look | 0.750 | 0.221 | 0.486 | 1.0 |
+| **gated** | **0.104** | **0.105** | **0.104** | **1.5** |
+| always 2 looks | 0.097 | 0.070 | 0.084 | 2.0 |
+
+- gated vs single: −0.381 rad, p=1.0e-4 [SIG] — error cut 4.7×
+- always vs single: −0.402, p=1.3e-11 [SIG]
+- gated vs always: +0.021, p=8.9e-5 [SIG but small] — **the gate recovers
+  95% of the two-look gain at 75% of the observation cost**
+- Fire rate adapts to true ambiguity: 0.70 on flat starts (heavily occluded
+  flat cloth is maximally ambiguous), 0.30 on crumpled (visible wrinkles pin
+  the hypothesis). Example units: seed 3034 spread 2.11 → probe → error
+  0.118→0.013; seed 3039 → 0.100→0.000.
+
+**Interpretation.** Epsilons 3/21/27 closed in their cleanest testable form:
+diffusion sample-spread is a calibrated trigger for active re-observation —
+near-oracle perception, paying for probes only when the model says it can't
+tell. Limitation: spread is a catastrophe detector, not a full
+value-of-information estimator — `always` still edges `gated` by 0.02 rad on
+units with modest improvable error (the info-gain objective, epsilon 22, is
+the follow-up). Next causal step: the planner milestone (M4), where the
+belief actually drives folding and gate benefits become fold-success
+benefits.
+
