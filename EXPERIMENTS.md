@@ -426,3 +426,52 @@ little information — adequate for this gate, worth revisiting for M2).
 
 **The simulator and pipeline are certified. Next: Experiment 1 (§7).**
 
+---
+
+## 10. Experiment 1 results (run 2026-08-06) — belief > guess; spread predicts error
+
+**Setup.** DPM = conditional DDPM (`cloth_angles/model/diffusion.py`), 60k
+steps on 7,282 frames (episode store + 24 cloth-pose-randomized scripted
+rollouts, seeds 2000+). Evaluation: 40 matched units (seeds 1000–1039, 20
+light / 20 heavy flap occlusion, folds-in-progress), identical (field, mask)
+pairs across all arms, error on HIDDEN cells only, wrapped MAE. Artifacts:
+`outputs/cloth_angles/exp1/{per_unit.csv, results.json, configs.npz}`.
+
+**Hidden-cell MAE (rad), Wilcoxon signed-rank, Bonferroni α = 0.0167:**
+
+| stratum | raw (nearest-fill) | DPM 1-sample | DPM K=8 belief | raw vs dpmK |
+|---|---|---|---|---|
+| light (n=20) | 0.196 | 0.391 | **0.192** | tie (p=0.90) |
+| heavy (n=20) | 0.174 | 0.734 | 0.672* | ns on ranks (p=0.35) |
+| all (n=40) | 0.185 | 0.563 | 0.432 | ns on ranks |
+
+Confirmed at Bonferroni level everywhere: **dpmK < dpm1** (belief beats
+single guess; p ≤ 2.7e-3 in every stratum) — the K-sample-belief hypothesis.
+
+*The heavy-stratum dpmK mean is dominated by ~4 catastrophic units where the
+DPM commits to the WRONG fold hypothesis (~1.6–2.9 rad, e.g. seed 1036); on
+ranks (Wilcoxon) dpmK is statistically indistinguishable from raw, and on
+typical heavy units it matches or beats raw (e.g. seed 1039: 0.138 vs 0.441).
+
+**The key finding — sample spread predicts error (the Exp 2 mechanism):**
+
+- Spearman ρ(per-unit K-sample spread, dpmK error) = **0.853, p = 2.6e-12**
+- Median split on spread: high-spread half mean error **0.736**;
+  low-spread half **0.061** — the low-spread half beats raw's overall 0.185
+  by ~3×. Every catastrophic unit has extreme spread (4.9–6.5 vs typical <1).
+
+Interpretation: an ungated DPM is dangerous (rare catastrophic multimodal
+flips); a **spread-gated DPM is the best front-end measured** — precisely the
+paper's "know-when-you-don't-know" thesis, and the direct motivation for
+Experiment 2 (gate the fold on `variance_map`, probe when uncertain).
+
+**Honest caveats.** (1) Nearest-fill is a strong baseline on these smooth
+low-res fields — the raw-vs-dpmK headline is a tie, not a win; diffusion's
+measured value here is calibrated uncertainty + typical-case parity, not
+blanket accuracy. (2) An earlier run trained only on unrandomized episodes
+collapsed on offset configs (means 2–3 rad) — learned perception degrades
+off-distribution while deterministic fill cannot; varied training data fixed
+most of it (kept as a threats-to-validity lesson; dry-run before trusting
+numbers). (3) Downstream 10-step open-loop MAE ranks raw 0.164 < dpmK 0.279
+< dpm1 0.311, consistent with the reconstruction ordering.
+

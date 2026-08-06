@@ -43,3 +43,21 @@ train:
 eval:
   open_loop_horizons: [5, 10]
   n_eval_sequences: 32
+  active_threshold_rad: 0.02
+
+# Conditional angle-field DPM (EXPERIMENTS.md sections 1-2): denoises the full
+# field conditioned on (masked field, mask). Trained on the train split only,
+# with random flap-occlusion severities spanning both experimental strata.
+diffusion:
+  timesteps: 100
+  hidden_dim: 512
+  time_embed_dim: 64
+  train_steps: 60000   # heavy-occlusion probe MAE was still descending at 20k
+  batch_size: 128
+  learning_rate: 2.0e-4
+  min_severity: 0.05
+  max_severity: 0.65
+  eval_every: 2000
+  checkpoint_dir: outputs/cloth_angles/diffusion
+  extra_frames_path: outputs/cloth_angles/perception_frames.npz
+  seed: 0
