@@ -517,7 +517,7 @@ Bonferroni α=0.0167):**
   the hypothesis). Example units: seed 3034 spread 2.11 → probe → error
   0.118→0.013; seed 3039 → 0.100→0.000.
 
-**Interpretation.** Epsilons 3/21/27 closed in their cleanest testable form:
+**Interpretation (Exp 2).** Epsilons 3/21/27 closed in their cleanest testable form:
 diffusion sample-spread is a calibrated trigger for active re-observation —
 near-oracle perception, paying for probes only when the model says it can't
 tell. Limitation: spread is a catastrophe detector, not a full
@@ -527,3 +527,55 @@ the follow-up). Next causal step: the planner milestone (M4), where the
 belief actually drives folding and gate benefits become fold-success
 benefits.
 
+
+---
+
+## 12. M4 results (run 2026-08-07) — the planner milestone: folding from imagination
+
+**Built.** (a) Corner-labeled dataset: 34 rollouts (fold/random/still, seeds
+4000+) recording per-step corner DISPLACEMENTS from episode start — the
+angle field is translation-invariant, so displacements, not absolute
+positions, are what the latent can decode. (b) Keypoint head (frozen-WM
+latent -> 12-dim corner delta): **held-out corner error 0.90 cm**.
+(c) CEM planner (`planning/cem.py`): closed loop, replans every step —
+bootstrap RSSM state from the current field, 48 imagined 10-step rollouts
+(deterministic prior), cost = predicted moving-corners-to-goal + drift
+penalty on stationary corners, warm-started elites. (d) Hybrid scope:
+scripted reach/grasp/lift (IK-precision territory), planner-controlled
+carry, scripted release.
+
+**Fold-off (10 matched starts, seeds 5000–5009):**
+
+| arm | success | fold_score | moving corner -> goal | steps |
+|---|---|---|---|---|
+| scripted expert | 10/10 | 0.797 | 5.8 cm | 147 |
+| world-model planner (carry) | 0/10 | 0.514 | 12.1 cm | 190 |
+
+Handover succeeded 10/10. The planner carries the flap toward the goal in
+every episode (best: 0.699 / 0.649 / 0.632 with corners ~8 cm out; worst
+0.275) — imagination steers the hands in the right direction but lacks
+finishing precision. **The milestone stands: every action of the carry was
+chosen by imagining futures through the world model — the first
+folding-from-imagination on this testbed — while the tuned choreography
+remains clearly better.**
+
+**Attributed gap (ranked suspects, all previously measured):**
+1. The servo-vs-friction/tension stall: the scripted expert only beats it
+   with a measured 8 cm overshoot bias; the planner must DISCOVER
+   overshooting through a model that may not represent the stall at all
+   (its training data mostly contains the already-biased scripted actions).
+2. Open-loop compounding: imagined-rollout error grows 0.019 -> 0.14 rad
+   over 10 steps (§9) — the cost signal blurs exactly at the horizon where
+   the finishing precision is decided.
+3. Keypoint head is trained on posterior states but consumed on prior
+   (imagined) states — an unquantified train/inference gap.
+
+**Improvement menu (next session):** fine-tune the head on prior-state
+rollouts; shorter horizon + tighter replanning near the goal; cost shaping
+that rewards progress-per-step rather than terminal distance only;
+overshoot-aware action priors; and — the research-grade step — feed the
+planner the DPM's K-sample belief as particles (the belief-aware MPC from
+the proposal list, now unblocked).
+
+**Anatomy status: eyes ✅ (Exp 1–2), imagination ✅ (§9), hands ✅ (scripted),
+brain ✅ built and driving — not yet as good as the choreography.**
