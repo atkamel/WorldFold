@@ -50,7 +50,7 @@ DEPTH_NOISE_STD_1M   = 0.002    # m
 DEPTH_QUANT_1M       = 0.001    # m 
 DEPTH_GRAZING_DEG    = 80.0     # surfaces tilted past this from the view ray become holes 
 
-CAMERA_POS              = (0.75, -0.75, 0.75)
+CAMERA_POS              = (0.274, 0.0, 1.172)
 CAMERA_TARGET           = (0.0, 0.0, TABLE_TOP_Z)  # aim point
 
 # Camera placement sweep. test_calibrate_camera() scores each candidate by how well the
