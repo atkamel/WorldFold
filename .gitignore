@@ -1,5 +1,6 @@
 venv/
 .venv/
+.venv-warp/
 env/
 __pycache__/
 *.py[cod]
@@ -13,3 +14,4 @@ outputs/cloth_angles/*
 # clone, with no retraining.
 .DS_Store
 MUJOCO_LOG.TXT
+outputs/watcloud/
