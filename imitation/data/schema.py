@@ -20,6 +20,10 @@ Per-episode arrays (T = executed steps):
     grasped      [T, 2] bool (left, right)
     actor        [T]  int8  who chose each executed action: 0 teacher, 1 student, 2 perturbation
     final_obs    [D]        observation after the last step
+    terminated   [T]  bool  true MDP terminal (success, cloth_dragged); only the last step
+    truncated    [T]  bool  episode cut without a terminal (step cap, `unstable` solver
+                            blow-up -- not a task outcome); only the last step
+    discount     [T]        0 after a true terminal, else 1 (bootstrap mask for offline RL)
     label_steps  [L]  int   steps that carry a teacher chunk label (DAgger)
     labels       [L, K, A]  the teacher's chunk from that step's state
 Expert episodes have no labels: the teacher executed its own actions, so the
@@ -39,7 +43,7 @@ import numpy as np
 
 SOURCES = ("expert", "student", "dagger")
 ARRAY_KEYS = ("obs", "actions", "rewards", "stage", "fold_score", "grasped", "actor", "final_obs",
-              "label_steps", "labels")
+              "terminated", "truncated", "discount", "label_steps", "labels")
 ACTOR_TEACHER, ACTOR_STUDENT, ACTOR_PERTURB = 0, 1, 2
 
 
@@ -53,6 +57,9 @@ class Episode:
     grasped: np.ndarray
     actor: np.ndarray
     final_obs: np.ndarray
+    terminated: np.ndarray
+    truncated: np.ndarray
+    discount: np.ndarray
     meta: dict
     label_steps: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int32))
     labels: np.ndarray = field(default_factory=lambda: np.zeros((0, 0, 0), dtype=np.float32))
@@ -80,12 +87,20 @@ def validate_episode(ep: Episode, obs_dim=None, action_dim=None) -> list[str]:
     T = ep.steps
     if T == 0:
         return ["empty episode"]
-    for k in ("obs", "rewards", "stage", "fold_score", "grasped", "actor"):
+    for k in ("obs", "rewards", "stage", "fold_score", "grasped", "actor", "terminated", "truncated", "discount"):
         if len(getattr(ep, k)) != T:
             errs.append(f"{k} has length {len(getattr(ep, k))}, expected {T}")
-    for k in ("obs", "actions", "rewards", "fold_score", "final_obs", "labels"):
+    for k in ("obs", "actions", "rewards", "fold_score", "final_obs", "discount", "labels"):
         if not np.all(np.isfinite(getattr(ep, k))):
             errs.append(f"{k} has non-finite values")
+    if not errs:
+        term, trunc = ep.terminated.astype(bool), ep.truncated.astype(bool)
+        if term[:-1].any() or trunc[:-1].any():
+            errs.append("terminated/truncated set before the last step")
+        if term[-1] == trunc[-1]:
+            errs.append("last step must be exactly one of terminated / truncated")
+        if not np.array_equal(ep.discount, np.where(term, 0.0, 1.0)):
+            errs.append("discount must be 0 at a terminal step and 1 elsewhere")
     if np.any(np.abs(ep.actions) > 1.0 + 1e-6):
         errs.append("actions outside [-1, 1]")
     if len(ep.labels):

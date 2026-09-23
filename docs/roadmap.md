@@ -62,7 +62,7 @@ are collected.
 |---|---|---|---|
 | M1.1 | Observation cleanup: unswap goal channels, drop dead one-hot, add `stage` + `settle_steps`, record `cloth_offset_xy` | obs spec in `imitation.md` §2 updated; expert benchmark re-run | ✅ |
 | M1.2 | Streaming + resumable collection; refuse/guard non-empty unfrozen versions | a killed collection loses nothing | ✅ |
-| M1.3 | Transition-level schema fields (`terminated`/`truncated`, discount, terminal flag) | present in v1, since the store is write-once | ☐ |
+| M1.3 | Transition-level schema fields (`terminated`/`truncated`, discount, terminal flag) | present in v1, since the store is write-once | ✅ |
 | M1.4 | Separate failures from demos (`--success-only` default; failures as their own version) | BC trains on successes only | ☐ |
 | M1.5 | Cache the IK scratch `MjData` (`cloth_fold_rl/expert.py:37`) | measured speedup on a 20-episode collect | ☐ |
 | M1.6 | Smoke the whole chain on 20 episodes | collect → train → evaluate → dagger 1 round, green | ☐ |

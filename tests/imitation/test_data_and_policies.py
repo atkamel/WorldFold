@@ -24,6 +24,8 @@ def make_episode(seed, T=30, source="expert", actor=None, labels=None):
                    fold_score=np.linspace(0, 1, T).astype(np.float32), grasped=np.zeros((T, 2), bool),
                    actor=np.full(T, ACTOR_TEACHER, np.int8) if actor is None else actor,
                    final_obs=np.zeros(D, np.float32),
+                   terminated=np.arange(T) == T - 1, truncated=np.zeros(T, bool),
+                   discount=np.r_[np.ones(T - 1), 0.0].astype(np.float32),
                    meta={"seed": seed, "source": source, "success": True, "termination_reason": "success"},
                    label_steps=label_steps, labels=lab)
 
@@ -133,3 +135,18 @@ def test_writer_rejects_duplicate_seed(tmp_path):
     w.add(make_episode(0), D, A)
     with pytest.raises(ValueError, match="already"):
         w.add(make_episode(0), D, A)
+
+
+def test_validator_checks_transition_flags():
+    ep = make_episode(0)
+    ep.terminated[3] = True                                  # terminal mid-episode
+    assert any("last step" in e for e in validate_episode(ep, D, A))
+    ep = make_episode(0)
+    ep.terminated[-1] = False                                # episode ends with no flag
+    assert any("exactly one" in e for e in validate_episode(ep, D, A))
+    ep = make_episode(0)
+    ep.discount[-1] = 1.0                                    # a true terminal must not bootstrap
+    assert any("discount" in e for e in validate_episode(ep, D, A))
+    ep = make_episode(0)
+    ep.terminated[-1], ep.truncated[-1], ep.discount[-1] = False, True, 1.0
+    assert validate_episode(ep, D, A) == []

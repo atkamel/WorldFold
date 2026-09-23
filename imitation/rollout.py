@@ -199,7 +199,8 @@ class _Slot:
     perturb: Perturbation | None
     info: dict
     rows: dict = field(default_factory=lambda: {k: [] for k in
-                                                ("obs", "actions", "rewards", "stage", "fold_score", "grasped", "actor")})
+                                                ("obs", "actions", "rewards", "stage", "fold_score", "grasped", "actor",
+                                                 "terminated", "truncated")})
     label_steps: list = field(default_factory=list)
     labels: list = field(default_factory=list)
     queue: deque = field(default_factory=deque)
@@ -317,9 +318,12 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
             elif cmd == "step":
                 obs, r, term, trunc, info, executed = payload
                 s = active[i]
+                # A solver blow-up ends the episode but is not an MDP terminal (imitation.md 4).
+                unstable = term and info["termination_reason"] == "unstable"
                 for key, val in (("obs", s.hist[-1]), ("actions", executed), ("rewards", r),
                                  ("stage", info["stage"]), ("fold_score", info["fold_score"]),
-                                 ("grasped", info["grasped"]), ("actor", step_actor[i])):
+                                 ("grasped", info["grasped"]), ("actor", step_actor[i]),
+                                 ("terminated", term and not unstable), ("truncated", trunc or unstable)):
                     s.rows[key].append(val)
                 s.hist.append(obs)
                 s.info = info
@@ -357,5 +361,8 @@ def _finish(s: _Slot, final_obs, controller, meta_extra) -> Episode:
                    fold_score=np.asarray(rows["fold_score"], dtype=np.float32),
                    grasped=np.asarray(rows["grasped"], dtype=bool),
                    actor=np.asarray(rows["actor"], dtype=np.int8),
-                   final_obs=np.asarray(final_obs, dtype=np.float32), meta=meta,
+                   final_obs=np.asarray(final_obs, dtype=np.float32),
+                   terminated=np.asarray(rows["terminated"], dtype=bool),
+                   truncated=np.asarray(rows["truncated"], dtype=bool),
+                   discount=np.where(rows["terminated"], 0.0, 1.0).astype(np.float32), meta=meta,
                    label_steps=np.asarray(s.label_steps, dtype=np.int32), labels=labels)
