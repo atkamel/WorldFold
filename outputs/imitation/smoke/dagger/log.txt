@@ -1,0 +1,13 @@
+== round 0: evaluating outputs\imitation\smoke\bc\final.pt
+  id_easy   success 57% (8/14)  fold 0.793  grasp 93%  failures {'F1': 4, 'G1': 2}  67s
+  id_hard   success 0% (0/14)  fold 0.200  grasp 29%  failures {'G1': 12, 'F1': 2}  79s
+  recovery  success 7% (1/14)  fold 0.543  grasp 93%  failures {'R1': 13}  68s
+== round 1: beta 0.300, 14 student rollouts from outputs\imitation\smoke\bc\final.pt
+   rollouts: student success 7/14, 332 teacher labels, froze smoke_dagger_r1 (33 episodes), 178s
+device cuda | 30 train / 3 val episodes | 2835 samples (301 DAgger labels) | chunk_mlp 8.65M params
+  step    300  train 0.0230  val(ema) 0.2193  4s
+  id_easy   success 93% (13/14)  fold 0.852  grasp 93%  failures {'G1': 1}  63s
+  id_hard   success 29% (4/14)  fold 0.551  grasp 57%  failures {'G1': 6, 'F1': 4}  71s
+  recovery  success 29% (4/14)  fold 0.592  grasp 86%  failures {'R1': 10}  69s
+   round 1: score 1.214 (gain +0.571) -> best outputs\imitation\smoke\dagger\round_1\final.pt
+best checkpoint: outputs\imitation\smoke\dagger\round_1\final.pt
