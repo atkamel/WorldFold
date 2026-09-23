@@ -114,16 +114,32 @@ class FoldExpert:
         self.phase_steps = 0
         self.retreat_target = None
 
+    # resync: a free gripper this close above its corner descends onto it, and one
+    # this far off to the side while descending goes back to approach
+    DESCEND_RADIUS, DESCEND_HEIGHT, ABORT_RADIUS = 0.02, 0.07, 0.04
+
     def resync(self):
-        """Match the phase to the grasp when another policy has been driving the arm:
-        a dropped corner sends the machine back to approach, and a corner grasped
-        before the machine expected it skips ahead to lift."""
+        """Match the phase to the arm's situation when another policy has been driving it,
+        so the expert's action depends on the state rather than on how it got there:
+        a dropped corner sends the machine back to approach, a corner grasped before the
+        machine expected it skips ahead to lift, and a free gripper's approach / descend
+        choice follows where it is relative to the corner."""
         name = self.PHASES[self.phase]
         grasped = self.base.grasp_active(self.prefix)
         if name in ("lift", "carry", "place", "hold") and not grasped:
             self._set_phase("approach")
+            name = "approach"
         elif name in ("approach", "descend") and grasped:
             self._set_phase("lift")
+            return
+        if name not in ("approach", "descend"):
+            return
+        offset = self.base.data.site_xpos[self.site_id] - self._corner()
+        across = float(np.linalg.norm(offset[:2]))
+        if name == "approach" and across < self.DESCEND_RADIUS and offset[2] < self.DESCEND_HEIGHT:
+            self._set_phase("descend")
+        elif name == "descend" and across > self.ABORT_RADIUS:
+            self._set_phase("approach")
 
     def _set_phase(self, name):
         self.phase = self.PHASES.index(name)

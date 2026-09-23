@@ -136,7 +136,7 @@ def load_policy_actors(saved, task):
         state_dicts = [saved["actor"]]
     actors = []
     for state_dict in state_dicts:
-        actor = Actor(feature_dim(task), task.action_dim)
+        actor = Actor(feature_dim(task), task.action_dim, hidden_dim=state_dict["net.0.weight"].shape[0])
         actor.load_state_dict(state_dict)
         actor.eval()
         actors.append(actor)

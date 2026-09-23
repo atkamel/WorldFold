@@ -113,7 +113,7 @@ def train_stage(stage_id: int, train: dict[str, torch.Tensor], validation: dict[
     probability /= probability.sum()
 
     torch.manual_seed(args.seed + stage_id)
-    actor = Actor(feature_dim(QUARTER), QUARTER.action_dim)
+    actor = Actor(feature_dim(QUARTER), QUARTER.action_dim, hidden_dim=args.hidden_dim)
     optimizer = torch.optim.Adam(actor.parameters(), lr=args.lr)
     rng = np.random.default_rng(args.seed + stage_id)
     history: list[dict] = []
@@ -155,6 +155,7 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=5000, help="optimizer updates per stage")
     parser.add_argument("--batch-size", type=int, default=512)
     parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--hidden-dim", type=int, default=256)
     parser.add_argument("--gripper-weight", type=float, default=3.0)
     parser.add_argument("--validate-every", type=int, default=250)
     parser.add_argument("--seed", type=int, default=0)
