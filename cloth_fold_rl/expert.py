@@ -167,6 +167,45 @@ class FoldExpert:
         self._maybe_advance(target)
         return action
 
+    def infer_phase(self, placed=None):
+        """Set the phase from the live sim state instead of from the phase history.
+
+        Used when someone else (a learner) has been driving the env, so the phase
+        machine's own record is stale. `placed` says whether the carried corner is
+        on the task's true goal (the coordinator knows it; our goal() includes the
+        overshoot); defaults to within SUCCESS_DIST of goal().
+        """
+        site = self.base.data.site_xpos[self.site_id]
+        corner = self._corner()
+        goal = np.asarray(self.goal(), dtype=float)
+        if placed is None:
+            placed = float(np.linalg.norm(corner - goal)) < SUCCESS_DIST
+        if self.base.grasp_active(self.prefix):
+            if float(np.linalg.norm(corner - goal)) < SUCCESS_DIST:
+                name = "hold"
+            elif float(np.linalg.norm(corner[:2] - goal[:2])) < 0.02:
+                name = "place"
+            elif corner[2] >= LIFT_TARGET_Z - 0.03:
+                name = "carry"
+            else:
+                name = "lift"
+        elif placed and "done" in self.PHASES:
+            # let go of a placed corner: back off above it, then stop
+            top = corner[2] + 0.02 + self.RETREAT_HEIGHT
+            name = "done" if site[2] >= top - 0.02 else "retreat"
+            self.retreat_target = np.array([site[0], site[1], top]) if name == "retreat" else None
+        elif (float(np.linalg.norm(site[:2] - corner[:2])) < 0.02
+              and site[2] - corner[2] < 0.07):
+            name = "descend"
+        else:
+            name = "approach"
+        if name != "retreat":
+            self.retreat_target = None
+        self.phase = self.PHASES.index(name)
+        self.phase_steps = 0
+        self.q_target = None
+        return name
+
     def _maybe_advance(self, target):
         name = self.PHASES[self.phase]
         if name == "done" or (name == "hold" and not (self.release_allowed and "release" in self.PHASES)):

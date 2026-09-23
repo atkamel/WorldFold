@@ -1,0 +1,38 @@
+# Exact versions the half-fold expert benchmark (48/50, outputs/imitation/
+# expert_benchmark.json) was measured against, and the versions every frozen
+# dataset version must be collected under.
+#
+# There are now THREE pin sets in this repo, and they disagree on purpose:
+#
+#   requirements.txt              so101-nexus 0.4.8 / mujoco 3.10.0  <- matches this file
+#   cloth_fold_rl/requirements.txt  so101-nexus 0.5.1 / mujoco 3.11.0
+#   imitation/requirements.txt    this file
+#
+# cloth_fold_rl's committed single-corner checkpoint was verified on 3.11.0; the
+# imitation pipeline was benchmarked on 3.10.0. MuJoCo minor versions change
+# contact-solver behaviour, and cloth grasping is contact-dominated, so these
+# numbers are not interchangeable. Upgrading mujoco is the action that
+# invalidates the expert benchmark and every dataset collected under it -- if you
+# upgrade, re-run `python -m imitation.benchmark_expert` and say so in
+# docs/status.md.
+#
+#   pip install -r imitation/requirements.txt
+
+so101-nexus==0.4.8
+mujoco==3.10.0
+gymnasium==1.3.0
+mjviser==0.0.14
+numpy==2.5.1
+
+# training -- the CUDA build; the pipeline falls back to CPU but collection and
+# DAgger labelling are CPU-bound regardless (see docs/imitation.md).
+torch==2.13.0+cu130
+tensorboard==2.21.0
+
+# rendering / video
+imageio==2.37.3
+imageio-ffmpeg==0.6.0
+pillow==12.3.0
+
+# tests
+pytest==9.1.1

@@ -107,6 +107,8 @@ STAGES = (
 class QuarterFoldEnv(gym.Wrapper):
     """Fold in half, release, fold in half again, release. See module docstring."""
 
+    stages = STAGES     # subclasses may run a prefix of the stages (see imitation.tasks.HalfFoldEnv)
+
     def __init__(self, max_episode_steps=MAX_STEPS, seed=None, cloth_jitter=CLOTH_JITTER):
         env = ClothFoldEnv(observation_mode="state", action_mode="joint_delta",
                            max_episode_steps=max_episode_steps, grasp_corners=GRASP_CORNERS,
@@ -138,7 +140,7 @@ class QuarterFoldEnv(gym.Wrapper):
         # arm welds CLOTH_10 along with CLOTH_5 at the stage-1 grasp and drags it
         # to the wrong goal, so the right arm's stack never places.
         mask = {p: set() for p in self.env.prefixes}
-        for move in STAGES[self.stage].moves:
+        for move in self.stages[self.stage].moves:
             mask[move.prefix].update(move.corners)
         self.env.weld_mask = mask
 
@@ -161,14 +163,14 @@ class QuarterFoldEnv(gym.Wrapper):
         # an earlier stage (e.g. CLOTH_120 is folded onto CLOTH_110 in stage 0,
         # ~0.30 m from its reset pose). What must not move is the already-placed
         # cloth as THIS stage runs, so we measure drift from the stage's start.
-        return max(float(np.linalg.norm(self._vertex(v) - self._stage_start[ref])) for v, ref in STAGES[self.stage].anchors)
+        return max(float(np.linalg.norm(self._vertex(v) - self._stage_start[ref])) for v, ref in self.stages[self.stage].anchors)
 
     def fold_score(self):
         """Fraction of the two stages' total carry distance that has been covered."""
-        done = sum(self._start_distance(m) for s in STAGES[:self.stage] for m in s.moves)
+        done = sum(self._start_distance(m) for s in self.stages[:self.stage] for m in s.moves)
         current = sum(self._start_distance(m) - min(self._move_distance(m), self._start_distance(m))
-                      for m in STAGES[self.stage].moves)
-        total = sum(self._start_distance(m) for s in STAGES for m in s.moves)
+                      for m in self.stages[self.stage].moves)
+        total = sum(self._start_distance(m) for s in self.stages for m in s.moves)
         return float((done + current) / total)
 
     # ---- reward -----------------------------------------------------------
@@ -184,10 +186,10 @@ class QuarterFoldEnv(gym.Wrapper):
         return -W_REACH * reach - W_CARRY * self._start_distance(move)
 
     def _potential(self):
-        return sum(self._move_potential(m) for m in STAGES[self.stage].moves)
+        return sum(self._move_potential(m) for m in self.stages[self.stage].moves)
 
     def _stage_settled(self):
-        return all(not self._grasped(m.prefix) and self._placed(m) for m in STAGES[self.stage].moves)
+        return all(not self._grasped(m.prefix) and self._placed(m) for m in self.stages[self.stage].moves)
 
     # ---- gym API ----------------------------------------------------------
 
@@ -218,7 +220,7 @@ class QuarterFoldEnv(gym.Wrapper):
     def _info(self, reason):
         return {"stage": self.stage, "fold_score": self.fold_score(), "settle_steps": self._settle_steps,
                 "grasped": {p: self._grasped(p) for p in self.env.prefixes},
-                "move_distance": [self._move_distance(m) for m in STAGES[self.stage].moves],
+                "move_distance": [self._move_distance(m) for m in self.stages[self.stage].moves],
                 "anchor_drift": self._anchor_drift(), "success": reason == "success",
                 "termination_reason": reason}
 
@@ -231,7 +233,7 @@ class QuarterFoldEnv(gym.Wrapper):
 
         terminated, reason = False, None
         if self._settle_steps >= SETTLE_STEPS:
-            if self.stage == len(STAGES) - 1:
+            if self.stage == len(self.stages) - 1:
                 reward += SUCCESS_BONUS
                 terminated, reason = True, "success"
             else:

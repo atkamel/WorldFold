@@ -5,6 +5,12 @@ __pycache__/
 *.py[cod]
 outputs/molmoact_import/
 outputs/ppo/
+# Imitation datasets are large and reproducible from a seed + a pinned env; the
+# manifest hash recorded in docs/status.md is what makes a run auditable, not the
+# npzs themselves. Metrics (expert_benchmark.json, run.json, logs) ARE committed.
+outputs/imitation/datasets/
+outputs/imitation/runs/**/*.pt
+outputs/imitation/**/events.out.tfevents.*
 outputs/cloth_angles/*
 !outputs/cloth_angles/videos/
 !outputs/cloth_angles/videos/*
