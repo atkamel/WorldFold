@@ -121,6 +121,9 @@ per-episode array list, which is authoritative. Properties that matter:
 - **Write-once, content-hashed.** `freeze()` writes `manifest.json` with a sha256 per
   episode; `load_dataset` verifies every hash. A version lists its parent's episodes plus
   its own, so DAgger aggregation never copies or mutates earlier data.
+- **Streaming, resumable.** Each episode is written as it finishes (`<source>_s<seed>.npz`,
+  atomic rename) and journaled in `journal.jsonl` until `freeze()`; `collect --resume`
+  continues a killed run, and a non-empty unfrozen version is refused without it.
 - **Failures are kept**, tagged by `termination_reason`, and must be filtered out of
   behaviour-cloning training (see §5.3).
 - `actor` per step records who chose the executed action (teacher / student /

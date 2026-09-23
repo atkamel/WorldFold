@@ -213,7 +213,7 @@ class _Slot:
 
 
 def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, perturb_fn=None,
-            meta_extra=None, progress=None, max_wait=0.01) -> list[Episode]:
+            meta_extra=None, progress=None, on_done=None, max_wait=0.01) -> list[Episode]:
     """Run one episode per seed across the pool; returns Episodes in seed order.
 
     Event-driven: each env gets its next command the moment its last one returns,
@@ -223,6 +223,7 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
 
     reset_options(seed) -> dict of env reset options (e.g. a harder cloth pose).
     perturb_fn(seed, rng) -> Perturbation or None.
+    on_done(ep) is called as each episode finishes, e.g. to persist it at once.
     """
     seeds = list(seeds)
     todo = deque(range(len(seeds)))
@@ -324,6 +325,8 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
                 s.info = info
                 if term or trunc:
                     done[order[i]] = _finish(s, obs, controller, meta_extra)
+                    if on_done:
+                        on_done(done[order[i]])
                     if progress:
                         progress(len(done), len(seeds), done[order[i]])
                     del active[i]

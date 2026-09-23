@@ -5,6 +5,9 @@ interrupted by a few random actions, then resyncs and finishes. Failed episodes
 are kept (and tagged) -- they matter for failure analysis and offline RL.
 
     python -m imitation.data.collect --episodes 400 --workers 14 --version v1
+    python -m imitation.data.collect ... --resume     # continue a killed collection
+
+Episodes are written as they finish, so a killed run keeps everything completed.
 """
 
 from __future__ import annotations
@@ -46,24 +49,30 @@ def main():
     ap.add_argument("--root", default=DEFAULT_ROOT)
     ap.add_argument("--seed-base", type=int, default=TRAIN_SEED_BASE)
     ap.add_argument("--recovery-fraction", type=float, default=0.3)
+    ap.add_argument("--resume", action="store_true", help="continue an unfrozen version")
     args = ap.parse_args()
 
-    config = vars(args) | {"task": "half_fold", "teacher": "QuarterFoldExpert(stage 0)"}
-    writer = DatasetWriter(args.root, args.version, config=config)
-    seeds = range(args.seed_base, args.seed_base + args.episodes)
+    config = {k: v for k, v in vars(args).items() if k != "resume"} | {
+        "task": "half_fold", "teacher": "QuarterFoldExpert(stage 0)"}
+    writer = DatasetWriter(args.root, args.version, config=config, resume=args.resume)
+    seeds = [s for s in range(args.seed_base, args.seed_base + args.episodes) if s not in writer.done_seeds]
+    if writer.done_seeds:
+        print(f"resuming {args.version}: {len(writer.done_seeds)} done, {len(seeds)} to go", flush=True)
     t0 = time.time()
     with EnvPool(args.workers) as pool:
-        episodes = rollout(pool, seeds, ExpertController(), perturb_fn=recovery_perturbation(args.recovery_fraction),
-                           progress=printer(t0))
-    for ep in episodes:
-        writer.add(ep, obs_dim=OBS_DIM, action_dim=ACTION_DIM)
+        rollout(pool, seeds, ExpertController(), perturb_fn=recovery_perturbation(args.recovery_fraction),
+                progress=printer(t0), on_done=lambda ep: writer.add(ep, obs_dim=OBS_DIM, action_dim=ACTION_DIM))
     m = writer.freeze()
-    perturbed = [e for e in episodes if e.meta["perturb"]]
-    print(f"froze {args.root}/{args.version}: {m['n_episodes']} episodes, {m['n_steps']} steps, "
-          f"success {m['n_success']}/{m['n_episodes']} (clean {sum(e.meta['success'] for e in episodes if not e.meta['perturb'])}"
-          f"/{len(episodes) - len(perturbed)}, recovery {sum(e.meta['success'] for e in perturbed)}/{len(perturbed)}), "
+    print(f"froze {args.root}/{args.version}: {summary(m['episodes'])}, "
           f"hash {m['content_hash'][:12]}, {time.time() - t0:.0f}s")
 
+
+def summary(entries):
+    clean = [e for e in entries if not e.get("perturb")]
+    pert = [e for e in entries if e.get("perturb")]
+    ok = lambda es: sum(e["success"] for e in es)
+    return (f"{len(entries)} episodes, {sum(e['steps'] for e in entries)} steps, success {ok(entries)}/{len(entries)} "
+            f"(clean {ok(clean)}/{len(clean)}, recovery {ok(pert)}/{len(pert)})")
 
 if __name__ == "__main__":
     main()

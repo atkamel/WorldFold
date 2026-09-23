@@ -31,6 +31,7 @@ from __future__ import annotations
 import datetime as _dt
 import hashlib
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -115,40 +116,93 @@ def _sha256(path: Path) -> str:
 
 
 class DatasetWriter:
-    """Builds one new dataset version, optionally on top of a frozen parent."""
+    """Builds one new dataset version, optionally on top of a frozen parent.
 
-    def __init__(self, root, version, parent=None, config=None):
+    Streaming: every `add` writes its npz atomically and appends its manifest entry
+    to `journal.jsonl` (fsync'd) at once, so a killed collection loses at most the
+    episode in flight. Reopen with `resume=True` to continue; without it a non-empty
+    unfrozen version is refused rather than silently orphaned.
+    """
+
+    def __init__(self, root, version, parent=None, config=None, resume=False):
         self.root = Path(root)
         self.dir = self.root / version
         if (self.dir / "manifest.json").exists():
             raise FileExistsError(f"dataset version {version} is frozen; write a new version instead")
-        (self.dir / "episodes").mkdir(parents=True, exist_ok=True)
+        self.journal = self.dir / "journal.jsonl"
+        ep_dir = self.dir / "episodes"
+        stale = (self.journal.exists() and self.journal.stat().st_size > 0) or (
+            ep_dir.exists() and any(ep_dir.iterdir()))
+        if stale and not resume:
+            raise FileExistsError(f"dataset version {version} has unfrozen data; pass resume=True "
+                                  f"(collect --resume) to continue it, or delete {self.dir}")
+        ep_dir.mkdir(parents=True, exist_ok=True)
         self.version, self.parent, self.config = version, parent, config or {}
         self.entries = list(load_manifest(self.root, parent)["episodes"]) if parent else []
-        self._n_new = 0
+        self.new_entries = []
+        if resume and self.journal.exists():
+            for line in self.journal.read_text().splitlines():
+                if not line.strip():
+                    continue                           # a torn last line is simply dropped
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if _sha256(self.root / e["file"]) == e["sha256"]:
+                    self.new_entries.append(e)
+        keep = {Path(e["file"]).name for e in self.new_entries}
+        for f in ep_dir.iterdir():                     # partial writes from a killed run
+            if f.name not in keep:
+                f.unlink()
+        self._rewrite_journal()
+
+    @property
+    def done_seeds(self):
+        return {e["seed"] for e in self.new_entries}
+
+    @property
+    def _n_new(self):
+        return len(self.new_entries)
+
+    def _rewrite_journal(self):
+        with open(self.journal, "w") as f:
+            f.writelines(json.dumps(e) + "\n" for e in self.new_entries)
 
     def add(self, ep: Episode, obs_dim=None, action_dim=None):
         errs = validate_episode(ep, obs_dim, action_dim)
         if errs:
             raise ValueError(f"invalid episode (seed {ep.meta.get('seed')}): {errs}")
-        name = f"ep_{self._n_new:05d}_{ep.meta['source']}_s{ep.meta['seed']}.npz"
-        sha = ep.save(self.dir / "episodes" / name)
-        self.entries.append({"file": f"{self.version}/episodes/{name}", "sha256": sha, "steps": ep.steps,
-                             "n_labels": int(len(ep.label_steps)),
-                             **{k: ep.meta[k] for k in ("seed", "source", "success", "termination_reason")},
-                             **({"round": ep.meta["round"]} if "round" in ep.meta else {})})
-        self._n_new += 1
+        name = f"{ep.meta['source']}_s{ep.meta['seed']}.npz"
+        if any(Path(e["file"]).name == name for e in self.new_entries):
+            raise ValueError(f"{name} is already in version {self.version}")
+        final = self.dir / "episodes" / name
+        tmp = final.with_name(final.stem + ".tmp.npz")
+        sha = ep.save(tmp)
+        os.replace(tmp, final)
+        entry = {"file": f"{self.version}/episodes/{name}", "sha256": sha, "steps": ep.steps,
+                 "n_labels": int(len(ep.label_steps)),
+                 **{k: ep.meta[k] for k in ("seed", "source", "success", "termination_reason")},
+                 **{k: ep.meta[k] for k in ("round", "perturb") if k in ep.meta}}
+        with open(self.journal, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        self.new_entries.append(entry)
 
     def freeze(self) -> dict:
-        digest = hashlib.sha256("".join(e["sha256"] for e in self.entries).encode()).hexdigest()
+        entries = self.entries + sorted(self.new_entries, key=lambda e: (e["source"], e["seed"]))
+        digest = hashlib.sha256("".join(e["sha256"] for e in entries).encode()).hexdigest()
         manifest = {"version": self.version, "parent": self.parent,
                     "created": _dt.datetime.now().isoformat(timespec="seconds"),
                     "content_hash": digest, "config": self.config,
-                    "n_episodes": len(self.entries), "n_new": self._n_new,
-                    "n_success": sum(e["success"] for e in self.entries),
-                    "n_steps": sum(e["steps"] for e in self.entries), "episodes": self.entries}
-        with open(self.dir / "manifest.json", "w") as f:
+                    "n_episodes": len(entries), "n_new": self._n_new,
+                    "n_success": sum(e["success"] for e in entries),
+                    "n_steps": sum(e["steps"] for e in entries), "episodes": entries}
+        tmp = self.dir / "manifest.json.tmp"
+        with open(tmp, "w") as f:
             json.dump(manifest, f, indent=1)
+        os.replace(tmp, self.dir / "manifest.json")
+        self.journal.unlink()
         return manifest
 
 

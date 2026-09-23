@@ -107,3 +107,29 @@ def test_policy_shapes_loss_and_checkpoint_roundtrip(kind, tmp_path):
     q = load_policy(tmp_path / "p.pt", device="cpu")
     if kind == "chunk_mlp":                   # deterministic: identical outputs after reload
         np.testing.assert_allclose(q.predict(obs.numpy()), p.to("cpu").predict(obs.numpy()), atol=1e-6)
+
+
+def test_writer_streams_and_resumes_after_a_kill(tmp_path):
+    w = DatasetWriter(tmp_path, "v1")
+    for s in range(3):
+        w.add(make_episode(s), D, A)
+    del w                                            # process killed before freeze
+    # a torn write from the killed process: npz on disk, never journaled
+    make_episode(7).save(tmp_path / "v1" / "episodes" / "expert_s7.npz")
+    with pytest.raises(FileExistsError, match="resume"):
+        DatasetWriter(tmp_path, "v1")
+    w = DatasetWriter(tmp_path, "v1", resume=True)
+    assert w.done_seeds == {0, 1, 2}
+    assert not (tmp_path / "v1" / "episodes" / "expert_s7.npz").exists()
+    w.add(make_episode(3), D, A)
+    m = w.freeze()
+    assert m["n_episodes"] == m["n_new"] == 4
+    _, eps = load_dataset(tmp_path, "v1")
+    assert [e.meta["seed"] for e in eps] == [0, 1, 2, 3]
+
+
+def test_writer_rejects_duplicate_seed(tmp_path):
+    w = DatasetWriter(tmp_path, "v1")
+    w.add(make_episode(0), D, A)
+    with pytest.raises(ValueError, match="already"):
+        w.add(make_episode(0), D, A)

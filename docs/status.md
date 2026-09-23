@@ -19,9 +19,9 @@ defects (M1.2-M1.4) must land before that dataset is collected.
 
 ## Next action
 
-**M1.2 — streaming + resumable collection** before any 400-episode run. M1.1 is done:
-observation is now 139-D (`imitation.spec.OBS_DIM`) with per-stage goals, `stage` and
-`settle_steps`; expert benchmark unchanged at 48/50.
+**M1.3 — transition-level schema fields** (`terminated`/`truncated`/`discount`). M1.2 is
+done: `DatasetWriter` streams each episode (atomic npz + fsync'd `journal.jsonl`) and
+`collect --resume` continues a killed run; a non-empty unfrozen version is refused.
 
 ## Environment
 
@@ -29,7 +29,7 @@ observation is now 139-D (`imitation.spec.OBS_DIM`) with per-stage goals, `stage
 |---|---|
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
-| tests | 57 fast + 6 slow, all passing (`pytest -m "not slow"` / `-m slow`) |
+| tests | 59 fast + 6 slow, all passing (`pytest -m "not slow"` / `-m slow`) |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -42,9 +42,9 @@ grasping is contact-dominated and MuJoCo minors change results.
 | — | — | — | — | **none frozen yet** |
 
 `v1` exists as an empty directory only: a 400-episode collection died at episode 215 and
-wrote nothing, because `collect.py` returns every episode before writing any (fixed in
-M1.2). The partial run's compute is lost. `outputs/imitation/collect_v1.log` is retained as
-the record. Delete `outputs/imitation/datasets/v1/` before re-collecting under that name.
+wrote nothing, because `collect.py` returned every episode before writing any (fixed in
+M1.2). `outputs/imitation/collect_v1.log` is retained as the record; the empty `v1/`
+directory was deleted in M1.2.
 
 ## Best checkpoint
 
@@ -56,7 +56,6 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 4 | `collect.py` is all-or-nothing, no resume; unfrozen versions silently orphan npzs | any long collection | M1.2 |
 | 5 | No terminal/truncation flags in the write-once schema | offline RL, permanently for v1 | M1.3 |
 | 6 | Failed episodes train as demos (~17% of frames, tail-padded to "freeze in place") | BC quality | M1.4 |
 | 7 | Expert ceiling on eval sets unknown; teacher recovery rate unknown | **gates the recovery/DAgger arm** | M1.7 |
@@ -78,6 +77,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-09-23 · M1.2 done: streaming/resumable `DatasetWriter` + `collect --resume`, seed-named npzs, guard on unfrozen versions; real 20-ep collect killed at 60 s kept 18, resume finished 20/20 unique, hashes verify; 59 fast green · COMMIT
 - 2026-09-23 · M1.1 done: 139-D obs (per-stage goals, no one-hot, +stage/settle), `cloth_offset_xy` recorded, goals in snapshot; 63 tests green; expert benchmark unchanged 48/50 · e847847
 - 2026-09-23 · Sim verified against docs before M1.1: pins, 57+2 tests, benchmark 48/50 reproduced, all §2.2 defects confirmed · no code change
 - 2026-09-23 · Phase 0: imitation + DAgger pipeline committed, env pinned, tracking docs · a5aa63f
