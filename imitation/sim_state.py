@@ -8,6 +8,7 @@ Python-side state that also decides what happens next:
   _gripper_closed    gripper hysteresis (commands in (-0.3, 0.3) hold the state)
   counters           _step_count / _success_steps / _action_clipped
   weld_mask          which vertices each arm may weld this stage
+  goal keypoints     _goal_corners / _goal_scale, reset per stage by the wrapper
   wrapper fields     stage, settle counter, stage-start cloth pose, previous potential
 """
 
@@ -20,7 +21,8 @@ import mujoco
 import numpy as np
 
 _SPEC = mujoco.mjtState.mjSTATE_INTEGRATION
-_BASE_FIELDS = ("_gripper_closed", "_step_count", "_success_steps", "_action_clipped", "weld_mask")
+_BASE_FIELDS = ("_gripper_closed", "_step_count", "_success_steps", "_action_clipped", "weld_mask",
+                "_goal_corners", "_goal_scale")
 _WRAPPER_FIELDS = ("stage", "_settle_steps", "_stage_start", "_start", "_prev_potential")
 
 

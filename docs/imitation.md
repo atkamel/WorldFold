@@ -37,16 +37,21 @@ Control: `control_dt = 0.05` (20 Hz), 100 physics substeps per control step.
 
 ## 2. Observation
 
-`Box(141,) float32` — `StateOnlyWrapper` (`mujuco/sim_main.py:627`) flattens three keys in
-a fixed order:
+`Box(139,) float32` (`imitation.spec.OBS_DIM`) — `QuarterFoldEnv._observe` takes the
+`StateOnlyWrapper` (`mujuco/sim_main.py:627`) flattening of three keys, drops the task
+one-hot and appends two wrapper-state dims:
 
 | block | dims | contents |
 |---|---|---|
 | `proprio` | 50 | per arm ×2: 5 joint pos, 5 joint vel, 1 gripper ctrl, 3 EE pos, 4 EE quat, 6 EE vel (ang+lin), 1 grasp flag |
 | `cloth_state` | 69 | 4 corner pos (12), 4 corner linvel (12), 9 sampled vertices (27), CoM (3), z min/max/mean (3), 4 corner-to-goal (12) |
-| `task` | 22 | task one-hot (4), stage scalar (1), goal keypoints 4×3 (12), per-corner progress (4), time-left (1) |
+| `task` | 18 | mean corner progress (1), goal keypoints 4×3 (12), per-corner progress (4), time-left (1) |
+| wrapper | 2 | `stage / n_stages`, `settle_steps / SETTLE_STEPS` |
 
-Corner order throughout is `corner_idx = [0, 10, 110, 120]`.
+Corner order throughout is `corner_idx = [0, 10, 110, 120]`. Goal keypoints are set per
+stage by `QuarterFoldEnv._set_goals`: a carried corner's slot holds its move's goal, every
+other slot holds that corner's position at the stage start. Corner-to-goal, progress and
+the mean-progress scalar are all measured against these goals.
 
 ### 2.1 Sensor-available vs privileged
 
@@ -56,15 +61,16 @@ This split determines how much of Phase 4 (sensor-only student) is real work:
   command, EE pose/vel from forward kinematics. The two exceptions are the per-arm
   `grasp_active` flags, which are MuJoCo weld queries with no direct sensor analogue
   (substitute: gripper position + current).
-- **Privileged: `cloth_state` (69) + `task` (22) = 91 dims.** Cloth vertex positions and
+- **Privileged: `cloth_state` (69) + `task` (18) + wrapper (2) = 89 dims.** Cloth vertex positions and
   velocities read straight from the simulator.
 - **Reward, success and termination are privileged and stay that way.** They are labels,
   not policy inputs. Hardware evaluation needs a separate vision-based success detector.
 
-### 2.2 Known observation defects
+### 2.2 Observation defects (fixed in M1.1)
 
-Recorded here because they are spec-level and affect every dataset collected before they
-are fixed. Tracked as M1.1 in the roadmap.
+All three were fixed in M1.1, before any dataset was frozen. Kept for the record; they
+describe the 141-D observation, which no frozen data uses. `cloth_offset_xy` is also now
+recorded in `domain_params` (it was drawn by the wrapper and bypassed the base env's record).
 
 1. **The goal channels describe the wrong fold, permuted.** `sim_main.py:463-469` sets
    `_goal_corners = corners0[[3, 2, 1, 0]]` — each corner's diagonal-opposite start
@@ -206,7 +212,8 @@ Usable as an offline-RL label with four caveats, all of which Phase 5 must handl
 3. **`unstable` is a simulator artifact.** The −5 penalty fires on solver divergence, not
    on the robot doing something bad, and those transitions are the most likely to relabel
    under a MuJoCo version change. Tag them separately.
-4. **Non-Markovian w.r.t. the observation** — see §2.2 defect 3.
+4. **Markov w.r.t. the observation since M1.1** — `stage` and `settle_steps` are observed
+   (§2.2 defect 3).
 
 Recommendation on record: learn the critic on the **sparse** signal (success + small time
 penalty), using the shaped reward only to warm-start.

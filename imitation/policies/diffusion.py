@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from imitation.policies.common import ChunkPolicy
+from imitation.spec import ACTION_DIM, OBS_DIM
 
 
 def _cosine_alphas_cumprod(T, s=0.008):
@@ -86,7 +87,7 @@ class _UNet1D(nn.Module):
 class DiffusionPolicy(ChunkPolicy):
     kind = "diffusion"
 
-    def __init__(self, obs_dim=141, action_dim=12, obs_horizon=2, chunk=16, cond_dim=256,
+    def __init__(self, obs_dim=OBS_DIM, action_dim=ACTION_DIM, obs_horizon=2, chunk=16, cond_dim=256,
                  channels=(128, 256), train_steps=100, infer_steps=10):
         super().__init__(obs_dim, action_dim, obs_horizon, chunk)
         assert chunk % (2 ** len(channels)) == 0, "chunk must divide by the U-Net's downsampling"

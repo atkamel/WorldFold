@@ -20,7 +20,9 @@ cannot be compared against any student number. The expert ceiling on `id_easy` /
 `recovery` is roadmap M1.7 and is still unmeasured — in particular **the scripted teacher's
 own recovery rate is unknown**, which gates the whole recovery arm of the plan.
 
-Artifact: `outputs/imitation/expert_benchmark.json`
+| 2026-09-23 | half fold | 0-49 (training seeds) | 50 | 48/50 = 96.0% [86.5, 98.9] | 96.7 | 0.904 | After M1.1 (139-D obs, per-stage goals). Identical to the row above — same failing seeds 24, 35 — as expected: the expert reads sim state, not the observation. |
+
+Artifacts: `outputs/imitation/expert_benchmark.json`, `outputs/imitation/expert_benchmark_m1_1.json`
 
 ## Imitation baselines
 
@@ -28,7 +30,7 @@ _Nothing measured yet — no dataset has been frozen._
 
 ## Ablations
 
-_Pending. First planned: privileged-features ablation (proprio-only / +corners / full 141),
+_Pending. First planned: privileged-features ablation (proprio-only / +corners / full 139),
 roadmap M2.3._
 
 ## DAgger rounds

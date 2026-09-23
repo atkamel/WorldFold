@@ -11,7 +11,7 @@ from imitation.teachers import ScriptedTeacher
 
 
 def _obs(env):
-    return env._flat.observation(env.unwrapped._get_obs())
+    return env._observe()
 
 
 @pytest.fixture(scope="module")

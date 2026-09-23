@@ -60,7 +60,7 @@ are collected.
 
 | | milestone | exit | status |
 |---|---|---|---|
-| M1.1 | Observation cleanup: unswap goal channels, drop dead one-hot, add `stage` + `settle_steps`, record `cloth_offset_xy` | obs spec in `imitation.md` §2 updated; expert benchmark re-run | ☐ |
+| M1.1 | Observation cleanup: unswap goal channels, drop dead one-hot, add `stage` + `settle_steps`, record `cloth_offset_xy` | obs spec in `imitation.md` §2 updated; expert benchmark re-run | ✅ |
 | M1.2 | Streaming + resumable collection; refuse/guard non-empty unfrozen versions | a killed collection loses nothing | ☐ |
 | M1.3 | Transition-level schema fields (`terminated`/`truncated`, discount, terminal flag) | present in v1, since the store is write-once | ☐ |
 | M1.4 | Separate failures from demos (`--success-only` default; failures as their own version) | BC trains on successes only | ☐ |
@@ -75,11 +75,11 @@ are collected.
 |---|---|---|---|
 | M2.1 | Chunk-MLP BC, K=16 / replan 8, ≥2 seeds, eval n≥200 | checkpoint + Wilson intervals in `results.md` | ☐ |
 | M2.2 | Failure map; fix the R1 short-circuit and the `eval_{name}` collision | mechanistic histogram per set | ☐ |
-| M2.3 | Privileged-features ablation: proprio-only / +corners / full 141 | table sizing the Phase 4 vision work | ☐ |
+| M2.3 | Privileged-features ablation: proprio-only / +corners / full 139 | table sizing the Phase 4 vision work | ☐ |
 | M2.4 | Diffusion head-to-head, same protocol | keep only if it wins outside the intervals | ☐ |
 
 M2.3 is three index-sliced trainings on data already in hand and is the cheapest informative
-experiment in the plan — the real split is 48 sensor-available / 93 privileged dims, not 141
+experiment in the plan — the real split is 48 sensor-available / 91 privileged dims, not 139
 privileged.
 
 ## Phase 3 — DAgger  *(ref. milestone 7)*

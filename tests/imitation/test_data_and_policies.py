@@ -10,8 +10,9 @@ from imitation.data.dataset import Normalizer, build_samples, split_episodes
 from imitation.data.schema import (ACTOR_PERTURB, ACTOR_STUDENT, ACTOR_TEACHER, DatasetWriter, Episode,
                                    load_dataset, validate_episode)
 from imitation.policies.common import build_policy, load_policy, save_policy
+from imitation.spec import ACTION_DIM, OBS_DIM
 
-D, A = 141, 12
+D, A = OBS_DIM, ACTION_DIM
 
 
 def make_episode(seed, T=30, source="expert", actor=None, labels=None):

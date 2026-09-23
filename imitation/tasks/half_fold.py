@@ -2,7 +2,7 @@
 
 Both arms carry the north corners onto the south corners (a fold about y = 0),
 release, and the corners must stay placed for SETTLE_STEPS. Everything else --
-observation (141-D state), action (12-D joint deltas + grippers), reward shaping,
+observation (139-D state), action (12-D joint deltas + grippers), reward shaping,
 drag/instability termination -- is inherited from QuarterFoldEnv unchanged, so
 QuarterFoldExpert drives it as-is.
 """
@@ -10,6 +10,7 @@ QuarterFoldExpert drives it as-is.
 from __future__ import annotations
 
 from cloth_fold_rl.quarter_fold_env import STAGES, QuarterFoldEnv
+from imitation.spec import ACTION_DIM, OBS_DIM  # noqa: F401 (re-exported)
 
 HALF_FOLD_MAX_STEPS = 250
 

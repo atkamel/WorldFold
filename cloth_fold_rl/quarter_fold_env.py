@@ -39,7 +39,8 @@ and dropping an unplaced corner is a step down. STAGE_BONUS when stage 0
 settles, SUCCESS_BONUS when stage 1 does. Drag and instability terminate.
 
 Action: 12 values, left joint deltas(5) + left gripper, right joint deltas(5)
-+ right gripper. Observation: the base env's flat state vector.
++ right gripper. Observation: the base env's flat state vector without its task
+one-hot, goal keypoints set per stage, plus stage and settle progress (139-D).
 """
 
 from __future__ import annotations
@@ -81,6 +82,8 @@ STAGE_BONUS = 10.0
 SETTLE_STEPS = 20        # 1.0 s released and placed before a stage completes
 MAX_STEPS = 400
 ACTION_DIM = 12
+OBS_TASK_START = 50 + 69   # proprio + cloth_state precede the task block in StateOnlyWrapper
+CORNERS = (CLOTH_0, CLOTH_10, CLOTH_110, CLOTH_120)   # the base env's corner slot order
 
 
 @dataclass(frozen=True)
@@ -117,7 +120,12 @@ class QuarterFoldEnv(gym.Wrapper):
         self.cloth_jitter = cloth_jitter
         self._rng = np.random.default_rng(seed)
         self._flat = StateOnlyWrapper(env)
-        self.observation_space = self._flat.observation_space
+        # observation = base flat state minus the task one-hot (constant per env,
+        # so dead) plus stage and settle progress, which drive termination and
+        # would otherwise be hidden wrapper state (reward non-Markovian)
+        self._onehot = slice(OBS_TASK_START, OBS_TASK_START + env.n_tasks)
+        dim = self._flat.observation_space.shape[0] - env.n_tasks + 2
+        self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(dim,), dtype=np.float32)
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(ACTION_DIM,), dtype=np.float32)
         self.stage = 0
         self._start = None          # cloth vertex positions at reset, [N*N, 3]
@@ -143,6 +151,24 @@ class QuarterFoldEnv(gym.Wrapper):
         for move in self.stages[self.stage].moves:
             mask[move.prefix].update(move.corners)
         self.env.weld_mask = mask
+
+    def _set_goals(self):
+        # The base env's goal keypoints default to a diagonal fold that is none
+        # of our stages. Point each corner slot at its own goal this stage: a
+        # carried corner at its move's goal, every other corner where it is now.
+        corners = self._stage_start[list(CORNERS)].copy()
+        goals = corners.copy()
+        for move in self.stages[self.stage].moves:
+            for c in move.corners:
+                if c in CORNERS:
+                    goals[CORNERS.index(c)] = self.goal(move)
+        self.env._goal_corners = goals
+        self.env._goal_scale = np.maximum(np.linalg.norm(goals - corners, axis=1), 1e-6)
+
+    def _observe(self):
+        flat = np.delete(self._flat.observation(self.env._get_obs()), self._onehot)
+        extra = [self.stage / len(self.stages), self._settle_steps / SETTLE_STEPS]
+        return np.concatenate([flat, extra]).astype(np.float32)
 
     def _grasped(self, prefix):
         return self.env.grasp_active(prefix)
@@ -199,16 +225,22 @@ class QuarterFoldEnv(gym.Wrapper):
             self._rng = np.random.default_rng(seed)
         if self.cloth_jitter > 0 and "cloth_pose" not in opts:
             opts["cloth_pose"] = self._rng.uniform(-self.cloth_jitter, self.cloth_jitter, size=2)
-        obs, info = self.env.reset(seed=seed, options=opts)
+        _, info = self.env.reset(seed=seed, options=opts)
+        if "cloth_pose" in opts:
+            # the base env only records offsets it draws itself
+            self.env._domain_params["cloth_offset_xy"] = [float(v) for v in np.ravel(opts["cloth_pose"])[:2]]
         self._start = self.env.data.xpos[self.env._cloth_body_ids].copy()
         self._stage_start = self._start.copy()
         self.stage = 0
         self._apply_weld_mask()
+        self._set_goals()
         self._settle_steps = 0
         self._prev_potential = self._potential()
         info = dict(info)
+        info["goal_keypoints"] = self.env._goal_corners.copy()
+        info["domain_parameters"] = dict(self.env._domain_params)
         info.update(self._info(None))
-        return self._flat.observation(obs), info
+        return self._observe(), info
 
     def _expand(self, action):
         a = np.zeros(14, dtype=np.float32)
@@ -225,7 +257,7 @@ class QuarterFoldEnv(gym.Wrapper):
                 "termination_reason": reason}
 
     def step(self, action):
-        obs, _, _, _, info = self.env.step(self._expand(action))
+        _, _, _, _, info = self.env.step(self._expand(action))
 
         potential = self._potential()
         reward = potential - self._prev_potential - CTRL_COST * float(np.square(action).sum())
@@ -241,6 +273,7 @@ class QuarterFoldEnv(gym.Wrapper):
                 self.stage += 1
                 self._stage_start = self.env.data.xpos[self.env._cloth_body_ids].copy()
                 self._apply_weld_mask()
+                self._set_goals()
                 self._settle_steps = 0
                 potential = self._potential()
         elif self._anchor_drift() > DRAG_LIMIT:
@@ -254,4 +287,4 @@ class QuarterFoldEnv(gym.Wrapper):
 
         info = dict(info)
         info.update(self._info(reason))
-        return self._flat.observation(obs), float(reward), terminated, truncated, info
+        return self._observe(), float(reward), terminated, truncated, info

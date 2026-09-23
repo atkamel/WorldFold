@@ -29,6 +29,7 @@ from imitation.evaluate import evaluate
 from imitation.policies.common import load_policy
 from imitation.rollout import EnvPool, PolicyController, rollout
 from imitation.seeds import DAGGER_SEED_BASE
+from imitation.spec import ACTION_DIM, OBS_DIM
 from imitation.train import train
 
 
@@ -89,7 +90,7 @@ def main():
                                            "replan_every": args.replan_every, "episodes": args.episodes,
                                            "recovery_fraction": args.recovery_fraction})
             for e in eps:
-                writer.add(e, obs_dim=141, action_dim=12)
+                writer.add(e, obs_dim=OBS_DIM, action_dim=ACTION_DIM)
             m = writer.freeze()
             n_labels = sum(len(e.label_steps) for e in eps)
             log(f"   rollouts: student success {sum(e.meta['success'] for e in eps)}/{len(eps)}, "

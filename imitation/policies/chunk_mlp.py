@@ -10,6 +10,7 @@ import torch
 from torch import nn
 
 from imitation.policies.common import ChunkPolicy
+from imitation.spec import ACTION_DIM, OBS_DIM
 
 
 class _Block(nn.Module):
@@ -25,7 +26,7 @@ class _Block(nn.Module):
 class ChunkMLP(ChunkPolicy):
     kind = "chunk_mlp"
 
-    def __init__(self, obs_dim=141, action_dim=12, obs_horizon=2, chunk=16, width=512, depth=4, dropout=0.1):
+    def __init__(self, obs_dim=OBS_DIM, action_dim=ACTION_DIM, obs_horizon=2, chunk=16, width=512, depth=4, dropout=0.1):
         super().__init__(obs_dim, action_dim, obs_horizon, chunk)
         self.width, self.depth, self.dropout = width, depth, dropout
         self.inp = nn.Linear(obs_horizon * obs_dim, width)

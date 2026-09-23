@@ -17,6 +17,7 @@ import numpy as np
 from imitation.data.schema import DatasetWriter
 from imitation.rollout import EnvPool, ExpertController, Perturbation, rollout
 from imitation.seeds import TRAIN_SEED_BASE
+from imitation.spec import ACTION_DIM, OBS_DIM
 
 DEFAULT_ROOT = "outputs/imitation/datasets"
 
@@ -55,7 +56,7 @@ def main():
         episodes = rollout(pool, seeds, ExpertController(), perturb_fn=recovery_perturbation(args.recovery_fraction),
                            progress=printer(t0))
     for ep in episodes:
-        writer.add(ep, obs_dim=141, action_dim=12)
+        writer.add(ep, obs_dim=OBS_DIM, action_dim=ACTION_DIM)
     m = writer.freeze()
     perturbed = [e for e in episodes if e.meta["perturb"]]
     print(f"froze {args.root}/{args.version}: {m['n_episodes']} episodes, {m['n_steps']} steps, "
