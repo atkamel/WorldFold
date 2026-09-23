@@ -114,6 +114,23 @@ class FoldExpert:
         self.phase_steps = 0
         self.retreat_target = None
 
+    def resync(self):
+        """Match the phase to the grasp when another policy has been driving the arm:
+        a dropped corner sends the machine back to approach, and a corner grasped
+        before the machine expected it skips ahead to lift."""
+        name = self.PHASES[self.phase]
+        grasped = self.base.grasp_active(self.prefix)
+        if name in ("lift", "carry", "place", "hold") and not grasped:
+            self._set_phase("approach")
+        elif name in ("approach", "descend") and grasped:
+            self._set_phase("lift")
+
+    def _set_phase(self, name):
+        self.phase = self.PHASES.index(name)
+        self.phase_steps = 0
+        self.q_target = None
+        self.retreat_target = None
+
     def _ik(self, target):
         q, err = solve_ik(self.base.model, self.base.data, self.site_id,
                           self.qpos_adr, self.dof_adr, self.joint_range,

@@ -3,7 +3,7 @@
 This is deliberately independent of world-model/imagination training:
 
     .venv/bin/python scripts/train_quarter_bc.py \
-        --data outputs/cloth_angles/quarter_expert_v1 \
+        --data outputs/cloth_angles/quarter_expert_v1 [outputs/cloth_angles/quarter_dagger_r1 ...] \
         --output outputs/cloth_angles/quarter_policy
 """
 
@@ -30,11 +30,13 @@ JOINT_ACTIONS = torch.tensor([0, 1, 2, 3, 4, 6, 7, 8, 9, 10])
 GRIPPER_ACTIONS = torch.tensor([5, 11])
 
 
-def load_split(path: Path, split: str, success_only: bool = False) -> dict[str, torch.Tensor]:
-    episodes = [ep for ep in StateEpisodeStore(path).load_all() if ep.metadata.get("split") == split]
+def load_split(paths: Path | list[Path], split: str, success_only: bool = False) -> dict[str, torch.Tensor]:
+    paths = [paths] if isinstance(paths, Path) else paths
+    episodes = [ep for path in paths for ep in StateEpisodeStore(path).load_all() if ep.metadata.get("split") == split]
     if success_only:
-        # The scripted expert fails some demos; cloning those teaches bad folds.
-        episodes = [ep for ep in episodes if ep.metadata.get("success")]
+        # The scripted expert fails some demos; cloning those teaches bad folds. Episodes
+        # driven by anything else are kept: their labels are the expert's corrections.
+        episodes = [ep for ep in episodes if ep.metadata.get("kind") != "expert" or ep.metadata.get("success")]
     if not episodes:
         raise ValueError(f"dataset has no {'successful ' if success_only else ''}episodes with split={split!r}")
     for episode in episodes:
@@ -44,7 +46,7 @@ def load_split(path: Path, split: str, success_only: bool = False) -> dict[str, 
     states = [ep.states() for ep in episodes]
     current = np.concatenate([s[:-1] for s in states])
     nxt = np.concatenate([s[1:] for s in states])
-    actions = np.concatenate([ep.actions for ep in episodes])
+    actions = np.concatenate([ep.expert_actions() for ep in episodes])
     stages = np.concatenate([ep.stage[:-1] for ep in episodes])
     next_stages = np.concatenate([ep.stage[1:] for ep in episodes])
     goals = np.concatenate([
@@ -60,7 +62,7 @@ def load_split(path: Path, split: str, success_only: bool = False) -> dict[str, 
             grasp_changed = ((current_state[:, arm.grasp_index] > 0.5)
                              != (next_state[:, arm.grasp_index] > 0.5))
             command_changed = np.zeros(len(episode), dtype=np.bool_)
-            command_changed[1:] = np.abs(np.diff(episode.actions[:, arm.gripper])) > 0.5
+            command_changed[1:] = np.abs(np.diff(episode.expert_actions()[:, arm.gripper])) > 0.5
             priority[np.logical_or(grasp_changed, command_changed)] = 5.0
         priority[episode.stage[:-1] != episode.stage[1:]] = 8.0
         priorities.append(priority)
@@ -148,7 +150,7 @@ def train_stage(stage_id: int, train: dict[str, torch.Tensor], validation: dict[
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", type=Path, required=True)
+    parser.add_argument("--data", type=Path, nargs="+", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--steps", type=int, default=5000, help="optimizer updates per stage")
     parser.add_argument("--batch-size", type=int, default=512)
@@ -157,7 +159,7 @@ def main() -> None:
     parser.add_argument("--validate-every", type=int, default=250)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--include-failures", action="store_true",
-                        help="also clone expert episodes that did not succeed")
+                        help="also clone plain expert episodes that did not succeed")
     args = parser.parse_args()
     if args.steps < 1 or args.batch_size < 1 or args.validate_every < 1:
         raise SystemExit("steps, batch-size and validate-every must be positive")
@@ -178,7 +180,8 @@ def main() -> None:
 
     args.output.mkdir(parents=True, exist_ok=True)
     checkpoint = args.output / "bc_staged.pt"
-    config = {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()}
+    config = {key: [str(v) for v in value] if key == "data" else str(value) if isinstance(value, Path) else value
+              for key, value in vars(args).items()}
     torch.save({"actors": [actor.state_dict() for actor in actors], "state_mean": state_mean,
                 "state_scale": state_scale, "training_config": config}, checkpoint)
     (args.output / "training_history.json").write_text(json.dumps(history, indent=2))

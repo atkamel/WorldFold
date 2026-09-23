@@ -86,6 +86,15 @@ class QuarterFoldExpert:
         action[5] = 1.0
         return action
 
+    def resync(self):
+        """Call before act() when another policy chose the previous actions."""
+        if self.env.stage == 0:
+            for (s, _), expert in self.experts.items():
+                if s == 0:
+                    expert.resync()
+        elif self._left_clear():
+            self.experts[(1, "right_")].resync()
+
     def act(self):
         if self.env.stage == 0:
             arms = {p: e for (s, p), e in self.experts.items() if s == 0}

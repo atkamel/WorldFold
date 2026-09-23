@@ -56,6 +56,13 @@ def test_bc_loader_success_only(tmp_path):
         store.append(episode)
     assert load_split(tmp_path, "train")["state"].shape[0] == 12
     assert load_split(tmp_path, "train", success_only=True)["state"].shape[0] == 8
+    relabelled = make_episode()
+    relabelled.metadata["kind"] = "dagger"
+    relabelled.labels = np.ones_like(relabelled.actions)
+    store.append(relabelled)
+    data = load_split(tmp_path, "train", success_only=True)
+    assert data["state"].shape[0] == 12
+    assert (data["action"][-4:] == 1.0).all()
 
 
 def test_gripper_loss_is_weighted():

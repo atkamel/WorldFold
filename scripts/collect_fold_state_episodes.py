@@ -4,10 +4,14 @@
 
 Drives the task's scripted expert (plain, with Gaussian noise on the joint
 deltas, or with the grippers forced open for RELEASE_HOLD steps part way
-through a grasp), the trained single-corner PPO policy (single task only), or
-a saved actor with exploration noise. Records cloth vertices, every arm's
-state, actions, rewards, terminations and the task stage every step, under
-the environment's physical randomization.
+through a grasp), the trained single-corner PPO policy (single task only), a
+saved actor with exploration noise, or a saved actor labelled by the expert
+(DAgger: the actor drives, the expert runs alongside and records what it would
+have done; with --beta the expert's action is executed on that fraction of
+steps). Records cloth vertices, every arm's state, actions, rewards,
+terminations and the task stage every step, under the environment's physical
+randomization. Whenever the executed action is not the expert's own, the
+expert's action is stored as the episode's labels for imitation learning.
 """
 import argparse
 import json
@@ -25,14 +29,14 @@ from cloth_angles.data.state_episode import StateEpisode, StateEpisodeStore
 from cloth_angles.tasks import TASKS
 
 KINDS = ("expert", "expert_noisy", "expert_release", "ppo", "ppo_release")
-EXTRA_KINDS = ("actor",)   # a saved actor with exploration noise
+EXTRA_KINDS = ("actor", "dagger")   # a saved actor with exploration noise / labelled by the expert
 PPO_CHECKPOINT = ROOT / "outputs/cloth_fold_rl/run2/best.zip"
 NOISE_STD = 0.3
 RELEASE_HOLD = 15
 
 
 def collect(job):
-    task_name, kind, seed, max_steps, actor_checkpoint = job
+    task_name, kind, seed, max_steps, actor_checkpoint, beta = job
     task = TASKS[task_name]
     env = task.make_env(max_steps)
     env.unwrapped.domain_randomization = True
@@ -41,11 +45,12 @@ def collect(job):
     obs, info = env.reset(seed=seed)
     domain = info["domain_parameters"]
     goal, anchors0 = task.goals(env), task.corner_starts(env)
-    if kind.startswith("expert"):
+    expert = None
+    if kind.startswith("expert") or kind == "dagger":
         expert = task.make_expert(env, seed)
         expert.reset()
         policy = lambda: expert.act()
-    elif kind == "actor":
+    if kind in ("actor", "dagger"):
         import torch
         from cloth_angles.data.fold_observation import observe_state
         from cloth_angles.model.actor_critic import policy_features
@@ -55,15 +60,19 @@ def collect(job):
         actors = load_policy_actors(saved, task)
         goal_t = torch.as_tensor(goal)[None]
 
-        def policy():
+        def actor_policy():
             state = torch.as_tensor(observe_state(base, task))[None]
             stage_id = task.stage(info)
             stage = torch.tensor([stage_id])
             actor = actors[stage_id] if len(actors) > 1 else actors[0]
             with torch.no_grad():
                 mean = actor(policy_features(state, goal_t, saved["state_mean"], saved["state_scale"], task, stage))[0].numpy()
+            if kind == "dagger":
+                return mean
             return np.clip(mean + rng.normal(0.0, NOISE_STD, task.action_dim), -1.0, 1.0)
-    else:
+        if kind == "actor":
+            policy = actor_policy
+    elif expert is None:
         assert task.name == "single", "the PPO checkpoint is a single-corner policy"
         from stable_baselines3 import PPO
         model = PPO.load(PPO_CHECKPOINT)
@@ -74,10 +83,18 @@ def collect(job):
     vertices = [cloth_vertices(base)]
     robot = [np.concatenate([robot_state(base, a.prefix) for a in task.arms])]
     stages = [task.stage(info)]
-    actions, rewards, terminated = [], [], []
+    actions, labels, rewards, terminated = [], [], [], []
     grasp_steps = 0
     for t in range(base.max_episode_steps):
-        action = np.asarray(policy(), dtype=np.float32).copy()
+        if kind == "dagger":
+            expert.resync()
+            label = np.asarray(expert.act(), dtype=np.float32)
+            action = label.copy() if rng.random() < beta else np.asarray(actor_policy(), dtype=np.float32)
+        else:
+            if kind in ("expert_noisy", "expert_release"):
+                expert.resync()     # a forced drop or a noisy push can change the phase
+            action = np.asarray(policy(), dtype=np.float32).copy()
+            label = action.copy()
         if kind == "expert_noisy":
             for arm in task.arms:
                 action[arm.joints] = np.clip(action[arm.joints] + rng.normal(0.0, NOISE_STD, 5), -1.0, 1.0)
@@ -88,6 +105,7 @@ def collect(job):
                 action[arm.gripper] = 1.0
         obs, reward, term, trunc, info = env.step(action)
         actions.append(action)
+        labels.append(label)
         rewards.append(reward)
         terminated.append(term)
         vertices.append(cloth_vertices(base))
@@ -101,9 +119,14 @@ def collect(job):
                 "success": bool(info["success"]), "termination_reason": info["termination_reason"],
                 "final_stage": stages[-1], "release_step": release_step, "domain": domain,
                 "goal": goal.tolist(), "anchors0": anchors0.tolist()}
-    return StateEpisode(np.stack(vertices), np.stack(robot), np.stack(actions), metadata,
+    if kind == "dagger":
+        metadata["beta"] = beta
+        metadata["actor_checkpoint"] = str(actor_checkpoint)
+    actions, labels = np.stack(actions), np.stack(labels)
+    return StateEpisode(np.stack(vertices), np.stack(robot), actions, metadata,
                         rewards=np.array(rewards, dtype=np.float32), terminated=np.array(terminated, dtype=np.bool_),
-                        stage=np.array(stages, dtype=np.int64))
+                        stage=np.array(stages, dtype=np.int64),
+                        labels=labels if expert is not None and not np.array_equal(labels, actions) else None)
 
 
 def main():
@@ -117,7 +140,9 @@ def main():
     ap.add_argument("--seed-base", type=int, default=20000)
     ap.add_argument("--kinds", nargs="+", default=None, choices=KINDS + EXTRA_KINDS,
                     help="Default: the expert kinds, plus the PPO kinds for the single task")
-    ap.add_argument("--actor-checkpoint", default=None, help="Actor .pt for the 'actor' kind")
+    ap.add_argument("--actor-checkpoint", default=None, help="Actor .pt for the 'actor' and 'dagger' kinds")
+    ap.add_argument("--beta", type=float, default=0.0,
+                    help="dagger: fraction of steps on which the expert's action is executed")
     ap.add_argument("--resume", action="store_true",
                     help="Continue an interrupted collection and checkpoint manifest.json after every episode")
     args = ap.parse_args()
@@ -131,7 +156,9 @@ def main():
         raise RuntimeError("Output directory already holds episodes; use a fresh one or pass --resume")
     manifest = [episode.metadata for episode in existing]
     completed = {(row.get("kind"), row.get("seed")) for row in manifest}
-    planned = [((args.task, kind, args.seed_base + k * 1000 + i, args.max_steps, args.actor_checkpoint),
+    if any(k in ("actor", "dagger") for k in kinds) and not args.actor_checkpoint:
+        raise SystemExit("the actor and dagger kinds need --actor-checkpoint")
+    planned = [((args.task, kind, args.seed_base + k * 1000 + i, args.max_steps, args.actor_checkpoint, args.beta),
                 "test" if i >= args.per_kind - args.test_per_kind else "train")
                for k, kind in enumerate(kinds) for i in range(args.per_kind)]
     split_for = {(job[1], job[2]): split for job, split in planned}
