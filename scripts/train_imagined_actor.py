@@ -1,7 +1,13 @@
-"""Train an actor-critic in imagination on a fold task's world model, then
-evaluate it in the real environment against the expert, PPO and a BC control.
+"""Train actor-critics in imagination on a fold task's world model, then
+evaluate them in the real environment against the expert, PPO and BC controls.
 
     .venv/bin/python scripts/train_imagined_actor.py --task quarter --data outputs/cloth_angles/quarter_state
+
+Quarter fold uses one actor per stage by default.  Each actor gets the same
+number of BC and imagination updates from only its stage's transitions, so
+the longer first stage cannot drown out stack-pickup examples.  A stage-0
+imagined rollout terminates when it advances to stage 1; real execution
+switches to the stage-1 actor immediately.
 
 Policies evaluated on the same seeds:
     expert        the task's scripted expert
@@ -68,6 +74,14 @@ def train_world_model(task, cur, prev, act, nxt, steps, seed, path):
     return model
 
 
+def stage_data(data, stage_id):
+    """Return transitions from one stage, preserving the load_train tuple layout."""
+    mask = data[6] == stage_id
+    if not mask.any():
+        raise ValueError(f"dataset has no transitions for stage {stage_id}")
+    return tuple(x[mask] for x in data)
+
+
 def behavior_clone(task, actor, world_model, data, steps, seed):
     cur, _, act, _, goal, _, stage = data
     optimizer = torch.optim.Adam(actor.parameters(), lr=3e-4)
@@ -83,11 +97,13 @@ def behavior_clone(task, actor, world_model, data, steps, seed):
             print(f"bc step={step} loss={loss.item():.4f}", flush=True)
 
 
-def imagine(task, actor, world_model, data, steps, seed, horizon, log, bc_coef=0.0):
+def imagine(task, actor, world_model, data, steps, seed, horizon, log, bc_coef=0.0,
+            stop_on_stage_change=False):
     cur, prev, act, _, goal, anchors, stage = data
     torch.manual_seed(seed)
     critic = Critic(feature_dim(task))
-    trainer = ImaginationTrainer(world_model, actor, critic, task, horizon=horizon, bc_coef=bc_coef)
+    trainer = ImaginationTrainer(world_model, actor, critic, task, horizon=horizon, bc_coef=bc_coef,
+                                 stop_on_stage_change=stop_on_stage_change)
     rng = np.random.default_rng(seed)
     history = []
     for step in range(1, steps + 1):
@@ -104,6 +120,29 @@ def imagine(task, actor, world_model, data, steps, seed, horizon, log, bc_coef=0
 def save_actor(actor, world_model, path):
     torch.save({"actor": actor.state_dict(), "state_mean": world_model.state_mean,
                 "state_scale": world_model.state_scale}, path)
+
+
+def save_staged_actors(actors, world_model, path):
+    """Save a policy bundle understood by evaluation and data collection."""
+    torch.save({"actors": [actor.state_dict() for actor in actors],
+                "state_mean": world_model.state_mean,
+                "state_scale": world_model.state_scale}, path)
+
+
+def load_policy_actors(saved, task):
+    """Load either a legacy single actor or a stage-routed actor bundle."""
+    state_dicts = saved.get("actors")
+    if state_dicts is None:
+        state_dicts = [saved["actor"]]
+    actors = []
+    for state_dict in state_dicts:
+        actor = Actor(feature_dim(task), task.action_dim)
+        actor.load_state_dict(state_dict)
+        actor.eval()
+        actors.append(actor)
+    if len(actors) not in (1, len(task.stages)):
+        raise ValueError(f"checkpoint has {len(actors)} actors for a {len(task.stages)}-stage task")
+    return actors
 
 
 def run_episode(job):
@@ -134,14 +173,14 @@ def run_episode(job):
         act = lambda: model.predict(obs, deterministic=True)[0]
     else:
         saved = torch.load(checkpoint)
-        actor = Actor(feature_dim(task), task.action_dim)
-        actor.load_state_dict(saved["actor"])
-        actor.eval()
+        actors = load_policy_actors(saved, task)
         goal = torch.as_tensor(task.goals(env))[None]
 
         def act():
             state = torch.as_tensor(observe_state(base, task))[None]
-            stage = torch.tensor([task.stage(info)])
+            stage_id = task.stage(info)
+            stage = torch.tensor([stage_id])
+            actor = actors[stage_id] if len(actors) > 1 else actors[0]
             with torch.no_grad():
                 return actor(policy_features(state, goal, saved["state_mean"], saved["state_scale"], task, stage))[0].numpy()
     total, grasped, steps = 0.0, False, 0
@@ -153,9 +192,10 @@ def run_episode(job):
         if term or trunc:
             break
     env.close()
+    reached_stage_2 = task.name == "quarter" and task.stage(info) >= 1
     return {"policy": policy, "seed": seed, "condition": condition, "success": bool(info["success"]),
             "fold_score": info["fold_score"], "grasped": grasped, "stage": task.stage(info), "return": total,
-            "steps": steps, "reason": info["termination_reason"]}
+            "reached_stage_2": reached_stage_2, "steps": steps, "reason": info["termination_reason"]}
 
 
 def main():
@@ -169,6 +209,8 @@ def main():
     ap.add_argument("--horizon", type=int, default=10)
     ap.add_argument("--bc-coef", type=float, default=1.0,
                     help="Behavior regularization weight for the BC-initialized actor")
+    ap.add_argument("--policy-mode", choices=["auto", "single", "staged"], default="auto",
+                    help="auto uses one actor per stage for quarter fold")
     ap.add_argument("--eval-episodes", type=int, default=20)
     ap.add_argument("--eval-seed-base", type=int, default=50000)
     ap.add_argument("--seed", type=int, default=0)
@@ -176,6 +218,9 @@ def main():
     ap.add_argument("--eval-only", action="store_true")
     args = ap.parse_args()
     task = TASKS[args.task]
+    staged = args.policy_mode == "staged" or (args.policy_mode == "auto" and len(task.stages) > 1)
+    if staged and len(task.stages) == 1:
+        raise SystemExit("--policy-mode staged requires a multi-stage task")
     torch.set_num_threads(4)
     out = ROOT / args.output
     out.mkdir(parents=True, exist_ok=True)
@@ -188,23 +233,61 @@ def main():
         world_model = train_world_model(task, cur, prev, act, nxt, args.wm_steps, args.seed, out / "world_model.pt")
         print(f"world model ready in {time.perf_counter() - started:.0f}s", flush=True)
 
-        torch.manual_seed(args.seed)
-        actor = Actor(feature_dim(task), task.action_dim)
-        behavior_clone(task, actor, world_model, data, args.bc_steps, args.seed)
-        save_actor(actor, world_model, out / "bc.pt")
         logs = {}
-        logs["imagined_bc"] = imagine(task, actor, world_model, data, args.imagine_steps, args.seed, args.horizon,
-                                      "imagined_bc", bc_coef=args.bc_coef)
-        save_actor(actor, world_model, out / "imagined_bc.pt")
+        if staged:
+            bc_actors = []
+            for stage_id in range(len(task.stages)):
+                subset = stage_data(data, stage_id)
+                print(f"stage {stage_id}: {len(subset[0])} transitions", flush=True)
+                torch.manual_seed(args.seed + stage_id)
+                actor = Actor(feature_dim(task), task.action_dim)
+                behavior_clone(task, actor, world_model, subset, args.bc_steps, args.seed + stage_id)
+                bc_actors.append(actor)
+            save_staged_actors(bc_actors, world_model, out / "bc_staged.pt")
 
-        torch.manual_seed(args.seed + 1)
-        actor = Actor(feature_dim(task), task.action_dim)
-        logs["imagined"] = imagine(task, actor, world_model, data, args.imagine_steps, args.seed, args.horizon, "imagined")
-        save_actor(actor, world_model, out / "imagined.pt")
+            logs["imagined_bc_staged"] = {}
+            for stage_id, actor in enumerate(bc_actors):
+                logs["imagined_bc_staged"][str(stage_id)] = imagine(
+                    task, actor, world_model, stage_data(data, stage_id), args.imagine_steps,
+                    args.seed + stage_id, args.horizon, f"imagined_bc stage={stage_id}",
+                    bc_coef=args.bc_coef, stop_on_stage_change=True)
+            save_staged_actors(bc_actors, world_model, out / "imagined_bc_staged.pt")
+
+            imagined_actors = []
+            logs["imagined_staged"] = {}
+            for stage_id in range(len(task.stages)):
+                torch.manual_seed(args.seed + 100 + stage_id)
+                actor = Actor(feature_dim(task), task.action_dim)
+                logs["imagined_staged"][str(stage_id)] = imagine(
+                    task, actor, world_model, stage_data(data, stage_id), args.imagine_steps,
+                    args.seed + stage_id, args.horizon, f"imagined stage={stage_id}",
+                    stop_on_stage_change=True)
+                imagined_actors.append(actor)
+            save_staged_actors(imagined_actors, world_model, out / "imagined_staged.pt")
+        else:
+            torch.manual_seed(args.seed)
+            actor = Actor(feature_dim(task), task.action_dim)
+            behavior_clone(task, actor, world_model, data, args.bc_steps, args.seed)
+            save_actor(actor, world_model, out / "bc.pt")
+            logs["imagined_bc"] = imagine(task, actor, world_model, data, args.imagine_steps, args.seed,
+                                          args.horizon, "imagined_bc", bc_coef=args.bc_coef)
+            save_actor(actor, world_model, out / "imagined_bc.pt")
+
+            torch.manual_seed(args.seed + 1)
+            actor = Actor(feature_dim(task), task.action_dim)
+            logs["imagined"] = imagine(task, actor, world_model, data, args.imagine_steps, args.seed,
+                                       args.horizon, "imagined")
+            save_actor(actor, world_model, out / "imagined.pt")
         (out / "imagination_logs.json").write_text(json.dumps(logs))
 
-    policies = [("expert", None)] + ([("ppo", None)] if task.name == "single" else []) + [
-        ("bc", str(out / "bc.pt")), ("imagined_bc", str(out / "imagined_bc.pt")), ("imagined", str(out / "imagined.pt"))]
+    if staged:
+        learned = [("bc_staged", str(out / "bc_staged.pt")),
+                   ("imagined_bc_staged", str(out / "imagined_bc_staged.pt")),
+                   ("imagined_staged", str(out / "imagined_staged.pt"))]
+    else:
+        learned = [("bc", str(out / "bc.pt")), ("imagined_bc", str(out / "imagined_bc.pt")),
+                   ("imagined", str(out / "imagined.pt"))]
+    policies = [("expert", None)] + ([("ppo", None)] if task.name == "single" else []) + learned
     seeds = [args.eval_seed_base + i for i in range(args.eval_episodes)]
     jobs = [(task.name, name, ckpt, seed) for name, ckpt in policies for seed in seeds]
     rows = []
@@ -215,13 +298,18 @@ def main():
     summary = []
     for name, _ in policies:
         mine = [r for r in rows if r["policy"] == name]
-        summary.append({"policy": name, "episodes": len(mine),
-                        "success_rate": float(np.mean([r["success"] for r in mine])),
-                        "grasp_rate": float(np.mean([r["grasped"] for r in mine])),
-                        "mean_stage": float(np.mean([r["stage"] for r in mine])),
-                        "mean_fold_score": float(np.mean([r["fold_score"] for r in mine])),
-                        "mean_return": float(np.mean([r["return"] for r in mine])),
-                        "mean_steps": float(np.mean([r["steps"] for r in mine]))})
+        item = {"policy": name, "episodes": len(mine),
+                "success_rate": float(np.mean([r["success"] for r in mine])),
+                "grasp_rate": float(np.mean([r["grasped"] for r in mine])),
+                "mean_stage": float(np.mean([r["stage"] for r in mine])),
+                "mean_fold_score": float(np.mean([r["fold_score"] for r in mine])),
+                "mean_return": float(np.mean([r["return"] for r in mine])),
+                "mean_steps": float(np.mean([r["steps"] for r in mine]))}
+        if task.name == "quarter":
+            reached = sum(r["reached_stage_2"] for r in mine)
+            item["stage_1_completion_rate"] = reached / len(mine)
+            item["stage_2_given_stage_1_rate"] = sum(r["success"] for r in mine) / reached if reached else 0.0
+        summary.append(item)
     (out / "evaluation_summary.json").write_text(json.dumps(summary, indent=2))
     for row in summary:
         print(" ".join(f"{k}={v:.3f}" if isinstance(v, float) else f"{k}={v}" for k, v in row.items()))

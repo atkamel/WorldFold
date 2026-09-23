@@ -89,6 +89,17 @@ def test_quarter_imagination_update_runs_from_either_stage():
     assert all(torch.isfinite(torch.tensor(v)) for v in metrics.values())
 
 
+def test_stage_specific_quarter_imagination_update_runs():
+    trainer, _, _ = make_trainer(QUARTER, stop_on_stage_change=True)
+    state = torch.randn(4, QUARTER.state_dim) * 0.1
+    goal = torch.randn(4, QUARTER.goal_dim)
+    anchors0 = torch.zeros(4, 4, 3)
+    stage = torch.ones(4, dtype=torch.long)
+    metrics = trainer.update(state, state, goal, anchors0, stage=stage,
+                             anchor=(state, goal, stage, torch.zeros(4, QUARTER.action_dim)))
+    assert all(torch.isfinite(torch.tensor(v)) for v in metrics.values())
+
+
 def test_ensemble_disagreement_penalizes_reward():
     torch.manual_seed(0)
     members = []

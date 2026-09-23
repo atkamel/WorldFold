@@ -48,17 +48,18 @@ def collect(job):
     elif kind == "actor":
         import torch
         from cloth_angles.data.fold_observation import observe_state
-        from cloth_angles.model.actor_critic import Actor, feature_dim, policy_features
+        from cloth_angles.model.actor_critic import policy_features
+        from scripts.train_imagined_actor import load_policy_actors
         torch.set_num_threads(1)
         saved = torch.load(actor_checkpoint)
-        actor = Actor(feature_dim(task), task.action_dim)
-        actor.load_state_dict(saved["actor"])
-        actor.eval()
+        actors = load_policy_actors(saved, task)
         goal_t = torch.as_tensor(goal)[None]
 
         def policy():
             state = torch.as_tensor(observe_state(base, task))[None]
-            stage = torch.tensor([task.stage(info)])
+            stage_id = task.stage(info)
+            stage = torch.tensor([stage_id])
+            actor = actors[stage_id] if len(actors) > 1 else actors[0]
             with torch.no_grad():
                 mean = actor(policy_features(state, goal_t, saved["state_mean"], saved["state_scale"], task, stage))[0].numpy()
             return np.clip(mean + rng.normal(0.0, NOISE_STD, task.action_dim), -1.0, 1.0)
@@ -117,23 +118,38 @@ def main():
     ap.add_argument("--kinds", nargs="+", default=None, choices=KINDS + EXTRA_KINDS,
                     help="Default: the expert kinds, plus the PPO kinds for the single task")
     ap.add_argument("--actor-checkpoint", default=None, help="Actor .pt for the 'actor' kind")
+    ap.add_argument("--resume", action="store_true",
+                    help="Continue an interrupted collection and checkpoint manifest.json after every episode")
     args = ap.parse_args()
+    if args.per_kind < 1 or not 0 <= args.test_per_kind < args.per_kind:
+        raise SystemExit("require --per-kind >= 1 and 0 <= --test-per-kind < --per-kind")
     kinds = args.kinds or [k for k in KINDS if args.task == "single" or k.startswith("expert")]
     out = ROOT / args.output
     store = StateEpisodeStore(out)
-    if store.load_all():
-        raise RuntimeError("Output directory already holds episodes; use a fresh one")
-    jobs = [(args.task, kind, args.seed_base + k * 1000 + i, args.max_steps, args.actor_checkpoint)
-            for k, kind in enumerate(kinds) for i in range(args.per_kind)]
-    manifest = []
+    existing = store.load_all()
+    if existing and not args.resume:
+        raise RuntimeError("Output directory already holds episodes; use a fresh one or pass --resume")
+    manifest = [episode.metadata for episode in existing]
+    completed = {(row.get("kind"), row.get("seed")) for row in manifest}
+    planned = [((args.task, kind, args.seed_base + k * 1000 + i, args.max_steps, args.actor_checkpoint),
+                "test" if i >= args.per_kind - args.test_per_kind else "train")
+               for k, kind in enumerate(kinds) for i in range(args.per_kind)]
+    split_for = {(job[1], job[2]): split for job, split in planned}
+    jobs = [job for job, _ in planned if (job[1], job[2]) not in completed]
+    if existing:
+        unexpected = completed - set(split_for)
+        if unexpected:
+            raise RuntimeError(f"existing episodes do not match this collection plan: {sorted(unexpected)[:3]}")
+        print(f"resuming with {len(existing)}/{len(planned)} episodes already recorded", flush=True)
     with mp.get_context("spawn").Pool(args.workers) as pool:
-        for index, episode in enumerate(pool.imap(collect, jobs)):
-            i = index % args.per_kind
-            episode.metadata["split"] = "test" if i >= args.per_kind - args.test_per_kind else "train"
+        for index, episode in enumerate(pool.imap_unordered(collect, jobs), start=len(existing)):
+            key = (episode.metadata["kind"], episode.metadata["seed"])
+            episode.metadata["split"] = split_for[key]
             episode.metadata["file"] = store.append(episode).name
             manifest.append(episode.metadata)
-            print(f"{index + 1}/{len(jobs)} {episode.metadata}", flush=True)
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
+            (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
+            print(f"{index + 1}/{len(planned)} {episode.metadata}", flush=True)
+    print(f"collection complete: {len(manifest)} episodes in {out}", flush=True)
 
 
 if __name__ == "__main__":

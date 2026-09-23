@@ -51,5 +51,6 @@ Run the cloth-angle tests with `python -m pytest cloth_angles/tests` (install
 
 - [PPO baseline](docs/ppo_training.md)
 - [World model: benchmarks, analytic reward, imagination](docs/world_model.md)
+- [Quarter-fold expert cloning workflow](docs/quarter_fold_policy.md)
 - [MolmoAct2 import](docs/molmoact_import.md)
 - [Adding a policy](policy_runner/NOTES.md)
