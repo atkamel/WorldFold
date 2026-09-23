@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import torch
 
-from imitation.data.dataset import Normalizer, build_samples, split_episodes
+from imitation.data.dataset import Normalizer, bc_episodes, build_samples, split_episodes
 from imitation.data.schema import (ACTOR_PERTURB, ACTOR_STUDENT, ACTOR_TEACHER, DatasetWriter, Episode,
                                    load_dataset, validate_episode)
 from imitation.policies.common import build_policy, load_policy, save_policy
@@ -150,3 +150,12 @@ def test_validator_checks_transition_flags():
     ep = make_episode(0)
     ep.terminated[-1], ep.truncated[-1], ep.discount[-1] = False, True, 1.0
     assert validate_episode(ep, D, A) == []
+
+
+def test_bc_drops_failed_expert_demos_but_keeps_dagger_labels():
+    ok, bad, dag = make_episode(0), make_episode(1), make_episode(2, source="dagger")
+    bad.meta["success"] = dag.meta["success"] = False
+    kept, n_dropped = bc_episodes([ok, bad, dag])
+    assert [e.meta["seed"] for e in kept] == [0, 2] and n_dropped == 1
+    kept, n_dropped = bc_episodes([ok, bad, dag], allow_failures=True)
+    assert len(kept) == 3 and n_dropped == 0

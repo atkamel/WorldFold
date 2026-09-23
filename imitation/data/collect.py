@@ -2,7 +2,8 @@
 
 A fraction of episodes are recovery demos (design doc 6.2): the expert is
 interrupted by a few random actions, then resyncs and finishes. Failed episodes
-are kept (and tagged) -- they matter for failure analysis and offline RL.
+are kept but go to their own version `<version>_failures` (they matter for failure
+analysis and offline RL, but are not demos); --mixed puts them in `<version>`.
 
     python -m imitation.data.collect --episodes 400 --workers 14 --version v1
     python -m imitation.data.collect ... --resume     # continue a killed collection
@@ -49,22 +50,31 @@ def main():
     ap.add_argument("--root", default=DEFAULT_ROOT)
     ap.add_argument("--seed-base", type=int, default=TRAIN_SEED_BASE)
     ap.add_argument("--recovery-fraction", type=float, default=0.3)
+    ap.add_argument("--mixed", action="store_true", help="keep failures in the demo version")
     ap.add_argument("--resume", action="store_true", help="continue an unfrozen version")
     args = ap.parse_args()
 
     config = {k: v for k, v in vars(args).items() if k != "resume"} | {
         "task": "half_fold", "teacher": "QuarterFoldExpert(stage 0)"}
     writer = DatasetWriter(args.root, args.version, config=config, resume=args.resume)
-    seeds = [s for s in range(args.seed_base, args.seed_base + args.episodes) if s not in writer.done_seeds]
-    if writer.done_seeds:
-        print(f"resuming {args.version}: {len(writer.done_seeds)} done, {len(seeds)} to go", flush=True)
+    fail_writer = writer if args.mixed else DatasetWriter(
+        args.root, f"{args.version}_failures", config=config | {"demos": args.version}, resume=args.resume)
+    done = writer.done_seeds | fail_writer.done_seeds
+    seeds = [s for s in range(args.seed_base, args.seed_base + args.episodes) if s not in done]
+    if done:
+        print(f"resuming {args.version}: {len(done)} done, {len(seeds)} to go", flush=True)
+
+    def save(ep):
+        (writer if ep.meta["success"] else fail_writer).add(ep, obs_dim=OBS_DIM, action_dim=ACTION_DIM)
+
     t0 = time.time()
     with EnvPool(args.workers) as pool:
         rollout(pool, seeds, ExpertController(), perturb_fn=recovery_perturbation(args.recovery_fraction),
-                progress=printer(t0), on_done=lambda ep: writer.add(ep, obs_dim=OBS_DIM, action_dim=ACTION_DIM))
-    m = writer.freeze()
-    print(f"froze {args.root}/{args.version}: {summary(m['episodes'])}, "
-          f"hash {m['content_hash'][:12]}, {time.time() - t0:.0f}s")
+                progress=printer(t0), on_done=save)
+    for w in dict.fromkeys((writer, fail_writer)):
+        m = w.freeze()
+        print(f"froze {args.root}/{w.version}: {summary(m['episodes'])}, hash {m['content_hash'][:12]}")
+    print(f"{time.time() - t0:.0f}s")
 
 
 def summary(entries):

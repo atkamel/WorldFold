@@ -34,6 +34,19 @@ class Normalizer:
         return cls(mean=obs.mean(0).astype(np.float32), std=np.maximum(obs.std(0), min_std).astype(np.float32))
 
 
+def bc_episodes(episodes, allow_failures=False):
+    """Episodes fit to imitate, and how many were dropped (imitation.md 5.3).
+
+    A failed expert episode is not a demonstration: its tail is the expert stuck or
+    padded in place. DAgger episodes stay whatever the student's outcome -- their
+    teacher labels are correct from the states the student reached.
+    """
+    if allow_failures:
+        return list(episodes), 0
+    kept = [e for e in episodes if e.meta["success"] or e.meta["source"] != "expert"]
+    return kept, len(episodes) - len(kept)
+
+
 def split_episodes(episodes, val_fraction=0.1, seed=0):
     """Deterministic split on the episode's seed (so DAgger episodes of a seed land with it)."""
     rng = np.random.default_rng(seed)

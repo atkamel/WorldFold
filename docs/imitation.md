@@ -127,8 +127,10 @@ per-episode array list, which is authoritative. Properties that matter:
 - **Transition flags.** `terminated` (success, `cloth_dragged`), `truncated` (step cap, and
   `unstable` — a solver blow-up is not an MDP outcome, so it must not zero the bootstrap)
   and `discount` (0 only at a true terminal) are stored per step, last step only.
-- **Failures are kept**, tagged by `termination_reason`, and must be filtered out of
-  behaviour-cloning training (see §5.3).
+- **Failures are kept**, tagged by `termination_reason`, in their own version
+  `<version>_failures` (collect default since M1.4). `train` additionally drops any failed
+  *expert* episode via `bc_episodes` unless `--allow-failures`; DAgger episodes are kept
+  regardless of outcome because their teacher labels are valid (see §5.3).
 - `actor` per step records who chose the executed action (teacher / student /
   perturbation); `labels` holds teacher chunks at the steps DAgger queried.
 

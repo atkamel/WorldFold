@@ -22,7 +22,7 @@ import numpy as np
 import torch
 
 from imitation.data.collect import DEFAULT_ROOT
-from imitation.data.dataset import Normalizer, build_samples, split_episodes
+from imitation.data.dataset import Normalizer, bc_episodes, build_samples, split_episodes
 from imitation.data.schema import load_dataset
 from imitation.policies.common import build_policy, default_device, load_policy, n_params, save_policy
 
@@ -60,7 +60,7 @@ class EMA:
 
 def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024, lr=1e-3, weight_decay=1e-4,
           warmup=500, ema=0.999, seed=0, eval_every=2000, init_from=None, max_episodes=None,
-          policy_kwargs=None, dagger_weight=1.0, log=print):
+          policy_kwargs=None, dagger_weight=1.0, allow_failures=False, log=print):
     """dagger_weight: sampling weight of a DAgger label relative to an expert chunk. Labels
     are few (one per replan) next to the dense expert chunks, and they are exactly
     the states the student gets wrong, so they are oversampled."""
@@ -71,6 +71,9 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
     run.mkdir(parents=True, exist_ok=True)
 
     manifest, episodes = load_dataset(root, dataset)
+    episodes, n_failed = bc_episodes(episodes, allow_failures)
+    if n_failed:
+        log(f"dropped {n_failed} failed expert episodes (pass allow_failures to keep them)")
     if max_episodes:
         episodes = episodes[:max_episodes]
     train_eps, val_eps = split_episodes(episodes, val_fraction=0.1)
@@ -170,11 +173,12 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--init-from", default=None)
+    ap.add_argument("--allow-failures", action="store_true", help="train on failed expert episodes too")
     ap.add_argument("--max-episodes", type=int, default=None, help="debug: train on the first N episodes")
     ap.add_argument("--policy-kwargs", default="{}", help='JSON overrides, e.g. \'{"chunk": 8}\'')
     args = ap.parse_args()
     train(args.policy, args.dataset, args.run, root=args.root, steps=args.steps, batch=args.batch, lr=args.lr,
-          seed=args.seed, init_from=args.init_from, max_episodes=args.max_episodes,
+          seed=args.seed, init_from=args.init_from, max_episodes=args.max_episodes, allow_failures=args.allow_failures,
           policy_kwargs=json.loads(args.policy_kwargs))
 
 
