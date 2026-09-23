@@ -26,14 +26,16 @@ GRASP_RADIUS = 0.03          # matches sim_main.GRASP_RADIUS
 
 
 def solve_ik(model, data, site_id, qpos_adr, dof_adr, joint_range, target,
-             iters=400, damping=0.08, restarts=12, tol=0.006, rng=None):
+             iters=400, damping=0.08, restarts=12, tol=0.006, rng=None, scratch=None):
     """Damped least squares IK, position only (orientation free on a 5-DOF arm).
 
     Solves on a scratch MjData seeded from `data` so the live sim is untouched.
-    Returns (q, err) for the best configuration found.
+    Pass a reusable `scratch` to skip allocating one per call (only qpos is read by
+    the kinematics, and it is reseeded every restart). Returns (q, err) for the best
+    configuration found.
     """
     rng = rng or np.random.default_rng(0)
-    scratch = mujoco.MjData(model)
+    scratch = scratch if scratch is not None else mujoco.MjData(model)
     lo = np.array([r[0] for r in joint_range])
     hi = np.array([r[1] for r in joint_range])
     target = np.asarray(target, dtype=float)
@@ -94,6 +96,8 @@ class FoldExpert:
                  raw_vertex=False):
         self.env = env
         self.base = env.unwrapped
+        self.seed = seed
+        self._scratch = mujoco.MjData(env.unwrapped.model)
         self.rng = np.random.default_rng(seed)
         self.prefix = prefix
         self.corners = tuple(np.atleast_1d(corner))
@@ -122,7 +126,7 @@ class FoldExpert:
     def _ik(self, target):
         q, err = solve_ik(self.base.model, self.base.data, self.site_id,
                           self.qpos_adr, self.dof_adr, self.joint_range,
-                          target, rng=self.rng)
+                          target, rng=self.rng, scratch=self._scratch)
         return q, err
 
     def _corner(self):

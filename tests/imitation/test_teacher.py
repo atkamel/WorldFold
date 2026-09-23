@@ -51,3 +51,17 @@ def test_label_chunk_leaves_env_and_expert_untouched(mid_episode):
     np.testing.assert_array_equal(obs, _obs(env))
     assert (env.stage, env.unwrapped._step_count) == (stage, step)
     assert teacher.phases() == phases
+
+
+
+def test_teacher_reset_restarts_the_ik_rngs():
+    """A pooled worker reuses one teacher across episodes; its IK restart rngs must
+    restart per episode, or which worker a seed lands on changes the demo."""
+    env = HalfFoldEnv()
+    teacher = ScriptedTeacher(env)
+    state = lambda: [e.rng.bit_generator.state for e in teacher.expert.experts.values()]
+    fresh = state()
+    for e in teacher.expert.experts.values():
+        e.rng.random()                                      # an earlier episode drew restarts
+    teacher.reset()
+    assert state() == fresh

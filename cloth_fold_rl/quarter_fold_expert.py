@@ -58,6 +58,7 @@ class QuarterFoldExpert:
     def reset(self):
         for key, expert in self.experts.items():
             expert.reset()
+            expert.rng = np.random.default_rng(expert.seed)   # per episode, not per worker
             expert.release_allowed = False
             self.correction[key] = np.zeros(3)
         self.retries = {key: 0 for key in self.experts}

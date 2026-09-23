@@ -22,7 +22,24 @@ own recovery rate is unknown**, which gates the whole recovery arm of the plan.
 
 | 2026-09-23 | half fold | 0-49 (training seeds) | 50 | 48/50 = 96.0% [86.5, 98.9] | 96.7 | 0.904 | After M1.1 (139-D obs, per-stage goals). Identical to the row above — same failing seeds 24, 35 — as expected: the expert reads sim state, not the observation. |
 
-Artifacts: `outputs/imitation/expert_benchmark.json`, `outputs/imitation/expert_benchmark_m1_1.json`
+| 2026-09-23 | half fold | 0-49 (training seeds) | 50 | 48/50 = 96.0% [86.5, 98.9] | 96.7 | — | After M1.5 (IK scratch cache + per-episode IK rng reseed). Per-episode rows identical to M1.1. |
+
+Artifacts: `outputs/imitation/expert_benchmark.json`, `outputs/imitation/expert_benchmark_m1_1.json`,
+`outputs/imitation/expert_benchmark_m1_5.json`
+
+### Collection throughput (M1.5)
+
+20-episode expert collect, seeds 0-19, `--workers 10 --mixed`, recovery fraction 0.3, two
+runs each. Both configurations produce the identical dataset hash `ac2fb3892c0f`.
+
+| config | wall time | notes |
+|---|---|---|
+| fresh `MjData` per IK call | 83 s, 81 s | after the rng-reseed fix |
+| cached scratch `MjData` | 82 s, 93 s | **no measurable speedup** — allocation is not the bottleneck; the IK iterations are |
+
+Determinism: before the reseed fix, two identical collects gave different hashes (seeds 12,
+13, 15 differed in length) because each worker's `FoldExpert.rng` carried over between
+episodes, so a seed's demo depended on which worker ran it before.
 
 ## Imitation baselines
 
