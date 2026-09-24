@@ -177,6 +177,41 @@ that from absolute coordinates. It recovers much worse (−17 pp): BC has no rec
 signal and the knocked-off states look unlike any demo frame. That's the job of
 distillation (M4.2), below. Inference: 7.5 ms per batch-16 call.
 
+### M4.2 — privileged → sensor-only distillation (2026-09-24)
+
+Teacher: `dagger_v2/round_3` (privileged, 97.0 / 64.5 / 65.0%). Student: `vision`
+policy. Round 0 trains on `v1_img` with **every step relabelled by the teacher**
+(`train --teacher`); rounds 1+ roll the vision student out with cameras rendering on
+distill seeds (70k + 1000 r), β 0.3 → 0.15, then retrain on all visited steps relabelled
+(student-visited steps ×2). n=200, deterministic eval.
+
+| round | trained on | id_easy | id_hard | recovery | gain (SE) | kept |
+|---|---|---|---|---|---|---|
+| 0 | v1_img | 194/200 = 97.0% [93.6, 98.6] | 192/200 = 96.0% [92.3, 98.0] | 59/200 = 29.5% [23.6, 36.2] | — | yes |
+| 1 | v1_img_distill_v1_r1 | 195/200 = 97.5% [94.3, 98.9] | 187/200 = 93.5% [89.2, 96.2] | 50/200 = 25.0% [19.5, 31.4] | -0.8 | no |
+| 2 | v1_img_distill_v1_r2 | 195/200 = 97.5% [94.3, 98.9] | 181/200 = 90.5% [85.6, 93.8] | 63/200 = 31.5% [25.5, 38.2] | +0.5 | yes |
+
+**Exit, with the margin stated:** against its privileged teacher, the sensor-only
+student is **within 1 pp in distribution** (97.5 vs 97.0), **26 pp better on shifted
+cloth** (90.5 vs 64.5), and **33.5 pp worse on recovery** (31.5 vs 65.0, disjoint
+intervals). ID/shift is met; recovery isn't. Distillation lifted recovery only from
+vision-BC 21.5% to 29.5-31.5%. The remaining failures are mostly G1 (81 of 137): after a
+knock the student misses the re-grasp. The likely causes are 96 px / 64 px resolution
+for locating a displaced corner, and only 30% of distill rollouts being perturbed.
+Round 0 (97.0 / 96.0 / 29.5) is arguably the better all-rounder. The keep rule scores
+id_easy + recovery only, so it kept round 2.
+
+### M4.3 — vision success detector (2026-09-24)
+
+CNN on the `main` frame predicting `folded` (all corners within 5 cm of goal and
+grippers open) + fold score. Trained on `v1_img` + `v1_failures_img` (37,468 train /
+4,668 val frames, hashed seed split), 8k steps, class-balanced.
+
+- Val frames: **accuracy 94.9%**, fold-score MAE 0.022.
+- **Exit — agreement with the sim's success flag** on the final frame of held-out
+  student rollouts (the distill rounds' own episodes, never trained on): **235/256 = 91.8% [87.8, 94.6]**.
+  The "always success" baseline is 208/256 = 81.2%. Errors: 14 false "folded", 7 missed.
+
 ## Ablations
 
 ### M2.3 — privileged-features ablation (2026-09-24)

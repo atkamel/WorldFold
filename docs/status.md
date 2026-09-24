@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-09-23 · **Branch:** `feature/imitation` · **Phase:** 4-5 (sensor-only student, offline RL)
+**Updated:** 2026-09-23 · **Branch:** `feature/imitation` · **Phase:** 5 done → 6 (VLA, not started)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -11,17 +11,32 @@ One-screen answer to "where are we". Update at the end of **every work pass** (s
 
 ## Where we are
 
-Phases 1-3 are done. **DAgger (M3.2) met its exit:** `dagger_v2/round_3` scores
-97.0 / 64.5 / 65.0% (id_easy / id_hard / recovery, n=200), up from BC's 98.0 / 69.5 /
-38.5%. That came after fixing the teacher-label bug that sank dagger_v1. id_hard didn't
-improve, because DAgger rollouts never visit shifted poses. The Phase 4-5 queue
-(`outputs/imitation/runs/phase3to5.sh`) is running: diffusion eval (M2.4), harvest
-(M5.1), IQL + eval (M5.3), vision BC eval, distillation (M4.2), detector agreement (M4.3).
+Phases 1-5 have run end to end. The half-fold demo is rendered from pipeline-trained
+policies (`outputs/imitation/demo/half_fold_dagger.mp4`, `half_fold_vision.mp4`).
+
+| policy | id_easy | id_hard | recovery | where |
+|---|---|---|---|---|
+| expert (ceiling) | 100% | 97% | 96% | M1.7 |
+| BC chunk-MLP | 98.0 | 69.5 | 38.5 | M2.1 |
+| BC diffusion | 99.5 | 80.0 | 51.0 | M2.4 |
+| **DAgger (privileged)** | 97.0 | 64.5 | **65.0** | M3.2 |
+| IQL from DAgger | 94.0 | 67.5 | 45.5 | M5.3 ❌ |
+| vision BC | 97.0 | 94.5 | 21.5 | M4 |
+| **vision distilled** | 97.5 | **90.5** | 31.5 | M4.2 |
+
+Not met: M5.3 (IQL worse than DAgger: the critic can't rank actions on single-policy
+data) and the recovery half of M4.2 (the vision student is 33 pp behind its teacher).
+All in `results.md`.
 
 ## Next action
 
-Let `phase3to5.sh` finish (`outputs/imitation/runs/phase3to5.out`), record each result,
-then render the half-fold demo from the best checkpoint.
+Phase 6 (VLA subgoal proposer) is out of this session's scope. Before it, the cheapest
+wins found here:
+1. **DAgger from the diffusion checkpoint.** Diffusion BC already beats chunk-MLP BC by
+   10-12 pp under shift.
+2. **DAgger / distill rollouts from id_hard-like poses** on a disjoint seed range.
+   Neither loop ever visits shifted starts.
+3. **Vision recovery:** more perturbed distill rollouts, and higher-res main camera.
 
 ## Environment
 
@@ -40,15 +55,21 @@ grasping is contact-dominated and MuJoCo minors change results.
 | version | episodes | source | hash | notes |
 |---|---|---|---|---|
 | v1 | 384 (+16 in `v1_failures`) | expert, seeds 0-399, 30% perturbed | `769dd372719c` | successes only; 38,136 steps; failures hash `699a1dc71c71` |
+| v1_img / v1_failures_img | 384 / 16 | v1 replayed + cameras | `769dd372719c` / `699a1dc71c71` | same hash as source: froze before images entered the digest |
+| v1_dagger_v2_r1..r3 | +128 each | DAgger (shadowing teacher) | see manifests | parent chain on v1 |
+| harvest_v1 | 1000 | dagger_v2/round_3, σ=0.1 | `3b5d331bf404` | 81% success |
+| v1_img_distill_v1_r1..r2 | +128 each | vision student rollouts, images | see manifests | parent chain on v1_img |
 
 Collection log: `outputs/imitation/collect_v1_m1_8.log`. The earlier failed attempt is
 kept as `outputs/imitation/collect_v1.log`.
 
 ## Best checkpoint
 
-`outputs/imitation/runs/dagger_v2/round_3/final.pt`: DAgger (shadowing teacher) on
-`v1_dagger_v2_r3`, 97.0 / 64.5 / 65.0% (n=200, deterministic eval). `run.json` +
-`history.json` are the record.
+- privileged: `outputs/imitation/runs/dagger_v2/round_3/final.pt` (97.0 / 64.5 / 65.0)
+- sensor-only: `outputs/imitation/runs/distill_v1/round_2/final.pt` (97.5 / 90.5 / 31.5)
+- success detector: `outputs/imitation/runs/success_v1/detector.pt` (91.8% agreement)
+
+Weights are gitignored; each run's `run.json` / `history.json` is committed.
 
 ## Open blockers and known defects
 
@@ -73,6 +94,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-09-24 · Phase 4 done: vision distill (97.5/90.5/31.5, recovery margin not met), detector 91.8% agreement; half-fold demos rendered (DAgger + vision, 4/4 each); status rewritten; 79 fast + 9 slow green · COMMIT
 - 2026-09-24 · M3.2 done: dagger_v2 3 rounds, recovery 38.5→65.0%, ID 97%, id_hard flat; detector trained (95% val frame acc) · 4e22261
 - 2026-09-24 · Phase 4/5 code: vision success detector, RL transitions + IQL + harvest, vision-aware demo, image-inclusive version hash; vision BC trained (val 0.066), v1_failures_img rendered; driver `runs/phase3to5.sh` chained after dagger_v2; 79 fast green · b72fe71
 - 2026-09-24 · Found + fixed DAgger teacher label bug (shadowing teacher) and eval nondeterminism (padded predict); dagger_v1 marked invalid; Phase 4 plumbing (rig, image store, v1_img, vision policy, distill loop); 75 fast + 9 slow green · 91254d9

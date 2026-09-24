@@ -93,9 +93,9 @@ privileged.
 
 | | milestone | exit | status |
 |---|---|---|---|
-| M4.1 | Image obs plumbing: dict passthrough, ≥128² + wrist cam, visual DR, separate image store, lazy DataLoader, per-modality norm | image-conditioned policy trains | ☐ |
-| M4.2 | `PrivilegedPolicyTeacher` → on-policy distillation through the Phase 3 loop unchanged | sensor-only student within a stated margin of privileged | ☐ |
-| M4.3 | Vision success / fold-score detector (labels free in sim) | agreement rate vs the sim metric | ☐ |
+| M4.1 | Image obs plumbing: dict passthrough, ≥128² + wrist cam, visual DR, separate image store, lazy DataLoader, per-modality norm | image-conditioned policy trains | ✅ vision BC 97.0 / 94.5 / 21.5 |
+| M4.2 | `PrivilegedPolicyTeacher` → on-policy distillation through the Phase 3 loop unchanged | sensor-only student within a stated margin of privileged | ◐ ID within 1 pp, shift +26 pp, recovery −33.5 pp (not met) |
+| M4.3 | Vision success / fold-score detector (labels free in sim) | agreement rate vs the sim metric | ✅ 91.8% [87.8, 94.6] |
 
 The data path must go lazy here at the latest: `build_samples` materializes every window
 densely and `train.py:90` uploads the whole dataset to the GPU. ~80 lines to convert now, a

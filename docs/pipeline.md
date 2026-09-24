@@ -31,6 +31,18 @@ Everything runs with the pinned env: `.venv/Scripts/python.exe` (Windows) with
 
 ---
 
+## Where it stands (2026-09-24)
+
+| stage | id_easy | id_hard | recovery |
+|---|---|---|---|
+| expert (ceiling) | 100% | 97% | 96% |
+| BC | 98.0% | 69.5% | 38.5% |
+| DAgger (privileged state) | 97.0% | 64.5% | 65.0% |
+| sensor-only student (cameras) | 97.5% | 90.5% | 31.5% |
+
+n = 200 per set; intervals and details in [results.md](results.md). Offline RL (IQL) was
+tried and did *not* beat DAgger, see §8.
+
 ## 1. The task and the teacher
 
 **Half fold** (`imitation/tasks/half_fold.py`): two SO-101 arms carry the cloth's two north
@@ -82,7 +94,8 @@ Per step an episode stores `obs, actions, rewards, stage, fold_score, grasped, a
 (who chose the action: teacher / student / perturbation) and the RL transition flags
 `terminated, truncated, discount`; DAgger episodes also store `label_steps` and `labels`.
 
-Frozen so far: `v1` (384 expert successes, hash `769dd372719c`).
+Frozen so far: `v1` (384 expert successes, hash `769dd372719c`) and everything derived
+from it; see the table in [status.md](status.md).
 
 ## 4. Train: `imitation.train`
 
@@ -195,6 +208,12 @@ cameras (64²), plus the 48 sensor-available proprio dims.
 3. **IQL** (`python -m imitation.rl.iql --init <DAgger best> --versions ...`): expectile V,
    twin Q over macro-actions, and advantage-weighted regression into the same chunk MLP.
    The result is an ordinary checkpoint for `evaluate` and `demo`.
+
+**Status: it didn't help here.** On single-policy harvest data the critic ranks states
+well but can't rank actions (advantages ≈ 0 ± 0.02 on both successful and failed
+trajectories). The update then reduces to BC over everything, stalls included, and
+recovery fell 16-20 pp (results.md, M5.3). It needs more action diversity before it can
+beat DAgger.
 
 ## 9. Demo: `imitation.demo`
 

@@ -1,0 +1,8 @@
+best dagger: outputs\imitation\runs\dagger_v2\round_3\final.pt  last version: v1_dagger_v2_r3
+M2.4 diffusion evaluated:  id_easy success 100% (199/200) fold 0.9| id_hard success 80% (160/200) fold 0.81| recovery success 51% (102/200) fold 0.7|
+M5.1 harvest: froze harvest_v1: 1000 episodes, success 811, by code {'success': 811, 'G1': 19, 'S1': 110, 'F1': 60}, hash 3b5d331bf404, 2144s
+M5.3 IQL evaluated:  id_easy success 94% (187/200) fold 0.90| id_hard success 61% (122/200) fold 0.83| recovery success 49% (98/200) fold 0.81|
+vision BC evaluated:  id_easy success 97% (194/200) fold 0.90| id_hard success 94% (189/200) fold 0.89| recovery success 22% (43/200) fold 0.65|
+M4.2 distill: == round 0: training the vision student on v1_img, labels from outputs\imitation\runs\dagger_v2\round_3\final.pt|== round 1: beta 0.300, 128 student rollouts from outputs\imitation\runs\distill_v1\round_0\final.pt|   round 1: score 1.225 (gain -0.040 = -0.8 SE) -> best outputs\imitation\runs\distill_v1\round_0\final.pt|== round 2: beta 0.150, 128 student rollouts from outputs\imitation\runs\distill_v1\round_0\final.pt|   round 2: score 1.290 (gain +0.025 = +0.5 SE) -> best outputs\imitation\runs\distill_v1\round_2\final.pt|best student: outputs\imitation\runs\distill_v1\round_2\final.pt|
+M4.3 detector: {"val_frame_acc": 0.9490145672664952, "val_fold_mae": 0.02162470668554306, "n_val_frames": 4668}  "rate": 0.91796875,
+PHASE3TO5_DONE
