@@ -94,6 +94,89 @@ failures are mostly missed or dropped grasps (G1) and misplaced corners (F1). Th
 compounding error is the gap DAgger (M3.2) targets. Seeds agree within their intervals.
 Artifacts: `outputs/imitation/runs/bc_v1_s{0,1}/` (`run.json`, `eval_r8.json`).
 
+### M2.4 — diffusion head vs chunk-MLP, same protocol (2026-09-24)
+
+`diffusion` (7.35M params, 100 train / 10 inference denoising steps) on v1, seed 0, 30k
+steps, K=16 / replan 8, n=200, deterministic (padded) eval. The chunk-MLP row is
+`bc_v1_s0` re-evaluated under the same padded eval (dagger_v2 round 0).
+
+| policy | id_easy | id_hard | recovery | infer ms/call (batch 16) |
+|---|---|---|---|---|
+| chunk_mlp | 196/200 = 98.0% [95.0, 99.2] | 139/200 = 69.5% [62.8, 75.5] | 77/200 = 38.5% [32.0, 45.4] | ~1 |
+| diffusion | 199/200 = 99.5% [97.2, 99.9] | 160/200 = 80.0% [73.9, 85.0] | 102/200 = 51.0% [44.1, 57.8] | 100 |
+
+Diffusion failure codes: id_easy F1 1; id_hard G1 17, S1 12, F1 11; recovery G1 57, F1 38, S1 3.
+
+Reading: **diffusion wins under shift**, +10.5 pp on id_hard and +12.5 pp on recovery.
+The intervals touch on id_hard and are disjoint on recovery. It's a single seed per arm
+(chunk-MLP seed spread ~4 pp, M2.1). **Kept** per the M2.4 rule. Cost: 100 ms per
+batched call against a 400 ms replan interval (8 steps × 50 ms), which fits the loop,
+but that's ~100× the MLP (§8 deployment budget). Next: DAgger from the diffusion
+checkpoint, which should combine both gains.
+
+## Offline RL
+
+### M5.1 — student rollout harvest (2026-09-24)
+
+`dagger_v2/round_3` on harvest seeds 400000-400999, 30% knocked off course, Gaussian
+chunk noise σ=0.1, replan 8. Frozen as `harvest_v1` (hash `3b5d331bf404`), 2144 s.
+
+| outcome | n |
+|---|---|
+| success | 811 (81.1% [78.6, 83.4]) |
+| S1 stalled | 110 |
+| F1 misplaced | 60 |
+| G1 grasp | 19 |
+
+Reward variance exists (19% failures across three mechanisms), so the exit is met.
+
+### M5.3 — IQL warm-started from dagger_v2/round_3 — **exit NOT met** (2026-09-24)
+
+Data: `v1_dagger_v2_r3` (v1 + 3 DAgger rounds) + `v1_failures` + `harvest_v1` → 1784
+episodes, 28,405 macro transitions (8-step chunks), 1548 success terminals. Reward per
+imitation.md §7.1. 40k steps, τ=0.7, twin Q, batch 1024, policy lr 1e-4. n=200.
+
+| policy | id_easy | id_hard | recovery |
+|---|---|---|---|
+| dagger_v2/round_3 (start) | 194/200 = 97.0% [93.6, 98.6] | 129/200 = 64.5% [57.7, 70.8] | 130/200 = 65.0% [58.2, 71.3] |
+| iql_v1 (β=3, raw A) | 187/200 = 93.5% [89.2, 96.2] | 122/200 = 61.0% [54.1, 67.5] | 98/200 = 49.0% [42.2, 55.9] |
+| iql_v2 (standardized A, T=1, clip 20) | 188/200 = 94.0% [89.8, 96.5] | 135/200 = 67.5% [60.7, 73.6] | 91/200 = 45.5% [38.7, 52.4] |
+
+Both variants are **worse on recovery** (−16 to −20 pp, intervals disjoint), with S1
+stalls up from 47 to 67-76. Diagnosis (critic probed on harvest data):
+- The critic ranks *states* correctly: V = 0.94 on successful trajectories, 0.20 on failed.
+- It can't rank *actions*: A = Q − V has mean −0.010 and std 0.017 on **both** successful
+  and failed trajectories. In a given state the logged actions are near-identical (one
+  student, σ=0.1 noise), so there's no action contrast to learn from.
+- So advantage weighting is ~uniform, and the policy step reduces to BC over all data.
+  Failed episodes are 19% of episodes but ~3× more transitions per episode (stalls run to
+  the 250-step cap), so the student imitates stalling. Standardizing A only sharpens noise.
+
+What would change the outcome: action diversity in the harvest (much larger noise, or
+several policies), per-episode subsampling so stalls don't dominate, or online
+fine-tuning. Parked: DAgger remains the best privileged policy.
+
+## Sensor-only student (Phase 4)
+
+### Vision BC on v1_img (2026-09-24)
+
+`vision` policy (8.61M params): main cam 96² + both wrist cams 64², a CNN per camera,
+plus the 48 sensor-available proprio dims (all privileged dims masked; the checkpoint's
+`obs_mask` was checked). Expert labels, 30k steps, batch 256, random-shift augmentation.
+`v1_img` = v1 replayed with per-episode visual DR. n=200.
+
+| policy | id_easy | id_hard | recovery |
+|---|---|---|---|
+| state BC (bc_v1_s0, full 139-D) | 196/200 = 98.0% [95.0, 99.2] | 139/200 = 69.5% [62.8, 75.5] | 77/200 = 38.5% [32.0, 45.4] |
+| **vision BC** | 194/200 = 97.0% [93.6, 98.6] | **189/200 = 94.5% [90.4, 96.9]** | 43/200 = 21.5% [16.4, 27.7] |
+
+Reading: from cameras, the student **generalizes to shifted cloth far better** than
+from the privileged state (+25 pp on id_hard, disjoint intervals). A CNN over an
+overhead view is roughly equivariant to where the cloth sits; the state MLP has to learn
+that from absolute coordinates. It recovers much worse (−17 pp): BC has no recovery
+signal and the knocked-off states look unlike any demo frame. That's the job of
+distillation (M4.2), below. Inference: 7.5 ms per batch-16 call.
+
 ## Ablations
 
 ### M2.3 — privileged-features ablation (2026-09-24)

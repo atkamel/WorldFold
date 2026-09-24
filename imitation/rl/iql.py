@@ -58,7 +58,11 @@ def expectile_loss(diff, tau):
 
 
 def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, tau=0.7, beta=3.0,
-              lr_critic=3e-4, lr_policy=1e-4, target_ema=0.005, macro=8, adv_clip=100.0, seed=0, log=print):
+              lr_critic=3e-4, lr_policy=1e-4, target_ema=0.005, macro=8, adv_clip=100.0, adv_norm=False, seed=0,
+              log=print):
+    """adv_norm: weight = exp(A / std(A) / beta) instead of exp(beta * A). With a sparse
+    0/1 reward the raw advantages here are ~1e-2, so exp(3 A) ~ 1 and the update is plain
+    BC over all data, failures included (iql_v1). Standardizing sets the sharpness per batch."""
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = default_device()
@@ -112,7 +116,10 @@ def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, 
             for p, tp in zip(critics.parameters(), target.parameters()):
                 tp.lerp_(p, target_ema)
             adv = tq - v.detach()
-            w = torch.exp(beta * adv).clamp(max=adv_clip)
+            if adv_norm:
+                w = torch.exp(adv / (adv.std() + 1e-6) / beta).clamp(max=adv_clip)
+            else:
+                w = torch.exp(beta * adv).clamp(max=adv_clip)
         pred = policy(T["obs"][idx])[:, :macro]
         err = ((pred - T["act"][idx]).abs().mean(-1) * T["valid"][idx]).sum(-1) / T["valid"][idx].sum(-1)
         loss_p = (w * err).mean()
@@ -132,7 +139,7 @@ def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, 
     torch.save(critics.state_dict(), out / "critics.pt")
     info = {"git_commit": git_commit(), "init": str(init), "datasets": hashes, "n_episodes": len(uniq),
             "n_transitions": n, "iql": {"steps": steps, "batch": batch, "tau": tau, "beta": beta, "macro": macro,
-                                        "lr_critic": lr_critic, "lr_policy": lr_policy, "adv_clip": adv_clip,
+                                        "lr_critic": lr_critic, "lr_policy": lr_policy, "adv_clip": adv_clip, "adv_norm": adv_norm,
                                         "seed": seed},
             "checkpoint": {"path": str(ckpt), "sha256": sha}, "history": history}
     (out / "run.json").write_text(json.dumps(info, indent=1))
@@ -148,10 +155,12 @@ def main():
     ap.add_argument("--steps", type=int, default=40_000)
     ap.add_argument("--tau", type=float, default=0.7)
     ap.add_argument("--beta", type=float, default=3.0)
+    ap.add_argument("--adv-norm", action="store_true", help="standardize advantages (beta is then a temperature)")
+    ap.add_argument("--adv-clip", type=float, default=100.0)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     train_iql(args.init, args.versions, args.out, root=args.root, steps=args.steps, tau=args.tau, beta=args.beta,
-              seed=args.seed)
+              adv_norm=args.adv_norm, adv_clip=args.adv_clip, seed=args.seed)
 
 
 if __name__ == "__main__":

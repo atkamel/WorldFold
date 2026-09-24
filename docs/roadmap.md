@@ -76,7 +76,7 @@ are collected.
 | M2.1 | Chunk-MLP BC, K=16 / replan 8, ≥2 seeds, eval n≥200 | checkpoint + Wilson intervals in `results.md` | ✅ |
 | M2.2 | Failure map; fix the R1 short-circuit and the `eval_{name}` collision | mechanistic histogram per set | ✅ |
 | M2.3 | Privileged-features ablation: proprio-only / +corners / full 139 | table sizing the Phase 4 vision work | ✅ |
-| M2.4 | Diffusion head-to-head, same protocol | keep only if it wins outside the intervals | ☐ |
+| M2.4 | Diffusion head-to-head, same protocol | keep only if it wins outside the intervals | ✅ wins (id_hard +10.5, recovery +12.5 pp) |
 
 M2.3 is three index-sliced trainings on data already in hand and is the cheapest informative
 experiment in the plan — the real split is 48 sensor-available / 91 privileged dims, not 139
@@ -105,9 +105,9 @@ rewrite later.
 
 | | milestone | exit | status |
 |---|---|---|---|
-| M5.1 | Student rollout harvest, 1000-2000 rollouts stratified by failure code | reward variance exists to learn from | ☐ |
-| M5.2 | RL-usable reward: sparse critic label, clipped toggle spikes, `unstable` tagged, `build_transitions()`, chunk-as-macro-action | documented in `imitation.md` §7 | ☐ |
-| M5.3 | IQL or AWAC warm-started from the DAgger policy | ≥ the imitation student on ID and recovery | ☐ |
+| M5.1 | Student rollout harvest, 1000-2000 rollouts stratified by failure code | reward variance exists to learn from | ✅ `harvest_v1`, 1000 eps, 81% success |
+| M5.2 | RL-usable reward: sparse critic label, clipped toggle spikes, `unstable` tagged, `build_transitions()`, chunk-as-macro-action | documented in `imitation.md` §7 | ✅ |
+| M5.3 | IQL or AWAC warm-started from the DAgger policy | ≥ the imitation student on ID and recovery | ❌ not met: IQL −16-20 pp on recovery (results.md); parked |
 
 ## Phase 6 — Language-conditioned folds and the VLA  *(ref. milestone 3, reframed)*
 

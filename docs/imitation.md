@@ -238,6 +238,20 @@ Usable as an offline-RL label with four caveats, all of which Phase 5 must handl
 Recommendation on record: learn the critic on the **sparse** signal (success + small time
 penalty), using the shaped reward only to warm-start.
 
+### 7.1 The RL reward as built (M5.2, `imitation/rl/transitions.py`)
+
+The env reward is **not** used. The RL reward is rebuilt per step from stored fields:
+
+- **+1.0** on the last step of an episode that *terminated with success* (sparse label);
+- **+clip(Δ fold_score, ±0.05)** per step: dense progress shaping. The clip removes
+  caveat 1: a grasp toggle can't emit more than 0.05. Discounting (γ = 0.99 per step)
+  replaces the explicit time penalty.
+- **Transitions are chunk macro-actions**: one replan interval (8 steps), action = the 8
+  executed actions, reward = discounted sum inside the interval, bootstrap discount =
+  γ^steps. `done` = the M1.3 `terminated` flag, so step-cap truncations bootstrap.
+- **`unstable` episodes are dropped** (caveat 3): they're stored as truncated, and their
+  final states are solver artefacts.
+
 ## 8. Deployment budget
 
 Declared here up front so architecture choices respect it throughout, rather than being
