@@ -49,6 +49,10 @@ REACH_RADIUS = 0.03      # or one this close in any direction (inside the 4 cm w
 CARRY_REACHED = 0.02     # a carrying gripper this close across to the goal (plus IK's reach error) lowers the corner
 LIFT_MARGIN = 0.03       # a carrying gripper this far below lift height goes straight up
 RETREAT_HEIGHT = 0.07    # a released gripper backs off to this height above its corner
+# The stacked top layer springs back toward -x, +y after release (QuarterFoldExpert
+# instead corrects a missed stack with a hidden retry offset). Over 40 seeds this
+# aim folded 29 where QuarterFoldExpert's (0.03, 0, 0) folded 25.
+STACK_OVERSHOOT = np.array([0.05, -0.015, 0.0])
 RELEASE_DIST = SUCCESS_DIST   # a carried corner this close to its overshot goal is let go
 SETTLING_DIST = 0.03     # a released corner still this close to its overshot goal is left to settle
 
@@ -58,6 +62,7 @@ class MarkovQuarterExpert:
         self.env = env
         self.base = env.unwrapped
         # FoldExpert provides the per-arm IK plumbing; its phase machine is unused
+        self.overshoot = {**OVERSHOOT, (1, "right_"): STACK_OVERSHOOT}
         self.arms = {}
         for prefix in ("left_", "right_"):
             self.arms[prefix] = FoldExpert(env, seed=seed, prefix=prefix, corner=corner_index(env, CLOTH_10))
@@ -87,7 +92,7 @@ class MarkovQuarterExpert:
         return np.mean([self.env._vertex(c) for c in move.corners], axis=0)
 
     def _overshot_goal(self, stage, move):
-        return self.env.goal(move) + OVERSHOOT[(stage, move.prefix)]
+        return self.env.goal(move) + self.overshoot[(stage, move.prefix)]
 
     def _at_release(self, stage, move):
         corner = self._corner(move)
