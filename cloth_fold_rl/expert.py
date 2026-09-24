@@ -127,9 +127,10 @@ class FoldExpert:
         self.phase_steps = 0
         self.retreat_target = None
 
-    # resync: a free gripper this close above its corner descends onto it, and one
-    # this far off to the side while descending goes back to approach
-    DESCEND_RADIUS, DESCEND_HEIGHT, ABORT_RADIUS = 0.02, 0.07, 0.05
+    # resync: a free gripper this close above its corner, or within REACH_RADIUS of it
+    # in any direction (inside the weld radius), descends onto it and closes; one this
+    # far off to the side while descending goes back to approach
+    DESCEND_RADIUS, DESCEND_HEIGHT, REACH_RADIUS, ABORT_RADIUS = 0.02, 0.07, 0.03, 0.05
 
     def resync(self):
         """Match the phase to the arm's situation when another policy has been driving it,
@@ -149,7 +150,8 @@ class FoldExpert:
             return
         offset = self.base.data.site_xpos[self.site_id] - self._corner()
         across = float(np.linalg.norm(offset[:2]))
-        if name == "approach" and across < self.DESCEND_RADIUS and offset[2] < self.DESCEND_HEIGHT:
+        above = across < self.DESCEND_RADIUS and offset[2] < self.DESCEND_HEIGHT
+        if name == "approach" and (above or float(np.linalg.norm(offset)) < self.REACH_RADIUS):
             self._set_phase("descend")
         elif name == "descend" and across > self.ABORT_RADIUS:
             self._set_phase("approach")
