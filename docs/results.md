@@ -124,6 +124,33 @@ Reading:
 
 ## DAgger rounds
 
+### M3.2 — dagger_v2 (shadowing teacher, deterministic eval) (2026-09-24)
+
+From `bc_v1_s0`; 128 student rollouts/round on DAgger seeds (50k + 1000 r), 30% knocked
+off course, β 0.3 → 0.15 → 0.075, labels at replan points, ×4 oversampled, 15k
+warm-start steps/round. Eval n=200/set with padded (deterministic) inference. Keep if
+score (id_easy + recovery) rises; stop when a round gains < 1 SE.
+
+| round | trained on | id_easy | id_hard | recovery | gain (SE) | kept |
+|---|---|---|---|---|---|---|
+| 0 | v1 | 196/200 = 98.0% [95.0, 99.2] | 139/200 = 69.5% [62.8, 75.5] | 77/200 = 38.5% [32.0, 45.4] | — | yes |
+| 1 | v1_dagger_v2_r1 | 193/200 = 96.5% [93.0, 98.3] | 137/200 = 68.5% [61.8, 74.5] | 112/200 = 56.0% [49.1, 62.7] | +3.1 | yes |
+| 2 | v1_dagger_v2_r2 | 198/200 = 99.0% [96.4, 99.7] | 122/200 = 61.0% [54.1, 67.5] | 123/200 = 61.5% [54.6, 68.0] | +1.6 | yes |
+| 3 | v1_dagger_v2_r3 | 194/200 = 97.0% [93.6, 98.6] | 129/200 = 64.5% [57.7, 70.8] | 130/200 = 65.0% [58.2, 71.3] | +0.3 | yes |
+
+Final failure codes: {"id_easy": {"S1": 3, "F1": 2, "G1": 1}, "id_hard": {"G1": 22, "S1": 31, "F1": 18}, "recovery": {"S1": 47, "G1": 10, "F1": 13}}.
+
+Reading:
+- **Recovery 38.5% → 65.0%** (+26.5 pp, intervals disjoint) with in-distribution held at
+  97-99%. **Exit met** (≥80% ID, ≥60% recovery).
+- **id_hard is flat to slightly down** (69.5 → 64.5, overlapping intervals). DAgger
+  rollouts only use nominal starts, so the shifted-pose states id_hard tests are never
+  labelled. The next lever is DAgger rollouts from id_hard-like poses, on a *disjoint*
+  seed range.
+- The remaining recovery failures are mostly S1 stalls (47): the student reaches a held
+  or placed state and never finishes. That's the target for offline RL (M5.3).
+- Best: `outputs/imitation/runs/dagger_v2/round_3/final.pt`.
+
 ### dagger_v1 — INVALID (teacher label bug), kept for the record (2026-09-24)
 
 From `bc_v1_s0`, 128 rollouts/round, β 0.3 → 0.15, n=200. Versions `v1_dagger_v1_r1`,

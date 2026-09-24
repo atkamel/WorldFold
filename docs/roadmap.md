@@ -87,7 +87,7 @@ privileged.
 | | milestone | exit | status |
 |---|---|---|---|
 | M3.1 | Fix the loop *before* running it: deterministic val split, no contaminated chunk targets, n≥200 scoring in standard errors, `--resume`, normalizer-clamp logging | each fix has a test | ✅ |
-| M3.2 | Run the rounds (β decay, label at replan points, recovery starts, additive frozen versions) | ≥80% ID and ≥60% recovery, gains in standard errors | ☐ |
+| M3.2 | Run the rounds (β decay, label at replan points, recovery starts, additive frozen versions) | ≥80% ID and ≥60% recovery, gains in standard errors | ✅ |
 
 ## Phase 4 — Sensor-only student  *(new; supplies what ref. milestones 12-13 assume)*
 
