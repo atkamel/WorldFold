@@ -4,6 +4,8 @@
     python -m cloth_fold_rl.record_video --policy expert --out outputs/videos/expert.mp4
     python -m cloth_fold_rl.record_video --task quarter --policy expert \
         --episodes 1 --seed-base 100 --out outputs/videos/quarter_fold_expert.mp4
+    python -m cloth_fold_rl.record_video --task quarter --policy bc \
+        --checkpoint outputs/cloth_angles/quarter_policy_markov_d4/bc_staged.pt
 
 Renders offscreen through MuJoCo's own renderer (not mjviser), so this works
 headless and does not need the viewer running.
@@ -51,7 +53,8 @@ def overlay(frame, lines, font, accent=(90, 220, 120)):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--task", choices=["single", "quarter"], default="single")
-    ap.add_argument("--policy", choices=["ppo", "expert"], default="ppo")
+    ap.add_argument("--policy", choices=["ppo", "expert", "bc"], default="ppo",
+                    help="bc: a staged actor checkpoint from scripts/train_quarter_bc.py (quarter only)")
     ap.add_argument("--checkpoint", default="outputs/cloth_fold_rl/run2/best.zip")
     ap.add_argument("--episodes", type=int, default=3)
     ap.add_argument("--seed-base", type=int, default=100)
@@ -79,6 +82,26 @@ def main():
             agent = FoldExpert(env)
             label = "single-fold scripted expert"
         act = lambda obs: agent.act()          # noqa: E731
+    elif args.policy == "bc":
+        import torch
+        from cloth_angles.data.fold_observation import observe_state
+        from cloth_angles.model.actor_critic import policy_features
+        from cloth_angles.tasks import QUARTER
+        from scripts.train_imagined_actor import load_policy_actors
+        if args.task != "quarter":
+            raise SystemExit("--policy bc records the quarter task")
+        saved = torch.load(args.checkpoint, map_location="cpu")
+        actors = load_policy_actors(saved, QUARTER)
+        agent = None
+        label = f"imitation policy ({Path(args.checkpoint).parent.name})"
+
+        def act(obs):
+            stage = env.stage
+            state = torch.as_tensor(observe_state(base, QUARTER))[None]
+            goal = torch.as_tensor(QUARTER.goals(env))[None]
+            with torch.no_grad():
+                return actors[stage](policy_features(state, goal, saved["state_mean"], saved["state_scale"],
+                                                     QUARTER, torch.tensor([stage])))[0].numpy()
     else:
         from stable_baselines3 import PPO
         ckpt = Path(args.checkpoint)
