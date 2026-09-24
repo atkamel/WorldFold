@@ -93,6 +93,72 @@ recorded in `domain_params` (it was drawn by the wrapper and bypassed the base e
    reward and termination **non-Markovian w.r.t. the observation** — a hard blocker for
    offline RL (Phase 5), and the reason M1.1 must land before any dataset is frozen.
 
+### 2.3 Index map and who consumes what (Phase 5b)
+
+**Why 139 and not 141.** The base env (`mujuco/sim_main.py::_get_obs`, flattened by
+`StateOnlyWrapper`) emits **141** dims: proprio 50 + cloth_state 69 + task 22, where task =
+a 4-dim task one-hot (`n_tasks = 4`) + mean progress 1 + goal keypoints 12 + per-corner
+progress 4 + time-left 1. M1.1 deletes the one-hot (constant for a single-task policy:
+`np.delete(..., self._onehot)` in `QuarterFoldEnv._observe`) and appends 2 wrapper dims
+(stage, settle): 141 − 4 + 2 = **139** (`imitation.spec.OBS_DIM`; checked live:
+`_flat.observation_space` = (141,), `observation_space` = (139,)). Every index below
+was checked against the code and against recorded data (dims 24/49 are the only binary
+proprio dims; 107:119 ≈ 0 at success).
+
+| index | block | contents | units | sensor on a robot? |
+|---|---|---|---|---|
+| 0-4 | proprio · left arm | joint positions: shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll | rad | ✅ encoders |
+| 5-9 | proprio · left arm | joint velocities (same order) | rad/s | ✅ encoders |
+| 10 | proprio · left arm | gripper actuator command | ctrl | ✅ |
+| 11-13 | proprio · left arm | end-effector (gripper site) position, world frame | m | ✅ forward kinematics |
+| 14-17 | proprio · left arm | end-effector orientation quaternion (w, x, y, z) | — | ✅ FK |
+| 18-23 | proprio · left arm | end-effector velocity: angular 3, then linear 3 | rad/s, m/s | ✅ FK |
+| 24 | proprio · left arm | grasp active: the sim's weld constraint is on | 0/1 | ❌ privileged |
+| 25-49 | proprio · right arm | same 25 fields for the right arm (49 = right grasp flag) | | ✅ except 49 |
+| 50-61 | cloth_state | positions of the 4 corners (vertex ids 0, 10, 110, 120) × xyz | m | ❌ |
+| 62-73 | cloth_state | linear velocities of the 4 corners × xyz | m/s | ❌ |
+| 74-100 | cloth_state | 9 sampled cloth vertices × xyz | m | ❌ |
+| 101-103 | cloth_state | centre of mass of all 121 vertices | m | ❌ |
+| 104-106 | cloth_state | vertex height min, max, mean | m | ❌ |
+| 107-118 | cloth_state | corner → goal vectors (goal − corner) × 4 | m | ❌ |
+| 119 | task | mean corner progress toward its goal | 0-1 | ❌ |
+| 120-131 | task | goal keypoints: each corner's target × xyz (carried corners: move goal; others: stage-start position) | m | ✅ task spec |
+| 132-135 | task | per-corner progress | 0-1 | ❌ |
+| 136 | task | time left, 1 − step / max_steps | 0-1 | ✅ clock |
+| 137 | wrapper | stage / n_stages (0 for the half fold) | — | ✅ task state |
+| 138 | wrapper | settle steps / 20 (how long the fold has held) | 0-1 | ❌ needs the placed check |
+
+**Sensor-available = 48 dims** (`OBS_SUBSETS["proprio"]`: 0-49 minus 24 and 49). The
+vision student sees only these, plus the cameras. The other 91 are zeroed by its
+`obs_mask`, so it consumes the same vector.
+
+**Cameras** (`imitation.vision.render`, uint8 `[3, H, W]`, rendered after every step):
+
+| camera | mount | field of view | size | role |
+|---|---|---|---|---|
+| `main` | fixed in the world at (0.274, 0, 1.172) m, looking down over the table | 45° | 128² (96² in `v1_img` / Phase 4 checkpoints) | where the cloth is and how folded it looks |
+| `left_wrist_cam` | on the left gripper, 4 cm offset | 75° | 64² | close-up of the corner being grasped |
+| `right_wrist_cam` | on the right gripper | 75° | 64² | same, right arm |
+
+Per-episode visual randomization, drawn from the seed and touching rendering only:
+cloth colour ±0.15, table/floor colour ±0.1, light intensity ×0.7-1.2, main camera
+position ±1 cm. Per-camera per-channel normalization is fit on the training frames (M4.1).
+
+**Action** (12-D, §3): per arm, 5 joint deltas (× 0.05 rad per 50 ms control step) and 1
+gripper command. Chunks of 16, re-planned every 8.
+
+**Who consumes what**
+
+| consumer | input | output |
+|---|---|---|
+| scripted expert (teacher) | the simulator itself (IK on sim state) | 12-D action / 16-step label chunk |
+| state policies (BC, diffusion, DAgger, IQL actor) | 139-D × 2-step history | 16 × 12 chunk |
+| `PolicyTeacher` (distillation teacher) | 139-D × 2 history, from the stored episode | 16 × 12 label chunk |
+| vision (sensor-only) policy | 3 cameras (current frame) + the 48 sensor dims × 2 history | 16 × 12 chunk |
+| IQL critic | 139-D × 2 history + 8 × 12 executed macro-action | Q, V |
+| success detector | `main` camera frame only | P(folded), fold score |
+| labels only, never inputs | reward, fold_score, success, terminated/truncated, failure code | — |
+
 ## 3. Action
 
 `Box(-1, 1, (12,)) float32`, expanded to the base env's 14-D at

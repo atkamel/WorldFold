@@ -72,6 +72,15 @@ Determinism: before the reseed fix, two identical collects gave different hashes
 13, 15 differed in length) because each worker's `FoldExpert.rng` carried over between
 episodes, so a seed's demo depended on which worker ran it before.
 
+## Determinism note (2026-09-24, Phase 5b)
+
+Diffusion inference drew its initial DDIM noise from the global torch RNG, so a row's
+action depended on its batch position and call order, i.e. on worker timing. The same
+`diff_v1_s0` checkpoint scored id_hard 160/200 (M2.4) and 157/200 (a later run), even with
+padded batches. Sampling now uses one fixed-seed noise shared by all rows, so it's a
+deterministic function of the observation. **The M2.4 diffusion numbers predate this**;
+M5b.1 reports the checkpoint re-evaluated under the fixed sampler.
+
 ## Imitation baselines
 
 ### M2.1 — chunk-MLP BC on v1 (2026-09-24)

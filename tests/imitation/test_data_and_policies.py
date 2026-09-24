@@ -339,3 +339,13 @@ def test_lazy_sampler_gathers_images_and_fits_per_camera_stats():
     assert int(imgs["main"][0, 0, 0, 0]) == 10 * int(s.rows[3])
     mean, std = s.image_stats()["main"]
     assert mean.shape == (3,) and std.shape == (3,)
+
+
+def test_diffusion_sampling_is_a_deterministic_function_of_the_obs():
+    from imitation.rollout import padded_predict
+    torch.manual_seed(0)
+    p = build_policy("diffusion", obs_dim=D, action_dim=A, obs_horizon=2, chunk=16).eval()
+    x = np.random.default_rng(0).normal(size=(5, 2, D)).astype(np.float32)
+    alone = padded_predict(p, x[2:3])
+    torch.randn(100)                                           # disturb the global RNG
+    np.testing.assert_array_equal(padded_predict(p, x)[2:3], alone)

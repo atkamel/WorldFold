@@ -122,7 +122,11 @@ class DiffusionPolicy(ChunkPolicy):
         steps = steps or self.infer_steps
         B = obs.shape[0]
         cond = self._encode(obs)
-        x = torch.randn(B, self.chunk, self.action_dim, device=obs.device)
+        # One fixed-seed initial noise shared by every row: DDIM is then a deterministic
+        # function of the observation. Fresh global-RNG noise made a row's action depend on
+        # its batch position and call order, i.e. on worker timing (id_hard 160 -> 157/200).
+        g = torch.Generator(device=obs.device).manual_seed(0)
+        x = torch.randn((1, self.chunk, self.action_dim), generator=g, device=obs.device).expand(B, -1, -1).clone()
         ts = torch.linspace(self.train_steps - 1, 0, steps, device=obs.device).round().long()
         for i, t in enumerate(ts):
             a_t = self.alphas_cumprod[t]
