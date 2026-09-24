@@ -91,7 +91,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-24 · Dated report `reports/2026-09-24-phase1-5.md` + demo videos committed + shareable page; roadmap Phase 5b added (M5b.1-5b.5); next action M5b.1; 79 fast green · COMMIT
+- 2026-09-24 · Dated report `reports/2026-09-24-phase1-5.md` + demo videos committed + shareable page; roadmap Phase 5b added (M5b.1-5b.5); next action M5b.1; 79 fast green · f75d218
 - 2026-09-24 · Phase 4 done: vision distill (97.5/90.5/31.5, recovery margin not met), detector 91.8% agreement; half-fold demos rendered (DAgger + vision, 4/4 each); status rewritten; 79 fast + 9 slow green · 3552e37
 - 2026-09-24 · M3.2 done: dagger_v2 3 rounds, recovery 38.5→65.0%, ID 97%, id_hard flat; detector trained (95% val frame acc) · 4e22261
 - 2026-09-24 · Phase 4/5 code: vision success detector, RL transitions + IQL + harvest, vision-aware demo, image-inclusive version hash; vision BC trained (val 0.066), v1_failures_img rendered; driver `runs/phase3to5.sh` chained after dagger_v2; 79 fast green · b72fe71
