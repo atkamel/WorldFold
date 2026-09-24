@@ -116,7 +116,7 @@ Ordered by expected payoff. Phase 6 starts after M5b.1-M5b.3.
 
 | | milestone | exit | status |
 |---|---|---|---|
-| M5b.1 | DAgger from the diffusion checkpoint (`diff_v1_s0`); diffusion BC is already +10-12 pp over chunk-MLP under shift | beats `dagger_v2/round_3` on id_easy + recovery by > 1 SE at n=200 | ☐ |
+| M5b.1 | DAgger from the diffusion checkpoint (`diff_v1_s0`); diffusion BC is already +10-12 pp over chunk-MLP under shift | beats `dagger_v2/round_3` on id_easy + recovery by > 1 SE at n=200 | ✅ round 1: 98.0 / 72.0 / 72.5, +1.74 SE |
 | M5b.2 | Shifted-pose coverage: DAgger and distill rollouts from id_hard-like poses on a new disjoint `SHIFT_SEED_BASE` (with a disjointness test); no loop visits shifted starts today | privileged id_hard ≥ 85% without losing recovery | ☐ |
 | M5b.3 | Vision recovery: ≥ 60% perturbed distill rollouts, 128² main camera, keep rule that also scores id_hard | sensor-only recovery within 15 pp of its teacher | ☐ |
 | M5b.4 | Offline RL retry, only with action diversity (multi-policy or high-σ harvest, per-episode subsampling so stalls don't dominate) | ≥ DAgger on ID and recovery, else drop RL from the plan | ☐ |

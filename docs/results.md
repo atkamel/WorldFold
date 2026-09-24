@@ -253,6 +253,31 @@ Reading:
 
 ## DAgger rounds
 
+### M5b.1 — DAgger from the diffusion checkpoint (dagger_diff) (2026-09-24)
+
+From `diff_v1_s0` under the deterministic sampler; otherwise the dagger_v2 protocol
+(128 rollouts/round, β 0.3 → 0.15, shadowing teacher, 15k warm-start steps, n=200). The
+keep rule was still id_easy + recovery.
+
+| round | trained on | id_easy | id_hard | recovery | gain (SE) | kept |
+|---|---|---|---|---|---|---|
+| 0 | `v1` | 200/200 = 100.0% [98.1, 100.0] | 154/200 = 77.0% [70.7, 82.3] | 111/200 = 55.5% [48.6, 62.2] | — | yes |
+| 1 | `v1_dagger_diff_r1` | 196/200 = 98.0% [95.0, 99.2] | 144/200 = 72.0% [65.4, 77.8] | 145/200 = 72.5% [65.9, 78.2] | +3.1 | yes |
+| 2 | `v1_dagger_diff_r2` | 199/200 = 99.5% [97.2, 99.9] | 106/200 = 53.0% [46.1, 59.8] | 145/200 = 72.5% [65.9, 78.2] | +0.3 | yes, stop |
+
+Failure codes: round 1 — id_hard S1 33, G1 14, F1 9; recovery F1 19, G1 18, S1 18. Round 2 —
+id_hard G1 44, S1 40, F1 9, M1 1.
+
+**Exit met.** Round 1 beats `dagger_v2/round_3` (97.0 / 64.5 / 65.0) by **+1.74 SE** on
+id_easy + recovery (+2.38 SE on all three sets). Recovery is +7.5 pp and id_hard +7.5 pp.
+Diffusion + DAgger is the new best privileged policy.
+
+**Keep-rule flaw, seen live:** the rule scored id_easy + recovery only, so it kept round 2,
+which lost 19 pp on id_hard (72.0 → 53.0, disjoint intervals). DAgger rollouts use nominal
+starts only, so each round erodes shifted-pose behaviour. **Round 1 is carried forward**
+(the best round on all three sets, `imitation.viz.pick winner --carry-sets`). From M5b.2
+on, the keep rule scores all three sets (`--score-sets`).
+
 ### M3.2 — dagger_v2 (shadowing teacher, deterministic eval) (2026-09-24)
 
 From `bc_v1_s0`; 128 student rollouts/round on DAgger seeds (50k + 1000 r), 30% knocked

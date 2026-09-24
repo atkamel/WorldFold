@@ -8,8 +8,8 @@ R=outputs/imitation/runs
 pick() { $PY -m imitation.viz.pick "$@"; }
 
 # ---- M5b.1 winner: dagger_diff best vs dagger_v2/round_3 on id_easy + recovery ----
-W1=$(pick winner --a $R/dagger_diff/history.json --b $R/dagger_v2/history.json --sets id_easy recovery)
-W1_DATA=$(pick winnerdata --a $R/dagger_diff/history.json --b $R/dagger_v2/history.json --sets id_easy recovery)
+W1=$(pick winner --a $R/dagger_diff/history.json --b $R/dagger_v2/history.json --sets id_easy recovery --carry-sets id_easy id_hard recovery)
+W1_DATA=$(pick winnerdata --a $R/dagger_diff/history.json --b $R/dagger_v2/history.json --sets id_easy recovery --carry-sets id_easy id_hard recovery)
 echo "M5b.1 winner: $W1 (dataset $W1_DATA)"
 
 # ---- M5b.2 shifted-pose coverage ----

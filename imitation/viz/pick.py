@@ -28,12 +28,23 @@ def best(history):
     return kept["checkpoint"].replace("\\", "/"), kept["eval"]
 
 
-def winner(a, b, sets, min_se=1.0):
+def best_by(history, sets):
+    """The round (any, kept or not) with the highest summed success on `sets`."""
+    from imitation.dagger import score
+    h = max(history, key=lambda r: score(r["eval"], tuple(sets)))
+    return h["checkpoint"].replace("\\", "/"), h["eval"]
+
+
+def winner(a, b, sets, min_se=1.0, carry_sets=None):
+    """Run `a` wins if its kept best beats `b`'s by > min_se SE on `sets` (the exit rule).
+    The checkpoint carried forward from the winning run is its best round on `carry_sets`
+    (default: its kept best) -- a round can win on id_easy + recovery while losing id_hard."""
     ha, hb = _hist(a), _hist(b)
     (ca, ea), (cb, eb) = best(ha), best(hb)
-    if gain_in_se(ea, eb, tuple(sets)) > min_se:
-        return ca, ha[-1]["dataset"]
-    return cb, hb[-1]["dataset"]
+    h, c = (ha, ca) if gain_in_se(ea, eb, tuple(sets)) > min_se else (hb, cb)
+    if carry_sets:
+        c = best_by(h, carry_sets)[0]
+    return c, h[-1]["dataset"]
 
 
 def same(a, b):
@@ -52,13 +63,14 @@ def main():
     ap.add_argument("--b")
     ap.add_argument("--sets", nargs="+", default=["id_easy", "recovery"])
     ap.add_argument("--min-se", type=float, default=1.0)
+    ap.add_argument("--carry-sets", nargs="+", default=None)
     args = ap.parse_args()
     if args.cmd == "best":
         print(best(_hist(args.history))[0])
     elif args.cmd == "lastdata":
         print(_hist(args.history)[-1]["dataset"])
     elif args.cmd in ("winner", "winnerdata"):
-        ckpt, data = winner(args.a, args.b, args.sets, args.min_se)
+        ckpt, data = winner(args.a, args.b, args.sets, args.min_se, args.carry_sets)
         print(ckpt if args.cmd == "winner" else data)
     else:
         print(same(args.a, args.b))
