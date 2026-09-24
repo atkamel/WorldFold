@@ -86,6 +86,10 @@ class QuarterFoldExpert:
         action[5] = 1.0
         return action
 
+    def use_rest_posture(self):
+        for expert in self.experts.values():
+            expert.use_rest_posture()
+
     def resync(self):
         """Call before act() when another policy chose the previous actions."""
         if self.env.stage == 0:

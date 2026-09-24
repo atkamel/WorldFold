@@ -36,7 +36,7 @@ RELEASE_HOLD = 15
 
 
 def collect(job):
-    task_name, kind, seed, max_steps, actor_checkpoint, beta = job
+    task_name, kind, seed, max_steps, actor_checkpoint, beta, rest_posture = job
     task = TASKS[task_name]
     env = task.make_env(max_steps)
     env.unwrapped.domain_randomization = True
@@ -49,6 +49,8 @@ def collect(job):
     if kind.startswith("expert") or kind == "dagger":
         expert = task.make_expert(env, seed)
         expert.reset()
+        if rest_posture:
+            expert.use_rest_posture()
         policy = lambda: expert.act()
     if kind in ("actor", "dagger"):
         import torch
@@ -119,6 +121,8 @@ def collect(job):
                 "success": bool(info["success"]), "termination_reason": info["termination_reason"],
                 "final_stage": stages[-1], "release_step": release_step, "domain": domain,
                 "goal": goal.tolist(), "anchors0": anchors0.tolist()}
+    if expert is not None:
+        metadata["rest_posture"] = rest_posture
     if kind == "dagger":
         metadata["beta"] = beta
         metadata["actor_checkpoint"] = str(actor_checkpoint)
@@ -141,6 +145,8 @@ def main():
     ap.add_argument("--kinds", nargs="+", default=None, choices=KINDS + EXTRA_KINDS,
                     help="Default: the expert kinds, plus the PPO kinds for the single task")
     ap.add_argument("--actor-checkpoint", default=None, help="Actor .pt for the 'actor' and 'dagger' kinds")
+    ap.add_argument("--rest-posture", action="store_true",
+                    help="expert IK prefers the home pose, so its joint targets depend on the target only")
     ap.add_argument("--beta", type=float, default=0.0,
                     help="dagger: fraction of steps on which the expert's action is executed")
     ap.add_argument("--resume", action="store_true",
@@ -158,7 +164,8 @@ def main():
     completed = {(row.get("kind"), row.get("seed")) for row in manifest}
     if any(k in ("actor", "dagger") for k in kinds) and not args.actor_checkpoint:
         raise SystemExit("the actor and dagger kinds need --actor-checkpoint")
-    planned = [((args.task, kind, args.seed_base + k * 1000 + i, args.max_steps, args.actor_checkpoint, args.beta),
+    planned = [((args.task, kind, args.seed_base + k * 1000 + i, args.max_steps, args.actor_checkpoint, args.beta,
+                 args.rest_posture),
                 "test" if i >= args.per_kind - args.test_per_kind else "train")
                for k, kind in enumerate(kinds) for i in range(args.per_kind)]
     split_for = {(job[1], job[2]): split for job, split in planned}

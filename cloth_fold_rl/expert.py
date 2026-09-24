@@ -26,11 +26,16 @@ GRASP_RADIUS = 0.03          # matches sim_main.GRASP_RADIUS
 
 
 def solve_ik(model, data, site_id, qpos_adr, dof_adr, joint_range, target,
-             iters=400, damping=0.08, restarts=12, tol=0.006, rng=None):
+             iters=400, damping=0.08, restarts=12, tol=0.006, rng=None, q_rest=None):
     """Damped least squares IK, position only (orientation free on a 5-DOF arm).
 
     Solves on a scratch MjData seeded from `data` so the live sim is untouched.
     Returns (q, err) for the best configuration found.
+
+    A position target leaves two of the five joints free, so the answer depends on
+    where the solve starts. With q_rest the first attempt starts from q_rest and the
+    free joints are pulled toward it in the Jacobian's null space, which makes the
+    solution a function of the target alone rather than of the arm's current pose.
     """
     rng = rng or np.random.default_rng(0)
     scratch = mujoco.MjData(model)
@@ -42,7 +47,10 @@ def solve_ik(model, data, site_id, qpos_adr, dof_adr, joint_range, target,
     for r in range(restarts):
         scratch.qpos[:] = data.qpos
         scratch.qvel[:] = 0.0
-        if r > 0:                                   # restart from a random pose
+        if r == 0 and q_rest is not None:
+            for k, adr in enumerate(qpos_adr):
+                scratch.qpos[adr] = q_rest[k]
+        elif r > 0:                                 # restart from a random pose
             for k, adr in enumerate(qpos_adr):
                 scratch.qpos[adr] = rng.uniform(lo[k], hi[k])
 
@@ -59,6 +67,10 @@ def solve_ik(model, data, site_id, qpos_adr, dof_adr, joint_range, target,
             # damped least squares: dq = J^T (J J^T + lambda^2 I)^-1 e
             JJt = J @ J.T + (damping ** 2) * np.eye(3)
             dq = J.T @ np.linalg.solve(JJt, err)
+            if q_rest is not None:
+                q = np.array([scratch.qpos[a] for a in qpos_adr])
+                null = np.eye(len(qpos_adr)) - J.T @ np.linalg.solve(JJt, J)
+                dq += null @ (0.1 * (q_rest - q))
             step = float(np.max(np.abs(dq)))
             if step > 0.1:
                 dq *= 0.1 / step
@@ -100,6 +112,7 @@ class FoldExpert:
         if release:
             self.PHASES = self.PHASES + self.RELEASE_PHASES
         self.release_allowed = True
+        self.q_rest = None       # IK posture preference, see solve_ik (set by use_rest_posture)
         self.site_id = self.base._site_id[self.prefix]
         self.qpos_adr = self.base._arm_qpos_adr[self.prefix]
         self.dof_adr = self.base._arm_dof_adr[self.prefix]
@@ -116,7 +129,7 @@ class FoldExpert:
 
     # resync: a free gripper this close above its corner descends onto it, and one
     # this far off to the side while descending goes back to approach
-    DESCEND_RADIUS, DESCEND_HEIGHT, ABORT_RADIUS = 0.02, 0.07, 0.04
+    DESCEND_RADIUS, DESCEND_HEIGHT, ABORT_RADIUS = 0.02, 0.07, 0.05
 
     def resync(self):
         """Match the phase to the arm's situation when another policy has been driving it,
@@ -147,10 +160,14 @@ class FoldExpert:
         self.q_target = None
         self.retreat_target = None
 
+    def use_rest_posture(self):
+        """Solve IK toward the arm's home pose so joint targets depend on the target only."""
+        self.q_rest = np.array([self.base.model.qpos0[a] for a in self.qpos_adr])
+
     def _ik(self, target):
         q, err = solve_ik(self.base.model, self.base.data, self.site_id,
                           self.qpos_adr, self.dof_adr, self.joint_range,
-                          target, rng=self.rng)
+                          target, rng=self.rng, q_rest=self.q_rest)
         return q, err
 
     def _corner(self):
