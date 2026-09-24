@@ -19,9 +19,9 @@ defects (M1.2-M1.4) must land before that dataset is collected.
 
 ## Next action
 
-**M1.7 — gate: expert ceiling** on `id_easy` / `id_hard` / `recovery`, n≥100, plus the
-`check_resync` artifact. M1.6 is done: collect → train → evaluate → 1 DAgger round runs
-green on 20 episodes (`outputs/imitation/smoke/`, smoke numbers are not results).
+**M1.8 — freeze v1** (400 expert episodes, seeds 0-399). M1.7 gate passed: expert ceiling
+id_easy 100%, id_hard 97%, recovery 96% (n=100 each), resync 92-94% — the recovery arm
+stands as designed.
 
 ## Environment
 
@@ -56,7 +56,6 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 7 | Expert ceiling on eval sets unknown; teacher recovery rate unknown | **gates the recovery/DAgger arm** | M1.7 |
 | 8 | DAgger val split drifts every round; chunk targets contaminated; keep/stop rule is noise at n=48; not resumable | DAgger validity | M3.1 |
 | 9 | `failure_code` returns R1 for all perturbed failures → recovery histogram uninformative | failure analysis | M2.2 |
 | 10 | `cloth_angles/tasks.py::QUARTER` diverged from `quarter_fold_env.STAGES` (3 ways) | world-model work only (parked) | M7.3 |
@@ -75,7 +74,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-23 · M1.6 done: 20-ep smoke chain green (collect 19+1 fail split, train 600 steps, evaluate n=14×3, dagger 1 round froze smoke_dagger_r1 with 332 labels); no code change needed · COMMIT
+- 2026-09-23 · M1.7 gate passed: expert id_easy 100/100, id_hard 97/100, recovery 96/100; check_resync 92/94/93 of 100 · COMMIT
+- 2026-09-23 · M1.6 done: 20-ep smoke chain green (collect 19+1 fail split, train 600 steps, evaluate n=14×3, dagger 1 round froze smoke_dagger_r1 with 332 labels); no code change needed · a0f92ce
 - 2026-09-23 · M1.5 done: cached IK scratch (no speedup: 81-83 s → 82-93 s, identical hash); fixed cross-episode IK-rng leak that made collection nondeterministic; benchmark rows identical 48/50; 61 fast + 7 slow green · c95c431
 - 2026-09-23 · M1.4 done: failures → `<version>_failures` in collect, `bc_episodes` filter in train (`--allow-failures`); 28-ep all-perturbed collect split 25/3; 61 fast green · c64e9ce
 - 2026-09-23 · M1.3 done: `terminated`/`truncated`/`discount` arrays in schema + validator (only-last-step, exactly-one, discount mask); `unstable` → truncated; 14-ep real collect validates; 61 fast + 7 slow green · 1fb0e0e

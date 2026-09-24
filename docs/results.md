@@ -27,6 +27,24 @@ own recovery rate is unknown**, which gates the whole recovery arm of the plan.
 Artifacts: `outputs/imitation/expert_benchmark.json`, `outputs/imitation/expert_benchmark_m1_1.json`,
 `outputs/imitation/expert_benchmark_m1_5.json`
 
+### Expert ceiling — M1.7 gate (2026-09-23)
+
+Scripted expert (`evaluate --ckpt expert`), mujoco 3.10.0, commit after M1.6, eval seed
+bases from `imitation/seeds.py`. Wilson 95%. **This is the ceiling students are compared to.**
+
+| set | seeds | n | success | fold score | failures |
+|---|---|---|---|---|---|
+| id_easy | 100000-100099 | 100 | 100/100 = 100% [96.3, 100.0] | 0.911 | — |
+| id_hard | 200000-200099 | 100 | 97/100 = 97% [91.5, 99.0] | 0.902 | S1 ×2, F1 ×1 |
+| recovery | 300000-300099 | 100 | 96/100 = 96% [90.2, 98.4] | 0.898 | R1 ×4 |
+
+`check_resync` (seeds 0-99, handover at a random step, then `resync`): resync_only 92/100
+[85.0, 95.9], noisy 94/100 [87.5, 97.2], random 93/100 [86.3, 96.6]; every failure is a
+step-cap truncation, most with an arm stuck in `lift`.
+
+**Gate verdict: pass.** Teacher recovery (96%) is within the ID intervals, so the recovery
+arm stands as designed. Artifacts: `outputs/imitation/gate_m1_7/`.
+
 ### Collection throughput (M1.5)
 
 20-episode expert collect, seeds 0-19, `--workers 10 --mixed`, recovery fraction 0.3, two

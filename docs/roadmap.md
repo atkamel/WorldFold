@@ -66,7 +66,7 @@ are collected.
 | M1.4 | Separate failures from demos (`--success-only` default; failures as their own version) | BC trains on successes only | ✅ |
 | M1.5 | Cache the IK scratch `MjData` (`cloth_fold_rl/expert.py:37`) | measured speedup on a 20-episode collect | ✅ none measurable (results.md); fixed IK-rng nondeterminism |
 | M1.6 | Smoke the whole chain on 20 episodes | collect → train → evaluate → dagger 1 round, green | ✅ |
-| M1.7 | **Gate:** expert ceiling on `id_easy`/`id_hard`/`recovery`, n≥100 + `check_resync` artifact | table in `results.md`. If teacher recovery is poor, the recovery arm is redesigned before Phase 3 | ☐ |
+| M1.7 | **Gate:** expert ceiling on `id_easy`/`id_hard`/`recovery`, n≥100 + `check_resync` artifact | table in `results.md`. If teacher recovery is poor, the recovery arm is redesigned before Phase 3 | ✅ |
 | M1.8 | Freeze v1 | 300-500 episodes, hash in `status.md` | ☐ |
 
 ## Phase 2 — Imitation baseline and what it cannot see  *(ref. milestones 5, 6)*
