@@ -36,7 +36,7 @@ RELEASE_HOLD = 15
 
 
 def collect(job):
-    task_name, kind, seed, max_steps, actor_checkpoint, beta, rest_posture = job
+    task_name, kind, seed, max_steps, actor_checkpoint, beta, rest_posture, expert_name = job
     task = TASKS[task_name]
     env = task.make_env(max_steps)
     env.unwrapped.domain_randomization = True
@@ -47,7 +47,12 @@ def collect(job):
     goal, anchors0 = task.goals(env), task.corner_starts(env)
     expert = None
     if kind.startswith("expert") or kind == "dagger":
-        expert = task.make_expert(env, seed)
+        if expert_name == "markov":
+            assert task.name == "quarter", "the memoryless expert is quarter-fold only"
+            from cloth_fold_rl.markov_quarter_expert import MarkovQuarterExpert
+            expert = MarkovQuarterExpert(env, seed=seed)
+        else:
+            expert = task.make_expert(env, seed)
         expert.reset()
         if rest_posture:
             expert.use_rest_posture()
@@ -123,6 +128,7 @@ def collect(job):
                 "goal": goal.tolist(), "anchors0": anchors0.tolist()}
     if expert is not None:
         metadata["rest_posture"] = rest_posture
+        metadata["expert"] = expert_name
     if kind == "dagger":
         metadata["beta"] = beta
         metadata["actor_checkpoint"] = str(actor_checkpoint)
@@ -145,6 +151,9 @@ def main():
     ap.add_argument("--kinds", nargs="+", default=None, choices=KINDS + EXTRA_KINDS,
                     help="Default: the expert kinds, plus the PPO kinds for the single task")
     ap.add_argument("--actor-checkpoint", default=None, help="Actor .pt for the 'actor' and 'dagger' kinds")
+    ap.add_argument("--expert", default="phase", choices=("phase", "markov"),
+                    help="quarter only: 'markov' labels with MarkovQuarterExpert, whose action depends "
+                         "on the state only (use it for imitation data)")
     ap.add_argument("--rest-posture", action="store_true",
                     help="expert IK prefers the home pose, so its joint targets depend on the target only")
     ap.add_argument("--beta", type=float, default=0.0,
@@ -165,7 +174,7 @@ def main():
     if any(k in ("actor", "dagger") for k in kinds) and not args.actor_checkpoint:
         raise SystemExit("the actor and dagger kinds need --actor-checkpoint")
     planned = [((args.task, kind, args.seed_base + k * 1000 + i, args.max_steps, args.actor_checkpoint, args.beta,
-                 args.rest_posture),
+                 args.rest_posture, args.expert),
                 "test" if i >= args.per_kind - args.test_per_kind else "train")
                for k, kind in enumerate(kinds) for i in range(args.per_kind)]
     split_for = {(job[1], job[2]): split for job, split in planned}

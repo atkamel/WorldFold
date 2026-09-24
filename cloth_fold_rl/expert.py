@@ -26,7 +26,8 @@ GRASP_RADIUS = 0.03          # matches sim_main.GRASP_RADIUS
 
 
 def solve_ik(model, data, site_id, qpos_adr, dof_adr, joint_range, target,
-             iters=400, damping=0.08, restarts=12, tol=0.006, rng=None, q_rest=None):
+             iters=400, damping=0.08, restarts=12, tol=0.006, rng=None, q_rest=None,
+             start_at_rest=True):
     """Damped least squares IK, position only (orientation free on a 5-DOF arm).
 
     Solves on a scratch MjData seeded from `data` so the live sim is untouched.
@@ -34,8 +35,12 @@ def solve_ik(model, data, site_id, qpos_adr, dof_adr, joint_range, target,
 
     A position target leaves two of the five joints free, so the answer depends on
     where the solve starts. With q_rest the first attempt starts from q_rest and the
-    free joints are pulled toward it in the Jacobian's null space, which makes the
-    solution a function of the target alone rather than of the arm's current pose.
+    free joints are pulled toward it in the Jacobian's null space for the first half
+    of the iterations (the damped pull leaks into the position, so the second half
+    refines the position alone), which makes the solution a function of the target
+    alone rather than of the arm's current pose. With start_at_rest=False the first
+    attempt starts from the current pose instead (still pulled toward q_rest), for
+    callers that solve every step and need joint targets near the current ones.
     """
     rng = rng or np.random.default_rng(0)
     scratch = mujoco.MjData(model)
@@ -47,19 +52,19 @@ def solve_ik(model, data, site_id, qpos_adr, dof_adr, joint_range, target,
     for r in range(restarts):
         scratch.qpos[:] = data.qpos
         scratch.qvel[:] = 0.0
-        if r == 0 and q_rest is not None:
+        if r == 0 and q_rest is not None and start_at_rest:
             for k, adr in enumerate(qpos_adr):
                 scratch.qpos[adr] = q_rest[k]
         elif r > 0:                                 # restart from a random pose
             for k, adr in enumerate(qpos_adr):
                 scratch.qpos[adr] = rng.uniform(lo[k], hi[k])
 
-        for _ in range(iters):
+        for it in range(iters):
             mujoco.mj_kinematics(model, scratch)
             mujoco.mj_comPos(model, scratch)
             err = target - scratch.site_xpos[site_id]
             e = float(np.linalg.norm(err))
-            if e < tol:
+            if e < tol and (q_rest is None or r > 0 or it >= iters // 2):
                 break
             jacp = np.zeros((3, model.nv))
             mujoco.mj_jacSite(model, scratch, jacp, None, site_id)
@@ -67,7 +72,7 @@ def solve_ik(model, data, site_id, qpos_adr, dof_adr, joint_range, target,
             # damped least squares: dq = J^T (J J^T + lambda^2 I)^-1 e
             JJt = J @ J.T + (damping ** 2) * np.eye(3)
             dq = J.T @ np.linalg.solve(JJt, err)
-            if q_rest is not None:
+            if q_rest is not None and r == 0 and it < iters // 2:
                 q = np.array([scratch.qpos[a] for a in qpos_adr])
                 null = np.eye(len(qpos_adr)) - J.T @ np.linalg.solve(JJt, J)
                 dq += null @ (0.1 * (q_rest - q))
