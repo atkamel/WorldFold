@@ -109,6 +109,19 @@ rewrite later.
 | M5.2 | RL-usable reward: sparse critic label, clipped toggle spikes, `unstable` tagged, `build_transitions()`, chunk-as-macro-action | documented in `imitation.md` §7 | ✅ |
 | M5.3 | IQL or AWAC warm-started from the DAgger policy | ≥ the imitation student on ID and recovery | ❌ not met: IQL −16-20 pp on recovery (results.md); parked |
 
+## Phase 5b — Close the gaps found in Phases 2-5
+
+Added 2026-09-24 from the measured gaps ([reports/2026-09-24-phase1-5.md](reports/2026-09-24-phase1-5.md)).
+Ordered by expected payoff. Phase 6 starts after M5b.1-M5b.3.
+
+| | milestone | exit | status |
+|---|---|---|---|
+| M5b.1 | DAgger from the diffusion checkpoint (`diff_v1_s0`); diffusion BC is already +10-12 pp over chunk-MLP under shift | beats `dagger_v2/round_3` on id_easy + recovery by > 1 SE at n=200 | ☐ |
+| M5b.2 | Shifted-pose coverage: DAgger and distill rollouts from id_hard-like poses on a new disjoint `SHIFT_SEED_BASE` (with a disjointness test); no loop visits shifted starts today | privileged id_hard ≥ 85% without losing recovery | ☐ |
+| M5b.3 | Vision recovery: ≥ 60% perturbed distill rollouts, 128² main camera, keep rule that also scores id_hard | sensor-only recovery within 15 pp of its teacher | ☐ |
+| M5b.4 | Offline RL retry, only with action diversity (multi-policy or high-σ harvest, per-episode subsampling so stalls don't dominate) | ≥ DAgger on ID and recovery, else drop RL from the plan | ☐ |
+| M5b.5 | Hygiene: re-run M2.1-M2.3 under deterministic eval; re-freeze image versions with image-inclusive hashes if they're used for a result | numbers reproduce exactly | ☐ |
+
 ## Phase 6 — Language-conditioned folds and the VLA  *(ref. milestone 3, reframed)*
 
 | | milestone | exit | status |

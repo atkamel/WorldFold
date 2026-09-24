@@ -1,5 +1,7 @@
 # Results
 
+> Summary with demo videos, dated 2026-09-24: [reports/2026-09-24-phase1-5.md](reports/2026-09-24-phase1-5.md).
+
 Append-only. Every number reported anywhere else must appear here first, with the run id,
 dataset version and n that produced it. Rates carry Wilson 95% intervals — see
 [imitation.md §5.3](imitation.md) for the statistical rules.
