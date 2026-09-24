@@ -36,7 +36,7 @@ def _overlay(frame, lines):
 
 def run_episode(env, act_fn, seed, renderer, cam, label, frames, hold=20):
     obs, info = env.reset(seed=seed)
-    act_fn.reset(obs)
+    act_fn.reset(obs, seed)
     base = env.unwrapped
     for t in range(env.unwrapped.max_episode_steps):
         obs, _, term, trunc, info = env.step(act_fn(obs))
@@ -53,21 +53,31 @@ def run_episode(env, act_fn, seed, renderer, cam, label, frames, hold=20):
 
 
 class PolicyActor:
-    """Chunked closed-loop control, matching `rollout.PolicyController`."""
+    """Chunked closed-loop control, matching `rollout.PolicyController`. A sensor-only
+    (vision) checkpoint gets the robot cameras rendered each replan, with the same
+    per-episode visual randomization as training."""
 
-    def __init__(self, ckpt, replan_every):
+    def __init__(self, ckpt, replan_every, env):
         from imitation.policies.common import load_policy
         self.policy, self.replan_every = load_policy(ckpt), replan_every
+        self.rig = None
+        if self.policy.needs_images:
+            from imitation.vision.render import CameraRig
+            self.rig = CameraRig(env)
 
-    def reset(self, obs):
+    def reset(self, obs, seed):
         self.hist = deque([obs] * self.policy.obs_horizon, maxlen=self.policy.obs_horizon)
         self.queue = deque()
+        if self.rig:
+            self.rig.reset(seed)
 
     def __call__(self, obs):
+        from imitation.rollout import padded_predict
         if obs is not self.hist[-1]:
             self.hist.append(obs)
         if not self.queue:
-            chunk = self.policy.predict(np.stack(self.hist)[None].astype(np.float32))[0]
+            images = [self.rig.render()] if self.rig else None
+            chunk = padded_predict(self.policy, np.stack(self.hist)[None].astype(np.float32), images)[0]
             self.queue.extend(chunk[:self.replan_every])
         return self.queue.popleft()
 
@@ -77,7 +87,7 @@ class ExpertActor:
         from imitation.teachers import ScriptedTeacher
         self.teacher = ScriptedTeacher(env)
 
-    def reset(self, obs):
+    def reset(self, obs, seed):
         self.teacher.reset()
 
     def __call__(self, obs):
@@ -100,7 +110,8 @@ def main():
     if args.ckpt == "expert":
         act_fn, label = ExpertActor(env), "scripted expert"
     else:
-        act_fn, label = PolicyActor(args.ckpt, args.replan_every), f"policy {Path(args.ckpt).parent.name}"
+        act_fn = PolicyActor(args.ckpt, args.replan_every, env)
+        label = f"{'vision' if act_fn.rig else 'state'} policy {Path(args.ckpt).parent.parent.name}/{Path(args.ckpt).parent.name}"
     base.model.vis.global_.offwidth = max(base.model.vis.global_.offwidth, args.width)
     base.model.vis.global_.offheight = max(base.model.vis.global_.offheight, args.height)
     renderer = mujoco.Renderer(base.model, args.height, args.width)

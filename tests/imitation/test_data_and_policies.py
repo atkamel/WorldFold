@@ -252,3 +252,26 @@ def test_padded_predict_is_independent_of_batch_composition():
     alone = padded_predict(p, x[:1])
     np.testing.assert_array_equal(padded_predict(p, x)[:1], alone)
     np.testing.assert_array_equal(padded_predict(p, x[:3])[:1], alone)
+
+
+def test_folded_label_needs_placed_corners_and_open_grippers():
+    from imitation.vision.success import CORNER_TO_GOAL, folded_labels
+    ep = make_episode(0, T=3)
+    ep.obs[:, CORNER_TO_GOAL] = 0.0
+    ep.obs[0, CORNER_TO_GOAL.start] = 0.2          # step 0: a corner 20 cm off
+    ep.grasped[1, 0] = True                          # step 1: still holding
+    assert list(folded_labels(ep)) == [False, False, True]
+
+
+def test_images_change_the_version_hash():
+    import tempfile
+    hashes = []
+    for with_images in (False, True):
+        root = tempfile.mkdtemp()
+        ep = make_episode(0, T=4)
+        if with_images:
+            ep.images = {"main": np.zeros((4, 3, 8, 8), np.uint8)}
+        w = DatasetWriter(root, "v")
+        w.add(ep, D, A)
+        hashes.append(w.freeze()["content_hash"])
+    assert hashes[0] != hashes[1]

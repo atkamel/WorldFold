@@ -230,7 +230,8 @@ class DatasetWriter:
 
     def freeze(self) -> dict:
         entries = self.entries + sorted(self.new_entries, key=lambda e: (e["source"], e["seed"]))
-        digest = hashlib.sha256("".join(e["sha256"] for e in entries).encode()).hexdigest()
+        # images count toward the version's identity (v1_img froze before this: same hash as v1)
+        digest = hashlib.sha256("".join(e["sha256"] + e.get("images_sha256", "") for e in entries).encode()).hexdigest()
         manifest = {"version": self.version, "parent": self.parent,
                     "created": _dt.datetime.now().isoformat(timespec="seconds"),
                     "content_hash": digest, "config": self.config,

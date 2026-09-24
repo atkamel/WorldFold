@@ -17,7 +17,12 @@ every number is in [results.md](results.md).
         ▼
  DAgger student  (v1_<tag>_r1, _r2 … aggregated) outputs/imitation/runs/dagger_*/
         │  evaluate on held-out seed sets (n=200 each)  ·  demo → mp4
-        ▼
+        ├──────────────────────────────┐
+        ▼                              ▼
+ offline RL (IQL on harvested      sensor-only student: cameras + proprio,
+ student rollouts)                  distilled from the privileged policy
+        │                              │   + vision success detector
+        ▼                              ▼
  half-fold demo                                 outputs/imitation/demo/
 ```
 
@@ -146,11 +151,52 @@ has never been taught. DAgger fixes that. Each round:
 4. It's evaluated at n = 200. It's kept if it scores higher (id_easy + recovery), and the
    loop stops once a round gains less than 1 standard error.
 
+**The teacher shadows the student.** While the student drives, the worker calls
+`ScriptedTeacher.observe()` before every step, so the expert's phase machine, IK targets
+and timers evolve exactly as if it were acting. A label keeps that state unless the arm's
+phase *group* changed (pre-grasp / holding / released), e.g. the student dropped a corner.
+The first version re-inferred phases from geometry at every label. It disagreed with the
+expert on the expert's own trajectory, and DAgger regressed (results.md, "dagger_v1").
+
 `--resume` continues a killed run from `history.json`. The log reports how many training
 observations hit the normalizer's clamp. A warm-started student keeps its first
 normalizer, so DAgger states far from the expert data show up there.
 
-## 7. Demo: `imitation.demo`
+## 7. Sensor-only student: `imitation.vision.*` (Phase 4)
+
+The state policies read cloth vertex positions straight from the simulator; a robot can't.
+The sensor-only student sees what a robot has: the `main` camera (96²) and both wrist
+cameras (64²), plus the 48 sensor-available proprio dims.
+
+1. **Render the demos:** `python -m imitation.vision.replay --version v1` replays every
+   frozen episode's actions (exact: each replayed observation is checked against the
+   stored one) and writes `v1_img`, the same episodes plus images. Visual domain
+   randomization (cloth/table colour, light, camera jitter) is drawn per episode and only
+   touches rendering.
+2. **Distill:** `python -m imitation.vision.distill --teacher <best state policy> --dataset v1_img`.
+   It's DAgger with the privileged *policy* as teacher. Every stored episode already holds
+   the privileged observation, so the teacher's label for any state the student visited
+   is just `teacher.predict(obs history)`. No sim snapshots are needed, and training
+   relabels every step densely (`train --teacher`).
+3. **Success detector:** `python -m imitation.vision.success train|agree` is a CNN on the
+   main camera. It predicts "folded" (corners on goal, grippers open) and the fold score
+   from one frame, with labels free from sim. `agree` scores it against the sim's success
+   flag on held-out student rollouts. Hardware evaluation needs this.
+
+## 8. Offline RL: `imitation.rl.*` (Phase 5)
+
+1. **Harvest:** `python -m imitation.rl.harvest --ckpt <DAgger best> --episodes 1000`.
+   The student runs on its own seed range, 30% knocked off course, with light action
+   noise. Successes *and* failures are kept, since the critic needs reward variance.
+2. **Transitions** (`imitation/rl/transitions.py`): one transition is one replan
+   interval, with the 8 executed actions as the macro-action. The reward is +1 on a
+   successful terminal plus Δfold-score clipped to ±0.05, which kills the grasp-toggle
+   spikes of the env reward. Truncations bootstrap, and `unstable` episodes are dropped.
+3. **IQL** (`python -m imitation.rl.iql --init <DAgger best> --versions ...`): expectile V,
+   twin Q over macro-actions, and advantage-weighted regression into the same chunk MLP.
+   The result is an ordinary checkpoint for `evaluate` and `demo`.
+
+## 9. Demo: `imitation.demo`
 
 ```bash
 .venv/Scripts/python.exe -m imitation.demo --ckpt <best checkpoint> --seeds 100000 100001 100002
@@ -158,11 +204,14 @@ normalizer, so DAgger states far from the expert data show up there.
 
 Runs the checkpoint exactly as `evaluate` does (chunk of 16, replan every 8) on held-out
 seeds, renders offscreen with MuJoCo, and writes an mp4 with a fold-score/grasp overlay
-plus a JSON of outcomes. `--ckpt expert` renders the teacher for comparison.
+plus a JSON of outcomes. `--ckpt expert` renders the teacher for comparison. A vision
+checkpoint gets its cameras rendered each replan, exactly as in training.
 
-## 8. Reproducing a result
+## 10. Reproducing a result
 
 A number in `results.md` is reproducible from three things: the dataset `manifest.json`
 (content hash), the checkpoint's `run.json` (git commit, config, checkpoint hash), and
-the eval command with its seed set and n. Collection is deterministic per seed, and
-evaluation seeds are fixed by `imitation/seeds.py`.
+the eval command with its seed set and n. Collection is deterministic per seed,
+evaluation seeds are fixed by `imitation/seeds.py`, and policy inference is padded to a
+fixed batch shape (`rollout.padded_predict`). GPU results otherwise shift ~1e-6 with batch
+size, the cloth sim amplifies that, and the same checkpoint scored 145 then 134/200.
