@@ -27,50 +27,60 @@ ACTION_DIM = 12
 # ---------------------------------------------------------------------------
 # worker side
 
-def _info_small(info, rig=None):
-    extra = {"images": rig.render()} if rig else {}
+def _info_small(info, images=None):
+    extra = {"images": images} if images is not None else {}
     return extra | {"stage": int(info["stage"]), "fold_score": float(info["fold_score"]),
             "grasped": (bool(info["grasped"]["left_"]), bool(info["grasped"]["right_"])),
             "success": bool(info["success"]), "termination_reason": info["termination_reason"],
             "anchor_drift": float(info["anchor_drift"]), "move_distance": list(info["move_distance"])}
 
 
+def _split(obs):
+    """Dict observation (cameras) -> (139-D state, images or None)."""
+    if isinstance(obs, dict):
+        return obs["state"], {k: v for k, v in obs.items() if k != "state"}
+    return obs, None
+
+
 def _worker(pipe, env_kwargs):
     from imitation.tasks import HalfFoldEnv
-    from imitation.teachers import ScriptedTeacher
+    from imitation.teachers import PolicyTeacher, ScriptedTeacher
 
     env_kwargs = dict(env_kwargs)
     render = env_kwargs.pop("render", False)
+    cameras = env_kwargs.pop("cameras", None)
+    teacher_ckpt = env_kwargs.pop("teacher", None)
+    if render:                     # Phase 4: the env returns {"state", cameras...} (M4.1)
+        env_kwargs.update(obs_mode="dict", cameras=dict(cameras) if cameras else None)
     env = HalfFoldEnv(**env_kwargs)
-    teacher = ScriptedTeacher(env)
-    rig, shadow = None, False
-    if render:                     # Phase 4: camera images ride along in info["images"]
-        from imitation.vision.render import CameraRig
-        rig = CameraRig(env)
+    teacher = PolicyTeacher(env, teacher_ckpt) if teacher_ckpt else ScriptedTeacher(env)
+    shadow = False
     while True:
         cmd, arg = pipe.recv()
         try:
             if cmd == "reset":
                 seed, options, shadow = arg
                 obs, info = env.reset(seed=seed, options=options)
+                obs, images = _split(obs)
                 teacher.reset()
-                if rig:
-                    rig.reset(seed)
+                teacher.see(obs)
                 meta = {"domain_params": dict(env.unwrapped._domain_params),
                         "start_corners": env._start[[0, 10, 110, 120]].round(5).tolist(),
                         "max_steps": env.unwrapped.max_episode_steps}
-                pipe.send(("ok", (obs, _info_small(info, rig), meta)))
+                pipe.send(("ok", (obs, _info_small(info, images), meta)))
             elif cmd == "step":        # arg None -> the teacher acts
                 if arg is not None and shadow:     # someone else acts: the labelling teacher shadows
                     teacher.observe()
                 action = teacher.act() if arg is None else np.asarray(arg, dtype=np.float32)
                 obs, r, term, trunc, info = env.step(action)
-                pipe.send(("ok", (obs, float(r), bool(term), bool(trunc), _info_small(info, rig),
+                obs, images = _split(obs)
+                teacher.see(obs)
+                pipe.send(("ok", (obs, float(r), bool(term), bool(trunc), _info_small(info, images),
                                   np.asarray(action, dtype=np.float32))))
             elif cmd == "label":
                 pipe.send(("ok", teacher.label_chunk(env, horizon=int(arg))))
             elif cmd == "resync":
-                pipe.send(("ok", teacher.expert.resync()))
+                pipe.send(("ok", teacher.expert.resync() if hasattr(teacher, "expert") else {}))
             elif cmd == "close":
                 pipe.send(("ok", None))
                 break
@@ -87,7 +97,11 @@ _WORKER_THREAD_ENV = {k: "1" for k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS"
 
 class EnvPool:
     def __init__(self, n, env_kwargs=None):
+        """env_kwargs: HalfFoldEnv kwargs plus `render` (cameras on; images reach image
+        controllers), `cameras` ({name: size}) and `teacher` (a state-policy checkpoint
+        that replaces the scripted expert as the labelling teacher)."""
         self.render = bool((env_kwargs or {}).get("render"))
+        self.cameras = (env_kwargs or {}).get("cameras")
         ctx = mp.get_context("spawn")
         saved = {k: os.environ.get(k) for k in _WORKER_THREAD_ENV}
         os.environ.update(_WORKER_THREAD_ENV)
@@ -306,6 +320,7 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
         need = list(awaiting)
         labels = [awaiting[i] for i in need] if controller.needs_labels else None
         obs_hist = np.stack([np.stack(active[i].hist) for i in need]).astype(np.float32)
+        controller.slot_seeds = {i: active[i].seed for i in need}   # for per-seed controllers
         images = [active[i].img for i in need] if controller.needs_images else None
         plans = controller.plan(need, obs_hist, labels, rngs, images=images)
         awaiting.clear()

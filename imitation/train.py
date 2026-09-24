@@ -22,7 +22,8 @@ import numpy as np
 import torch
 
 from imitation.data.collect import DEFAULT_ROOT
-from imitation.data.dataset import Normalizer, bc_episodes, clamp_fraction, teacher_samples, build_samples, split_episodes
+from imitation.data.loader import WindowSampler
+from imitation.data.dataset import Normalizer, bc_episodes, clamp_fraction, split_episodes
 from imitation.data.schema import load_dataset
 from imitation.policies.common import build_policy, policy_class, default_device, load_policy, n_params, save_policy
 from imitation.spec import OBS_SUBSETS
@@ -70,7 +71,9 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
     obs_subset: hide observation dims (M2.3); None keeps the policy's own default.
     teacher: a privileged checkpoint -- every step's target becomes its chunk from the
     stored observation (Phase 4 distillation) instead of the expert/DAgger labels.
-    Image policies (`needs_images`) load the dataset's camera images onto the device."""
+    Batches are built lazily by index (`imitation.data.loader.WindowSampler`); image
+    policies keep their camera frames in pinned host memory and get a per-camera
+    normalizer fit on the training frames."""
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = default_device()
@@ -88,6 +91,9 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
     if not train_eps:             # a single episode (debugging): validate on what we train on
         train_eps = val_eps
     cfg = POLICY_DEFAULTS.get(policy_kind, {}) | (policy_kwargs or {})
+    if needs_images and not init_from and "cameras" not in cfg:   # camera sizes come from the data
+        order = ("main", "left_wrist_cam", "right_wrist_cam")
+        cfg["cameras"] = [(c, int(episodes[0].images[c].shape[-1])) for c in order if c in episodes[0].images]
     if init_from:                 # warm start keeps the checkpoint's normalizer: its weights expect it
         policy = load_policy(init_from, device).train()
     else:
@@ -98,24 +104,17 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
             policy.set_obs_subset(OBS_SUBSETS[obs_subset])
     teacher_policy = load_policy(teacher, device) if teacher else None
 
-    tensors, images = {}, {}
-    for name, eps in (("train", train_eps), ("val", val_eps)):
-        if teacher_policy is not None:
-            X, Y, M, W, I = teacher_samples(eps, teacher_policy, policy.obs_horizon, policy.chunk)
-        else:
-            X, Y, M, W, I = build_samples(eps, policy.obs_horizon, policy.chunk, index=True)
-        tensors[name] = [torch.as_tensor(a, device=device) for a in (X, Y, M)] + [W, torch.as_tensor(I, device=device)]
-        if needs_images:          # uint8 on the device; ~50 KB/step, converted to float per batch
-            images[name] = {cam: torch.as_tensor(np.concatenate([e.images[cam] for e in eps]), device=device)
-                            for cam, _ in policy.cameras}
-
-    def batch_images(name, rows):
-        return {cam: img[rows] for cam, img in images[name].items()} if needs_images else None
-    n_train = len(tensors["train"][0])
-    clamped = clamp_fraction(tensors["train"][0], policy.obs_mean, policy.obs_std)
+    cams = policy.cameras if needs_images else None
+    data = {name: WindowSampler(eps, policy.obs_horizon, policy.chunk, device, teacher=teacher_policy, cameras=cams)
+            for name, eps in (("train", train_eps), ("val", val_eps))}
+    if needs_images and not init_from:
+        policy.set_image_normalizer(data["train"].image_stats())
+    n_train = len(data["train"])
+    clamped = clamp_fraction(data["train"].obs, policy.obs_mean, policy.obs_std)
     if clamped > 0:
         log(f"normalizer clamp: {clamped:.4%} of train obs entries at +-10")
-    n_dagger = int((tensors["train"][3] == 1).sum())
+    W = data["train"].weight_tag
+    n_dagger = int((W == 1).sum())
     log(f"device {device} | {len(train_eps)} train / {len(val_eps)} val episodes | {n_train} samples "
         f"({n_dagger} DAgger labels) | {policy.kind} {n_params(policy) / 1e6:.2f}M params")
 
@@ -132,26 +131,26 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
 
     @torch.no_grad()
     def val_loss(model):
-        X, Y, M, _, I = tensors["val"]
+        val = data["val"]
         total, count, bs = 0.0, 0, 4096 if not needs_images else 512
-        for i in range(0, len(X), bs):
-            s = slice(i, i + bs)
-            args = (X[s], Y[s], M[s]) + ((batch_images("val", I[s]),) if needs_images else ())
+        for i in range(0, len(val), bs):
+            idx = torch.arange(i, min(i + bs, len(val)), device=device)
+            X, Y, M, imgs = val.batch(idx)
+            args = (X, Y, M) + ((imgs,) if needs_images else ())
             with torch.autocast(device.type, dtype=torch.bfloat16, enabled=amp):
-                total += float(model.compute_loss(*args)) * len(X[s])
-            count += len(X[s])
+                total += float(model.compute_loss(*args)) * len(idx)
+            count += len(idx)
         return total / max(count, 1)
 
-    X, Y, M, W, I = tensors["train"]
     weights = torch.as_tensor(np.where(W == 1, dagger_weight, 1.0), dtype=torch.float32, device=device)
     t0, history, running = time.time(), [], 0.0
     policy.train()
     for step in range(1, steps + 1):
         idx = (torch.multinomial(weights, batch, replacement=True) if n_dagger and dagger_weight != 1.0
                else torch.randint(0, n_train, (batch,), device=device))
+        X, Y, M, imgs = data["train"].batch(idx)
         with torch.autocast(device.type, dtype=torch.bfloat16, enabled=amp):
-            args = (X[idx], Y[idx], M[idx]) + ((batch_images("train", I[idx]),) if needs_images else ())
-            loss = policy.compute_loss(*args)
+            loss = policy.compute_loss(*((X, Y, M) + ((imgs,) if needs_images else ())))
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)

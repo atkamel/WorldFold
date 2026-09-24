@@ -27,3 +27,18 @@ def test_reward_clips_spikes_and_unstable_episodes_are_dropped():
     bad = make_episode(1, T=10)
     bad.meta["termination_reason"] = "unstable"
     assert len(build_transitions([ep, bad], macro=8)["obs"]) == 1
+
+
+def test_unstable_episodes_are_tagged_and_long_episodes_subsampled():
+    from imitation.rl.transitions import CODES, stratified_weights
+    bad = make_episode(1, T=40)
+    bad.meta.update(termination_reason="unstable", success=False)
+    bad.terminated[-1], bad.truncated[-1], bad.discount[-1] = False, True, 1.0
+    ok = make_episode(0, T=40)
+    tr = build_transitions([ok, bad], include_unstable=True)
+    assert tr["unstable"].sum() == 5 and (~tr["unstable"]).sum() == 5
+    sub = build_transitions([ok], max_per_episode=2)
+    assert len(sub["obs"]) == 2 and sub["done"][-1] == 1          # the terminal interval is kept
+    w = stratified_weights(np.array([0, 0, 0, 3]))
+    assert abs(w[:3].sum() - w[3]) < 1e-5                         # each outcome code: equal total weight
+    assert CODES[tr["code"][0]] == "success"

@@ -186,11 +186,13 @@ cameras (64²), plus the 48 sensor-available proprio dims.
    stored one) and writes `v1_img`, the same episodes plus images. Visual domain
    randomization (cloth/table colour, light, camera jitter) is drawn per episode and only
    touches rendering.
-2. **Distill:** `python -m imitation.vision.distill --teacher <best state policy> --dataset v1_img`.
-   It's DAgger with the privileged *policy* as teacher. Every stored episode already holds
-   the privileged observation, so the teacher's label for any state the student visited
-   is just `teacher.predict(obs history)`. No sim snapshots are needed, and training
-   relabels every step densely (`train --teacher`).
+2. **Distill** is the Phase 3 DAgger loop with a *policy* as the teacher (M4.2):
+   `python -m imitation.dagger --init <vision checkpoint> --dataset v1_img128 --teacher <best state policy> --relabel`.
+   The worker hosts `PolicyTeacher` (`imitation/teachers/policy.py`) in place of the
+   scripted expert. Every stored episode already holds the privileged observation, so
+   `--relabel` retrains on every visited step labelled by the teacher (`train --teacher`).
+   An image student gets a camera-rendering pool automatically. The first run
+   (`distill_v1`) used a separate copy of this loop, which was retired in Phase 5b.
 3. **Success detector:** `python -m imitation.vision.success train|agree` is a CNN on the
    main camera. It predicts "folded" (corners on goal, grippers open) and the fold score
    from one frame, with labels free from sim. `agree` scores it against the sim's success

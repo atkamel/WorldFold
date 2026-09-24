@@ -12,7 +12,8 @@ from __future__ import annotations
 import mujoco
 import numpy as np
 
-CAMERAS = {"main": 96, "left_wrist_cam": 64, "right_wrist_cam": 64}   # name -> square size
+CAMERAS = {"main": 128, "left_wrist_cam": 64, "right_wrist_cam": 64}  # name -> square size (M4.1: >= 128^2)
+CAMERAS_V1 = {"main": 96, "left_wrist_cam": 64, "right_wrist_cam": 64}  # v1_img / Phase 4 checkpoints
 
 
 class CameraRig:

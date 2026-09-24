@@ -16,8 +16,26 @@ TRAIN_SEED_BASE = 0            # expert demos: 0 ..
 DAGGER_SEED_BASE = 50_000      # DAgger rollouts: 50_000 + 1000 * round ..
 DISTILL_SEED_BASE = 70_000     # sensor-only distillation rollouts (Phase 4): 70_000 + 1000 * round ..
 HARVEST_SEED_BASE = 400_000    # student rollout harvest for offline RL (Phase 5): 400_000 ..
+SHIFT_SEED_BASE = 500_000      # shifted-pose training rollouts (M5b.2): 500_000 + 1000 * round ..
 EVAL_SEED_BASE = {"id_easy": 100_000, "id_hard": 200_000, "recovery": 300_000}
 HARD_JITTER = 0.04
+
+# [start, end) of every seed range; tests/imitation/test_seeds.py checks they never overlap
+SEED_RANGES = {"train": (TRAIN_SEED_BASE, 10_000), "dagger": (DAGGER_SEED_BASE, 70_000),
+               "distill": (DISTILL_SEED_BASE, 100_000), "id_easy": (100_000, 200_000),
+               "id_hard": (200_000, 300_000), "recovery": (300_000, 400_000),
+               "harvest": (HARVEST_SEED_BASE, 500_000), "shift": (SHIFT_SEED_BASE, 600_000)}
+
+
+def shifted_pose(seed):
+    """Cloth start outside the demos' jitter: at least 2.5 cm off in one axis, up to 4 cm.
+    The id_hard eval set and shifted-pose training (M5b.2) share this distribution on
+    disjoint seeds."""
+    rng = np.random.default_rng([seed, 17])
+    pose = rng.uniform(-HARD_JITTER, HARD_JITTER, size=2)
+    axis = rng.integers(2)
+    pose[axis] = np.sign(pose[axis] or 1.0) * rng.uniform(0.025, HARD_JITTER)
+    return {"cloth_pose": pose}
 
 
 def eval_set(name, n):
@@ -26,14 +44,7 @@ def eval_set(name, n):
     if name == "id_easy":
         return seeds, None, None
     if name == "id_hard":
-        def hard_pose(seed):
-            rng = np.random.default_rng([seed, 17])
-            # a ring outside the training jitter: at least 2.5 cm off in one axis
-            pose = rng.uniform(-HARD_JITTER, HARD_JITTER, size=2)
-            axis = rng.integers(2)
-            pose[axis] = np.sign(pose[axis] or 1.0) * rng.uniform(0.025, HARD_JITTER)
-            return {"cloth_pose": pose}
-        return seeds, hard_pose, None
+        return seeds, shifted_pose, None
     if name == "recovery":
         def knock(seed, rng):
             return Perturbation(t=int(rng.integers(15, 60)), k=int(rng.integers(8, 16)))

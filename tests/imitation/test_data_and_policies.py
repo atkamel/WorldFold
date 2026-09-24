@@ -275,3 +275,67 @@ def test_images_change_the_version_hash():
         w.add(ep, D, A)
         hashes.append(w.freeze()["content_hash"])
     assert hashes[0] != hashes[1]
+
+
+def test_policy_teacher_labels_are_the_checkpoint_chunk(tmp_path):
+    from imitation.teachers import PolicyTeacher
+    torch.manual_seed(0)
+    p = build_policy("chunk_mlp", obs_dim=D, action_dim=A, obs_horizon=2, chunk=16)
+    save_policy(p, tmp_path / "t.pt")
+    teacher = PolicyTeacher(None, tmp_path / "t.pt")
+    rng = np.random.default_rng(0)
+    o0, o1 = rng.normal(size=(2, D)).astype(np.float32)
+    teacher.reset()
+    teacher.see(o0)
+    teacher.see({"state": o1})
+    want = load_policy(tmp_path / "t.pt", "cpu").predict(np.stack([o0, o1])[None])[0]
+    np.testing.assert_allclose(teacher.label_chunk(None, 16), want, atol=1e-6)
+    assert teacher.label_chunk(None, 20).shape == (20, A)
+
+
+def _key_rows(X, Y, M, W, I):
+    order = np.lexsort((I, W))
+    return X[order], Y[order], M[order]
+
+
+def test_lazy_sampler_reproduces_build_samples_exactly():
+    from imitation.data.loader import WindowSampler
+    T, K = 14, 4
+    actor = np.full(T, ACTOR_TEACHER, np.int8)
+    actor[6:8] = ACTOR_PERTURB
+    a = make_episode(0, T=T, actor=actor)
+    b = make_episode(1, T=9)
+    b.terminated[-1], b.truncated[-1], b.discount[-1] = False, True, 1.0
+    labels = (np.array([0, 5], np.int32), np.full((2, K, A), 0.5, np.float32))
+    c = make_episode(2, T=10, source="dagger", actor=np.full(10, ACTOR_STUDENT, np.int8), labels=labels)
+    eps = [a, b, c]
+    want = _key_rows(*build_samples(eps, obs_horizon=2, chunk=K, index=True))
+    s = WindowSampler(eps, 2, K, torch.device("cpu"))
+    X, Y, M, _ = s.batch(torch.arange(len(s)))
+    got = _key_rows(X.numpy(), Y.numpy(), M.numpy(), s.weight_tag, s.rows.numpy())
+    for w, g in zip(want, got):
+        np.testing.assert_allclose(g, w, atol=1e-6)
+
+
+def test_lazy_sampler_teacher_mode_matches_teacher_samples():
+    from imitation.data.loader import WindowSampler
+    torch.manual_seed(0)
+    teacher = build_policy("chunk_mlp", obs_dim=D, action_dim=A, obs_horizon=2, chunk=16).eval()
+    eps = [make_episode(0, T=6), make_episode(1, T=4, source="dagger")]
+    X0, Y0, M0, W0, I0 = teacher_samples(eps, teacher, obs_horizon=2, chunk=4)
+    s = WindowSampler(eps, 2, 4, torch.device("cpu"), teacher=teacher)
+    X, Y, M, _ = s.batch(torch.arange(len(s)))
+    np.testing.assert_allclose(X.numpy(), X0, atol=1e-6)
+    np.testing.assert_allclose(Y.numpy(), Y0, atol=1e-5)
+    assert list(s.weight_tag) == list(W0)
+
+
+def test_lazy_sampler_gathers_images_and_fits_per_camera_stats():
+    from imitation.data.loader import WindowSampler
+    ep = make_episode(0, T=5)
+    ep.images = {"main": np.stack([np.full((3, 8, 8), 10 * t, np.uint8) for t in range(5)])}
+    s = WindowSampler([ep], 2, 4, torch.device("cpu"), cameras=[("main", 8)])
+    _, _, _, imgs = s.batch(torch.tensor([3]))
+    assert int(imgs["main"][0, 0, 0, 0]) == 10 * int(s.rows[3])
+    mean, std = s.image_stats()["main"]
+    assert mean.shape == (3,) and std.shape == (3,)

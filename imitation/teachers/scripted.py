@@ -63,7 +63,7 @@ class ScriptedTeacher(Teacher):
             for _ in range(horizon):
                 a = self.expert.act()
                 actions.append(a)
-                _, _, terminated, truncated, _ = env.step(a)
+                _, _, terminated, truncated, _ = getattr(env, "step_state", env.step)(a)
                 if terminated or truncated:
                     break
         finally:
@@ -80,6 +80,9 @@ class ScriptedTeacher(Teacher):
     def observe(self, env=None) -> None:
         """Shadow one step someone else is about to take (call before env.step)."""
         self.expert.act()
+
+    def see(self, obs) -> None:
+        """A new observation after reset/step. The scripted teacher reads the sim instead."""
 
     def _sync_phases(self):
         """Keep each arm's shadow state unless geometry says its phase group changed."""

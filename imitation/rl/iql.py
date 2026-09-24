@@ -29,7 +29,7 @@ from torch.nn import functional as F
 from imitation.data.collect import DEFAULT_ROOT
 from imitation.data.schema import load_dataset
 from imitation.policies.common import default_device, load_policy, save_policy
-from imitation.rl.transitions import build_transitions
+from imitation.rl.transitions import CODES, build_transitions, stratified_weights
 from imitation.train import git_commit
 
 
@@ -59,7 +59,7 @@ def expectile_loss(diff, tau):
 
 def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, tau=0.7, beta=3.0,
               lr_critic=3e-4, lr_policy=1e-4, target_ema=0.005, macro=8, adv_clip=100.0, adv_norm=False, seed=0,
-              log=print):
+              max_per_episode=None, strata="natural", log=print):
     """adv_norm: weight = exp(A / std(A) / beta) instead of exp(beta * A). With a sparse
     0/1 reward the raw advantages here are ~1e-2, so exp(3 A) ~ 1 and the update is plain
     BC over all data, failures included (iql_v1). Standardizing sets the sharpness per batch."""
@@ -81,8 +81,12 @@ def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, 
             seen.add(key)
             uniq.append(e)
     policy = load_policy(init, device).train()
-    tr = build_transitions(uniq, obs_horizon=policy.obs_horizon, macro=macro)
+    tr = build_transitions(uniq, obs_horizon=policy.obs_horizon, macro=macro, max_per_episode=max_per_episode,
+                           seed=seed)
     n = len(tr["rew"])
+    codes = {c: int((tr["code"] == i).sum()) for i, c in enumerate(CODES)}
+    log(f"transitions by outcome {codes}; sampling {strata}; max/episode {max_per_episode}")
+    sample_w = torch.as_tensor(stratified_weights(tr["code"], strata), device=device)
     log(f"{len(uniq)} episodes -> {n} macro transitions ({int((tr['source'] == 1).sum())} student), "
         f"success-terminal {int(tr['done'].sum())}")
     T = {k: torch.as_tensor(v, device=device) for k, v in tr.items()}
@@ -98,7 +102,7 @@ def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, 
     opt_p = torch.optim.AdamW(policy.parameters(), lr=lr_policy, weight_decay=1e-4)
     t0, history = time.time(), []
     for step in range(1, steps + 1):
-        idx = torch.randint(0, n, (batch,), device=device)
+        idx = torch.multinomial(sample_w, batch, replacement=True)
         s, s2 = enc(T["obs"][idx]), enc(T["next_obs"][idx])
         a = (T["act"][idx] * T["valid"][idx, :, None]).flatten(1)
         with torch.no_grad():
@@ -140,6 +144,7 @@ def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, 
     info = {"git_commit": git_commit(), "init": str(init), "datasets": hashes, "n_episodes": len(uniq),
             "n_transitions": n, "iql": {"steps": steps, "batch": batch, "tau": tau, "beta": beta, "macro": macro,
                                         "lr_critic": lr_critic, "lr_policy": lr_policy, "adv_clip": adv_clip, "adv_norm": adv_norm,
+                                        "max_per_episode": max_per_episode, "strata": strata,
                                         "seed": seed},
             "checkpoint": {"path": str(ckpt), "sha256": sha}, "history": history}
     (out / "run.json").write_text(json.dumps(info, indent=1))
@@ -158,9 +163,13 @@ def main():
     ap.add_argument("--adv-norm", action="store_true", help="standardize advantages (beta is then a temperature)")
     ap.add_argument("--adv-clip", type=float, default=100.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--max-per-episode", type=int, default=None, help="subsample long episodes (stalls)")
+    ap.add_argument("--strata", choices=["natural", "uniform"], default="natural",
+                    help="uniform: each outcome code gets equal sampling weight")
     args = ap.parse_args()
     train_iql(args.init, args.versions, args.out, root=args.root, steps=args.steps, tau=args.tau, beta=args.beta,
-              adv_norm=args.adv_norm, adv_clip=args.adv_clip, seed=args.seed)
+              adv_norm=args.adv_norm, adv_clip=args.adv_clip, seed=args.seed,
+              max_per_episode=args.max_per_episode, strata=args.strata)
 
 
 if __name__ == "__main__":

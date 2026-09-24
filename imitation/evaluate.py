@@ -106,10 +106,11 @@ def evaluate(ckpt, sets=("id_easy",), n=48, workers=14, replan_every=8, pool=Non
 
     policy = None if ckpt == "expert" else load_policy(ckpt)
     needs_images = policy is not None and policy.needs_images
-    if pool is not None and needs_images and not pool.render:
-        raise ValueError("an image policy needs a pool made with EnvPool(n, {'render': True})")
+    cams = dict(policy.cameras) if needs_images else None
+    if pool is not None and needs_images and (not pool.render or dict(pool.cameras or {}) != cams):
+        raise ValueError(f"an image policy needs a pool made with EnvPool(n, {{'render': True, 'cameras': {cams}}})")
     own = pool is None
-    pool = pool or EnvPool(workers, {"render": needs_images})
+    pool = pool or EnvPool(workers, {"render": needs_images, "cameras": cams})
     results = {}
     try:
         if policy is None:

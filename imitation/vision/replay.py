@@ -22,27 +22,27 @@ import numpy as np
 from imitation.data.collect import DEFAULT_ROOT
 from imitation.data.schema import DatasetWriter, Episode, load_manifest
 from imitation.spec import ACTION_DIM, OBS_DIM
+from imitation.vision.render import CAMERAS
 
 _ENV = None
 
 
-def _replay(path):
+def _replay(job):
+    """Replay one frozen episode in the camera env (`HalfFoldEnv(obs_mode="dict")`)."""
     global _ENV
+    path, cameras = job
     from imitation.tasks import HalfFoldEnv
-    from imitation.vision.render import CameraRig
     if _ENV is None:
-        env = HalfFoldEnv()
-        _ENV = (env, CameraRig(env))
-    env, rig = _ENV
+        _ENV = HalfFoldEnv(obs_mode="dict", cameras=cameras)
+    env = _ENV
     ep = Episode.load(path)
     seed = ep.meta["seed"]
     obs, _ = env.reset(seed=seed)
-    rig.reset(seed)
     frames = []
     for t, action in enumerate(ep.actions):
-        if not np.array_equal(obs, ep.obs[t]):
+        if not np.array_equal(obs["state"], ep.obs[t]):
             raise RuntimeError(f"replay of seed {seed} diverged at step {t}")
-        frames.append(rig.render())
+        frames.append({k: v for k, v in obs.items() if k != "state"})
         obs, *_ = env.step(action)
     ep.images = {cam: np.stack([f[cam] for f in frames]) for cam in frames[0]}
     return ep
@@ -55,13 +55,16 @@ def main():
     ap.add_argument("--root", default=DEFAULT_ROOT)
     ap.add_argument("--workers", type=int, default=14)
     ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--main-size", type=int, default=CAMERAS["main"], help="main camera resolution (square)")
     args = ap.parse_args()
+    cameras = CAMERAS | {"main": args.main_size}
     out = args.out or f"{args.version}_img"
 
     src = load_manifest(args.root, args.version)
     writer = DatasetWriter(args.root, out, resume=args.resume,
-                           config={"rendered_from": args.version, "source_hash": src["content_hash"]})
-    todo = [Path(args.root) / e["file"] for e in src["episodes"] if e["seed"] not in writer.done_seeds]
+                           config={"rendered_from": args.version, "source_hash": src["content_hash"],
+                                   "cameras": cameras})
+    todo = [(Path(args.root) / e["file"], cameras) for e in src["episodes"] if e["seed"] not in writer.done_seeds]
     os.environ.update({k: "1" for k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")})
     t0 = time.time()
     with mp.get_context("spawn").Pool(args.workers) as pool:

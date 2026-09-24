@@ -115,3 +115,15 @@ def test_a_shadowing_teacher_labels_like_the_one_driving():
     acts = np.array(acts)
     errs = [np.abs(lab[:16, joints] - acts[t:t + 16, joints]).mean() for t, lab in labels.items() if t + 16 <= len(acts)]
     assert np.max(errs) < 0.02, np.round(errs, 3)
+
+
+def test_dict_observation_state_matches_flat_mode_exactly():
+    flat, cams = HalfFoldEnv(), HalfFoldEnv(obs_mode="dict")
+    o1, _ = flat.reset(seed=4)
+    o2, _ = cams.reset(seed=4)
+    assert o2["main"].shape == (3, 128, 128) and o2["main"].dtype == np.uint8
+    np.testing.assert_array_equal(o1, o2["state"])
+    rng = np.random.default_rng(0)
+    for _ in range(5):
+        a = rng.uniform(-1, 1, 12).astype(np.float32)
+        np.testing.assert_array_equal(flat.step(a)[0], cams.step(a)[0]["state"])

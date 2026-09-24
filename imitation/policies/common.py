@@ -95,7 +95,9 @@ def load_policy(path, device=None) -> ChunkPolicy:
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
     policy = build_policy(ckpt["kind"], **ckpt["config"])
     state = ckpt["state_dict"]
-    state.setdefault("obs_mask", torch.ones(policy.obs_dim))   # checkpoints from before M2.3
+    for k, v in policy.state_dict().items():   # buffers added later (obs_mask M2.3, img norm M4.1)
+        if k not in state and (k == "obs_mask" or k.startswith("img_")):
+            state[k] = v
     policy.load_state_dict(state)
     return policy.to(device or default_device()).eval()
 

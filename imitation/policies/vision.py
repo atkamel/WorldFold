@@ -19,7 +19,7 @@ from imitation.policies.chunk_mlp import _Block
 from imitation.policies.common import ChunkPolicy
 from imitation.spec import ACTION_DIM, OBS_DIM, OBS_SUBSETS
 
-DEFAULT_CAMERAS = (("main", 96), ("left_wrist_cam", 64), ("right_wrist_cam", 64))
+DEFAULT_CAMERAS = (("main", 128), ("left_wrist_cam", 64), ("right_wrist_cam", 64))   # M4.1: >= 128^2
 
 
 class _Encoder(nn.Module):
@@ -64,6 +64,21 @@ class VisionChunkPolicy(ChunkPolicy):
         self.blocks = nn.Sequential(*[_Block(width, dropout) for _ in range(depth)])
         self.out = nn.Sequential(nn.LayerNorm(width), nn.Linear(width, chunk * action_dim))
         self.set_obs_subset(OBS_SUBSETS["proprio"])
+        # per-modality normalization (M4.1): per camera, per channel; the defaults (0.5, 1)
+        # reproduce the fixed /255 - 0.5 of checkpoints trained before these buffers existed
+        for name, _ in self.cameras:
+            self.register_buffer(f"img_mean_{name}", torch.full((3,), 0.5))
+            self.register_buffer(f"img_std_{name}", torch.ones(3))
+
+    def set_image_normalizer(self, stats):
+        """stats: {camera: (mean[3], std[3])} over [0, 1] pixel values of the training frames."""
+        for name, (mean, std) in stats.items():
+            getattr(self, f"img_mean_{name}").copy_(torch.as_tensor(mean))
+            getattr(self, f"img_std_{name}").copy_(torch.as_tensor(std))
+
+    def normalize_image(self, name, img):
+        mean, std = getattr(self, f"img_mean_{name}"), getattr(self, f"img_std_{name}")
+        return (img.float() / 255.0 - mean[:, None, None]) / std[:, None, None]
 
     def config(self):
         return super().config() | {"width": self.width, "depth": self.depth, "dropout": self.dropout,
@@ -72,7 +87,7 @@ class VisionChunkPolicy(ChunkPolicy):
     def forward(self, obs, images, augment=False):
         feats = [self.proprio(self.normalize_obs(obs).flatten(1))]
         for name, _ in self.cameras:
-            x = images[name].float() / 255.0 - 0.5
+            x = self.normalize_image(name, images[name])
             if augment:
                 x = random_shift(x)
             feats.append(self.encoders[name](x))

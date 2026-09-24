@@ -63,7 +63,7 @@ class PolicyActor:
         self.rig = None
         if self.policy.needs_images:
             from imitation.vision.render import CameraRig
-            self.rig = CameraRig(env)
+            self.rig = CameraRig(env, dict(self.policy.cameras))   # render at the policy's sizes
 
     def reset(self, obs, seed):
         self.hist = deque([obs] * self.policy.obs_horizon, maxlen=self.policy.obs_horizon)

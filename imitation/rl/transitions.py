@@ -17,8 +17,13 @@ per-step fields instead of used as-is:
   +1.0                 on the step the episode *terminates with success* (sparse label)
   + clip(delta fold_score, -CLIP, CLIP)   dense progress shaping, spikes clipped
 Truncations (step cap) bootstrap, since `terminated` is False there (M1.3 schema).
-`unstable` episodes (solver blow-ups, stored as truncated) are dropped entirely: their
-last states are simulator artefacts, not outcomes.
+`unstable` episodes (solver blow-ups, stored as truncated) are *tagged* (`unstable` [N])
+and excluded by default: their last states are simulator artefacts, not outcomes.
+
+Every transition also carries its episode's outcome code (`code` [N]: success / G1 / F1 /
+S1 / M1, `imitation.evaluate.failure_code`) so a learner can sample stratified by failure
+mode (M5.1), and `max_per_episode` subsamples long episodes -- a stall that runs to the
+step cap otherwise contributes ~3x the transitions of a success (M5.3 diagnosis).
 """
 
 from __future__ import annotations
@@ -42,19 +47,31 @@ def step_rewards(ep) -> np.ndarray:
     return r
 
 
-def build_transitions(episodes, obs_horizon=2, macro=8, gamma_step=GAMMA_STEP):
-    """Macro-action transitions from every usable episode. Returns a dict of arrays:
-    obs [N,H,D], act [N,macro,A], rew [N], next_obs [N,H,D], done [N], discount [N],
-    valid [N,macro] (steps that exist -- the last interval can be short), plus
-    `source` [N] (0 expert, 1 student/dagger) for reporting."""
-    O, Act, R, O2, Dn, G, V, S = [], [], [], [], [], [], [], []
-    for ep in episodes:
-        if ep.meta.get("termination_reason") == "unstable":
+CODES = ("success", "G1", "F1", "S1", "M1")
+
+
+def build_transitions(episodes, obs_horizon=2, macro=8, gamma_step=GAMMA_STEP, include_unstable=False,
+                      max_per_episode=None, seed=0):
+    """Macro-action transitions. Returns a dict of arrays: obs [N,H,D], act [N,macro,A],
+    rew [N], next_obs [N,H,D], done [N], discount [N], valid [N,macro] (steps that exist --
+    the last interval can be short), `source` [N] (0 expert, 1 student/dagger), `code` [N]
+    (index into CODES), `unstable` [N] and `episode` [N]."""
+    from imitation.evaluate import failure_code
+    rng = np.random.default_rng(seed)
+    O, Act, R, O2, Dn, G, V, S, C, U, E = [], [], [], [], [], [], [], [], [], [], []
+    for ei, ep in enumerate(episodes):
+        unstable = ep.meta.get("termination_reason") == "unstable"
+        if unstable and not include_unstable:
             continue
         T = ep.steps
         r = step_rewards(ep)
+        code = CODES.index(failure_code(ep) or "success")
         obs_ext = np.concatenate([ep.obs, ep.final_obs[None]])          # obs_ext[T] = final
-        for t in range(0, T, macro):
+        starts = np.arange(0, T, macro)
+        if max_per_episode and len(starts) > max_per_episode:            # keep the terminal interval
+            keep = rng.choice(len(starts) - 1, max_per_episode - 1, replace=False)
+            starts = np.sort(np.concatenate([starts[keep], starts[-1:]]))
+        for t in starts:
             n = min(macro, T - t)
             a = np.zeros((macro, ep.actions.shape[1]), np.float32)
             a[:n] = ep.actions[t:t + n]
@@ -68,6 +85,22 @@ def build_transitions(episodes, obs_horizon=2, macro=8, gamma_step=GAMMA_STEP):
             G.append(gamma_step ** n)
             V.append(valid)
             S.append(0 if ep.meta["source"] == "expert" else 1)
+            C.append(code)
+            U.append(unstable)
+            E.append(ei)
     return {"obs": np.stack(O).astype(np.float32), "act": np.stack(Act), "rew": np.asarray(R, np.float32),
             "next_obs": np.stack(O2).astype(np.float32), "done": np.asarray(Dn, np.float32),
-            "discount": np.asarray(G, np.float32), "valid": np.stack(V), "source": np.asarray(S, np.int8)}
+            "discount": np.asarray(G, np.float32), "valid": np.stack(V), "source": np.asarray(S, np.int8),
+            "code": np.asarray(C, np.int8), "unstable": np.asarray(U, bool), "episode": np.asarray(E, np.int32)}
+
+
+def stratified_weights(code, mode="uniform"):
+    """Per-transition sampling weights. "uniform": every outcome code present gets the same
+    total weight (M5.1 stratification); "natural": plain uniform over transitions."""
+    if mode == "natural":
+        return np.ones(len(code), np.float32)
+    present, counts = np.unique(code, return_counts=True)
+    w = np.zeros(len(code), np.float32)
+    for c, n in zip(present, counts):
+        w[code == c] = 1.0 / n
+    return w / w.sum() * len(code)

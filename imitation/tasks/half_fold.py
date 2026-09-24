@@ -9,6 +9,9 @@ QuarterFoldExpert drives it as-is.
 
 from __future__ import annotations
 
+import gymnasium as gym
+import numpy as np
+
 from cloth_fold_rl.quarter_fold_env import STAGES, QuarterFoldEnv
 from imitation.spec import ACTION_DIM, OBS_DIM  # noqa: F401 (re-exported)
 
@@ -18,16 +21,45 @@ HALF_FOLD_MAX_STEPS = 250
 class HalfFoldEnv(QuarterFoldEnv):
     stages = STAGES[:1]
 
-    def __init__(self, max_episode_steps=HALF_FOLD_MAX_STEPS, seed=None, domain_randomization=True, **kwargs):
+    def __init__(self, max_episode_steps=HALF_FOLD_MAX_STEPS, seed=None, domain_randomization=True,
+                 obs_mode="state", cameras=None, **kwargs):
+        """obs_mode="state": the 139-D vector (imitation.md section 2).
+        obs_mode="dict":  {"state": 139-D, <camera>: uint8 [3, H, W], ...} -- the sensor-only
+        student's view (roadmap M4.1). `cameras` maps camera name -> square size (default
+        `imitation.vision.render.CAMERAS`); per-episode visual randomization is drawn from
+        the reset seed and only touches rendering, so `state` is identical in both modes."""
         super().__init__(max_episode_steps=max_episode_steps, seed=seed, **kwargs)
         self.unwrapped.domain_randomization = domain_randomization
+        self.obs_mode, self.rig = obs_mode, None
+        if obs_mode == "dict":
+            from imitation.vision.render import CAMERAS, CameraRig
+            self.rig = CameraRig(self, cameras or CAMERAS)
+            self.observation_space = gym.spaces.Dict(
+                {"state": self.observation_space,
+                 **{c: gym.spaces.Box(0, 255, (3, n, n), np.uint8) for c, n in self.rig.cameras.items()}})
+        elif obs_mode != "state":
+            raise ValueError(obs_mode)
+
+    def _wrap(self, obs):
+        return {"state": obs, **self.rig.render()} if self.rig else obs
 
     def reset(self, seed=None, options=None):
         # the base env samples a random task one-hot into the observation; for
         # a single-task policy that is pure noise, so pin it
         opts = dict(options or {})
         opts.setdefault("task", 0)
-        return super().reset(seed=seed, options=opts)
+        obs, info = super().reset(seed=seed, options=opts)
+        if self.rig:
+            self.rig.reset(0 if seed is None else seed)
+        return self._wrap(obs), info
+
+    def step(self, action):
+        obs, r, term, trunc, info = super().step(action)
+        return self._wrap(obs), r, term, trunc, info
+
+    def step_state(self, action):
+        """step() without rendering: for teacher look-ahead that is rolled back anyway."""
+        return super().step(action)
 
 
 def make_env(**kwargs):

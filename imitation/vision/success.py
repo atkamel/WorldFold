@@ -54,9 +54,12 @@ class SuccessDetector(nn.Module):
         super().__init__()
         self.enc = _Encoder(256)
         self.head = nn.Sequential(nn.GELU(), nn.Linear(256, 2))
+        # per-channel normalization fit on the training frames (M4.1); defaults = fixed /255 - 0.5
+        self.register_buffer("img_mean", torch.full((3,), 0.5))
+        self.register_buffer("img_std", torch.ones(3))
 
     def forward(self, img, augment=False):
-        x = img.float() / 255.0 - 0.5
+        x = (img.float() / 255.0 - self.img_mean[:, None, None]) / self.img_std[:, None, None]
         if augment:
             x = random_shift(x)
         out = self.head(self.enc(x))
@@ -96,6 +99,9 @@ def train_detector(root, versions, out, steps=8000, batch=256, lr=1e-3, seed=0, 
     log(f"{len(tr)} train / {len(va)} val frames, {pos:.1%} folded")
     w = torch.where(y[tr] > 0.5, 0.5 / pos, 0.5 / (1 - pos))      # class-balanced sampling
     model = SuccessDetector().to(device)
+    sample = X[torch.as_tensor(tr[:4096], device=device)]
+    model.img_mean.copy_((sample.float() / 255).mean(dim=(0, 2, 3)))
+    model.img_std.copy_((sample.float() / 255).std(dim=(0, 2, 3)).clamp(min=1e-3))
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, steps)
     tr_t = torch.as_tensor(tr, device=device)
@@ -125,7 +131,10 @@ def train_detector(root, versions, out, steps=8000, batch=256, lr=1e-3, seed=0, 
 def load_detector(path, device=None):
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
     model = SuccessDetector()
-    model.load_state_dict(ckpt["state_dict"])
+    state = ckpt["state_dict"]
+    for k, v in model.state_dict().items():          # detectors saved before the normalizer
+        state.setdefault(k, v)
+    model.load_state_dict(state)
     return model.to(device or default_device()).eval()
 
 
