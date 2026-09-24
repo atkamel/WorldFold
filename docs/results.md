@@ -45,6 +45,17 @@ step-cap truncation, most with an arm stuck in `lift`.
 **Gate verdict: pass.** Teacher recovery (96%) is within the ID intervals, so the recovery
 arm stands as designed. Artifacts: `outputs/imitation/gate_m1_7/`.
 
+### v1 collection outcome — M1.8 (2026-09-23)
+
+Expert, seeds 0-399, recovery fraction 0.3, 14 workers, 1250 s. Successes → `v1`
+(`769dd372719c`), failures → `v1_failures` (`699a1dc71c71`).
+
+| subset | n | success |
+|---|---|---|
+| clean | 279 | 271 = 97.1% [94.4, 98.5] |
+| perturbed (recovery demos) | 121 | 113 = 93.4% [87.5, 96.6] |
+| all | 400 | 384 = 96.0% [93.6, 97.5] |
+
 ### Collection throughput (M1.5)
 
 20-episode expert collect, seeds 0-19, `--workers 10 --mixed`, recovery fraction 0.3, two

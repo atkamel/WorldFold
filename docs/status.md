@@ -1,7 +1,6 @@
 # Status
 
-**Updated:** 2026-09-23 · **Branch:** `feature/imitation` · **Phase:** 1 (fix the silent
-breakers, then freeze v1)
+**Updated:** 2026-09-23 · **Branch:** `feature/imitation` · **Phase:** 2 (imitation baseline)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -12,16 +11,15 @@ One-screen answer to "where are we". Update at the end of **every work pass** (s
 
 ## Where we are
 
-The `imitation/` package is written and unit-tested but **has never run end to end**. The
-immediate goal is a first credible half-fold imitation result, which is blocked on freezing
-a dataset. The observation is fixed (M1.1); the remaining write-once-schema and collection
-defects (M1.2-M1.4) must land before that dataset is collected.
+Phase 1 is complete. The pipeline runs end to end, collection is streaming, resumable and
+deterministic, the schema carries transition flags, and **v1 is frozen** (384 successful
+expert episodes; 16 failures in `v1_failures`). The expert ceiling is measured
+(id_easy 100%, id_hard 97%, recovery 96%).
 
 ## Next action
 
-**M1.8 — freeze v1** (400 expert episodes, seeds 0-399). M1.7 gate passed: expert ceiling
-id_easy 100%, id_hard 97%, recovery 96% (n=100 each), resync 92-94% — the recovery arm
-stands as designed.
+**M2.1 — chunk-MLP BC on v1**, K=16 / replan 8, ≥2 seeds, eval n≥200 per set, Wilson
+intervals into `results.md`.
 
 ## Environment
 
@@ -39,12 +37,10 @@ grasping is contact-dominated and MuJoCo minors change results.
 
 | version | episodes | source | hash | notes |
 |---|---|---|---|---|
-| — | — | — | — | **none frozen yet** |
+| v1 | 384 (+16 in `v1_failures`) | expert, seeds 0-399, 30% perturbed | `769dd372719c` | successes only; 38,136 steps; failures hash `699a1dc71c71` |
 
-`v1` exists as an empty directory only: a 400-episode collection died at episode 215 and
-wrote nothing, because `collect.py` returned every episode before writing any (fixed in
-M1.2). `outputs/imitation/collect_v1.log` is retained as the record; the empty `v1/`
-directory was deleted in M1.2.
+Collection log: `outputs/imitation/collect_v1_m1_8.log`. The earlier failed attempt is
+kept as `outputs/imitation/collect_v1.log`.
 
 ## Best checkpoint
 
@@ -74,7 +70,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-23 · M1.7 gate passed: expert id_easy 100/100, id_hard 97/100, recovery 96/100; check_resync 92/94/93 of 100 · COMMIT
+- 2026-09-23 · M1.8 done, Phase 1 complete: froze v1 (384 eps, `769dd372719c`) + v1_failures (16); clean 271/279, recovery 113/121 · COMMIT
+- 2026-09-23 · M1.7 gate passed: expert id_easy 100/100, id_hard 97/100, recovery 96/100; check_resync 92/94/93 of 100 · 08eeda3
 - 2026-09-23 · M1.6 done: 20-ep smoke chain green (collect 19+1 fail split, train 600 steps, evaluate n=14×3, dagger 1 round froze smoke_dagger_r1 with 332 labels); no code change needed · a0f92ce
 - 2026-09-23 · M1.5 done: cached IK scratch (no speedup: 81-83 s → 82-93 s, identical hash); fixed cross-episode IK-rng leak that made collection nondeterministic; benchmark rows identical 48/50; 61 fast + 7 slow green · c95c431
 - 2026-09-23 · M1.4 done: failures → `<version>_failures` in collect, `bc_episodes` filter in train (`--allow-failures`); 28-ep all-perturbed collect split 25/3; 61 fast green · c64e9ce
