@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-09-23 · **Branch:** `feature/imitation` · **Phase:** 2 (imitation baseline)
+**Updated:** 2026-09-23 · **Branch:** `feature/imitation` · **Phase:** 2-3 (baseline → DAgger)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -11,15 +11,17 @@ One-screen answer to "where are we". Update at the end of **every work pass** (s
 
 ## Where we are
 
-Phase 1 is complete. The pipeline runs end to end, collection is streaming, resumable and
-deterministic, the schema carries transition flags, and **v1 is frozen** (384 successful
-expert episodes; 16 failures in `v1_failures`). The expert ceiling is measured
-(id_easy 100%, id_hard 97%, recovery 96%).
+Phase 2 is mostly done. BC on v1 (M2.1) matches the expert in distribution but not under
+shift: 97.5 / 72.5 / 37.0% (id_easy / id_hard / recovery, n=200) vs the expert's
+100 / 97 / 96. The failure map (M2.2) is now mechanistic: recovery failures are G1 grasp
+and F1 placement. The ablation (M2.3) shows cloth state is worth ~25 pp under shift, and
+it isn't the corner keypoints that carry it. DAgger (M3.2) is running from `bc_v1_s0`;
+the diffusion head (M2.4) is training.
 
 ## Next action
 
-**M2.1 — chunk-MLP BC on v1**, K=16 / replan 8, ≥2 seeds, eval n≥200 per set, Wilson
-intervals into `results.md`.
+**M3.2 — DAgger rounds** (`outputs/imitation/runs/dagger_v1/`), then M2.4 eval, then the
+half-fold demo from the best checkpoint.
 
 ## Environment
 
@@ -44,7 +46,8 @@ kept as `outputs/imitation/collect_v1.log`.
 
 ## Best checkpoint
 
-None. No policy has been trained on real data.
+`outputs/imitation/runs/bc_v1_s0/final.pt`: BC on v1, 97.5 / 72.5 / 37.0% (n=200).
+Weights are gitignored; `run.json` + `eval_r8.json` are the record.
 
 ## Open blockers and known defects
 
@@ -68,7 +71,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-24 · M2.2 code (mechanistic failure codes + `perturbed_failures`, collision-free eval versions), M2.3 plumbing (`--obs-subset`, `obs_mask` buffer), M3.1 done (hashed val split, expert-only dense targets, terminal-only padding, SE keep/stop at n=200, `--resume`, clamp logging), `imitation/demo.py`; 71 fast green · COMMIT
+- 2026-09-24 · M2.1 (BC 2 seeds, n=200) + M2.2 (mechanistic histograms) + M2.3 (obs ablation) done; docs/pipeline.md added; DAgger + diffusion launched · COMMIT
+- 2026-09-24 · M2.2 code (mechanistic failure codes + `perturbed_failures`, collision-free eval versions), M2.3 plumbing (`--obs-subset`, `obs_mask` buffer), M3.1 done (hashed val split, expert-only dense targets, terminal-only padding, SE keep/stop at n=200, `--resume`, clamp logging), `imitation/demo.py`; 71 fast green · 33067c6
 - 2026-09-23 · M1.8 done, Phase 1 complete: froze v1 (384 eps, `769dd372719c`) + v1_failures (16); clean 271/279, recovery 113/121 · 212469d
 - 2026-09-23 · M1.7 gate passed: expert id_easy 100/100, id_hard 97/100, recovery 96/100; check_resync 92/94/93 of 100 · 08eeda3
 - 2026-09-23 · M1.6 done: 20-ep smoke chain green (collect 19+1 fail split, train 600 steps, evaluate n=14×3, dagger 1 round froze smoke_dagger_r1 with 332 labels); no code change needed · a0f92ce

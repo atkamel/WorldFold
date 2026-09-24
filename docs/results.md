@@ -72,12 +72,55 @@ episodes, so a seed's demo depended on which worker ran it before.
 
 ## Imitation baselines
 
-_Nothing measured yet — no dataset has been frozen._
+### M2.1 — chunk-MLP BC on v1 (2026-09-24)
+
+Dataset `v1` (`769dd372719c`, 384 eps; hashed split → 340 train / 44 val), chunk_mlp
+8.65M params, K=16, replan 8, 30k steps, batch 1024, EMA 0.999. Eval n=200 per set, held-out
+seeds (`imitation/seeds.py`), Wilson 95%. Failure codes are mechanistic (M2.2); on
+`recovery` every failure is also a perturbed failure. Code at commit `33067c6`.
+
+| run | set | n | success | fold score | failure codes |
+|---|---|---|---|---|---|
+| bc_v1_s0 | id_easy | 200 | 195/200 = 97.5% [94.3, 98.9] | 0.907 | F1 4, S1 1 |
+| bc_v1_s0 | id_hard | 200 | 145/200 = 72.5% [65.9, 78.2] | 0.806 | G1 30, F1 17, S1 8 |
+| bc_v1_s0 | recovery | 200 | 74/200 = 37.0% [30.6, 43.9] | 0.735 | G1 69, F1 53, S1 4 |
+| bc_v1_s1 | id_easy | 200 | 193/200 = 96.5% [93.0, 98.3] | 0.907 | F1 6, G1 1 |
+| bc_v1_s1 | id_hard | 200 | 137/200 = 68.5% [61.8, 74.5] | 0.770 | G1 44, F1 16, S1 3 |
+| bc_v1_s1 | recovery | 200 | 61/200 = 30.5% [24.5, 37.2] | 0.710 | G1 79, F1 58, S1 2 |
+
+Reading: BC matches the expert in distribution (97% vs 100%) but falls off under shift:
+id_hard −25 pp and recovery −60 pp against the expert ceiling (97% / 96%). Recovery
+failures are mostly missed or dropped grasps (G1) and misplaced corners (F1). This
+compounding error is the gap DAgger (M3.2) targets. Seeds agree within their intervals.
+Artifacts: `outputs/imitation/runs/bc_v1_s{0,1}/` (`run.json`, `eval_r8.json`).
 
 ## Ablations
 
-_Pending. First planned: privileged-features ablation (proprio-only / +corners / full 139),
-roadmap M2.3._
+### M2.3 — privileged-features ablation (2026-09-24)
+
+Same protocol as M2.1 (v1, chunk_mlp, 30k steps, seed 0, n=200 per set). Hidden dims are
+zeroed after normalization (`--obs-subset`, `imitation/spec.py::OBS_SUBSETS`).
+`proprio` = 48 sensor-available proprio dims (no weld grasp flags). `proprio_corners` =
+proprio + 4 corner positions + goal keypoints + stage/settle (74 dims).
+
+| obs | id_easy | id_hard | recovery |
+|---|---|---|---|
+| full (139) | 195/200 = 97.5% [94.3, 98.9] | 145/200 = 72.5% [65.9, 78.2] | 74/200 = 37.0% [30.6, 43.9] |
+| proprio_corners (74) | 192/200 = 96.0% [92.3, 98.0] | 90/200 = 45.0% [38.3, 51.9] | 54/200 = 27.0% [21.3, 33.5] |
+| proprio (48) | 184/200 = 92.0% [87.4, 95.0] | 97/200 = 48.5% [41.7, 55.4] | 52/200 = 26.0% [20.4, 32.5] |
+
+Reading:
+- **In distribution, cloth state barely matters** (92% blind). From nominal starts the fold
+  can be replayed almost open-loop from proprioception.
+- **Under shift it's worth ~25 pp on id_hard**, but corner positions + goals alone buy
+  nothing over proprio-only (45.0 vs 48.5, overlapping intervals). The gain comes from
+  the remaining cloth dims: corner-to-goal vectors, corner velocities, sampled vertices,
+  z statistics, progress. For Phase 4 this means a vision student must recover *relative*
+  cloth geometry (corner-to-goal, shape), not just corner keypoints.
+- The extra G1 (grasp) failures on id_hard without cloth state (63-69 vs 30) show the
+  shifted corner is where the grasp misses.
+- Single seed per arm. The seed-to-seed spread on full is ~4 pp (M2.1), below every gap
+  called out here.
 
 ## DAgger rounds
 

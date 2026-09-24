@@ -73,9 +73,9 @@ are collected.
 
 | | milestone | exit | status |
 |---|---|---|---|
-| M2.1 | Chunk-MLP BC, K=16 / replan 8, ≥2 seeds, eval n≥200 | checkpoint + Wilson intervals in `results.md` | ☐ |
-| M2.2 | Failure map; fix the R1 short-circuit and the `eval_{name}` collision | mechanistic histogram per set | ☐ |
-| M2.3 | Privileged-features ablation: proprio-only / +corners / full 139 | table sizing the Phase 4 vision work | ☐ |
+| M2.1 | Chunk-MLP BC, K=16 / replan 8, ≥2 seeds, eval n≥200 | checkpoint + Wilson intervals in `results.md` | ✅ |
+| M2.2 | Failure map; fix the R1 short-circuit and the `eval_{name}` collision | mechanistic histogram per set | ✅ |
+| M2.3 | Privileged-features ablation: proprio-only / +corners / full 139 | table sizing the Phase 4 vision work | ✅ |
 | M2.4 | Diffusion head-to-head, same protocol | keep only if it wins outside the intervals | ☐ |
 
 M2.3 is three index-sliced trainings on data already in hand and is the cheapest informative

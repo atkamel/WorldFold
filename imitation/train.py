@@ -96,7 +96,7 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
     n_train = len(tensors["train"][0])
     clamped = clamp_fraction(tensors["train"][0], policy.obs_mean, policy.obs_std)
     if clamped > 0:
-        log(f"normalizer clamp: {clamped:.4%} of train obs entries at +-10 (warm start keeps the old normalizer)")
+        log(f"normalizer clamp: {clamped:.4%} of train obs entries at +-10")
     n_dagger = int((tensors["train"][3] == 1).sum())
     log(f"device {device} | {len(train_eps)} train / {len(val_eps)} val episodes | {n_train} samples "
         f"({n_dagger} DAgger labels) | {policy.kind} {n_params(policy) / 1e6:.2f}M params")
