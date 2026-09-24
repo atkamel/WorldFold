@@ -132,6 +132,14 @@ per-episode array list, which is authoritative. Properties that matter:
   teacher steps are pieces of different replans). The post-episode "hold still" padding
   counts as supervised only after a true terminal. The train/val split hashes each seed
   (`is_val_seed`), so adding DAgger data never moves a seed across the split.
+- **DAgger labels come from a shadowing teacher (M3.2).** While the student drives, the
+  worker calls `ScriptedTeacher.observe()` before every step, so the teacher's phase
+  machine, IK targets and timers evolve as if it were acting. A label keeps that state
+  unless geometry puts an arm in a different phase group (pre-grasp / holding /
+  released). Re-inferring from scratch disagreed with the expert on its own trajectory.
+- **Camera images (Phase 4)** are optional per episode, in `<episode>.img.npz`, hashed
+  and loaded on request. `imitation.vision.replay` renders a frozen version into a new
+  one (`v1` → `v1_img`) by replaying its actions; replay is exact.
 - **Failures are kept**, tagged by `termination_reason`, in their own version
   `<version>_failures` (collect default since M1.4). `train` additionally drops any failed
   *expert* episode via `bc_episodes` unless `--allow-failures`; DAgger episodes are kept

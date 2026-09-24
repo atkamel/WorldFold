@@ -87,12 +87,13 @@ class _TimedPolicy:
 
     def __init__(self, policy):
         self.policy, self.obs_horizon, self.chunk = policy, policy.obs_horizon, policy.chunk
+        self.needs_images = policy.needs_images
         self.times, self.batch = [], []
 
-    def predict(self, obs):
+    def predict(self, obs, images=None):
         import torch
         t0 = time.perf_counter()
-        out = self.policy.predict(obs)
+        out = self.policy.predict(obs, images) if self.needs_images else self.policy.predict(obs)
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         self.times.append(time.perf_counter() - t0)
@@ -103,14 +104,18 @@ class _TimedPolicy:
 def evaluate(ckpt, sets=("id_easy",), n=48, workers=14, replan_every=8, pool=None, log=print, save_dir=None):
     from imitation.policies.common import load_policy
 
+    policy = None if ckpt == "expert" else load_policy(ckpt)
+    needs_images = policy is not None and policy.needs_images
+    if pool is not None and needs_images and not pool.render:
+        raise ValueError("an image policy needs a pool made with EnvPool(n, {'render': True})")
     own = pool is None
-    pool = pool or EnvPool(workers)
+    pool = pool or EnvPool(workers, {"render": needs_images})
     results = {}
     try:
-        if ckpt == "expert":
+        if policy is None:
             controller, timed = ExpertController(), None
         else:
-            timed = _TimedPolicy(load_policy(ckpt))
+            timed = _TimedPolicy(policy)
             controller = PolicyController(timed, replan_every=replan_every)
         for name in sets:
             seeds, reset_options, perturb_fn = eval_set(name, n)

@@ -23,6 +23,7 @@ def default_device():
 
 class ChunkPolicy(nn.Module):
     kind = "base"
+    needs_images = False
 
     def __init__(self, obs_dim, action_dim, obs_horizon, chunk):
         super().__init__()
@@ -70,7 +71,12 @@ class ChunkPolicy(nn.Module):
 def _registry():
     from imitation.policies.chunk_mlp import ChunkMLP
     from imitation.policies.diffusion import DiffusionPolicy
-    return {ChunkMLP.kind: ChunkMLP, DiffusionPolicy.kind: DiffusionPolicy}
+    from imitation.policies.vision import VisionChunkPolicy
+    return {c.kind: c for c in (ChunkMLP, DiffusionPolicy, VisionChunkPolicy)}
+
+
+def policy_class(kind) -> type[ChunkPolicy]:
+    return _registry()[kind]
 
 
 def build_policy(kind, **config) -> ChunkPolicy:

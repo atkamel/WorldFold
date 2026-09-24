@@ -14,6 +14,8 @@ from imitation.rollout import Perturbation
 
 TRAIN_SEED_BASE = 0            # expert demos: 0 ..
 DAGGER_SEED_BASE = 50_000      # DAgger rollouts: 50_000 + 1000 * round ..
+DISTILL_SEED_BASE = 70_000     # sensor-only distillation rollouts (Phase 4): 70_000 + 1000 * round ..
+HARVEST_SEED_BASE = 400_000    # student rollout harvest for offline RL (Phase 5): 400_000 ..
 EVAL_SEED_BASE = {"id_easy": 100_000, "id_hard": 200_000, "recovery": 300_000}
 HARD_JITTER = 0.04
 

@@ -124,4 +124,27 @@ Reading:
 
 ## DAgger rounds
 
-_Pending._
+### dagger_v1 — INVALID (teacher label bug), kept for the record (2026-09-24)
+
+From `bc_v1_s0`, 128 rollouts/round, β 0.3 → 0.15, n=200. Versions `v1_dagger_v1_r1`,
+`v1_dagger_v1_r2` (frozen, write-once) carry the bad labels and must not be trained on.
+
+| round | id_easy | id_hard | recovery | kept |
+|---|---|---|---|---|
+| 0 (bc_v1_s0 re-eval) | 195/200 | 134/200 | 77/200 | — |
+| 1 | 176/200 | 86/200 | 82/200 | no (−1.3 SE) |
+
+Round 1 *regressed* with S1 stalls up from 1-17 to 59-66 per set. Cause: `label_chunk`
+re-inferred every arm's phase from geometry and re-solved IK from scratch at each label,
+so labels disagreed with the expert **on the expert's own trajectory**: 0.12-0.57 mean
+abs joint-action error during carry/place and 0.5-0.75 on the gripper. The student was
+trained on two conflicting teachers and averaged them. Fixed by the shadowing teacher
+(`ScriptedTeacher.observe`, imitation.md §4), which gives exact agreement
+(`test_a_shadowing_teacher_labels_like_the_one_driving`, max err < 0.02).
+
+Also found: the round-0 re-eval of the *same* checkpoint gave id_hard 134/200 vs 145/200
+in M2.1. GPU outputs differ ~1e-6 with batch size, the cloth sim amplifies that, and
+batch composition depends on worker timing. Fixed by padding every policy batch to a
+fixed size (`rollout.padded_predict`); evaluations after this commit are deterministic
+per seed. **M2.1-M2.3 numbers above predate the fix**: they're valid samples, but a
+re-run will not reproduce them exactly.

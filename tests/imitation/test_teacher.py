@@ -65,3 +65,53 @@ def test_teacher_reset_restarts_the_ik_rngs():
         e.rng.random()                                      # an earlier episode drew restarts
     teacher.reset()
     assert state() == fresh
+
+
+def test_labels_agree_with_the_expert_on_its_own_trajectory():
+    """DAgger labels must say what the expert would do. Along the expert's own
+    episode, the chunk labelled at t should match the actions it then took (M3.2:
+    resync-from-scratch labels disagreed by up to 0.57 per joint during carry)."""
+    env = HalfFoldEnv()
+    teacher = ScriptedTeacher(env)
+    joints = [0, 1, 2, 3, 4, 6, 7, 8, 9, 10]
+    errs = []
+    for seed in (0, 1):
+        env.reset(seed=seed)
+        teacher.reset()
+        acts, labels = [], {}
+        for t in range(250):
+            if t % 8 == 0:
+                labels[t] = teacher.label_chunk(env, 16)
+            acts.append(teacher.act())
+            _, _, term, trunc, _ = env.step(acts[-1])
+            if term or trunc:
+                break
+        acts = np.array(acts)
+        for t, lab in labels.items():
+            n = min(16, len(acts) - t)
+            if n >= 8:
+                errs.append(np.abs(lab[:n, joints] - acts[t:t + n, joints]).mean())
+    assert np.median(errs) < 0.02 and np.max(errs) < 0.1, np.round(errs, 3)
+
+
+def test_a_shadowing_teacher_labels_like_the_one_driving():
+    """Someone else drives (here: a second expert); the labelling teacher only observes.
+    Its labels must match what the driver then does."""
+    env = HalfFoldEnv()
+    driver, labeller = ScriptedTeacher(env), ScriptedTeacher(env)
+    joints = [0, 1, 2, 3, 4, 6, 7, 8, 9, 10]
+    env.reset(seed=3)
+    driver.reset()
+    labeller.reset()
+    acts, labels = [], {}
+    for t in range(250):
+        if t % 8 == 0:
+            labels[t] = labeller.label_chunk(env, 16)
+        labeller.observe()
+        acts.append(driver.act())
+        _, _, term, trunc, _ = env.step(acts[-1])
+        if term or trunc:
+            break
+    acts = np.array(acts)
+    errs = [np.abs(lab[:16, joints] - acts[t:t + 16, joints]).mean() for t, lab in labels.items() if t + 16 <= len(acts)]
+    assert np.max(errs) < 0.02, np.round(errs, 3)

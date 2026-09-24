@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import torch
 
-from imitation.data.dataset import Normalizer, bc_episodes, build_samples, split_episodes
+from imitation.data.dataset import Normalizer, bc_episodes, build_samples, split_episodes, teacher_samples
 from imitation.data.schema import (ACTOR_PERTURB, ACTOR_STUDENT, ACTOR_TEACHER, DatasetWriter, Episode,
                                    load_dataset, validate_episode)
 from imitation.policies.common import build_policy, load_policy, save_policy
@@ -196,3 +196,59 @@ def test_truncated_episode_tail_is_not_padded_as_supervised():
     ep.terminated[-1], ep.truncated[-1], ep.discount[-1] = False, True, 1.0
     X, Y, M, W = build_samples([ep], obs_horizon=2, chunk=K)
     np.testing.assert_array_equal(M[-1], [1, 0, 0, 0])
+
+
+def test_images_are_stored_beside_the_episode_hashed_and_loaded_on_request(tmp_path):
+    ep = make_episode(0, T=5)
+    ep.images = {"main": np.random.default_rng(0).integers(0, 255, (5, 3, 8, 8), dtype=np.uint8)}
+    w = DatasetWriter(tmp_path, "v1_img")
+    w.add(ep, D, A)
+    w.freeze()
+    _, (plain,) = load_dataset(tmp_path, "v1_img")
+    assert plain.images is None
+    _, (withimg,) = load_dataset(tmp_path, "v1_img", images=True)
+    np.testing.assert_array_equal(withimg.images["main"], ep.images["main"])
+    img_file = next((tmp_path / "v1_img" / "episodes").glob("*.img.npz"))
+    np.savez_compressed(img_file, main=np.zeros((5, 3, 8, 8), np.uint8))
+    with pytest.raises(ValueError, match="hash"):
+        load_dataset(tmp_path, "v1_img", images=True)
+
+
+def test_vision_policy_ignores_privileged_dims_and_roundtrips(tmp_path):
+    torch.manual_seed(0)
+    p = build_policy("vision", obs_dim=D, action_dim=A, obs_horizon=2, chunk=4)
+    obs = np.random.default_rng(0).normal(size=(2, 2, D)).astype(np.float32)
+    imgs = [{c: np.random.default_rng(i).integers(0, 255, (3, s, s), dtype=np.uint8) for c, s in p.cameras}
+            for i in range(2)]
+    out = p.predict(obs, imgs)
+    assert out.shape == (2, 4, A) and np.abs(out).max() <= 1.0
+    moved = obs.copy()
+    moved[..., 60] += 5.0                                    # cloth state is privileged: no effect
+    np.testing.assert_allclose(p.predict(moved, imgs), out, atol=1e-6)
+    t_imgs = {c: torch.as_tensor(np.stack([im[c] for im in imgs])) for c, _ in p.cameras}
+    loss = p.compute_loss(torch.as_tensor(obs), torch.zeros(2, 4, A), torch.ones(2, 4), t_imgs)
+    loss.backward()
+    save_policy(p, tmp_path / "v.pt")
+    np.testing.assert_allclose(load_policy(tmp_path / "v.pt", "cpu").predict(obs, imgs), out, atol=1e-5)
+
+
+def test_teacher_samples_label_every_step_and_weight_student_episodes():
+    class Const:
+        obs_horizon = 1
+        def predict(self, x):
+            return np.full((len(x), 16, A), 0.25, np.float32)
+    eps = [make_episode(0, T=5), make_episode(1, T=3, source="dagger")]
+    X, Y, M, W, I = teacher_samples(eps, Const(), obs_horizon=2, chunk=4)
+    assert len(X) == 8 and Y.shape == (8, 4, A) and np.all(Y == 0.25)
+    assert list(W) == [0] * 5 + [1] * 3 and list(I) == list(range(8))
+
+
+def test_padded_predict_is_independent_of_batch_composition():
+    from imitation.rollout import padded_predict
+    torch.manual_seed(0)
+    p = build_policy("chunk_mlp", obs_dim=D, action_dim=A, obs_horizon=2, chunk=4).to(
+        "cuda" if torch.cuda.is_available() else "cpu")
+    x = np.random.default_rng(0).normal(size=(9, 2, D)).astype(np.float32)
+    alone = padded_predict(p, x[:1])
+    np.testing.assert_array_equal(padded_predict(p, x)[:1], alone)
+    np.testing.assert_array_equal(padded_predict(p, x[:3])[:1], alone)

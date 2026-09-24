@@ -22,15 +22,16 @@ import numpy as np
 import torch
 
 from imitation.data.collect import DEFAULT_ROOT
-from imitation.data.dataset import Normalizer, bc_episodes, clamp_fraction, build_samples, split_episodes
+from imitation.data.dataset import Normalizer, bc_episodes, clamp_fraction, teacher_samples, build_samples, split_episodes
 from imitation.data.schema import load_dataset
-from imitation.policies.common import build_policy, default_device, load_policy, n_params, save_policy
+from imitation.policies.common import build_policy, policy_class, default_device, load_policy, n_params, save_policy
 from imitation.spec import OBS_SUBSETS
 
 POLICY_DEFAULTS = {
     "chunk_mlp": {"obs_horizon": 2, "chunk": 16, "width": 512, "depth": 4, "dropout": 0.1},
     "diffusion": {"obs_horizon": 2, "chunk": 16, "cond_dim": 256, "channels": [128, 256],
                   "train_steps": 100, "infer_steps": 10},
+    "vision": {"obs_horizon": 2, "chunk": 16, "width": 512, "depth": 3, "dropout": 0.1},
 }
 
 
@@ -61,17 +62,23 @@ class EMA:
 
 def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024, lr=1e-3, weight_decay=1e-4,
           warmup=500, ema=0.999, seed=0, eval_every=2000, init_from=None, max_episodes=None,
-          policy_kwargs=None, dagger_weight=1.0, allow_failures=False, obs_subset="full", log=print):
+          policy_kwargs=None, dagger_weight=1.0, allow_failures=False, obs_subset=None, teacher=None, log=print):
     """dagger_weight: sampling weight of a DAgger label relative to an expert chunk. Labels
     are few (one per replan) next to the dense expert chunks, and they are exactly
-    the states the student gets wrong, so they are oversampled."""
+    the states the student gets wrong, so they are oversampled.
+
+    obs_subset: hide observation dims (M2.3); None keeps the policy's own default.
+    teacher: a privileged checkpoint -- every step's target becomes its chunk from the
+    stored observation (Phase 4 distillation) instead of the expert/DAgger labels.
+    Image policies (`needs_images`) load the dataset's camera images onto the device."""
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = default_device()
     run = Path(run)
     run.mkdir(parents=True, exist_ok=True)
 
-    manifest, episodes = load_dataset(root, dataset)
+    needs_images = policy_class(load_policy(init_from, "cpu").kind if init_from else policy_kind).needs_images
+    manifest, episodes = load_dataset(root, dataset, images=needs_images)
     episodes, n_failed = bc_episodes(episodes, allow_failures)
     if n_failed:
         log(f"dropped {n_failed} failed expert episodes (pass allow_failures to keep them)")
@@ -80,19 +87,30 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
     train_eps, val_eps = split_episodes(episodes, val_fraction=0.1)
     if not train_eps:             # a single episode (debugging): validate on what we train on
         train_eps = val_eps
-    cfg = POLICY_DEFAULTS[policy_kind] | (policy_kwargs or {})
+    cfg = POLICY_DEFAULTS.get(policy_kind, {}) | (policy_kwargs or {})
     if init_from:                 # warm start keeps the checkpoint's normalizer: its weights expect it
         policy = load_policy(init_from, device).train()
     else:
         policy = build_policy(policy_kind, **cfg).to(device)
         norm = Normalizer.fit(train_eps)
         policy.set_normalizer(norm.mean, norm.std)
-        policy.set_obs_subset(OBS_SUBSETS[obs_subset])
+        if obs_subset:
+            policy.set_obs_subset(OBS_SUBSETS[obs_subset])
+    teacher_policy = load_policy(teacher, device) if teacher else None
 
-    tensors = {}
+    tensors, images = {}, {}
     for name, eps in (("train", train_eps), ("val", val_eps)):
-        X, Y, M, W = build_samples(eps, policy.obs_horizon, policy.chunk)
-        tensors[name] = [torch.as_tensor(a, device=device) for a in (X, Y, M)] + [W]
+        if teacher_policy is not None:
+            X, Y, M, W, I = teacher_samples(eps, teacher_policy, policy.obs_horizon, policy.chunk)
+        else:
+            X, Y, M, W, I = build_samples(eps, policy.obs_horizon, policy.chunk, index=True)
+        tensors[name] = [torch.as_tensor(a, device=device) for a in (X, Y, M)] + [W, torch.as_tensor(I, device=device)]
+        if needs_images:          # uint8 on the device; ~50 KB/step, converted to float per batch
+            images[name] = {cam: torch.as_tensor(np.concatenate([e.images[cam] for e in eps]), device=device)
+                            for cam, _ in policy.cameras}
+
+    def batch_images(name, rows):
+        return {cam: img[rows] for cam, img in images[name].items()} if needs_images else None
     n_train = len(tensors["train"][0])
     clamped = clamp_fraction(tensors["train"][0], policy.obs_mean, policy.obs_std)
     if clamped > 0:
@@ -114,15 +132,17 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
 
     @torch.no_grad()
     def val_loss(model):
-        X, Y, M, _ = tensors["val"]
-        total, count = 0.0, 0
-        for i in range(0, len(X), 4096):
+        X, Y, M, _, I = tensors["val"]
+        total, count, bs = 0.0, 0, 4096 if not needs_images else 512
+        for i in range(0, len(X), bs):
+            s = slice(i, i + bs)
+            args = (X[s], Y[s], M[s]) + ((batch_images("val", I[s]),) if needs_images else ())
             with torch.autocast(device.type, dtype=torch.bfloat16, enabled=amp):
-                total += float(model.compute_loss(X[i:i + 4096], Y[i:i + 4096], M[i:i + 4096])) * len(X[i:i + 4096])
-            count += len(X[i:i + 4096])
+                total += float(model.compute_loss(*args)) * len(X[s])
+            count += len(X[s])
         return total / max(count, 1)
 
-    X, Y, M, W = tensors["train"]
+    X, Y, M, W, I = tensors["train"]
     weights = torch.as_tensor(np.where(W == 1, dagger_weight, 1.0), dtype=torch.float32, device=device)
     t0, history, running = time.time(), [], 0.0
     policy.train()
@@ -130,7 +150,8 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
         idx = (torch.multinomial(weights, batch, replacement=True) if n_dagger and dagger_weight != 1.0
                else torch.randint(0, n_train, (batch,), device=device))
         with torch.autocast(device.type, dtype=torch.bfloat16, enabled=amp):
-            loss = policy.compute_loss(X[idx], Y[idx], M[idx])
+            args = (X[idx], Y[idx], M[idx]) + ((batch_images("train", I[idx]),) if needs_images else ())
+            loss = policy.compute_loss(*args)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
@@ -154,7 +175,8 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
     info = {"git_commit": git_commit(), "dataset": {"root": str(root), "version": dataset,
                                                     "content_hash": manifest["content_hash"],
                                                     "n_episodes": len(episodes), "n_train_samples": n_train,
-                                                    "n_dagger_labels": n_dagger, "clamped_fraction": clamped},
+                                                    "n_dagger_labels": n_dagger, "clamped_fraction": clamped,
+                                                    "teacher": str(teacher) if teacher else None},
             "policy": {"kind": policy.kind, "config": policy.config(), "n_params": n_params(policy)},
             "train": {"steps": steps, "batch": batch, "lr": lr, "weight_decay": weight_decay, "warmup": warmup,
                       "ema": ema, "seed": seed, "dagger_weight": dagger_weight, "obs_subset": obs_subset, "init_from": str(init_from) if init_from else None,
@@ -178,14 +200,16 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--init-from", default=None)
-    ap.add_argument("--obs-subset", choices=list(OBS_SUBSETS), default="full", help="M2.3 ablation")
+    ap.add_argument("--obs-subset", choices=list(OBS_SUBSETS), default=None, help="M2.3 ablation")
+    ap.add_argument("--teacher", default=None, help="privileged checkpoint to distill from (Phase 4)")
+    ap.add_argument("--dagger-weight", type=float, default=1.0)
     ap.add_argument("--allow-failures", action="store_true", help="train on failed expert episodes too")
     ap.add_argument("--max-episodes", type=int, default=None, help="debug: train on the first N episodes")
     ap.add_argument("--policy-kwargs", default="{}", help='JSON overrides, e.g. \'{"chunk": 8}\'')
     args = ap.parse_args()
     train(args.policy, args.dataset, args.run, root=args.root, steps=args.steps, batch=args.batch, lr=args.lr,
           seed=args.seed, init_from=args.init_from, max_episodes=args.max_episodes, allow_failures=args.allow_failures,
-          obs_subset=args.obs_subset,
+          obs_subset=args.obs_subset, teacher=args.teacher, dagger_weight=args.dagger_weight,
           policy_kwargs=json.loads(args.policy_kwargs))
 
 

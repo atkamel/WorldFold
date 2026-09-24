@@ -11,17 +11,18 @@ One-screen answer to "where are we". Update at the end of **every work pass** (s
 
 ## Where we are
 
-Phase 2 is mostly done. BC on v1 (M2.1) matches the expert in distribution but not under
-shift: 97.5 / 72.5 / 37.0% (id_easy / id_hard / recovery, n=200) vs the expert's
-100 / 97 / 96. The failure map (M2.2) is now mechanistic: recovery failures are G1 grasp
-and F1 placement. The ablation (M2.3) shows cloth state is worth ~25 pp under shift, and
-it isn't the corner keypoints that carry it. DAgger (M3.2) is running from `bc_v1_s0`;
-the diffusion head (M2.4) is training.
+Phase 2 is done except M2.4 (the diffusion checkpoint is trained, not yet evaluated). The
+first DAgger run (`dagger_v1`) regressed, and the cause is fixed: the teacher's
+resync-from-scratch labels contradicted the expert's own actions. The teacher now shadows
+the student (exact agreement, tested). Policy inference is padded to a fixed batch,
+so evaluations are deterministic. `dagger_v2` is running on the fixed teacher.
+Phase 4 plumbing is in: camera rig, image store, `v1_img` (384 eps, replay-exact), vision
+policy, `train --teacher` distillation, `imitation.vision.distill`, image-aware evaluate.
 
 ## Next action
 
-**M3.2 — DAgger rounds** (`outputs/imitation/runs/dagger_v1/`), then M2.4 eval, then the
-half-fold demo from the best checkpoint.
+**M3.2 — `dagger_v2`** (`outputs/imitation/runs/dagger_v2/`), then M4.2 distillation
+from its best checkpoint, M2.4 eval, the half-fold demo.
 
 ## Environment
 
@@ -29,7 +30,7 @@ half-fold demo from the best checkpoint.
 |---|---|
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
-| tests | 71 fast + 7 slow, all passing (`pytest -m "not slow"` / `-m slow`) |
+| tests | 75 fast + 9 slow, all passing (`pytest -m "not slow"` / `-m slow`) |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -55,6 +56,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
+| 11 | `v1_dagger_v1_r1`/`_r2` frozen with bad teacher labels — never train on them | DAgger | — |
 | 10 | `cloth_angles/tasks.py::QUARTER` diverged from `quarter_fold_env.STAGES` (3 ways) | world-model work only (parked) | M7.3 |
 
 ## Parked
@@ -71,14 +73,15 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-24 · M2.1 (BC 2 seeds, n=200) + M2.2 (mechanistic histograms) + M2.3 (obs ablation) done; docs/pipeline.md added; DAgger + diffusion launched · COMMIT
+- 2026-09-24 · Found + fixed DAgger teacher label bug (shadowing teacher) and eval nondeterminism (padded predict); dagger_v1 marked invalid; Phase 4 plumbing (rig, image store, v1_img, vision policy, distill loop); 75 fast + 9 slow green · COMMIT
+- 2026-09-24 · M2.1 (BC 2 seeds, n=200) + M2.2 (mechanistic histograms) + M2.3 (obs ablation) done; docs/pipeline.md added; DAgger + diffusion launched · 5b02a77
 - 2026-09-24 · M2.2 code (mechanistic failure codes + `perturbed_failures`, collision-free eval versions), M2.3 plumbing (`--obs-subset`, `obs_mask` buffer), M3.1 done (hashed val split, expert-only dense targets, terminal-only padding, SE keep/stop at n=200, `--resume`, clamp logging), `imitation/demo.py`; 71 fast green · 33067c6
 - 2026-09-23 · M1.8 done, Phase 1 complete: froze v1 (384 eps, `769dd372719c`) + v1_failures (16); clean 271/279, recovery 113/121 · 212469d
 - 2026-09-23 · M1.7 gate passed: expert id_easy 100/100, id_hard 97/100, recovery 96/100; check_resync 92/94/93 of 100 · 08eeda3
 - 2026-09-23 · M1.6 done: 20-ep smoke chain green (collect 19+1 fail split, train 600 steps, evaluate n=14×3, dagger 1 round froze smoke_dagger_r1 with 332 labels); no code change needed · a0f92ce
-- 2026-09-23 · M1.5 done: cached IK scratch (no speedup: 81-83 s → 82-93 s, identical hash); fixed cross-episode IK-rng leak that made collection nondeterministic; benchmark rows identical 48/50; 71 fast + 7 slow green · c95c431
+- 2026-09-23 · M1.5 done: cached IK scratch (no speedup: 81-83 s → 82-93 s, identical hash); fixed cross-episode IK-rng leak that made collection nondeterministic; benchmark rows identical 48/50; 75 fast + 9 slow green · c95c431
 - 2026-09-23 · M1.4 done: failures → `<version>_failures` in collect, `bc_episodes` filter in train (`--allow-failures`); 28-ep all-perturbed collect split 25/3; 61 fast green · c64e9ce
-- 2026-09-23 · M1.3 done: `terminated`/`truncated`/`discount` arrays in schema + validator (only-last-step, exactly-one, discount mask); `unstable` → truncated; 14-ep real collect validates; 71 fast + 7 slow green · 1fb0e0e
+- 2026-09-23 · M1.3 done: `terminated`/`truncated`/`discount` arrays in schema + validator (only-last-step, exactly-one, discount mask); `unstable` → truncated; 14-ep real collect validates; 75 fast + 9 slow green · 1fb0e0e
 - 2026-09-23 · M1.2 done: streaming/resumable `DatasetWriter` + `collect --resume`, seed-named npzs, guard on unfrozen versions; real 20-ep collect killed at 60 s kept 18, resume finished 20/20 unique, hashes verify; 59 fast green · fa31797
 - 2026-09-23 · M1.1 done: 139-D obs (per-stage goals, no one-hot, +stage/settle), `cloth_offset_xy` recorded, goals in snapshot; 63 tests green; expert benchmark unchanged 48/50 · e847847
 - 2026-09-23 · Sim verified against docs before M1.1: pins, 57+2 tests, benchmark 48/50 reproduced, all §2.2 defects confirmed · no code change

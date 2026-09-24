@@ -27,8 +27,9 @@ ACTION_DIM = 12
 # ---------------------------------------------------------------------------
 # worker side
 
-def _info_small(info):
-    return {"stage": int(info["stage"]), "fold_score": float(info["fold_score"]),
+def _info_small(info, rig=None):
+    extra = {"images": rig.render()} if rig else {}
+    return extra | {"stage": int(info["stage"]), "fold_score": float(info["fold_score"]),
             "grasped": (bool(info["grasped"]["left_"]), bool(info["grasped"]["right_"])),
             "success": bool(info["success"]), "termination_reason": info["termination_reason"],
             "anchor_drift": float(info["anchor_drift"]), "move_distance": list(info["move_distance"])}
@@ -38,23 +39,33 @@ def _worker(pipe, env_kwargs):
     from imitation.tasks import HalfFoldEnv
     from imitation.teachers import ScriptedTeacher
 
+    env_kwargs = dict(env_kwargs)
+    render = env_kwargs.pop("render", False)
     env = HalfFoldEnv(**env_kwargs)
     teacher = ScriptedTeacher(env)
+    rig, shadow = None, False
+    if render:                     # Phase 4: camera images ride along in info["images"]
+        from imitation.vision.render import CameraRig
+        rig = CameraRig(env)
     while True:
         cmd, arg = pipe.recv()
         try:
             if cmd == "reset":
-                seed, options = arg
+                seed, options, shadow = arg
                 obs, info = env.reset(seed=seed, options=options)
                 teacher.reset()
+                if rig:
+                    rig.reset(seed)
                 meta = {"domain_params": dict(env.unwrapped._domain_params),
                         "start_corners": env._start[[0, 10, 110, 120]].round(5).tolist(),
                         "max_steps": env.unwrapped.max_episode_steps}
-                pipe.send(("ok", (obs, _info_small(info), meta)))
+                pipe.send(("ok", (obs, _info_small(info, rig), meta)))
             elif cmd == "step":        # arg None -> the teacher acts
+                if arg is not None and shadow:     # someone else acts: the labelling teacher shadows
+                    teacher.observe()
                 action = teacher.act() if arg is None else np.asarray(arg, dtype=np.float32)
                 obs, r, term, trunc, info = env.step(action)
-                pipe.send(("ok", (obs, float(r), bool(term), bool(trunc), _info_small(info),
+                pipe.send(("ok", (obs, float(r), bool(term), bool(trunc), _info_small(info, rig),
                                   np.asarray(action, dtype=np.float32))))
             elif cmd == "label":
                 pipe.send(("ok", teacher.label_chunk(env, horizon=int(arg))))
@@ -76,6 +87,7 @@ _WORKER_THREAD_ENV = {k: "1" for k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS"
 
 class EnvPool:
     def __init__(self, n, env_kwargs=None):
+        self.render = bool((env_kwargs or {}).get("render"))
         ctx = mp.get_context("spawn")
         saved = {k: os.environ.get(k) for k in _WORKER_THREAD_ENV}
         os.environ.update(_WORKER_THREAD_ENV)
@@ -138,18 +150,35 @@ class Plan:
 class Controller:
     horizon = 1            # obs history length the controller needs
     needs_labels = False
+    needs_images = False   # True -> plan() gets each env's current camera images
     label_horizon = 0
     source = "expert"
 
-    def plan(self, slots, obs_hist, labels, rngs) -> list[Plan]:
+    def plan(self, slots, obs_hist, labels, rngs, images=None) -> list[Plan]:
         raise NotImplementedError
 
 
 class ExpertController(Controller):
     """The scripted teacher drives the whole episode."""
 
-    def plan(self, slots, obs_hist, labels, rngs):
+    def plan(self, slots, obs_hist, labels, rngs, images=None):
         return [Plan(actions=None, actor=ACTOR_TEACHER) for _ in slots]
+
+
+PREDICT_BUCKET = 16
+
+
+def padded_predict(policy, obs_hist, images=None):
+    """policy.predict on a batch padded to a multiple of PREDICT_BUCKET. GPU kernels
+    change a row's floats (~1e-6) with the batch size, and the cloth sim amplifies that
+    into different outcomes; which envs share a batch depends on worker timing, so
+    without a fixed shape the same checkpoint scored 145 then 134/200 on id_hard."""
+    n = len(obs_hist)
+    size = -(-n // PREDICT_BUCKET) * PREDICT_BUCKET
+    obs = np.concatenate([obs_hist, np.zeros((size - n,) + obs_hist.shape[1:], obs_hist.dtype)])
+    if images is None:
+        return policy.predict(obs)[:n]
+    return policy.predict(obs, list(images) + [images[0]] * (size - n))[:n]
 
 
 class PolicyController(Controller):
@@ -165,9 +194,11 @@ class PolicyController(Controller):
         self.label_horizon = policy.chunk
         self.beta = beta
         self.source = source
+        self.needs_images = policy.needs_images
 
-    def plan(self, slots, obs_hist, labels, rngs):
-        chunks = self.policy.predict(obs_hist)       # [B, K, A]: one batched call for all envs
+    def plan(self, slots, obs_hist, labels, rngs, images=None):
+        # [B, K, A]: one batched call for all envs
+        chunks = padded_predict(self.policy, obs_hist, images if self.needs_images else None)
         plans = []
         for j, slot in enumerate(slots):
             label = labels[j] if labels is not None else None
@@ -201,6 +232,8 @@ class _Slot:
     rows: dict = field(default_factory=lambda: {k: [] for k in
                                                 ("obs", "actions", "rewards", "stage", "fold_score", "grasped", "actor",
                                                  "terminated", "truncated")})
+    img: dict | None = None          # current camera images (render=True pools)
+    images: list = field(default_factory=list)
     label_steps: list = field(default_factory=list)
     labels: list = field(default_factory=list)
     queue: deque = field(default_factory=deque)
@@ -244,7 +277,7 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
         seed = int(seeds[k])
         order[i] = k
         rngs[i] = np.random.default_rng([seed, 7919])
-        send(i, "reset", (seed, reset_options(seed) if reset_options else None))
+        send(i, "reset", (seed, reset_options(seed) if reset_options else None, controller.needs_labels))
 
     def advance(i):
         """Send env i its next command (or park it until the next batched plan)."""
@@ -273,7 +306,8 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
         need = list(awaiting)
         labels = [awaiting[i] for i in need] if controller.needs_labels else None
         obs_hist = np.stack([np.stack(active[i].hist) for i in need]).astype(np.float32)
-        plans = controller.plan(need, obs_hist, labels, rngs)
+        images = [active[i].img for i in need] if controller.needs_images else None
+        plans = controller.plan(need, obs_hist, labels, rngs, images=images)
         awaiting.clear()
         for i, p in zip(need, plans):
             s = active[i]
@@ -306,10 +340,11 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
                 raise RuntimeError(f"env worker {i} failed during {cmd}:\n{payload}")
             if cmd == "reset":
                 obs, info, meta = payload
+                img = info.pop("images", None)
                 seed = int(seeds[order[i]])
                 active[i] = _Slot(seed=seed, meta=meta, info=info,
                                   hist=deque([obs] * controller.horizon, maxlen=controller.horizon),
-                                  perturb=perturb_fn(seed, rngs[i]) if perturb_fn else None)
+                                  perturb=perturb_fn(seed, rngs[i]) if perturb_fn else None, img=img)
                 advance(i)
             elif cmd == "resync":
                 advance(i)
@@ -318,6 +353,10 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
             elif cmd == "step":
                 obs, r, term, trunc, info, executed = payload
                 s = active[i]
+                img = info.pop("images", None)
+                if s.img is not None:                 # images of the state the action was chosen from
+                    s.images.append(s.img)
+                s.img = img
                 # A solver blow-up ends the episode but is not an MDP terminal (imitation.md 4).
                 unstable = term and info["termination_reason"] == "unstable"
                 for key, val in (("obs", s.hist[-1]), ("actions", executed), ("rewards", r),
@@ -354,6 +393,7 @@ def _finish(s: _Slot, final_obs, controller, meta_extra) -> Episode:
             **s.meta, **(meta_extra or {})}
     rows = s.rows
     labels = np.stack(s.labels).astype(np.float32) if s.labels else np.zeros((0, 0, 0), dtype=np.float32)
+    images = {cam: np.stack([im[cam] for im in s.images]) for cam in s.images[0]} if s.images else None
     return Episode(obs=np.stack(rows["obs"]).astype(np.float32),
                    actions=np.stack(rows["actions"]).astype(np.float32),
                    rewards=np.asarray(rows["rewards"], dtype=np.float32),
@@ -365,4 +405,4 @@ def _finish(s: _Slot, final_obs, controller, meta_extra) -> Episode:
                    terminated=np.asarray(rows["terminated"], dtype=bool),
                    truncated=np.asarray(rows["truncated"], dtype=bool),
                    discount=np.where(rows["terminated"], 0.0, 1.0).astype(np.float32), meta=meta,
-                   label_steps=np.asarray(s.label_steps, dtype=np.int32), labels=labels)
+                   label_steps=np.asarray(s.label_steps, dtype=np.int32), labels=labels, images=images)

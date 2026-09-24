@@ -85,10 +85,12 @@ def _history(obs, t, horizon):
     return obs[idx]
 
 
-def build_samples(episodes: list[Episode], obs_horizon: int, chunk: int):
+def build_samples(episodes: list[Episode], obs_horizon: int, chunk: int, index=False):
     """Returns X [N, H, D], Y [N, K, A], M [N, K] (1 = supervised), W [N] source tag
-    (0 expert chunk, 1 DAgger label)."""
-    X, Y, M, W = [], [], [], []
+    (0 expert chunk, 1 DAgger label). index=True also returns I [N]: each sample's step
+    as a row of the episodes' concatenated per-step arrays (e.g. camera images)."""
+    X, Y, M, W, I = [], [], [], [], []
+    offset = 0
     for ep in episodes:
         T = ep.steps
         # Dense chunks come from expert episodes only. In a DAgger episode the executed
@@ -107,12 +109,37 @@ def build_samples(episodes: list[Episode], obs_horizon: int, chunk: int):
             Y.append(padded[t:t + chunk])
             M.append(m)
             W.append(0)
+            I.append(offset + t)
         for t, label in zip(ep.label_steps, ep.labels):
             X.append(_history(ep.obs, t, obs_horizon))
             Y.append(label[:chunk])
             M.append(np.ones(chunk, dtype=bool))
             W.append(1)
+            I.append(offset + t)
+        offset += T
     if not X:
         raise ValueError("no supervised samples in these episodes")
-    return (np.stack(X).astype(np.float32), np.stack(Y).astype(np.float32),
-            np.stack(M).astype(np.float32), np.asarray(W, dtype=np.int8))
+    out = (np.stack(X).astype(np.float32), np.stack(Y).astype(np.float32),
+           np.stack(M).astype(np.float32), np.asarray(W, dtype=np.int8))
+    return out + (np.asarray(I, dtype=np.int64),) if index else out
+
+
+def teacher_samples(episodes: list[Episode], teacher, obs_horizon: int, chunk: int, batch=8192):
+    """Distillation targets (Phase 4): at *every* step of every episode, the privileged
+    `teacher` policy's chunk from the stored privileged observation history. No sim
+    access is needed -- the state the student visited is already in `obs`. W is 1 for
+    non-expert (student-visited) episodes so they can be oversampled like DAgger labels.
+    Returns X, Y, M, W, I as build_samples(..., index=True)."""
+    X, T_in, W, I = [], [], [], []
+    offset = 0
+    for ep in episodes:
+        for t in range(ep.steps):
+            X.append(_history(ep.obs, t, obs_horizon))
+            T_in.append(_history(ep.obs, t, teacher.obs_horizon))
+            W.append(0 if ep.meta["source"] == "expert" else 1)
+            I.append(offset + t)
+        offset += ep.steps
+    T_in = np.stack(T_in).astype(np.float32)
+    Y = np.concatenate([teacher.predict(T_in[i:i + batch]) for i in range(0, len(T_in), batch)])[:, :chunk]
+    return (np.stack(X).astype(np.float32), Y.astype(np.float32), np.ones((len(X), chunk), np.float32),
+            np.asarray(W, dtype=np.int8), np.asarray(I, dtype=np.int64))

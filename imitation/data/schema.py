@@ -28,6 +28,10 @@ Per-episode arrays (T = executed steps):
     labels       [L, K, A]  the teacher's chunk from that step's state
 Expert episodes have no labels: the teacher executed its own actions, so the
 chunk at t is actions[t:t+K].
+
+Optional camera images (Phase 4) live in a sibling `<episode>.img.npz`, one uint8
+[T, 3, H, W] array per camera aligned with `obs`, hashed separately
+(`images_sha256`) and loaded only with `load_dataset(..., images=True)`.
 """
 
 from __future__ import annotations
@@ -63,6 +67,7 @@ class Episode:
     meta: dict
     label_steps: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int32))
     labels: np.ndarray = field(default_factory=lambda: np.zeros((0, 0, 0), dtype=np.float32))
+    images: dict | None = None
 
     @property
     def steps(self):
@@ -73,12 +78,20 @@ class Episode:
         np.savez_compressed(path, meta=np.array(json.dumps(self.meta)), **arrays)
         return _sha256(path)
 
+    def save_images(self, path: Path) -> str:
+        np.savez_compressed(path, **self.images)
+        return _sha256(path)
+
     @classmethod
-    def load(cls, path: Path) -> "Episode":
+    def load(cls, path: Path, images_path: Path | None = None) -> "Episode":
         with np.load(path, allow_pickle=False) as z:
             arrays = {k: z[k] for k in ARRAY_KEYS}
             meta = json.loads(str(z["meta"]))
-        return cls(meta=meta, **arrays)
+        ep = cls(meta=meta, **arrays)
+        if images_path is not None:
+            with np.load(images_path, allow_pickle=False) as z:
+                ep.images = {k: z[k] for k in z.files}
+        return ep
 
 
 def validate_episode(ep: Episode, obs_dim=None, action_dim=None) -> list[str]:
@@ -90,6 +103,9 @@ def validate_episode(ep: Episode, obs_dim=None, action_dim=None) -> list[str]:
     for k in ("obs", "rewards", "stage", "fold_score", "grasped", "actor", "terminated", "truncated", "discount"):
         if len(getattr(ep, k)) != T:
             errs.append(f"{k} has length {len(getattr(ep, k))}, expected {T}")
+    for cam, img in (ep.images or {}).items():
+        if len(img) != T or img.dtype != np.uint8 or img.ndim != 4:
+            errs.append(f"images[{cam}] must be uint8 [T, 3, H, W], got {img.dtype} {img.shape}")
     for k in ("obs", "actions", "rewards", "fold_score", "final_obs", "discount", "labels"):
         if not np.all(np.isfinite(getattr(ep, k))):
             errs.append(f"{k} has non-finite values")
@@ -165,7 +181,7 @@ class DatasetWriter:
                     continue
                 if _sha256(self.root / e["file"]) == e["sha256"]:
                     self.new_entries.append(e)
-        keep = {Path(e["file"]).name for e in self.new_entries}
+        keep = {Path(e[k]).name for e in self.new_entries for k in ("file", "images_file") if k in e}
         for f in ep_dir.iterdir():                     # partial writes from a killed run
             if f.name not in keep:
                 f.unlink()
@@ -192,9 +208,17 @@ class DatasetWriter:
             raise ValueError(f"{name} is already in version {self.version}")
         final = self.dir / "episodes" / name
         tmp = final.with_name(final.stem + ".tmp.npz")
+        img_entry = {}
+        if ep.images:
+            img_final = final.with_name(final.stem + ".img.npz")
+            img_tmp = final.with_name(final.stem + ".img.tmp.npz")
+            img_sha = ep.save_images(img_tmp)
+            os.replace(img_tmp, img_final)
+            img_entry = {"images_file": f"{self.version}/episodes/{img_final.name}", "images_sha256": img_sha,
+                         "cameras": sorted(ep.images)}
         sha = ep.save(tmp)
         os.replace(tmp, final)
-        entry = {"file": f"{self.version}/episodes/{name}", "sha256": sha, "steps": ep.steps,
+        entry = {"file": f"{self.version}/episodes/{name}", "sha256": sha, "steps": ep.steps, **img_entry,
                  "n_labels": int(len(ep.label_steps)),
                  **{k: ep.meta[k] for k in ("seed", "source", "success", "termination_reason")},
                  **{k: ep.meta[k] for k in ("round", "perturb") if k in ep.meta}}
@@ -226,8 +250,9 @@ def load_manifest(root, version) -> dict:
         return json.load(f)
 
 
-def load_dataset(root, version, verify=True, sources=None) -> tuple[dict, list[Episode]]:
-    """All episodes of a frozen version (its own and its ancestors')."""
+def load_dataset(root, version, verify=True, sources=None, images=False) -> tuple[dict, list[Episode]]:
+    """All episodes of a frozen version (its own and its ancestors'). images=True also
+    loads each episode's camera images (and fails if an episode has none)."""
     root = Path(root)
     manifest = load_manifest(root, version)
     episodes = []
@@ -237,5 +262,12 @@ def load_dataset(root, version, verify=True, sources=None) -> tuple[dict, list[E
         path = root / e["file"]
         if verify and _sha256(path) != e["sha256"]:
             raise ValueError(f"{path} does not match its manifest hash: frozen data was modified")
-        episodes.append(Episode.load(path))
+        img_path = None
+        if images:
+            if "images_file" not in e:
+                raise ValueError(f"{path} has no images in {version}")
+            img_path = root / e["images_file"]
+            if verify and _sha256(img_path) != e["images_sha256"]:
+                raise ValueError(f"{img_path} does not match its manifest hash: frozen data was modified")
+        episodes.append(Episode.load(path, img_path))
     return manifest, episodes
