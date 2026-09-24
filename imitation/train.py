@@ -22,9 +22,10 @@ import numpy as np
 import torch
 
 from imitation.data.collect import DEFAULT_ROOT
-from imitation.data.dataset import Normalizer, bc_episodes, build_samples, split_episodes
+from imitation.data.dataset import Normalizer, bc_episodes, clamp_fraction, build_samples, split_episodes
 from imitation.data.schema import load_dataset
 from imitation.policies.common import build_policy, default_device, load_policy, n_params, save_policy
+from imitation.spec import OBS_SUBSETS
 
 POLICY_DEFAULTS = {
     "chunk_mlp": {"obs_horizon": 2, "chunk": 16, "width": 512, "depth": 4, "dropout": 0.1},
@@ -60,7 +61,7 @@ class EMA:
 
 def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024, lr=1e-3, weight_decay=1e-4,
           warmup=500, ema=0.999, seed=0, eval_every=2000, init_from=None, max_episodes=None,
-          policy_kwargs=None, dagger_weight=1.0, allow_failures=False, log=print):
+          policy_kwargs=None, dagger_weight=1.0, allow_failures=False, obs_subset="full", log=print):
     """dagger_weight: sampling weight of a DAgger label relative to an expert chunk. Labels
     are few (one per replan) next to the dense expert chunks, and they are exactly
     the states the student gets wrong, so they are oversampled."""
@@ -86,12 +87,16 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
         policy = build_policy(policy_kind, **cfg).to(device)
         norm = Normalizer.fit(train_eps)
         policy.set_normalizer(norm.mean, norm.std)
+        policy.set_obs_subset(OBS_SUBSETS[obs_subset])
 
     tensors = {}
     for name, eps in (("train", train_eps), ("val", val_eps)):
         X, Y, M, W = build_samples(eps, policy.obs_horizon, policy.chunk)
         tensors[name] = [torch.as_tensor(a, device=device) for a in (X, Y, M)] + [W]
     n_train = len(tensors["train"][0])
+    clamped = clamp_fraction(tensors["train"][0], policy.obs_mean, policy.obs_std)
+    if clamped > 0:
+        log(f"normalizer clamp: {clamped:.4%} of train obs entries at +-10 (warm start keeps the old normalizer)")
     n_dagger = int((tensors["train"][3] == 1).sum())
     log(f"device {device} | {len(train_eps)} train / {len(val_eps)} val episodes | {n_train} samples "
         f"({n_dagger} DAgger labels) | {policy.kind} {n_params(policy) / 1e6:.2f}M params")
@@ -149,10 +154,10 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
     info = {"git_commit": git_commit(), "dataset": {"root": str(root), "version": dataset,
                                                     "content_hash": manifest["content_hash"],
                                                     "n_episodes": len(episodes), "n_train_samples": n_train,
-                                                    "n_dagger_labels": n_dagger},
+                                                    "n_dagger_labels": n_dagger, "clamped_fraction": clamped},
             "policy": {"kind": policy.kind, "config": policy.config(), "n_params": n_params(policy)},
             "train": {"steps": steps, "batch": batch, "lr": lr, "weight_decay": weight_decay, "warmup": warmup,
-                      "ema": ema, "seed": seed, "dagger_weight": dagger_weight, "init_from": str(init_from) if init_from else None,
+                      "ema": ema, "seed": seed, "dagger_weight": dagger_weight, "obs_subset": obs_subset, "init_from": str(init_from) if init_from else None,
                       "device": str(device), "amp_bf16": amp, "seconds": round(time.time() - t0, 1)},
             "checkpoint": {"path": str(ckpt), "sha256": sha}, "history": history}
     with open(run / "run.json", "w") as f:
@@ -173,12 +178,14 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--init-from", default=None)
+    ap.add_argument("--obs-subset", choices=list(OBS_SUBSETS), default="full", help="M2.3 ablation")
     ap.add_argument("--allow-failures", action="store_true", help="train on failed expert episodes too")
     ap.add_argument("--max-episodes", type=int, default=None, help="debug: train on the first N episodes")
     ap.add_argument("--policy-kwargs", default="{}", help='JSON overrides, e.g. \'{"chunk": 8}\'')
     args = ap.parse_args()
     train(args.policy, args.dataset, args.run, root=args.root, steps=args.steps, batch=args.batch, lr=args.lr,
           seed=args.seed, init_from=args.init_from, max_episodes=args.max_episodes, allow_failures=args.allow_failures,
+          obs_subset=args.obs_subset,
           policy_kwargs=json.loads(args.policy_kwargs))
 
 

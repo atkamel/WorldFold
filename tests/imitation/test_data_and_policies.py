@@ -159,3 +159,40 @@ def test_bc_drops_failed_expert_demos_but_keeps_dagger_labels():
     assert [e.meta["seed"] for e in kept] == [0, 2] and n_dropped == 1
     kept, n_dropped = bc_episodes([ok, bad, dag], allow_failures=True)
     assert len(kept) == 3 and n_dropped == 0
+
+
+def test_obs_subset_mask_hides_excluded_dims_and_survives_checkpoint(tmp_path):
+    from imitation.spec import OBS_SUBSETS
+    policy = build_policy("chunk_mlp", obs_dim=D, action_dim=A, obs_horizon=2, chunk=4)
+    policy.set_obs_subset(OBS_SUBSETS["proprio"])
+    obs = torch.randn(3, 2, D)
+    moved = obs.clone()
+    moved[..., 60] += 5.0                                   # a cloth dim, outside the subset
+    torch.testing.assert_close(policy.normalize_obs(obs), policy.normalize_obs(moved))
+    save_policy(policy, tmp_path / "p.pt")
+    assert int(load_policy(tmp_path / "p.pt").obs_mask.sum()) == len(OBS_SUBSETS["proprio"])
+
+
+def test_val_split_is_stable_when_episodes_are_added():
+    base = [make_episode(s) for s in range(40)]
+    _, val = split_episodes(base, val_fraction=0.2)
+    grown = base + [make_episode(s, source="dagger") for s in range(50_000, 50_030)]
+    _, val2 = split_episodes(grown, val_fraction=0.2)
+    before = {e.meta["seed"] for e in val}
+    assert before and before == {e.meta["seed"] for e in val2 if e.meta["seed"] < 40}
+
+
+def test_dagger_teacher_steps_train_only_through_their_labels():
+    T, K = 16, 4
+    labels = (np.array([0, 8], np.int32), np.full((2, K, A), 0.5, np.float32))
+    ep = make_episode(0, T=T, source="dagger", actor=np.full(T, ACTOR_TEACHER, np.int8), labels=labels)
+    X, Y, M, W = build_samples([ep], obs_horizon=2, chunk=K)
+    assert len(X) == 2 and (W == 1).all()
+
+
+def test_truncated_episode_tail_is_not_padded_as_supervised():
+    T, K = 12, 4
+    ep = make_episode(0, T=T)
+    ep.terminated[-1], ep.truncated[-1], ep.discount[-1] = False, True, 1.0
+    X, Y, M, W = build_samples([ep], obs_horizon=2, chunk=K)
+    np.testing.assert_array_equal(M[-1], [1, 0, 0, 0])

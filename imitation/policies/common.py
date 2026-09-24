@@ -30,13 +30,18 @@ class ChunkPolicy(nn.Module):
         self.obs_horizon, self.chunk = obs_horizon, chunk
         self.register_buffer("obs_mean", torch.zeros(obs_dim))
         self.register_buffer("obs_std", torch.ones(obs_dim))
+        self.register_buffer("obs_mask", torch.ones(obs_dim))    # 0 = dim hidden (M2.3 ablation)
 
     def set_normalizer(self, mean, std):
         self.obs_mean.copy_(torch.as_tensor(mean))
         self.obs_std.copy_(torch.as_tensor(std))
 
+    def set_obs_subset(self, dims):
+        self.obs_mask.zero_()
+        self.obs_mask[list(dims)] = 1.0
+
     def normalize_obs(self, obs):
-        return ((obs - self.obs_mean) / self.obs_std).clamp(-10.0, 10.0)
+        return ((obs - self.obs_mean) / self.obs_std).clamp(-10.0, 10.0) * self.obs_mask
 
     def compute_loss(self, obs, actions, mask):
         raise NotImplementedError
@@ -83,7 +88,9 @@ def save_policy(policy: ChunkPolicy, path, extra=None) -> str:
 def load_policy(path, device=None) -> ChunkPolicy:
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
     policy = build_policy(ckpt["kind"], **ckpt["config"])
-    policy.load_state_dict(ckpt["state_dict"])
+    state = ckpt["state_dict"]
+    state.setdefault("obs_mask", torch.ones(policy.obs_dim))   # checkpoints from before M2.3
+    policy.load_state_dict(state)
     return policy.to(device or default_device()).eval()
 
 

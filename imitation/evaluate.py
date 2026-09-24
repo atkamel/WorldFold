@@ -29,8 +29,10 @@ FAILURE_CODES = {
     "M1": "motion error: anchor corner dragged or sim unstable",
     "F1": "fold placed with poor alignment (released off target)",
     "S1": "stalled: timed out still holding / hovering",
-    "R1": "no recovery after a disturbance (perturbed episode that failed)",
 }
+# Whether a failure followed a disturbance is reported separately (`perturbed_failures`),
+# not as its own code: every `recovery` episode is perturbed, so an R1 code that
+# short-circuited the checks below made that set's histogram uniformly R1.
 
 
 def failure_code(ep: Episode) -> str | None:
@@ -38,8 +40,6 @@ def failure_code(ep: Episode) -> str | None:
     m = ep.meta
     if m["success"]:
         return None
-    if m.get("perturb") is not None:
-        return "R1"
     reason = m["termination_reason"]
     if reason in ("cloth_dragged", "unstable"):
         return "M1"
@@ -68,8 +68,18 @@ def summarize(episodes: list[Episode], infer_ms=None) -> dict:
             "grasp_success": float(np.mean([e.grasped.any(axis=0).all() for e in episodes])),
             "mean_steps_success": float(np.mean([e.steps for e in succ])) if succ else None,
             "termination": dict(Counter(e.meta["termination_reason"] for e in episodes)),
-            "failure_codes": dict(codes), "perturbed_steps": int(sum((e.actor == ACTOR_PERTURB).sum() for e in episodes)),
+            "failure_codes": dict(codes),
+            "perturbed_failures": sum(1 for e in episodes if not e.meta["success"] and e.meta.get("perturb")),
+            "perturbed_steps": int(sum((e.actor == ACTOR_PERTURB).sum() for e in episodes)),
             "policy_infer_ms": infer_ms}
+
+
+def save_version_name(set_name, ckpt, n) -> str:
+    """Dataset version for saved eval rollouts: unique per (set, checkpoint, n), so
+    evaluating a second checkpoint into the same directory does not collide."""
+    import hashlib
+    tag = hashlib.sha1(str(Path(ckpt).resolve() if ckpt != "expert" else ckpt).encode()).hexdigest()[:8]
+    return f"eval_{set_name}_n{n}_{tag}"
 
 
 class _TimedPolicy:
@@ -120,7 +130,7 @@ def evaluate(ckpt, sets=("id_easy",), n=48, workers=14, replan_every=8, pool=Non
                 f"failures {r['failure_codes']}  {time.time() - t0:.0f}s")
             if save_dir:
                 from imitation.data.schema import DatasetWriter
-                w = DatasetWriter(save_dir, f"eval_{name}", config={"checkpoint": str(ckpt), "set": name})
+                w = DatasetWriter(save_dir, save_version_name(name, ckpt, n), config={"checkpoint": str(ckpt), "set": name})
                 for e in eps:
                     w.add(e)
                 w.freeze()

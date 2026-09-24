@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import hashlib
+
 import numpy as np
 
 from imitation.data.schema import ACTOR_TEACHER, Episode
@@ -34,6 +36,14 @@ class Normalizer:
         return cls(mean=obs.mean(0).astype(np.float32), std=np.maximum(obs.std(0), min_std).astype(np.float32))
 
 
+def clamp_fraction(X, mean, std, clip=10.0):
+    """Fraction of normalized observation entries at the normalizer's clip. A warm-
+    started student keeps its first normalizer, so DAgger states far outside the expert
+    data show up here before they silently saturate (M3.1)."""
+    z = (X - mean) / std
+    return float((z.abs() >= clip).float().mean())
+
+
 def bc_episodes(episodes, allow_failures=False):
     """Episodes fit to imitate, and how many were dropped (imitation.md 5.3).
 
@@ -47,14 +57,21 @@ def bc_episodes(episodes, allow_failures=False):
     return kept, len(episodes) - len(kept)
 
 
+def is_val_seed(env_seed, val_fraction=0.1, seed=0) -> bool:
+    """Per-seed, content-free assignment: a seed's side never depends on which other
+    episodes exist, so the val set does not drift as DAgger rounds add data (M3.1)."""
+    h = hashlib.sha256(f"{seed}:{int(env_seed)}".encode()).digest()
+    return int.from_bytes(h[:8], "little") / 2 ** 64 < val_fraction
+
+
 def split_episodes(episodes, val_fraction=0.1, seed=0):
     """Deterministic split on the episode's seed (so DAgger episodes of a seed land with it)."""
-    rng = np.random.default_rng(seed)
-    seeds = sorted({e.meta["seed"] for e in episodes})
-    val_seeds = set(rng.choice(seeds, size=max(1, int(round(val_fraction * len(seeds)))), replace=False).tolist())
-    train = [e for e in episodes if e.meta["seed"] not in val_seeds]
-    val = [e for e in episodes if e.meta["seed"] in val_seeds]
-    return train, val
+    val = [e for e in episodes if is_val_seed(e.meta["seed"], val_fraction, seed)]
+    if not val and episodes:                  # tiny debug sets: keep at least one val seed
+        first = min(e.meta["seed"] for e in episodes)
+        val = [e for e in episodes if e.meta["seed"] == first]
+    val_ids = {id(e) for e in val}
+    return [e for e in episodes if id(e) not in val_ids], val
 
 
 def _pad_action(last):
@@ -74,9 +91,13 @@ def build_samples(episodes: list[Episode], obs_horizon: int, chunk: int):
     X, Y, M, W = [], [], [], []
     for ep in episodes:
         T = ep.steps
-        teacher = ep.actor == ACTOR_TEACHER
+        # Dense chunks come from expert episodes only. In a DAgger episode the executed
+        # teacher steps are pieces of different replans; its teacher chunks are exactly
+        # the stored labels, used below (M3.1).
+        teacher = (ep.actor == ACTOR_TEACHER) & (ep.meta["source"] == "expert")
         padded = np.concatenate([ep.actions, np.repeat(_pad_action(ep.actions[-1])[None], chunk, 0)])
-        valid = np.concatenate([teacher, np.ones(chunk, dtype=bool)])
+        # "hold still" after the end is only the right target after a true terminal
+        valid = np.concatenate([teacher, np.full(chunk, bool(ep.terminated[-1]))])
         for t in np.flatnonzero(teacher):
             m = valid[t:t + chunk].copy()
             # once someone else took over, the rest of this chunk is not the teacher's plan

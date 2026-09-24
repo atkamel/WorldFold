@@ -127,6 +127,11 @@ per-episode array list, which is authoritative. Properties that matter:
 - **Transition flags.** `terminated` (success, `cloth_dragged`), `truncated` (step cap, and
   `unstable` — a solver blow-up is not an MDP outcome, so it must not zero the bootstrap)
   and `discount` (0 only at a true terminal) are stored per step, last step only.
+- **Training samples (M3.1).** Dense chunk targets `actions[t:t+K]` come from *expert*
+  episodes only; a DAgger episode contributes only its teacher labels (its executed
+  teacher steps are pieces of different replans). The post-episode "hold still" padding
+  counts as supervised only after a true terminal. The train/val split hashes each seed
+  (`is_val_seed`), so adding DAgger data never moves a seed across the split.
 - **Failures are kept**, tagged by `termination_reason`, in their own version
   `<version>_failures` (collect default since M1.4). `train` additionally drops any failed
   *expert* episode via `bc_episodes` unless `--allow-failures`; DAgger episodes are kept
@@ -160,12 +165,11 @@ From `imitation/evaluate.py:27`:
 | M1 | motion error: anchor corner dragged, or sim unstable |
 | F1 | fold placed with poor alignment (released off target) |
 | S1 | stalled: timed out still holding or hovering |
-| R1 | no recovery after a disturbance |
 
-**Known defect:** `failure_code` returns R1 for *any* failed perturbed episode before the
-mechanistic checks run, and every `recovery` episode is perturbed — so that set's
-histogram is uniformly R1 and carries no information. Report the mechanistic code plus a
-separate `perturbed` flag (roadmap M2.2).
+Whether a failure followed a disturbance is reported separately as `perturbed_failures`
+in the summary, not as a code (fixed in M2.2: the old R1 short-circuit made the `recovery`
+set's histogram uniformly R1). Saved eval rollouts go to `eval_<set>_n<n>_<ckpt-hash>` so
+two checkpoints evaluated into one directory no longer collide.
 
 ### 5.3 Statistical discipline
 
