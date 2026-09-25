@@ -91,7 +91,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-24 · M5b.1 done: diffusion DAgger round 1 = 98.0/72.0/72.5 (+1.74 SE over dagger_v2); round 2 kept by the old rule but lost id_hard, so round 1 carried forward (`pick --carry-sets`); M5b.2 running · COMMIT
+- 2026-09-24 · Pushed `feature/imitation` through M5b.1 (0cccd91) + committed the finished run/eval logs (not the live `dagger_shift`); PR to main opened; M5b.2 still running; 90 fast green · this commit
+- 2026-09-24 · M5b.1 done: diffusion DAgger round 1 = 98.0/72.0/72.5 (+1.74 SE over dagger_v2); round 2 kept by the old rule but lost id_hard, so round 1 carried forward (`pick --carry-sets`); M5b.2 running · 0cccd91
 - 2026-09-24 · imitation.md §2.3 exact index map (base env 141 → 139), cameras, consumers; figure generator `imitation.viz.report_figures`; diffusion sampling made deterministic (fixed initial noise; same ckpt scored 160 then 157/200); M5b.1 restarted on it · 6d8f101
 - 2026-09-24 · Phase 4/5 scope gaps closed in code (A0): dict obs + 128² main cam, lazy WindowSampler, per-camera normalizers, PolicyTeacher in the Phase 3 loop (distill.py retired), stratified multi-policy harvest, unstable tagging + per-episode subsampling, critic probe, shifted-pose seeds + --score-sets; M4.1 re-marked ◐; 87 fast green · 820b5e2
 - 2026-09-24 · Dated report `reports/2026-09-24-phase1-5.md` + demo videos committed + shareable page; roadmap Phase 5b added (M5b.1-5b.5); next action M5b.1; 79 fast green · f75d218

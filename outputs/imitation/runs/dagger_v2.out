@@ -1,0 +1,54 @@
+== round 0: evaluating outputs\imitation\runs\bc_v1_s0\final.pt
+  id_easy   success 98% (196/200)  fold 0.907  grasp 100%  failures {'F1': 4}  466s
+  id_hard   success 70% (139/200)  fold 0.801  grasp 90%  failures {'F1': 23, 'G1': 30, 'S1': 8}  670s
+  recovery  success 38% (77/200)  fold 0.741  grasp 97%  failures {'F1': 50, 'G1': 71, 'S1': 2}  805s
+== round 1: beta 0.300, 128 student rollouts from outputs\imitation\runs\bc_v1_s0\final.pt
+   rollouts: student success 120/128, 1865 teacher labels, froze v1_dagger_v2_r1 (512 episodes), 763s
+normalizer clamp: 0.0064% of train obs entries at +-10
+device cuda | 446 train / 66 val episodes | 34588 samples (1560 DAgger labels) | chunk_mlp 8.65M params
+  step   2000  train 0.0176  val(ema) 0.0674  16s
+  step   4000  train 0.0135  val(ema) 0.0680  33s
+  step   6000  train 0.0116  val(ema) 0.0681  47s
+  step   8000  train 0.0099  val(ema) 0.0683  63s
+  step  10000  train 0.0085  val(ema) 0.0684  78s
+  step  12000  train 0.0073  val(ema) 0.0685  95s
+  step  14000  train 0.0066  val(ema) 0.0686  112s
+  step  15000  train 0.0032  val(ema) 0.0686  120s
+  id_easy   success 96% (193/200)  fold 0.908  grasp 100%  failures {'F1': 5, 'S1': 2}  318s
+  id_hard   success 68% (137/200)  fold 0.815  grasp 91%  failures {'S1': 22, 'F1': 17, 'G1': 24}  473s
+  recovery  success 56% (112/200)  fold 0.799  grasp 100%  failures {'G1': 31, 'F1': 22, 'S1': 35}  574s
+   round 1: score 1.525 (gain +0.160 = +3.1 SE) -> best outputs\imitation\runs\dagger_v2\round_1\final.pt
+== round 2: beta 0.150, 128 student rollouts from outputs\imitation\runs\dagger_v2\round_1\final.pt
+   rollouts: student success 117/128, 1926 teacher labels, froze v1_dagger_v2_r2 (640 episodes), 685s
+normalizer clamp: 0.0093% of train obs entries at +-10
+device cuda | 559 train / 81 val episodes | 36266 samples (3238 DAgger labels) | chunk_mlp 8.65M params
+  step   2000  train 0.0167  val(ema) 0.0742  17s
+  step   4000  train 0.0128  val(ema) 0.0749  34s
+  step   6000  train 0.0112  val(ema) 0.0746  49s
+  step   8000  train 0.0098  val(ema) 0.0745  65s
+  step  10000  train 0.0085  val(ema) 0.0746  81s
+  step  12000  train 0.0075  val(ema) 0.0744  98s
+  step  14000  train 0.0069  val(ema) 0.0744  114s
+  step  15000  train 0.0034  val(ema) 0.0744  122s
+  id_easy   success 99% (198/200)  fold 0.910  grasp 100%  failures {'F1': 2}  314s
+  id_hard   success 61% (122/200)  fold 0.797  grasp 87%  failures {'S1': 17, 'G1': 34, 'F1': 27}  523s
+  recovery  success 62% (123/200)  fold 0.831  grasp 100%  failures {'G1': 20, 'S1': 33, 'F1': 24}  571s
+   round 2: score 1.605 (gain +0.080 = +1.6 SE) -> best outputs\imitation\runs\dagger_v2\round_2\final.pt
+== round 3: beta 0.075, 128 student rollouts from outputs\imitation\runs\dagger_v2\round_2\final.pt
+   rollouts: student success 116/128, 1744 teacher labels, froze v1_dagger_v2_r3 (768 episodes), 607s
+normalizer clamp: 0.0108% of train obs entries at +-10
+device cuda | 672 train / 96 val episodes | 37828 samples (4800 DAgger labels) | chunk_mlp 8.65M params
+  step   2000  train 0.0151  val(ema) 0.0755  17s
+  step   4000  train 0.0122  val(ema) 0.0762  33s
+  step   6000  train 0.0108  val(ema) 0.0759  49s
+  step   8000  train 0.0095  val(ema) 0.0759  64s
+  step  10000  train 0.0084  val(ema) 0.0760  80s
+  step  12000  train 0.0076  val(ema) 0.0760  96s
+  step  14000  train 0.0070  val(ema) 0.0760  112s
+  step  15000  train 0.0034  val(ema) 0.0759  119s
+  id_easy   success 97% (194/200)  fold 0.905  grasp 100%  failures {'S1': 3, 'F1': 2, 'G1': 1}  327s
+  id_hard   success 64% (129/200)  fold 0.809  grasp 94%  failures {'G1': 22, 'S1': 31, 'F1': 18}  500s
+  recovery  success 65% (130/200)  fold 0.843  grasp 100%  failures {'S1': 47, 'G1': 10, 'F1': 13}  536s
+   round 3: score 1.620 (gain +0.015 = +0.3 SE) -> best outputs\imitation\runs\dagger_v2\round_3\final.pt
+   gain below 1.0 SE: stopping
+best checkpoint: outputs\imitation\runs\dagger_v2\round_3\final.pt

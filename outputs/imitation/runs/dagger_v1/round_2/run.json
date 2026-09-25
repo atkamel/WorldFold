@@ -1,0 +1,86 @@
+{
+ "git_commit": "5b02a772a1e1bf3fa230553b0f77439762883556-dirty",
+ "dataset": {
+  "root": "outputs/imitation/datasets",
+  "version": "v1_dagger_v1_r2",
+  "content_hash": "38b34549f7851e88bb411fef4f5d1960547bdcb62572be0efc7e334ae93cbc89",
+  "n_episodes": 640,
+  "n_train_samples": 36787,
+  "n_dagger_labels": 3759,
+  "clamped_fraction": 7.910598651506007e-05
+ },
+ "policy": {
+  "kind": "chunk_mlp",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "width": 512,
+   "depth": 4,
+   "dropout": 0.1
+  },
+  "n_params": 8645312
+ },
+ "train": {
+  "steps": 15000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 4.0,
+  "obs_subset": "full",
+  "init_from": "outputs\\imitation\\runs\\bc_v1_s0\\final.pt",
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 168.1
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\dagger_v1\\round_2\\final.pt",
+  "sha256": "7e20f9653d48f8459167684f3c29b1c4f805e6e0cb544aaea0a76b0664efa72f"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.02962065008468926,
+   "val_loss": 0.0772769167063761
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.01760904786642641,
+   "val_loss": 0.07797696223188727
+  },
+  {
+   "step": 6000,
+   "train_loss": 0.014674696535803378,
+   "val_loss": 0.0779966442640774
+  },
+  {
+   "step": 8000,
+   "train_loss": 0.012453432288020849,
+   "val_loss": 0.07792655960939165
+  },
+  {
+   "step": 10000,
+   "train_loss": 0.010758873564191163,
+   "val_loss": 0.0777994574046011
+  },
+  {
+   "step": 12000,
+   "train_loss": 0.009503425005823374,
+   "val_loss": 0.07790913563253975
+  },
+  {
+   "step": 14000,
+   "train_loss": 0.00863639684394002,
+   "val_loss": 0.07803292905643866
+  },
+  {
+   "step": 15000,
+   "train_loss": 0.004216769011691213,
+   "val_loss": 0.07805177347292314
+  }
+ ]
+}
