@@ -814,7 +814,7 @@ def test_idk(env):
     for prefix in env.prefixes:
         site = env.data.site_xpos[env._site_id[prefix]]
         weld_active = env.data.eq_active[env._weld_id[prefix]]
-        corner = env.data.xpos[env._corner_body[prefix]]
+        corner = env.data.xpos[env._corner_body[prefix][0]]
         q = np.zeros(4)
         mujoco.mju_mat2Quat(q, env.data.site_xmat[env._site_id[prefix]])
         env._target_quat[prefix] = q
