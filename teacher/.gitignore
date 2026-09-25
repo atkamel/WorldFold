@@ -1,0 +1,11 @@
+# large / local-only artifacts (see teacher/README.md)
+vendor/so101_nexus/
+logs/
+ref_frames/
+hisdata/
+dryrun/
+results/rollouts/
+results/profile/
+*.mp4
+*.prof
+*.npz

@@ -1,0 +1,158 @@
+{
+  "stamp": "20260924-181603",
+  "gpu": "L40S",
+  "garment": "top_long",
+  "cfg": {
+    "actions_to_execute": 5,
+    "k_execute": 1.0,
+    "actions_to_keep": 6,
+    "execute_in_n_steps": 5,
+    "num_steps": 10,
+    "time_threshold_inpaint": 0.4,
+    "cfg_scale": 7,
+    "noise_temperature": 0.9,
+    "num_rollout_candidates": 2
+  },
+  "load_s": 56.44583058357239,
+  "gpu_mem_after_load": {
+    "used_mb": 5915,
+    "total_mb": 46068
+  },
+  "runs": [
+    {
+      "batch": 1,
+      "candidates": 1,
+      "first_call_s": 35.47110838099999,
+      "wall_median_s": 0.2933504690000035,
+      "wall_p95_s": 0.2986900599499954,
+      "req_median_s": 0.2875947714999967,
+      "req_p95_s": 0.2933350697999984,
+      "obs_per_s": 3.408891771705291,
+      "server_cpu_pct": 76.6,
+      "gpu_mem": {
+        "used_mb": 5933,
+        "total_mb": 46068
+      },
+      "actions_shape": [
+        5,
+        12
+      ],
+      "actions_finite": true,
+      "actions_min": -1.1425340175628662,
+      "actions_max": 1.114334225654602
+    },
+    {
+      "batch": 4,
+      "candidates": 1,
+      "first_call_s": 33.081518699,
+      "wall_median_s": 0.8232471154999956,
+      "wall_p95_s": 0.8948318054000068,
+      "req_median_s": 0.5101282109999943,
+      "req_p95_s": 0.665031452749993,
+      "obs_per_s": 4.858808399918434,
+      "server_cpu_pct": 99.9,
+      "gpu_mem": {
+        "used_mb": 5937,
+        "total_mb": 46068
+      },
+      "actions_shape": [
+        5,
+        12
+      ],
+      "actions_finite": true,
+      "actions_min": -1.1309341192245483,
+      "actions_max": 1.1490724086761475
+    },
+    {
+      "batch": 1,
+      "candidates": 2,
+      "first_call_s": 17.91349099300001,
+      "wall_median_s": 0.3176252199999965,
+      "wall_p95_s": 0.3361670652000058,
+      "req_median_s": 0.31292296699999156,
+      "req_p95_s": 0.33156743699999824,
+      "obs_per_s": 3.1483646040450157,
+      "server_cpu_pct": 90.6,
+      "gpu_mem": {
+        "used_mb": 5937,
+        "total_mb": 46068
+      },
+      "actions_shape": [
+        5,
+        12
+      ],
+      "actions_finite": true,
+      "actions_min": -1.147797703742981,
+      "actions_max": 1.1697701215744019
+    },
+    {
+      "batch": 4,
+      "candidates": 2,
+      "first_call_s": 24.249762658999998,
+      "wall_median_s": 0.900834164999992,
+      "wall_p95_s": 26.438725440749984,
+      "req_median_s": 0.5919134334999967,
+      "req_p95_s": 29.537711404399978,
+      "obs_per_s": 4.44032892557981,
+      "server_cpu_pct": 238.8,
+      "gpu_mem": {
+        "used_mb": 5941,
+        "total_mb": 46068
+      },
+      "actions_shape": [
+        5,
+        12
+      ],
+      "actions_finite": true,
+      "actions_min": -1.140036940574646,
+      "actions_max": 1.1391955614089966
+    },
+    {
+      "batch": 1,
+      "candidates": 3,
+      "first_call_s": 23.168808013000046,
+      "wall_median_s": 0.33678145750002386,
+      "wall_p95_s": 0.34750754855002697,
+      "req_median_s": 0.3319688815000177,
+      "req_p95_s": 0.34258564785000656,
+      "obs_per_s": 2.9692846138951374,
+      "server_cpu_pct": 91.4,
+      "gpu_mem": {
+        "used_mb": 5941,
+        "total_mb": 46068
+      },
+      "actions_shape": [
+        5,
+        12
+      ],
+      "actions_finite": true,
+      "actions_min": -1.1454702615737915,
+      "actions_max": 1.1616196632385254
+    },
+    {
+      "batch": 4,
+      "candidates": 3,
+      "first_call_s": 25.988073380000003,
+      "wall_median_s": 0.9642868195000176,
+      "wall_p95_s": 9.186759577149987,
+      "req_median_s": 0.6351527550000071,
+      "req_p95_s": 0.7938562680500268,
+      "obs_per_s": 4.148143393761203,
+      "server_cpu_pct": 102.5,
+      "gpu_mem": {
+        "used_mb": 5941,
+        "total_mb": 46068
+      },
+      "actions_shape": [
+        5,
+        12
+      ],
+      "actions_finite": true,
+      "actions_min": -1.1338809728622437,
+      "actions_max": 1.1732008457183838
+    }
+  ],
+  "jax_cache_entries_before": 0,
+  "jax_cache_entries_after": 273,
+  "total_s": 344.80242371559143
+}
