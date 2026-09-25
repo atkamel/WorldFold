@@ -124,7 +124,10 @@ def main():
 
     tag = out.name
     student = load_policy(args.init, "cpu")
-    pool_kwargs = {"teacher": teacher_ckpt}
+    # a policy teacher labels on the GPU in this process (PolicyController.teacher_policy);
+    # the workers only simulate
+    teacher_policy = load_policy(teacher_ckpt) if teacher_ckpt else None
+    pool_kwargs = {}
     if student.needs_images:
         pool_kwargs.update(render=True, cameras=dict(student.cameras))
     log(f"== teacher: {args.teacher} | student: {student.kind} | score sets {sets} | "
@@ -151,7 +154,7 @@ def main():
                 log(f"   reusing frozen {version} ({m['n_episodes']} episodes)")
             else:
                 controller = PolicyController(policy, replan_every=args.replan_every, beta=beta, label=True,
-                                              source="dagger")
+                                              source="dagger", teacher_policy=teacher_policy)
                 writer = DatasetWriter(args.root, version, parent=dataset, resume=args.resume,
                                        config={"round": r, "beta": beta, "policy": str(best_ckpt),
                                                "replan_every": args.replan_every, "episodes": args.episodes,

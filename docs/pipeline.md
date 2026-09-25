@@ -241,9 +241,13 @@ milestone of its own, not a speed switch. Everything learned runs on the **GPU**
   (`WindowSampler._cache_teacher_targets`) instead of inside every training step:
   2,000 steps took 226 s → 160 s with a diffusion teacher, before frames moved on-GPU.
 
-Independent CPU-bound and GPU-bound jobs run side by side. Phase 5b used three
-tracks: vision distillation, offline RL + re-evaluations, and the final
-figures/demos, each with a worker budget summing to the 16 cores.
+**CPU budget.** A policy teacher (distillation) labels in the main process with one
+batched GPU call per replan (`PolicyController(teacher_policy=...)`). Before, every
+worker ran the diffusion teacher on its own core, ~77 ms per label. Workers now only
+simulate (and render, for image students). Long runs are capped at **10 sim workers,
+one CPU job at a time** (`outputs/imitation/runs/phase5b_seq.sh`), not all 16 cores
+continuously. It's slower in calendar time, but it keeps the CPU out of sustained full
+load; the GPU carries the learning at ~95% utilization during training.
 
 ## 11. Reproducing a result
 

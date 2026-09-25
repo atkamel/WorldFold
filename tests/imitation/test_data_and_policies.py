@@ -349,3 +349,18 @@ def test_diffusion_sampling_is_a_deterministic_function_of_the_obs():
     alone = padded_predict(p, x[2:3])
     torch.randn(100)                                           # disturb the global RNG
     np.testing.assert_array_equal(padded_predict(p, x)[2:3], alone)
+
+
+def test_policy_teacher_labels_on_gpu_in_the_controller():
+    from imitation.rollout import PolicyController, padded_predict
+    torch.manual_seed(0)
+    student = build_policy("chunk_mlp", obs_dim=D, action_dim=A, obs_horizon=2, chunk=16).eval()
+    teacher = build_policy("chunk_mlp", obs_dim=D, action_dim=A, obs_horizon=2, chunk=16).eval()
+    c = PolicyController(student, beta=1.0, label=True, teacher_policy=teacher)
+    assert not c.needs_labels                       # workers are never asked to label
+    rngs = {0: np.random.default_rng(0), 1: np.random.default_rng(1)}
+    x = np.random.default_rng(0).normal(size=(2, 2, D)).astype(np.float32)
+    plans = c.plan([0, 1], x, None, rngs)
+    want = padded_predict(teacher, x)
+    np.testing.assert_allclose(plans[0].label, want[0], atol=1e-6)
+    np.testing.assert_allclose(plans[1].actions, want[1][:8], atol=1e-6)      # beta = 1: teacher executes

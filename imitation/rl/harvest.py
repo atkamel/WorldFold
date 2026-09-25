@@ -20,12 +20,13 @@ from __future__ import annotations
 import argparse
 import itertools
 import time
+from pathlib import Path
 from collections import Counter
 
 import numpy as np
 
 from imitation.data.collect import DEFAULT_ROOT, recovery_perturbation
-from imitation.data.schema import ACTOR_STUDENT, DatasetWriter
+from imitation.data.schema import ACTOR_STUDENT, DatasetWriter, Episode
 from imitation.evaluate import failure_code
 from imitation.policies.common import load_policy
 from imitation.rollout import Controller, EnvPool, Plan, padded_predict, rollout
@@ -88,6 +89,11 @@ def main():
                                    "min_per_code": args.min_per_code, "recovery_fraction": args.recovery_fraction,
                                    "seed_base": HARVEST_SEED_BASE, "cells": cells})
     codes, by_cell = Counter(), Counter()
+    for e in writer.new_entries:          # --resume: count what the killed run already kept
+        ep = Episode.load(Path(args.root) / e["file"])
+        pi, sigma = cell_of(e["seed"], cells)
+        codes[failure_code(ep) or "success"] += 1
+        by_cell[f"p{pi} s{sigma}", failure_code(ep) or "success"] += 1
     t0 = time.time()
 
     def save(ep):

@@ -198,13 +198,21 @@ def padded_predict(policy, obs_hist, images=None):
 class PolicyController(Controller):
     """A student policy. With label=True the teacher labels every replan state;
     with beta > 0 (DAgger's mixture) the teacher's labelled chunk is executed
-    instead of the student's with probability beta."""
+    instead of the student's with probability beta.
 
-    def __init__(self, policy, replan_every=8, beta=0.0, label=False, source="student"):
+    `teacher_policy`: a *policy* teacher (distillation) labels here, in the main process,
+    in one batched GPU call from the observation histories already held for the student.
+    The workers then never load or run it (it cost each CPU core ~77 ms per label for
+    the diffusion teacher). The scripted expert still labels in the workers, since it
+    needs the live sim."""
+
+    def __init__(self, policy, replan_every=8, beta=0.0, label=False, source="student", teacher_policy=None):
         self.policy = policy
+        self.teacher_policy = teacher_policy
         self.replan_every = replan_every
-        self.horizon = policy.obs_horizon
-        self.needs_labels = label or beta > 0
+        self.horizon = max(policy.obs_horizon, teacher_policy.obs_horizon if teacher_policy else 0)
+        self.needs_labels = (label or beta > 0) and teacher_policy is None      # worker-side labels
+        self.gpu_labels = (label or beta > 0) and teacher_policy is not None
         self.label_horizon = policy.chunk
         self.beta = beta
         self.source = source
@@ -212,7 +220,11 @@ class PolicyController(Controller):
 
     def plan(self, slots, obs_hist, labels, rngs, images=None):
         # [B, K, A]: one batched call for all envs
-        chunks = padded_predict(self.policy, obs_hist, images if self.needs_images else None)
+        chunks = padded_predict(self.policy, obs_hist[:, -self.policy.obs_horizon:],
+                                images if self.needs_images else None)
+        if self.gpu_labels:
+            t = self.teacher_policy
+            labels = list(padded_predict(t, obs_hist[:, -t.obs_horizon:])[:, :self.label_horizon])
         plans = []
         for j, slot in enumerate(slots):
             label = labels[j] if labels is not None else None
