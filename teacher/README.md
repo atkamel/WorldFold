@@ -57,8 +57,11 @@ weld "glue" grasp, rendering. **It's a specialist and doesn't transfer**, hence 
 - Throughput is capped at **~3 calls/s regardless of concurrency**. The GPU is busy only 19–33% (measured on H200, which was no faster than L40S).
 - yappi inside the server (`::server_profile2`): the single `inference-batcher` thread spends its time on **(a) recompiling / compile-cache lookups for new batch shapes** (the 5 ms window forms random batch sizes 1–6), **(b) hundreds of slow-path JAX dispatches + ~740 tiny eager GPU ops per call**, and **(c) running the model twice per request** (retry pass).
 - Unpacking requests costs only ~30 ms/call (websocket deflate ~12 ms + base64/JSON ~17 ms). Easy 10%: client `compression=None`, raw bytes.
-- Fix candidates, easiest first: pad batches to a fixed size, several server processes per GPU, check whether the retry pass is needed, jit the whole pipeline.
-- Estimated headroom: ~30 calls/s on an L40S, ~90 on an H200 (compute-bound estimate, not yet measured).
+- **Several server processes per GPU does NOT fix it** (measured on one L40S): 1 / 2 / 4 servers = **3.15 / 3.75 / 4.38 calls/s**,
+  GPU busy 47% / 69% / 87%. The GPU fills up with inefficient work (tiny ops, a second model run per request, best-of-3, CFG).
+- Fix = cut the work per call, easiest first: (1) check whether the retry pass is needed (up to 2×), (2) pad batches to a fixed size
+  (no recompiles), (3) jit the whole pre/post-processing + sampling pipeline as one function (biggest win).
+- Headroom is unknown until (1)-(3) are tried. ~30 calls/s on an L40S was a best-case compute estimate, not a measurement.
 
 **WorldFold MuJoCo physics (only relevant if you keep using MuJoCo):** 80% of each physics step is the constraint solver
 (121-vertex flex cloth ≈ 300 edge constraints + ~50 contacts). A 1 ms timestep instead of 0.5 ms is **1.8× faster**,

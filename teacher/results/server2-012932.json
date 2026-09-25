@@ -1,0 +1,53 @@
+{
+  "stamp": "012932",
+  "gpu": "L40S",
+  "candidates": 3,
+  "per_server_concurrency": 4,
+  "phase_b": [
+    {
+      "servers": 1,
+      "total_inflight": 4,
+      "obs_per_s": 3.152788844674211,
+      "req_median_s": 1.241501153499982,
+      "req_p95_s": 1.2896425474000068,
+      "gpu_util_mean": 47.035714285714285,
+      "gpu_mem_mb": 6249,
+      "server_cpu_pct_each": [
+        151.0
+      ]
+    },
+    {
+      "servers": 2,
+      "total_inflight": 8,
+      "obs_per_s": 3.7542488417966187,
+      "req_median_s": 2.0631879075000086,
+      "req_p95_s": 2.113731266049996,
+      "gpu_util_mean": 69.34782608695652,
+      "gpu_mem_mb": 12490,
+      "server_cpu_pct_each": [
+        131.2,
+        128.5
+      ]
+    },
+    {
+      "servers": 4,
+      "total_inflight": 16,
+      "obs_per_s": 4.381243564476009,
+      "req_median_s": 3.5341546875000063,
+      "req_p95_s": 3.6153097419999938,
+      "gpu_util_mean": 86.74358974358974,
+      "gpu_mem_mb": 24989,
+      "server_cpu_pct_each": [
+        118.0,
+        116.7,
+        116.0,
+        117.7
+      ]
+    }
+  ],
+  "phase_a": {
+    "obs_per_s": 2.5842480624185744,
+    "gpu_util_mean": 41.205882352941174
+  },
+  "yappi_file": "/vol/profile/yappi-012932.txt"
+}
