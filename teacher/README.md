@@ -73,8 +73,25 @@ weld "glue" grasp, rendering. **It's a specialist and doesn't transfer**, hence 
   pre-flattened model state in `module_jit`, fixed batch buckets). `fast_noretry` adds `TEACHER_RETRY=0`.
   **The retry pass fired on 100% of calls** even with real frames, so it doubles the model work; switching it off is a
   quality trade-off to validate (success rate in his eval) before using it for caching.
-- Remaining headroom (not yet done): raw-bytes instead of JSON/base64 (~17 ms/call), candidates 3->1, skip WM-flow monitor
-  heads when not choosing between candidates. The model-math floor is ~0.1 s/call (π0 is published at ~73 ms on a 4090, plus CFG/best-of-N).
+- **Round 2** (`::server_fastbench2`, L40S with 8 CPU / 32 GB, all phases with the `fast_noretry` env, so retry is OFF):
+
+  | Phase | calls/s | vs original (2.37) | GPU busy |
+  |---|---|---|---|
+  | full-res images, 4 clients | 7.55 | 3.2× | 60% |
+  | full-res images, 16 clients | 12.57 | 5.3× | 60% |
+  | **client-side 224 resize**, 4 clients | 11.08 | 4.7× | 76% |
+  | **client-side 224 resize, 16 clients** | **15.82** | **6.7×** | 80% |
+  | + candidates 3→1 (quality knob) | 18.25 | 7.7× | 72% |
+  | + 2 server processes | 15.08 | no gain | 88% |
+
+  **Client-side resize = identical model input.** Resize with his own `openpi_client.image_tools.resize_with_pad(img, 224, 224)`
+  before sending; the server's `ResizeImages` then returns the image unchanged (it short-circuits on 224×224, `image_tools.py:28`).
+  Requests shrink 3.7 MB → 0.6 MB.
+- **Stopped here: the GPU is the limit (~80–88% busy, ~16 calls/s on an L40S).** Two servers don't help, and candidates 3→1 gives only +15%
+  (the VLM prefix dominates) so it isn't worth the quality loss. Going further needs model-level changes (fewer denoise steps, no CFG, smaller images).
+- **Recipe to use:** env `TEACHER_FAST_OUT=1 TEACHER_FLAT_STATE=1 TEACHER_BUCKETS=1` + client-side 224 resize + batch many sim clients
+  (≥16) per server. `TEACHER_RETRY=0` roughly doubles throughput again but is a **quality trade-off: validate the success rate in his
+  eval before caching with it.** The same-quality config (retry on) measured 1.5× at 4 clients; with resize + 16 clients it should stack, but that isn't measured yet.
 
 **WorldFold MuJoCo physics (only relevant if you keep using MuJoCo):** 80% of each physics step is the constraint solver
 (121-vertex flex cloth ≈ 300 edge constraints + ~50 contacts). A 1 ms timestep instead of 0.5 ms is **1.8× faster**,
