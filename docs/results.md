@@ -253,6 +253,34 @@ Reading:
 
 ## DAgger rounds
 
+### M5b.2 — shifted-pose coverage (dagger_shift) — **exit NOT met** (2026-09-24)
+
+From `dagger_diff/round_1` on its aggregated chain `v1_dagger_diff_r2`. 128 rollouts per
+round: 50% from shifted cloth poses (`seeds.shifted_pose`, seeds 500000 + 1000 r, the
+id_hard distribution on disjoint seeds) and 30% knocked. The keep rule scores **all three
+sets**. n=200, deterministic.
+
+| round | trained on | id_easy | id_hard | recovery | gain (SE, 3 sets) | kept |
+|---|---|---|---|---|---|---|
+| 0 | `v1_dagger_diff_r2` | 196/200 = 98.0% [95.0, 99.2] | 144/200 = 72.0% [65.4, 77.8] | 145/200 = 72.5% [65.9, 78.2] | — | yes |
+| 1 | `…_dagger_shift_r1` | 198/200 = 99.0% [96.4, 99.7] | 122/200 = 61.0% [54.1, 67.5] | 146/200 = 73.0% [66.5, 78.7] | −1.4 | no |
+| 2 | `…_dagger_shift_r2` | 195/200 = 97.5% [94.3, 98.9] | 129/200 = 64.5% [57.7, 70.8] | 153/200 = 76.5% [70.2, 81.8] | −0.6 | no, stop |
+
+Round 2 failure codes: id_hard S1 43, G1 23, F1 5; recovery S1 26, F1 12, G1 9.
+
+The round-0 re-evaluation reproduced M5b.1 round 1 exactly (196 / 144 / 145, same failure
+codes), which confirms deterministic evaluation end to end.
+
+Diagnosis. Shifted rollouts fail mostly by **S1** (12 of 64 in round 1 vs 2 of 64
+nominal). In those episodes the teacher's labels are *not* stationary or contradictory:
+they keep driving the arms (mean |joint action| 0.09-0.44). The student moves about half as
+much, reaches the goal region, and times out still holding with a corner 4-12 cm off
+goal. The expert closes that last centimetre with `QuarterFoldExpert._maybe_retry`
+(re-placing by the measured miss after a settle wait). A chunk policy re-planning every 8
+steps under-imitates that slow, feedback-driven correction. More shifted rollouts of the
+same kind didn't fix it in two rounds. **Best privileged policy stays
+`dagger_diff/round_1`** (98.0 / 72.0 / 72.5).
+
 ### M5b.1 — DAgger from the diffusion checkpoint (dagger_diff) (2026-09-24)
 
 From `diff_v1_s0` under the deterministic sampler; otherwise the dagger_v2 protocol
