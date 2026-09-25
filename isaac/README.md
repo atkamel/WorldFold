@@ -9,6 +9,47 @@ runs the SB3 pipeline unchanged. Scene constants are shared through
 Milestone 1 covers the environment only. Not ported: `ee_delta` mode, the
 physical grabber, mass/friction/damping randomisation, the viewer.
 
+## FOR ZECH: getting into WATcloud
+
+Docs: https://cloud.watonomous.ca/docs/compute-cluster/ssh
+
+- Username: `zechwang1204`
+- Login node: `wato-login1.ext.watonomous.ca` (or `wato-login2`)
+- SSH key: `~/.ssh/id_ed25519_watcloud` (the public key is registered in the
+  WATcloud onboarding form; `~/.ssh/config` applies it to `*.watonomous.ca`,
+  but its `User` line still says `YOUR_WATCLOUD_USERNAME`, so fix that or pass
+  the user explicitly)
+
+```powershell
+ssh zechwang1204@wato-login1.ext.watonomous.ca
+```
+
+Do not pass the public key text with `-i`; `-i` wants the private key path.
+
+Once in, GPUs are only on compute nodes via SLURM. What is free and what is
+queued:
+
+```bash
+sinfo -o "%P %D %t %G"            # node state and GPUs (drain = unavailable)
+squeue --start -u $(whoami)       # your jobs and estimated start times
+```
+
+RTX 3090 / 4090 nodes are usually taken; the 2080 Ti node (`delta-slurm1`)
+is the reliable one for Isaac Sim 4.5. Hold a GPU while waiting with a batch
+job and attach later:
+
+```bash
+sbatch --job-name isaac3090 --gres shard:rtx_3090:16384,tmpdisk:40960 --cpus-per-task 8 --mem 32G --time 4:00:00 --wrap "sleep infinity"
+srun --jobid <JOBID> --pty bash   # once RUNNING
+scancel <JOBID>                   # when done, so the GPU is not held idle
+```
+
+NGC: `docker login nvcr.io` with username `$oauthtoken` and an API key from
+https://ngc.nvidia.com (profile > Setup > Generate API Key). The key is shown
+once; generate a new one if lost. Never commit it.
+
+The Docker image lives on the node's `/tmp` and is re-pulled every job.
+
 ## Running on WATcloud
 
 Isaac Sim needs an RTX GPU. The 2080 Ti nodes run Isaac Sim 4.5.0.
