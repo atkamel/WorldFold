@@ -280,6 +280,18 @@ class _Slot:
 
 def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, perturb_fn=None,
             meta_extra=None, progress=None, on_done=None, max_wait=0.01, stats=None) -> list[Episode]:
+    """Run one episode per seed across the pool (see `_rollout`). Holds the shared CPU slot
+    for the duration when `IMITATION_CPU_SLOT` is set (`imitation.cpu_slot`, M5c.3)."""
+    from imitation.cpu_slot import cpu_slot
+    with cpu_slot() as waited:
+        if stats is not None:
+            stats["slot_wait_s"] = stats.get("slot_wait_s", 0.0) + waited
+        return _rollout(pool, seeds, controller, reset_options, perturb_fn, meta_extra, progress, on_done,
+                        max_wait, stats)
+
+
+def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_extra=None, progress=None,
+             on_done=None, max_wait=0.01, stats=None) -> list[Episode]:
     """Run one episode per seed across the pool; returns Episodes in seed order.
 
     Event-driven: each env gets its next command the moment its last one returns,
