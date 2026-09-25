@@ -1,0 +1,92 @@
+{
+  "stamp": "014807",
+  "gpu": "L40S",
+  "garment": "top_short",
+  "candidates": 3,
+  "results": [
+    {
+      "config": "baseline",
+      "clients": 4,
+      "warm_s": 138.4,
+      "warm_calls": 25,
+      "calls": 109,
+      "calls_per_s": 2.372550402468196,
+      "lat_median_s": 1.6683303709999961,
+      "lat_p95_s": 1.7297463556000026,
+      "retry_rate": 1.0,
+      "all_finite": true,
+      "act_absmax": 1.7059873342514038,
+      "gpu_util_mean": 36.53896103896104
+    },
+    {
+      "config": "baseline",
+      "clients": 1,
+      "warm_s": 6.7,
+      "warm_calls": 13,
+      "calls": 87,
+      "calls_per_s": 1.9209073992735342,
+      "lat_median_s": 0.5203666049999924,
+      "lat_p95_s": 0.5353694318999829,
+      "retry_rate": 1.0,
+      "all_finite": true,
+      "act_absmax": 1.7171204090118408,
+      "gpu_util_mean": 42.701298701298704
+    },
+    {
+      "config": "fast",
+      "clients": 4,
+      "warm_s": 191.7,
+      "warm_calls": 25,
+      "calls": 165,
+      "calls_per_s": 3.602433836343633,
+      "lat_median_s": 1.101590486999953,
+      "lat_p95_s": 1.13042582519995,
+      "retry_rate": 1.0,
+      "all_finite": true,
+      "act_absmax": 1.7051886320114136,
+      "gpu_util_mean": 61.17610062893082
+    },
+    {
+      "config": "fast",
+      "clients": 1,
+      "warm_s": 4.7,
+      "warm_calls": 13,
+      "calls": 127,
+      "calls_per_s": 2.8098262975294785,
+      "lat_median_s": 0.35476784900004077,
+      "lat_p95_s": 0.36937313540005334,
+      "retry_rate": 1.0,
+      "all_finite": true,
+      "act_absmax": 1.7111427783966064,
+      "gpu_util_mean": 62.1025641025641
+    },
+    {
+      "config": "fast_noretry",
+      "clients": 4,
+      "warm_s": 35.9,
+      "warm_calls": 25,
+      "calls": 313,
+      "calls_per_s": 6.905322163864678,
+      "lat_median_s": 0.578310207999948,
+      "lat_p95_s": 0.5916568380000626,
+      "retry_rate": 0.0,
+      "all_finite": true,
+      "act_absmax": 1.7147276401519775,
+      "gpu_util_mean": 66.98726114649682
+    },
+    {
+      "config": "fast_noretry",
+      "clients": 1,
+      "warm_s": 2.7,
+      "warm_calls": 14,
+      "calls": 238,
+      "calls_per_s": 5.256905224348027,
+      "lat_median_s": 0.1897950660000447,
+      "lat_p95_s": 0.1966804350999382,
+      "retry_rate": 0.0,
+      "all_finite": true,
+      "act_absmax": 1.7199397087097168,
+      "gpu_util_mean": 54.802547770700635
+    }
+  ]
+}

@@ -94,6 +94,8 @@ image = (
         "print('IMPORT_OK jax', jax.__version__, 'torch', torch.__version__, get_config('pi_modified_bc_rl').name)\"",
     )
     .run_commands(f"cd {SRC} && uv pip install yappi==1.6.10 py-spy")   # thread-aware profilers
+    .add_local_file(str(_TEACHER / "fast_server_patch.py"), remote_path="/opt/teacher_build/fast_server_patch.py", copy=True)
+    .run_commands(f"python /opt/teacher_build/fast_server_patch.py {SRC}")   # env-gated speed patches, OFF by default
     # ---- WorldFold MuJoCo sim in the container's own python (co-located with the server) ----
     .apt_install("libegl1", "libgl1", "libglvnd0", "libosmesa6", "libglew2.2")
     # so101-nexus needs py>=3.12 (container is 3.11 for his stack); WorldFold only uses its SO101 MJCF -> vendored
@@ -662,11 +664,11 @@ def profile_all(physics_only: bool = False, server_only: bool = False,
 # (B) K server processes sharing one GPU, client compression off.
 #   PYTHONUTF8=1 python -m modal run --detach teacher/modal_teacher.py::server_profile2
 # =============================================================================================
-def _launch_server(port, log_path, mem_fraction="0.8", yappi_out=None):
+def _launch_server(port, log_path, mem_fraction="0.8", yappi_out=None, extra_env=None):
     import os, subprocess, sys, threading
     env = dict(os.environ, JAX_PLATFORMS="cuda", JAX_COMPILATION_CACHE_DIR=f"{VOL_PATH}/jax_cache",
                JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS="0", XLA_PYTHON_CLIENT_PREALLOCATE="false",
-               XLA_PYTHON_CLIENT_MEM_FRACTION=mem_fraction, PYTHONUNBUFFERED="1")
+               XLA_PYTHON_CLIENT_MEM_FRACTION=mem_fraction, PYTHONUNBUFFERED="1", **(extra_env or {}))
     script = ["scripts/serve.py"]
     if yappi_out:
         env["YAPPI_OUT"] = str(yappi_out)
@@ -807,4 +809,137 @@ def server_profile2(ks: str = "1,2,4", per_server: int = 4, rounds: int = 6, can
         f = pdir / f"server2-{stamp}.json"; tmp = f.with_suffix(".tmp")
         tmp.write_text(json.dumps(out, indent=2)); os.replace(tmp, f); vol.commit()
     print("DONE2 " + json.dumps({"phase_a": out.get("phase_a"), "phase_b": out["phase_b"]}), flush=True)
+    return out
+
+
+# =============================================================================================
+# Fast-server A/B benchmark (L40S): baseline vs patched server (see fast_server_patch.py).
+# Realistic inputs: first frame of his dataset's 3 cameras; each client replays next_initial_actions
+# like a real episode.   PYTHONUTF8=1 python -m modal run --detach teacher/modal_teacher.py::server_fastbench
+# =============================================================================================
+FAST_CONFIGS = {
+    "baseline": {},
+    "fast": {"TEACHER_FAST_OUT": "1", "TEACHER_FLAT_STATE": "1", "TEACHER_BUCKETS": "1"},
+    "fast_noretry": {"TEACHER_FAST_OUT": "1", "TEACHER_FLAT_STATE": "1", "TEACHER_BUCKETS": "1", "TEACHER_RETRY": "0"},
+}
+
+
+def _his_frames():
+    """First frame of each camera from his dataset (cached on the volume)."""
+    import pathlib
+    import numpy as np
+    cache = pathlib.Path(VOL_PATH, "frames"); cache.mkdir(exist_ok=True)
+    out = {}
+    for cam in ("top_rgb", "left_rgb", "right_rgb"):
+        f = cache / f"{cam}.npy"
+        if not f.exists():
+            import imageio
+            from huggingface_hub import hf_hub_download
+            p = hf_hub_download("lehome/dataset_challenge_merged",
+                                f"top_short_merged/videos/observation.images.{cam}/chunk-000/file-000.mp4",
+                                repo_type="dataset", local_dir="/tmp/hisdata")
+            fr = np.asarray(imageio.get_reader(p, "ffmpeg").get_data(0))[..., :3].astype(np.uint8)
+            np.save(f, fr)
+        out[cam] = np.load(f)
+    vol.commit()
+    return out
+
+
+@app.function(image=image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3600, cpu=16, memory=65536)
+def server_fastbench(configs: str = "baseline,fast,fast_noretry", concurrency: str = "4,1",
+                     warm_max_s: int = 300, measure_s: int = 45, garment: str = "top_short"):
+    import asyncio, base64, json, os, pathlib, subprocess, threading, time
+    import numpy as np, websockets
+
+    stamp = time.strftime("%H%M%S")
+    pdir = pathlib.Path(VOL_PATH, "profile"); pdir.mkdir(exist_ok=True)
+    frames = _his_frames()
+    print("FRAMES " + json.dumps({k: list(v.shape) for k, v in frames.items()}), flush=True)
+    gid = {"top_long": 0, "top_short": 1, "pant_long": 2, "pant_short": 3}[garment]
+    cfg = dict(json.load(open(f"{CKPT}/assets/inference_config.json"))["per_garment_type"][garment])
+    cfg.pop("k_execute", None); cfg.pop("num_steps", None)
+    n_cand = int(cfg.get("num_rollout_candidates", 1))
+    state = [-1.24, -1.69, 1.49, 1.05, -0.08, -0.01, 1.24, -1.69, 1.49, 1.05, -0.08, -0.01]
+    img_fields = {f"observation.images.{k}": {"base64": base64.b64encode(np.ascontiguousarray(v).tobytes()).decode(),
+                                               "shape": list(v.shape), "dtype": "uint8"} for k, v in frames.items()}
+
+    gpu = []
+    def sampler():
+        while True:
+            try:
+                o = subprocess.check_output(["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"], text=True)
+                gpu.append((time.time(), int(o.strip())))
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(0.25)
+    threading.Thread(target=sampler, daemon=True).start()
+
+    async def client(cid, rec, stop):
+        ia = None
+        async with websockets.connect("ws://localhost:8000", max_size=100 * 1024 * 1024, open_timeout=120,
+                                      ping_interval=None, compression=None) as ws:
+            while not stop.is_set():
+                body = {"type": "infer_chunk", "session_id": f"c{cid}", "garment_type_id": gid,
+                        "observation.state": state, "inference_config": cfg, **img_fields}
+                if ia is not None:
+                    body["initial_actions"] = ia
+                t = time.perf_counter(); await ws.send(json.dumps(body))
+                r = json.loads(await asyncio.wait_for(ws.recv(), 1800)); dt = time.perf_counter() - t
+                if "error" in r:
+                    raise RuntimeError(r["error"])
+                acts = np.asarray(r["actions"], dtype=np.float32)
+                rec.append({"t": time.time(), "dt": dt, "retry": int(r.get("best_of_n_n_valid", 0) or 0) > n_cand,
+                            "finite": bool(np.isfinite(acts).all()), "amax": float(np.abs(acts).max())})
+                ia = r.get("next_initial_actions")
+
+    async def run_phase(n_clients, seconds=None, until_warm=False):
+        rec, stop = [], asyncio.Event()
+        tasks = [asyncio.create_task(client(i, rec, stop)) for i in range(n_clients)]
+        t0 = time.time()
+        while True:
+            await asyncio.sleep(0.5)
+            el = time.time() - t0
+            if until_warm:
+                last = rec[-12:]
+                if (len(last) == 12 and all(x["dt"] < 2.0 for x in last)) or el > warm_max_s:
+                    break
+            elif el >= seconds:
+                break
+        stop.set()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        return rec, t0, time.time()
+
+    out = {"stamp": stamp, "gpu": "L40S", "garment": garment, "candidates": n_cand, "results": []}
+    for name in configs.split(","):
+        env = FAST_CONFIGS[name]
+        srv = _launch_server(8000, pdir / f"fastbench-{stamp}-{name}.log", extra_env=env)
+        try:
+            t_load = time.time()
+            while not srv[2].is_set():
+                if srv[0].poll() is not None:
+                    raise SystemExit(f"{name}: server died during load")
+                time.sleep(1)
+            print(f"READY {name} load_s={time.time() - t_load:.0f}", flush=True)
+            for c in [int(x) for x in concurrency.split(",")]:
+                tw = time.time(); warm, _, _ = asyncio.run(run_phase(c, until_warm=True))
+                rec, t0, t1 = asyncio.run(run_phase(c, seconds=measure_s))
+                g = [u for ts, u in gpu if t0 <= ts <= t1]
+                dts = np.array([x["dt"] for x in rec]) if rec else np.array([np.nan])
+                res = {"config": name, "clients": c, "warm_s": round(t0 - tw, 1), "warm_calls": len(warm),
+                       "calls": len(rec), "calls_per_s": len(rec) / (t1 - t0),
+                       "lat_median_s": float(np.median(dts)), "lat_p95_s": float(np.percentile(dts, 95)),
+                       "retry_rate": float(np.mean([x["retry"] for x in rec])) if rec else None,
+                       "all_finite": all(x["finite"] for x in rec), "act_absmax": max((x["amax"] for x in rec), default=None),
+                       "gpu_util_mean": float(np.mean(g)) if g else None}
+                out["results"].append(res); print("BENCH " + json.dumps(res), flush=True)
+                f = pdir / f"fastbench-{stamp}.json"; tmp = f.with_suffix(".tmp")
+                tmp.write_text(json.dumps(out, indent=2)); os.replace(tmp, f); vol.commit()
+        finally:
+            srv[0].terminate()
+            try:
+                srv[0].wait(30)
+            except subprocess.TimeoutExpired:
+                srv[0].kill()
+            srv[1].close()
+    print("FASTBENCH_DONE " + json.dumps([{k: r[k] for k in ("config", "clients", "calls_per_s", "lat_median_s", "retry_rate", "gpu_util_mean")} for r in out["results"]]), flush=True)
     return out

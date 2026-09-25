@@ -61,7 +61,20 @@ weld "glue" grasp, rendering. **It's a specialist and doesn't transfer**, hence 
   GPU busy 47% / 69% / 87%. The GPU fills up with inefficient work (tiny ops, a second model run per request, best-of-3, CFG).
 - Fix = cut the work per call, easiest first: (1) check whether the retry pass is needed (up to 2×), (2) pad batches to a fixed size
   (no recompiles), (3) jit the whole pre/post-processing + sampling pipeline as one function (biggest win).
-- Headroom is unknown until (1)-(3) are tried. ~30 calls/s on an L40S was a best-case compute estimate, not a measurement.
+- **Speed recipe, measured** (`fast_server_patch.py`, env-gated, `::server_fastbench`, L40S, real frames from his dataset, clients replay `next_initial_actions` like real episodes):
+
+  | L40S, top_short config (best-of-3) | baseline | **fast** (same quality) | **fast_noretry** |
+  |---|---|---|---|
+  | 1 client: time per call | 0.52 s | 0.35 s | **0.19 s** |
+  | 1 client: calls/s | 1.92 | 2.81 | **5.26** |
+  | 4 clients: calls/s | 2.37 | 3.60 | **6.91** |
+
+  `fast` = `TEACHER_FAST_OUT=1 TEACHER_FLAT_STATE=1 TEACHER_BUCKETS=1` (one device->host copy instead of hundreds of slices,
+  pre-flattened model state in `module_jit`, fixed batch buckets). `fast_noretry` adds `TEACHER_RETRY=0`.
+  **The retry pass fired on 100% of calls** even with real frames, so it doubles the model work; switching it off is a
+  quality trade-off to validate (success rate in his eval) before using it for caching.
+- Remaining headroom (not yet done): raw-bytes instead of JSON/base64 (~17 ms/call), candidates 3->1, skip WM-flow monitor
+  heads when not choosing between candidates. The model-math floor is ~0.1 s/call (π0 is published at ~73 ms on a 4090, plus CFG/best-of-N).
 
 **WorldFold MuJoCo physics (only relevant if you keep using MuJoCo):** 80% of each physics step is the constraint solver
 (121-vertex flex cloth ≈ 300 edge constraints + ~50 contacts). A 1 ms timestep instead of 0.5 ms is **1.8× faster**,
