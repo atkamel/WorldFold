@@ -243,6 +243,35 @@ grippers open) + fold score. Trained on `v1_img` + `v1_failures_img` (37,468 tra
   student rollouts (the distill rounds' own episodes, never trained on): **235/256 = 91.8% [87.8, 94.6]**.
   The "always success" baseline is 208/256 = 81.2%. Errors: 14 false "folded", 7 missed.
 
+### M5b.3 — vision recovery via distillation (distill_v2) — **exit NOT met** (2026-09-25)
+
+Student: `vision` at 128² (per-camera norm, lazy sampler). Teacher: `dagger_diff/round_1`
+(98.0 / 72.0 / 72.5), a `PolicyTeacher` labelling on the GPU through the Phase 3 loop
+(`imitation.dagger --teacher --relabel`). Round 0 = `v1_img128` with every step relabelled
+by the teacher. Rounds: 128 rollouts, **60% knocked**, 30% from shifted poses, β 0.3 →
+0.15, student-visited steps ×2. Keep rule on all three sets. n=200, deterministic.
+
+| round | trained on | id_easy | id_hard | recovery | gain (SE, 3 sets) | kept |
+|---|---|---|---|---|---|---|
+| 0 | `v1_img128` | 190/200 = 95.0% [91.0, 97.3] | 184/200 = 92.0% [87.4, 95.0] | 60/200 = 30.0% [24.1, 36.7] | — | yes |
+| 1 | `v1_img128_distill_v2_r1` | 195/200 = 97.5% [94.3, 98.9] | 147/200 = 73.5% [67.0, 79.1] | 70/200 = 35.0% [28.7, 41.8] | −1.8 | no |
+| 2 | `v1_img128_distill_v2_r2` | 189/200 = 94.5% [90.4, 96.9] | 136/200 = 68.0% [61.2, 74.1] | 65/200 = 32.5% [26.4, 39.3] | −3.4 | no, stop |
+
+Round 2 failure codes: id_hard S1 42, G1 19, F1 3; recovery G1 71, S1 35, F1 29.
+
+**Margin vs the teacher (best = round 0):** id_easy −3 pp, id_hard **+20 pp**, recovery
+**−42.5 pp**. Exit (within 15 pp on recovery) not met.
+
+Finding: **on-policy distillation transferred the teacher's weakness, not its strength.**
+Each round pulled the student's id_hard down toward the teacher's own 72% (92 → 73.5 → 68),
+the S1 stalls the teacher has on shifted poses (M5b.2), while recovery only moved within
+noise (30 → 35 → 32.5). More knocked rollouts (60%) and 128² didn't change that. Recovery
+failures stay mostly G1: after a knock the camera student misses the re-grasp. Relabelling
+by a teacher that's itself weak off-distribution is a poor fit for the one axis where the
+student already beats it. Follow-up: the M5b.6 replan sweep also covers this student
+(tighter closed-loop control is the cheap lever for re-grasping), and the best camera
+student stays round 0.
+
 ### M4.1 closure — vision BC on the finished Phase 4 path (2026-09-25)
 
 Same recipe as the first vision BC (expert labels, 30k steps, batch 256), now with every M4.1

@@ -109,13 +109,17 @@ class DiffusionPolicy(ChunkPolicy):
     def _encode(self, obs):
         return self.obs_enc(self.normalize_obs(obs).flatten(1))
 
-    def compute_loss(self, obs, actions, mask):
+    def compute_loss(self, obs, actions, mask, per_sample=False):
+        """Masked denoising loss; per_sample=True returns one value per row (for
+        advantage-weighted regression, where each row carries its own weight)."""
         B = actions.shape[0]
         t = torch.randint(0, self.train_steps, (B,), device=actions.device)
         noise = torch.randn_like(actions)
         a = self.alphas_cumprod[t].view(B, 1, 1)
         noisy = a.sqrt() * actions + (1 - a).sqrt() * noise
         err = F.mse_loss(self._eps(noisy, t, self._encode(obs)), noise, reduction="none").mean(-1)
+        if per_sample:
+            return (err * mask).sum(-1) / mask.sum(-1).clamp(min=1.0)
         return (err * mask).sum() / mask.sum().clamp(min=1.0)
 
     def _fixed_noise(self, device):

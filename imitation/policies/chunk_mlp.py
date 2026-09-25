@@ -41,8 +41,10 @@ class ChunkMLP(ChunkPolicy):
         y = self.out(self.blocks(self.inp(x)))
         return torch.tanh(y).view(-1, self.chunk, self.action_dim)
 
-    def compute_loss(self, obs, actions, mask):
+    def compute_loss(self, obs, actions, mask, per_sample=False):
         err = (self(obs) - actions).abs().mean(-1)            # [B, K]
+        if per_sample:
+            return (err * mask).sum(-1) / mask.sum(-1).clamp(min=1.0)
         return (err * mask).sum() / mask.sum().clamp(min=1.0)
 
     def sample(self, obs):

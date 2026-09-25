@@ -43,18 +43,18 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | milestone | state | closes via | where it runs |
 |---|---|---|---|
 | M4.1 image plumbing | ✅ 2026-09-25 | vision BC on the finished path, 94.5 / 91.0 / 26.5 | done |
-| M4.2 distillation margin | ◐ recovery gap | M5b.3 result | queue `phase5b_seq.sh`, step 1 (running) |
+| M4.2 distillation margin | ❌ closed, margin stated (−3 / +20 / −42.5 pp) | — | done |
 | M5.3 offline RL | ❌ (v1) | M5b.4 result, or drop RL with evidence | queue step 2 |
 | M5b.1 diffusion DAgger | ✅ | — | done |
 | M5b.2 shifted poses | ❌ closed, diagnosed | follow-up M5b.6 | — |
-| M5b.3 vision recovery | ☐ running | distill_v2 rounds | queue step 1 |
-| M5b.4 offline RL retry | ☐ queued | harvest_v2 → IQL → probe → eval | queue step 2 |
+| M5b.3 vision recovery | ❌ closed: distillation transfers teacher weakness | follow-up in M5b.6 sweep | done |
+| M5b.4 offline RL retry | ◐ harvest_v2 frozen (1679 eps); IQL running | IQL eval vs 98.0 / 72.0 / 72.5 | queue `phase5b_rest.sh` (task bdbxibw36) |
 | M5b.5 hygiene / determinism | ☐ queued | re-evals + repeat check | queue step 3 |
-| M5b.6 fine placement | ☐ next queue | replan sweep, then targeted retrain | queue 2 |
+| M5b.6 fine placement | ☐ queued | replan 4 / 2 sweep, privileged + vision | task bdbxibw36 |
 | M5c.1 profile | ◐ instrumented (`rollout(stats=)`, `imitation.viz.profile`) | run the profile | queue 2 |
 | M5c.2 GPU inference wins | ◐ CUDA-graph sampler done: 12.7× faster, bit-identical | share of rollout time from M5c.1 | queue 2 |
 | M5c.3 overlap GPU/CPU | ◐ `imitation.cpu_slot` (cross-process CPU lock around rollouts) done + tested | measure GPU busy % with two lanes | queue 2 |
-| M5c.4 GPU physics feasibility | ☐ next queue | separate env; expert ceiling vs CPU | queue 2 (study) |
+| M5c.4 GPU physics feasibility | ◐ installing mujoco-warp 3.10.0 in `.venv-warp` (approved) | cloth support, batched stepping, expert ceiling vs CPU | task bbxccvf4m |
 | M5c.5 batched GPU rendering | ☐ gated on M5c.4 | — | after M5c.4 |
 
 ## Environment
@@ -113,7 +113,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-25 · M5c.3 mechanism: `imitation.cpu_slot` — rollouts hold one cross-process CPU slot when IMITATION_CPU_SLOT is set, so parallel lanes overlap GPU training with simulation without exceeding the worker cap; 94 fast + 10 slow green · COMMIT
+- 2026-09-25 · M5b.3 ❌ closed (distill_v2: best round 0 = 95/92/30; rounds transfer the teacher's id_hard weakness, not its recovery) → M4.2 closed with margin; harvest_v2 frozen (1679 eps); IQL made diffusion-aware (per-sample losses) after the queue crashed on it; remaining work relaunched as visible task bdbxibw36; mujoco-warp env (approved) installing as task bbxccvf4m · COMMIT
+- 2026-09-25 · M5c.3 mechanism: `imitation.cpu_slot` — rollouts hold one cross-process CPU slot when IMITATION_CPU_SLOT is set, so parallel lanes overlap GPU training with simulation without exceeding the worker cap; 94 fast + 10 slow green · 5024dd0
 - 2026-09-25 · M5c.1 profiling hooks + `imitation.viz.profile`; M5c.2 CUDA-graph diffusion sampler (301→24 ms, bit-identical; int timestep schedule, identical to before); 92 fast + 10 slow green · 57cd487
 - 2026-09-25 · Pre-VLA tracker added to status.md; M4.1 closed ✅ (vision BC 128² on the finished path: 94.5/91.0/26.5); M5b.6 fine-placement added as M5b.2 follow-up; closure rule written into roadmap; queue restarted as a visible task (bpbn1o3yx) after the previous session's processes ended · df44dc0
 - 2026-09-25 · CPU relief: policy-teacher labels moved from every worker's CPU to one batched GPU call; workers only simulate; runs capped at 10 workers, one CPU job at a time (phase5b_seq.sh, resumed distill + harvest); harvest resume keeps code counts; on-GPU frames → training at 94-96% GPU · dc8e9c0

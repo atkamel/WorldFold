@@ -42,3 +42,18 @@ def test_unstable_episodes_are_tagged_and_long_episodes_subsampled():
     w = stratified_weights(np.array([0, 0, 0, 3]))
     assert abs(w[:3].sum() - w[3]) < 1e-5                         # each outcome code: equal total weight
     assert CODES[tr["code"][0]] == "success"
+
+
+def test_per_sample_losses_average_to_the_batch_loss():
+    import torch
+    from imitation.policies.common import build_policy
+    torch.manual_seed(0)
+    for kind in ("chunk_mlp", "diffusion"):
+        p = build_policy(kind, obs_dim=D, action_dim=A, obs_horizon=2, chunk=16)
+        obs, act = torch.randn(4, 2, D), torch.rand(4, 16, A) * 2 - 1
+        mask = torch.ones(4, 16)
+        torch.manual_seed(1)
+        per = p.compute_loss(obs, act, mask, per_sample=True)
+        torch.manual_seed(1)
+        full = p.compute_loss(obs, act, mask)
+        assert per.shape == (4,) and torch.allclose(per.mean(), full, atol=1e-5), kind

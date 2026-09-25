@@ -20,3 +20,4 @@ outputs/cloth_angles/*
 # clone, with no retraining.
 .DS_Store
 MUJOCO_LOG.TXT
+.venv-warp/

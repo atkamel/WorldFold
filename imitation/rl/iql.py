@@ -10,7 +10,8 @@ IQL (Kostrikov et al. 2021) never queries the critic on actions outside the data
       toward the data's executed actions with weight exp(beta * (Q - V)), clipped
 Actions are the 8-step executed chunks (`imitation.rl.transitions`). The policy is the
 same ChunkMLP the imitation stage produced, so the result drops into evaluate / demo
-unchanged. Critics read the policy's own observation normalizer.
+unchanged. Critics read the policy's own observation normalizer. Works for a chunk MLP (L1)
+and a diffusion policy (advantage-weighted denoising loss) through `compute_loss(per_sample=True)`.
 """
 
 from __future__ import annotations
@@ -124,8 +125,14 @@ def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, 
                 w = torch.exp(adv / (adv.std() + 1e-6) / beta).clamp(max=adv_clip)
             else:
                 w = torch.exp(beta * adv).clamp(max=adv_clip)
-        pred = policy(T["obs"][idx])[:, :macro]
-        err = ((pred - T["act"][idx]).abs().mean(-1) * T["valid"][idx]).sum(-1) / T["valid"][idx].sum(-1)
+        # advantage-weighted regression through the policy's own per-row loss: L1 for a
+        # chunk MLP, the denoising loss for a diffusion policy. The data's 8 executed actions
+        # fill the first `macro` slots of the K-chunk; the rest are masked out.
+        act_chunk = torch.zeros((len(idx), policy.chunk, policy.action_dim), device=device)
+        act_chunk[:, :macro] = T["act"][idx]
+        mask = torch.zeros((len(idx), policy.chunk), device=device)
+        mask[:, :macro] = T["valid"][idx]
+        err = policy.compute_loss(T["obs"][idx], act_chunk, mask, per_sample=True)
         loss_p = (w * err).mean()
         opt_p.zero_grad(set_to_none=True)
         loss_p.backward()

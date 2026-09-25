@@ -97,7 +97,7 @@ privileged.
 | | milestone | exit | status |
 |---|---|---|---|
 | M4.1 | Image obs plumbing: dict passthrough, ≥128² + wrist cam, visual DR, separate image store, lazy DataLoader, per-modality norm | image-conditioned policy trains | ✅ full scope done (dict obs, 128² + wrists, visual DR, image store, lazy sampler, per-camera norm); vision BC on it 94.5 / 91.0 / 26.5 (results.md) |
-| M4.2 | `PrivilegedPolicyTeacher` → on-policy distillation through the Phase 3 loop unchanged | sensor-only student within a stated margin of privileged | ◐ ID within 1 pp, shift +26 pp, recovery −33.5 pp (not met); ran through a copied loop, not the Phase 3 loop — fixed by A0.4 (PolicyTeacher) |
+| M4.2 | `PrivilegedPolicyTeacher` → on-policy distillation through the Phase 3 loop unchanged | sensor-only student within a stated margin of privileged | ❌ closed with the margin stated: vs the best privileged teacher, id_easy −3 pp, id_hard +20 pp, recovery −42.5 pp (M5b.3); now runs through the Phase 3 loop (PolicyTeacher) |
 | M4.3 | Vision success / fold-score detector (labels free in sim) | agreement rate vs the sim metric | ✅ 91.8% [87.8, 94.6] |
 
 The data path must go lazy here at the latest: `build_samples` materializes every window
