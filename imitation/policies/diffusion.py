@@ -118,6 +118,47 @@ class DiffusionPolicy(ChunkPolicy):
         err = F.mse_loss(self._eps(noisy, t, self._encode(obs)), noise, reduction="none").mean(-1)
         return (err * mask).sum() / mask.sum().clamp(min=1.0)
 
+    def _fixed_noise(self, device):
+        """The fixed-seed initial noise, drawn once per device (and before any CUDA graph
+        capture, where creating a generator isn't allowed)."""
+        cache = self.__dict__.setdefault("_noise_cache", {})
+        key = str(device)
+        if key not in cache:
+            g = torch.Generator(device=device).manual_seed(0)
+            cache[key] = torch.randn((1, self.chunk, self.action_dim), generator=g, device=device)
+        return cache[key]
+
+    @torch.no_grad()
+    def predict(self, obs_hist, images=None):
+        """Rollout inference. On CUDA the whole 10-step DDIM sampler is replayed as one
+        captured CUDA graph per batch shape (M5c.2): the sampler is ~60 tiny kernels whose
+        launch overhead, not arithmetic, set its latency. Same kernels, same inputs, so the
+        actions are identical to eager sampling (tested)."""
+        if self.device.type != "cuda" or self.training:
+            return super().predict(obs_hist)
+        obs = torch.as_tensor(obs_hist, dtype=torch.float32, device=self.device)
+        return self._graphed(obs).clamp(-1.0, 1.0).float().cpu().numpy()
+
+    def _graphed(self, obs):
+        cache = self.__dict__.setdefault("_graph_cache", {})
+        key = (tuple(obs.shape), str(obs.device))
+        if key not in cache:
+            static = obs.clone()
+            side = torch.cuda.Stream()
+            side.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(side):
+                for _ in range(2):                 # warm-up: allocations, cuDNN/cuBLAS choices, noise cache
+                    self.sample(static)
+            torch.cuda.current_stream().wait_stream(side)
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                out = self.sample(static)
+            cache[key] = (graph, static, out)
+        graph, static, out = cache[key]
+        static.copy_(obs)
+        graph.replay()
+        return out.clone()
+
     def sample(self, obs, steps=None):
         steps = steps or self.infer_steps
         B = obs.shape[0]
@@ -125,13 +166,14 @@ class DiffusionPolicy(ChunkPolicy):
         # One fixed-seed initial noise shared by every row: DDIM is then a deterministic
         # function of the observation. Fresh global-RNG noise made a row's action depend on
         # its batch position and call order, i.e. on worker timing (id_hard 160 -> 157/200).
-        g = torch.Generator(device=obs.device).manual_seed(0)
-        x = torch.randn((1, self.chunk, self.action_dim), generator=g, device=obs.device).expand(B, -1, -1).clone()
-        ts = torch.linspace(self.train_steps - 1, 0, steps, device=obs.device).round().long()
+        x = self._fixed_noise(obs.device).expand(B, -1, -1).clone()
+        # the timestep schedule as plain ints: indexing with GPU scalars forces a host sync,
+        # which also makes the sampler impossible to capture as a CUDA graph (M5c.2)
+        ts = torch.linspace(self.train_steps - 1, 0, steps).round().long().tolist()
         for i, t in enumerate(ts):
             a_t = self.alphas_cumprod[t]
             a_prev = self.alphas_cumprod[ts[i + 1]] if i + 1 < steps else torch.ones((), device=obs.device)
-            eps = self._eps(x, t.expand(B), cond)
+            eps = self._eps(x, torch.full((B,), t, dtype=torch.long, device=obs.device), cond)
             x0 = ((x - (1 - a_t).sqrt() * eps) / a_t.sqrt()).clamp(-1.0, 1.0)
             eps = (x - a_t.sqrt() * x0) / (1 - a_t).sqrt()      # re-derive eps from the clipped x0
             x = a_prev.sqrt() * x0 + (1 - a_prev).sqrt() * eps

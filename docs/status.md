@@ -51,8 +51,8 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | M5b.4 offline RL retry | ☐ queued | harvest_v2 → IQL → probe → eval | queue step 2 |
 | M5b.5 hygiene / determinism | ☐ queued | re-evals + repeat check | queue step 3 |
 | M5b.6 fine placement | ☐ next queue | replan sweep, then targeted retrain | queue 2 |
-| M5c.1 profile | ☐ next queue | time breakdown table | queue 2 |
-| M5c.2 GPU inference wins | ☐ next queue | compile / CUDA graphs with identical actions | queue 2 |
+| M5c.1 profile | ◐ instrumented (`rollout(stats=)`, `imitation.viz.profile`) | run the profile | queue 2 |
+| M5c.2 GPU inference wins | ◐ CUDA-graph sampler done: 12.7× faster, bit-identical | share of rollout time from M5c.1 | queue 2 |
 | M5c.3 overlap GPU/CPU | ☐ next queue | GPU > 50% busy across a DAgger run | queue 2 |
 | M5c.4 GPU physics feasibility | ☐ next queue | separate env; expert ceiling vs CPU | queue 2 (study) |
 | M5c.5 batched GPU rendering | ☐ gated on M5c.4 | — | after M5c.4 |
@@ -113,7 +113,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-25 · Pre-VLA tracker added to status.md; M4.1 closed ✅ (vision BC 128² on the finished path: 94.5/91.0/26.5); M5b.6 fine-placement added as M5b.2 follow-up; closure rule written into roadmap; queue restarted as a visible task (bpbn1o3yx) after the previous session's processes ended · COMMIT
+- 2026-09-25 · M5c.1 profiling hooks + `imitation.viz.profile`; M5c.2 CUDA-graph diffusion sampler (301→24 ms, bit-identical; int timestep schedule, identical to before); 92 fast + 10 slow green · COMMIT
+- 2026-09-25 · Pre-VLA tracker added to status.md; M4.1 closed ✅ (vision BC 128² on the finished path: 94.5/91.0/26.5); M5b.6 fine-placement added as M5b.2 follow-up; closure rule written into roadmap; queue restarted as a visible task (bpbn1o3yx) after the previous session's processes ended · df44dc0
 - 2026-09-25 · CPU relief: policy-teacher labels moved from every worker's CPU to one batched GPU call; workers only simulate; runs capped at 10 workers, one CPU job at a time (phase5b_seq.sh, resumed distill + harvest); harvest resume keeps code counts; on-GPU frames → training at 94-96% GPU · dc8e9c0
 - 2026-09-25 · Roadmap Phase 5c (GPU throughput) added: training faster, but rollouts/eval are CPU-physics-bound with the GPU at 2-17%; profile → inference/compile → overlap → GPU physics feasibility · fa83335
 - 2026-09-24 · GPU acceleration: teacher targets cached once per dataset on GPU (226→160 s / 2k steps), image frames on-GPU when they fit; Phase 5b split into 3 parallel tracks (vision / RL+re-eval / figures) · f6dfcdd

@@ -81,6 +81,26 @@ padded batches. Sampling now uses one fixed-seed noise shared by all rows, so it
 deterministic function of the observation. **The M2.4 diffusion numbers predate this**;
 M5b.1 reports the checkpoint re-evaluated under the fixed sampler.
 
+## Throughput (Phase 5c)
+
+### M5c.2 — diffusion sampling as one CUDA graph (2026-09-25)
+
+The 10-step DDIM sampler is ~60 tiny kernels; its latency was launch overhead, not
+arithmetic. `DiffusionPolicy.predict` now replays the whole sampler as one captured CUDA
+graph per batch shape. The timestep schedule became plain ints (indexing with GPU scalars
+forced a host sync and blocked capture). Measured on `dagger_diff/round_1`, batch 16,
+while the GPU was also training another model:
+
+| path | ms / batched call | actions |
+|---|---|---|
+| eager (before) | 301.3 | reference |
+| CUDA graph | 23.7 | **bit-identical** (`np.array_equal`) |
+
+12.7× lower inference latency. The new eager sampler is also bit-identical to the
+previous implementation, so earlier diffusion results stay reproducible. Test:
+`test_cuda_graph_diffusion_sampling_matches_eager_exactly`. The rollout-time share of
+inference is measured by M5c.1.
+
 ## Imitation baselines
 
 ### M2.1 — chunk-MLP BC on v1 (2026-09-24)

@@ -364,3 +364,14 @@ def test_policy_teacher_labels_on_gpu_in_the_controller():
     want = padded_predict(teacher, x)
     np.testing.assert_allclose(plans[0].label, want[0], atol=1e-6)
     np.testing.assert_allclose(plans[1].actions, want[1][:8], atol=1e-6)      # beta = 1: teacher executes
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA graphs need a GPU")
+def test_cuda_graph_diffusion_sampling_matches_eager_exactly():
+    from imitation.policies.common import ChunkPolicy
+    torch.manual_seed(0)
+    p = build_policy("diffusion", obs_dim=D, action_dim=A, obs_horizon=2, chunk=16).cuda().eval()
+    x = np.random.default_rng(0).normal(size=(16, 2, D)).astype(np.float32)
+    eager = ChunkPolicy.predict(p, x)
+    np.testing.assert_array_equal(p.predict(x), eager)          # first call captures the graph
+    np.testing.assert_array_equal(p.predict(x * 0.5), ChunkPolicy.predict(p, x * 0.5))   # replay, new input

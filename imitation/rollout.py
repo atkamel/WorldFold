@@ -29,6 +29,8 @@ ACTION_DIM = 12
 
 def _info_small(info, images=None):
     extra = {"images": images} if images is not None else {}
+    if "_timing" in info:          # (teacher s, physics s, render s) of this step, for profiling (M5c.1)
+        extra["timing"] = info["_timing"]
     return extra | {"stage": int(info["stage"]), "fold_score": float(info["fold_score"]),
             "grasped": (bool(info["grasped"]["left_"]), bool(info["grasped"]["right_"])),
             "success": bool(info["success"]), "termination_reason": info["termination_reason"],
@@ -69,12 +71,16 @@ def _worker(pipe, env_kwargs):
                         "max_steps": env.unwrapped.max_episode_steps}
                 pipe.send(("ok", (obs, _info_small(info, images), meta)))
             elif cmd == "step":        # arg None -> the teacher acts
+                t0 = time.perf_counter()
                 if arg is not None and shadow:     # someone else acts: the labelling teacher shadows
                     teacher.observe()
                 action = teacher.act() if arg is None else np.asarray(arg, dtype=np.float32)
+                t1 = time.perf_counter()
                 obs, r, term, trunc, info = env.step(action)
+                t2 = time.perf_counter()
                 obs, images = _split(obs)
                 teacher.see(obs)
+                info = dict(info, _timing=(t1 - t0, t2 - t1 - env.last_render_s, env.last_render_s))
                 pipe.send(("ok", (obs, float(r), bool(term), bool(trunc), _info_small(info, images),
                                   np.asarray(action, dtype=np.float32))))
             elif cmd == "label":
@@ -273,7 +279,7 @@ class _Slot:
 
 
 def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, perturb_fn=None,
-            meta_extra=None, progress=None, on_done=None, max_wait=0.01) -> list[Episode]:
+            meta_extra=None, progress=None, on_done=None, max_wait=0.01, stats=None) -> list[Episode]:
     """Run one episode per seed across the pool; returns Episodes in seed order.
 
     Event-driven: each env gets its next command the moment its last one returns,
@@ -284,8 +290,12 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
     reset_options(seed) -> dict of env reset options (e.g. a harder cloth pose).
     perturb_fn(seed, rng) -> Perturbation or None.
     on_done(ep) is called as each episode finishes, e.g. to persist it at once.
+    stats: a dict to accumulate a time breakdown into (M5c.1 profiling): worker-side
+    teacher / physics / render seconds (summed over workers), main-process plan seconds,
+    main-process wait seconds, wall seconds, and step count.
     """
     seeds = list(seeds)
+    t_start = time.perf_counter()
     todo = deque(range(len(seeds)))
     active: dict[int, _Slot] = {}
     order, done, rngs = {}, {}, {}
@@ -334,7 +344,10 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
         obs_hist = np.stack([np.stack(active[i].hist) for i in need]).astype(np.float32)
         controller.slot_seeds = {i: active[i].seed for i in need}   # for per-seed controllers
         images = [active[i].img for i in need] if controller.needs_images else None
+        tp = time.perf_counter()
         plans = controller.plan(need, obs_hist, labels, rngs, images=images)
+        if stats is not None:
+            stats["plan_s"] = stats.get("plan_s", 0.0) + time.perf_counter() - tp
         awaiting.clear()
         for i, p in zip(need, plans):
             s = active[i]
@@ -358,7 +371,10 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
             waiting_since = None
             continue
         timeout = None if not awaiting else max(0.0, max_wait - (time.perf_counter() - waiting_since))
+        tw = time.perf_counter()
         ready = mp_connection.wait([pool.pipes[i] for i in inflight], timeout=timeout)
+        if stats is not None:
+            stats["wait_s"] = stats.get("wait_s", 0.0) + time.perf_counter() - tw
         for conn in ready:
             i = pool.pipes.index(conn)
             cmd = inflight.pop(i)
@@ -379,6 +395,11 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
                 awaiting[i] = payload
             elif cmd == "step":
                 obs, r, term, trunc, info, executed = payload
+                timing = info.pop("timing", None)
+                if stats is not None and timing is not None:
+                    for key, v in zip(("teacher_s", "physics_s", "render_s"), timing):
+                        stats[key] = stats.get(key, 0.0) + v
+                    stats["steps"] = stats.get("steps", 0) + 1
                 s = active[i]
                 img = info.pop("images", None)
                 if s.img is not None:                 # images of the state the action was chosen from
@@ -406,6 +427,8 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
                     advance(i)
             if i in awaiting and waiting_since is None:
                 waiting_since = time.perf_counter()
+    if stats is not None:
+        stats["wall_s"] = stats.get("wall_s", 0.0) + time.perf_counter() - t_start
     return [done[k] for k in range(len(seeds))]
 
 

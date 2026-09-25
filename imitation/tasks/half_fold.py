@@ -9,6 +9,8 @@ QuarterFoldExpert drives it as-is.
 
 from __future__ import annotations
 
+import time
+
 import gymnasium as gym
 import numpy as np
 
@@ -31,6 +33,7 @@ class HalfFoldEnv(QuarterFoldEnv):
         super().__init__(max_episode_steps=max_episode_steps, seed=seed, **kwargs)
         self.unwrapped.domain_randomization = domain_randomization
         self.obs_mode, self.rig = obs_mode, None
+        self.last_render_s = 0.0          # profiling (M5c.1): time of the last camera render
         if obs_mode == "dict":
             from imitation.vision.render import CAMERAS, CameraRig
             self.rig = CameraRig(self, cameras or CAMERAS)
@@ -41,7 +44,12 @@ class HalfFoldEnv(QuarterFoldEnv):
             raise ValueError(obs_mode)
 
     def _wrap(self, obs):
-        return {"state": obs, **self.rig.render()} if self.rig else obs
+        if not self.rig:
+            return obs
+        t0 = time.perf_counter()
+        images = self.rig.render()
+        self.last_render_s = time.perf_counter() - t0
+        return {"state": obs, **images}
 
     def reset(self, seed=None, options=None):
         # the base env samples a random task one-hot into the observation; for
