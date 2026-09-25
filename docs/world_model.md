@@ -289,6 +289,31 @@ earns a small positive potential; over 400 real steps it walks the arms
 away from the cloth, which a ten-step horizon never shows the model. The
 anchor weight that held on the single task does not hold here.
 
+### Stage-routed policy experiment
+
+`scripts/train_imagined_actor.py` now defaults to a staged policy for the
+quarter fold. It trains one actor on stage-0 transitions and a second actor
+on stage-1 transitions, giving each stage the full requested number of BC and
+imagination updates instead of sampling in proportion to episode length.
+Stage-0 imagined rollouts terminate at the stage boundary, and real rollouts
+switch to the stage-1 actor from the environment's live stage value. The
+saved `*_staged.pt` checkpoint contains both actors and is also accepted by
+`collect_fold_state_episodes.py --kinds actor` for the next data-collection
+round.
+
+Evaluation reports both stage-1 completion and stage-2 success conditional on
+reaching stage 2. This separates failures of the initial two-arm fold from
+failures of stack pickup and placement. The implementation is ready for a
+new experiment; no result is claimed until new checkpoints are trained and
+evaluated:
+
+```bash
+OMP_NUM_THREADS=4 .venv/bin/python scripts/train_imagined_actor.py \
+  --task quarter \
+  --data outputs/cloth_angles/quarter_state \
+  --output outputs/cloth_angles/quarter_staged
+```
+
 ## Artifacts and reproduction
 
 Everything under `outputs/cloth_angles/` is gitignored. `timing_benchmark/`

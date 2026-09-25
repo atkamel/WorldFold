@@ -50,4 +50,6 @@ outputs/videos/      recorded rollouts
 
 - [Fold task: why the wrapper, results, physical grasp](cloth_fold_rl/README.md)
 - [World model: benchmarks, analytic reward, imagination](docs/world_model.md)
+- [Quarter-fold expert cloning workflow](docs/quarter_fold_policy.md)
+- [MolmoAct2 import](docs/molmoact_import.md)
 - [Adding a policy](policy_runner/NOTES.md)

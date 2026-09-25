@@ -102,7 +102,7 @@ class ImaginationTrainer:
                  gamma: float = 0.98, lam: float = 0.95, entropy_coef: float = 1e-4,
                  lr: float = 3e-4, target_tau: float = 0.02, soft_reward: bool = True,
                  ood_limit: float = 8.0, bc_coef: float = 0.0, ensemble=None,
-                 disagreement_coef: float = 0.0):
+                 disagreement_coef: float = 0.0, stop_on_stage_change: bool = False):
         """world_model: the model used for normalization and, without an ensemble, for
         stepping. ensemble: optional list of models; imagination then steps with
         their mean prediction and subtracts disagreement_coef times the members'
@@ -111,6 +111,7 @@ class ImaginationTrainer:
         self.world_model, self.task = world_model, task
         self.ensemble = list(ensemble) if ensemble else [world_model]
         self.disagreement_coef = disagreement_coef
+        self.stop_on_stage_change = stop_on_stage_change
         for model in {id(m): m for m in self.ensemble + [world_model]}.values():
             for p in model.parameters():
                 p.requires_grad_(False)
@@ -184,6 +185,11 @@ class ImaginationTrainer:
         spec.flat_goal = goal
         rs = spec.init(torch.zeros(len(state), dtype=torch.long) if stage is None else stage)
         states, actions, rewards, terminated, stages, entropy = self.imagine(state, prev_state, spec, rs)
+        if self.stop_on_stage_change:
+            # A stage-specific actor's job ends when its stage completes.  Do
+            # not let it optimize actions for the next skill using the wrong
+            # actor and critic.
+            terminated = terminated | (stages[:, 1:] != stages[:, :-1])
         disagreement = torch.stack(self._disagreement, 1) if self._disagreement else torch.zeros_like(rewards)
         rewards = rewards - self.disagreement_coef * disagreement
         features = self.features(states, goal[:, None], stages)
