@@ -18,29 +18,45 @@ from pathlib import Path
 import numpy as np
 import mjviser
 
-from cloth_fold_rl.fold_env import SingleCornerFoldEnv, SUCCESS_DIST
-from cloth_fold_rl.expert import FoldExpert
+from cloth_fold_rl.fold_env import make_fold_env, make_expert, SUCCESS_DIST
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mujuco"))
+import sim_main  # noqa: E402
 from sim_main import make_render_fn  # noqa: E402
 
+def print_depth(base):
+    # this just prints out the depth for u to compare and contrast with the actual world depth
+    _, depth = base._render_image()
+    d = depth[:, :, 0]
+    valid = d[d > 0]
+    if valid.size == 0:
+        print("depth: no valid pixels")
+        return
+    center = d[d.shape[0] // 2, d.shape[1] // 2]
+    cloth_err = base._cloth_depth_error(d)
+    cam_pos = tuple(round(float(v), 3) for v in base.data.cam_xpos[base.model.camera("main").id])
+    print(f"depth: valid {100 * valid.size / d.size:5.1f}%  min {valid.min():.3f}  "
+          f"max {valid.max():.3f}  mean {valid.mean():.3f}  center {center:.3f} m  "
+          f"cloth err {cloth_err:.4f} m  cam {cam_pos}")
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--policy", choices=["ppo", "expert"], default="ppo")
     ap.add_argument("--checkpoint", default="outputs/cloth_fold_rl/run1/best.zip")
-    ap.add_argument("--max-episode-steps", type=int, default=200)
+    ap.add_argument("--max-episode-steps", type=int, default=None,
+                    help="default 200 (weld) / 250 (physical)")
+    ap.add_argument("--physical", action="store_true", help="use the physical grabber (plates, no weld) -- see physical_env.py")
     args = ap.parse_args()
 
-    env = SingleCornerFoldEnv(max_episode_steps=args.max_episode_steps)
+    env = make_fold_env(args.physical, max_episode_steps=args.max_episode_steps)
     base = env.unwrapped
 
     expert = None
     model = None
     if args.policy == "expert":
-        expert = FoldExpert(env)
-        label = "scripted expert"
+        expert = make_expert(env, args.physical)
+        label = "scripted expert" + (" (physical grasp)" if args.physical else "")
     else:
         ckpt = Path(args.checkpoint)
         if not ckpt.exists():
@@ -56,6 +72,9 @@ def main():
     obs, info = env.reset(seed=0)
     if expert:
         expert.reset()
+    if sim_main.TESTING_MODE:
+        # sweep candidate camera positions once and print the winner so CAMERA_POS can be updated by hand
+        base.test_calibrate_camera()
 
     state = {"obs": obs, "substep": 0, "ep": 0, "last": dict(info),
              "reward": 0.0, "result": "running"}
@@ -73,6 +92,7 @@ def main():
             obs, r, term, trunc, info = env.step(action)
             state.update(obs=obs, last=dict(info))
             state["reward"] += r
+            print_depth(base) # prints out the depth data for u to compare and contrast with the actual world depth
             if term or trunc:
                 state["result"] = (
                     "SUCCESS" if info["success"]
@@ -116,7 +136,6 @@ def main():
     print(f"running {label} -- open the viewer URL below")
     mjviser.Viewer(base.model, base.data, step_fn=step_fn, reset_fn=reset_fn,
                    render_fn=render_fn).run()
-
 
 if __name__ == "__main__":
     main()

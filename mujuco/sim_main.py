@@ -15,8 +15,23 @@ CLOTH_HALF            = (CLOTH_COUNT-1) * CLOTH_SPACING / 2   # cloth spans +-0.
 
 # SO101 arm model
 ARM_XML_PATH          = os.path.join(os.path.dirname(so101_nexus.__file__), "assets", "SO101", "so101_new_calib.xml")
-ARM_BASE_LEFT         = (-0.30,  CLOTH_HALF, TABLE_TOP_Z) 
-ARM_BASE_RIGHT        = ( 0.30, -CLOTH_HALF, TABLE_TOP_Z)  
+# Side-by-side south of the cloth, both facing +y (north, into the cloth),
+# instead of the old diagonal-corner placement. Bases are 0.44m apart in x
+# (0.22m either side of center), sit 0.15m south of the cloth's south edge, and
+# are raised 0.06m above the table top. The extra south set-back and the raised
+# mount matter: with bases at table height right at the edge, reaching the near
+# south corners (the stage-1 grasp points, only ~9cm away) drove the wrist down
+# into the table and jammed the arm; from further back and higher the arm comes
+# down onto every corner from above. All four fold corners plus the stage-1
+# centre goals stay in reach from here (see cloth_fold_rl/README.md's
+# reachability table, re-measured via the same 40k-sample FK sweep method).
+ARM_BASE_LEFT         = (-0.22, -(CLOTH_HALF + 0.15), TABLE_TOP_Z + 0.06)
+ARM_BASE_RIGHT        = ( 0.22, -(CLOTH_HALF + 0.15), TABLE_TOP_Z + 0.06)
+# both arms rotated 90 deg about z from their zero pose, so "local +x" (the
+# old left arm's stock forward direction) points world +y, i.e. north into
+# the cloth from the south edge. Both bases use this SAME quat now -- there is
+# no more "left faces one way, right faces the opposite way" split.
+ARM_BASE_QUAT         = [0.70710678, 0.0, 0.0, 0.70710678]
 ARM_JOINTS            = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]
 GRIPPER_CLOSED        = -0.1
 ARM_TIMESTEP         = 0.0005     # contact-heavy grasp needs 0.5ms; 1ms explodes on contact
@@ -44,9 +59,26 @@ QACC_LIMIT           = 1e5
 TASK_NAMES           = ["fold", "drop", "push", "drag"]   # index = task id (one-hot slot)
 
 # for repositioning the cam
-# CAMERA_POS           = (1, 5, 1)
-CAMERA_POS           = (0.75, -0.75, 0.75)
-CAMERA_TARGET        = (0.0, 0.0, TABLE_TOP_Z)  # aim point 
+DEPTH_MIN            = 0.2      # m
+DEPTH_MAX            = 3.0      # m
+DEPTH_NOISE_STD_1M   = 0.002    # m 
+DEPTH_QUANT_1M       = 0.001    # m 
+DEPTH_GRAZING_DEG    = 80.0     # surfaces tilted past this from the view ray become holes 
+
+CAMERA_POS              = (0.274, 0.0, 1.172)
+CAMERA_TARGET           = (0.0, 0.0, TABLE_TOP_Z)  # aim point
+
+# Camera placement sweep. test_calibrate_camera() scores each candidate by how well the
+# depth sensor reads the cloth vertices, writes the winner to BEST_POS and prints it, so
+# CAMERA_POS can be updated by hand. TESTING_MODE renders from BEST_POS instead of CAMERA_POS.
+CANDIDATE_POSITIONS     = []            # empty = spherical grid around CAMERA_TARGET (see default_candidates)
+CANDIDATE_RADII         = (0.6, 0.8, 1.0, 1.2)
+CANDIDATE_ELEV_DEG      = (25.0, 40.0, 55.0, 70.0)
+CANDIDATE_N_AZIMUTH     = 8
+DEPTH_HOLE_PENALTY      = 0.05          # m charged per cloth vertex that is out of frame or reads as a hole
+BEST_POS                = CAMERA_POS
+TESTING_MODE            = True
+
 
 class ClothFoldEnv(gym.Env):
 
@@ -55,14 +87,14 @@ class ClothFoldEnv(gym.Env):
     def __init__(self, control_dt=0.05, max_episode_steps=200, action_scale_pos=0.03, action_scale_rot=0.1,
                  action_mode="ee_delta", observation_mode="state", image_size=(84, 84),
                  camera_names=None, domain_randomization=False, n_cloth_samples=9, n_tasks=4,
-                 grasp_corners=None, grasp_radius=GRASP_RADIUS):
+                 grasp_corners=None, grasp_radius=GRASP_RADIUS, spec_hook=None):
         self.control_dt = control_dt
         self.max_episode_steps = max_episode_steps
         self.n_substeps = int(round(control_dt / ARM_TIMESTEP))   # 100
         self.grasp_corners = dict(GRASP_CORNERS if grasp_corners is None else grasp_corners)
         self.grasp_radius = grasp_radius
 
-        self.model = compile_model(ARM_TIMESTEP, self.grasp_corners)
+        self.model = compile_model(ARM_TIMESTEP, self.grasp_corners, spec_hook=spec_hook)
         self.data = mujoco.MjData(self.model)
         self.prefixes = ["left_", "right_"]
 
@@ -104,8 +136,15 @@ class ClothFoldEnv(gym.Env):
             spaces["cloth_state"] = gym.spaces.Box(-np.inf, np.inf, shape=(C,), dtype=np.float32)
         if self._use_image:
             spaces["image"] = gym.spaces.Box(0, 255, shape=img_shape, dtype=np.uint8)
+            # depth in metres, one channel per camera; 0 = invalid pixel
+            spaces["depth"] = gym.spaces.Box(0.0, DEPTH_MAX, shape=(H, W, len(self.camera_names)), dtype=np.float32)
         self.observation_space = gym.spaces.Dict(spaces)
         self._renderer = None   # lazily created on first image render
+        # vertical angle one pixel spans, per camera; grazing-angle test needs it
+        self._pixel_angle = {}
+        for cam in self.camera_names:
+            fovy = float(self.model.cam_fovy[self.model.camera(cam).id])
+            self._pixel_angle[cam] = np.radians(fovy) / H
 
         self._step_count = 0
 
@@ -143,6 +182,13 @@ class ClothFoldEnv(gym.Env):
             gripper_actuator = self.model.actuator(f"{prefix}gripper")
             self._gripper_act[prefix] = gripper_actuator.id
         self._weld_id = {p: ids[0] for p, ids in self._weld_ids.items()}   # primary weld, for the viewer
+        # optional per-prefix allow-list of cloth vertex indices eligible to weld
+        # right now. None (the default) means every vertex in grasp_corners is
+        # eligible -- unchanged behaviour. A multi-stage wrapper can narrow it per
+        # stage so an arm only grabs the corner it is meant to carry (see
+        # quarter_fold_env, where CLOTH_10 is in both arms' grasp_corners and would
+        # otherwise be hijacked by the wrong arm mid-task).
+        self.weld_mask = {p: None for p in self.prefixes}
 
         # cloth vertices are bodies cloth_0 .. cloth_(N*N-1) (row-major grid)
         n_vert = CLOTH_COUNT * CLOTH_COUNT
@@ -202,16 +248,100 @@ class ClothFoldEnv(gym.Env):
             return True
         return False
 
-    def _render_image(self):
-        # stacked RGB: each camera's (H,W,3) concatenated along the channel axis
+    def move_camera(self, pos, cam="main"):
+        cid = self.model.camera(cam).id
+        right, up = camera_axes(pos, CAMERA_TARGET)
+        forward = np.cross(up, right)
+        rot = np.column_stack([right, up, -forward])  
+        quat = np.zeros(4)
+        mujoco.mju_mat2Quat(quat, rot.ravel())
+        self.model.cam_pos[cid] = pos
+        self.model.cam_quat[cid] = quat
+        mujoco.mj_forward(self.model, self.data)
+
+    def _cloth_depth_error(self, depth, cam="main"):
+        cid = self.model.camera(cam).id
+        cam_pos = self.data.cam_xpos[cid]
+        rot = self.data.cam_xmat[cid].reshape(3, 3)
+        H, W = depth.shape
+        f = (H / 2.0) / np.tan(np.radians(self.model.cam_fovy[cid]) / 2.0)
+        errors = []
+        for body_id in self._cloth_body_ids:
+            p = rot.T @ (self.data.xpos[body_id] - cam_pos)
+            true_depth = -p[2]
+            if true_depth <= 0:
+                errors.append(DEPTH_HOLE_PENALTY)
+                continue
+            px = int(f * p[0] / true_depth + W / 2.0)
+            py = int(-f * p[1] / true_depth + H / 2.0)
+            if px < 0 or px >= W or py < 0 or py >= H:
+                errors.append(DEPTH_HOLE_PENALTY)
+                continue
+            seen = depth[py, px]
+            if seen <= 0:
+                errors.append(DEPTH_HOLE_PENALTY)
+                continue
+            errors.append(min(abs(seen - true_depth), DEPTH_HOLE_PENALTY))
+        return float(np.mean(errors))
+
+    def test_calibrate_camera(self, verbose=True):
+        global BEST_POS
+        candidates = CANDIDATE_POSITIONS if len(CANDIDATE_POSITIONS) > 0 else default_candidates()
+        scores = []
+        for pos in candidates:
+            self.move_camera(pos)
+            _, depth = self._render_image(testing=False, move=False)
+            scores.append(self._cloth_depth_error(depth[:, :, 0]))
+        best_index = int(np.argmin(scores))
+        BEST_POS = tuple(candidates[best_index])
+        self.move_camera(BEST_POS if TESTING_MODE else CAMERA_POS)
+        if verbose:
+            print(f"camera sweep: {len(candidates)} candidates, best error {scores[best_index]:.4f} m")
+            print(f"BEST_POS = {BEST_POS}   (current CAMERA_POS = {CAMERA_POS})")
+        return BEST_POS, scores
+
+    def _sensor_depth(self, raw, pixel_angle):
+        depth = raw.astype(np.float32)
+        scale = depth * depth
+        noise = self.np_random.normal(0.0, DEPTH_NOISE_STD_1M, depth.shape).astype(np.float32)
+        depth = depth + noise * scale
+        step = DEPTH_QUANT_1M * scale
+        depth = np.round(depth / step) * step
+
+        # depth change per pixel / (depth * pixel angle) ~ tan(angle between surface and view ray)
+        dy, dx = np.gradient(raw)
+        slope = np.hypot(dx, dy) / (raw * pixel_angle)
+        grazing = slope > np.tan(np.radians(DEPTH_GRAZING_DEG))
+        invalid = (depth < DEPTH_MIN) | (depth > DEPTH_MAX) | grazing
+        depth[invalid] = 0.0
+        return depth
+
+    def _render_image(self, testing=None, move=True):
+        # image: each camera's (H,W,3) RGB concatenated along the channel axis
+        # depth: each camera's (H,W) sensor depth stacked along the channel axis
+        # testing=True renders from BEST_POS (the sweep winner), else from CAMERA_POS;
+        # move=False keeps whatever pose the camera is in (used by the sweep itself)
+        if testing is None:
+            testing = TESTING_MODE
+        if move:
+            wanted = BEST_POS if testing else CAMERA_POS
+            cid = self.model.camera("main").id
+            if not np.allclose(self.model.cam_pos[cid], wanted):
+                self.move_camera(wanted)
         if self._renderer is None:
             H, W = self.image_size
             self._renderer = mujoco.Renderer(self.model, height=H, width=W)
         frames = []
+        depths = []
         for cam in self.camera_names:
             self._renderer.update_scene(self.data, camera=cam)
             frames.append(self._renderer.render())
-        return np.concatenate(frames, axis=2).astype(np.uint8)
+            self._renderer.enable_depth_rendering()
+            depths.append(self._sensor_depth(self._renderer.render(), self._pixel_angle[cam]))
+            self._renderer.disable_depth_rendering()
+        image = np.concatenate(frames, axis=2).astype(np.uint8)
+        depth = np.stack(depths, axis=2).astype(np.float32)
+        return image, depth
 
     def _get_obs(self):
         # proprio (per arm): joint pos(5) + joint vel(5) + gripper(1) + EE pose(7) + EE vel(6) + grasp(1)
@@ -253,7 +383,7 @@ class ClothFoldEnv(gym.Env):
             obs["cloth_state"] = np.concatenate([corners.ravel(), cvel.ravel(), samples.ravel(),
                                                  com, height, to_goal.ravel()]).astype(np.float32)
         if self._use_image:
-            obs["image"] = self._render_image()
+            obs["image"], obs["depth"] = self._render_image()
 
         return obs
 
@@ -425,8 +555,11 @@ class ClothFoldEnv(gym.Env):
         if self._gripper_closed[prefix]:
             self.data.ctrl[act_id] = GRIPPER_CLOSED
             site = self.data.site_xpos[self._site_id[prefix]]
-            for eqid, corner_body in zip(self._weld_ids[prefix], self._corner_body[prefix]):
+            allowed = self.weld_mask.get(prefix)
+            for vtx, eqid, corner_body in zip(self.grasp_corners[prefix], self._weld_ids[prefix], self._corner_body[prefix]):
                 if self.data.eq_active[eqid] != 0:
+                    continue
+                if allowed is not None and vtx not in allowed:
                     continue
                 gap = float(np.linalg.norm(site - self.data.xpos[corner_body]))
                 if gap < self.grasp_radius:
@@ -558,12 +691,12 @@ def check_contract(env, n_episodes=4, n_steps=5):
             obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
     print("contract ok:", ref)
 
-def camera_xyaxes(pos, target):
-    # look-at
+def camera_axes(pos, target):
+    # look-at: returns (right, up) unit vectors for a camera at pos aimed at target
     forward = np.array(target, dtype=float) - np.array(pos, dtype=float)
     forward_norm = np.linalg.norm(forward)
     if forward_norm < 1e-9:
-        raise ValueError("CAMERA_POS and CAMERA_TARGET are the same point")
+        raise ValueError("camera position and target are the same point")
     forward = forward / forward_norm
     right = np.cross(forward, np.array([0.0, 0.0, 1.0]))
     right_norm = np.linalg.norm(right)
@@ -572,7 +705,25 @@ def camera_xyaxes(pos, target):
     else:
         right = right / right_norm
     up = np.cross(right, forward)
+    return right, up
+
+def camera_xyaxes(pos, target):
+    right, up = camera_axes(pos, target)
     return f"{right[0]:.4f} {right[1]:.4f} {right[2]:.4f} {up[0]:.4f} {up[1]:.4f} {up[2]:.4f}"
+
+def default_candidates():
+    # spherical grid around CAMERA_TARGET: every radius x elevation x azimuth
+    target = np.array(CAMERA_TARGET, dtype=float)
+    candidates = []
+    for radius in CANDIDATE_RADII:
+        for elev_deg in CANDIDATE_ELEV_DEG:
+            elev = np.radians(elev_deg)
+            for k in range(CANDIDATE_N_AZIMUTH):
+                az = 2.0 * np.pi * k / CANDIDATE_N_AZIMUTH
+                offset = radius * np.array([np.cos(elev) * np.cos(az), np.cos(elev) * np.sin(az), np.sin(elev)])
+                pos = target + offset
+                candidates.append((round(float(pos[0]), 3), round(float(pos[1]), 3), round(float(pos[2]), 3)))
+    return candidates
 
 def build_cloth_xml(timestep):
     # flat cloth spawned already at rest on the table (no drop -> no bounce/jitter)
@@ -606,17 +757,21 @@ def build_cloth_xml(timestep):
     """
     return xml
 
-def compile_model(timestep, grasp_corners=GRASP_CORNERS):
+def compile_model(timestep, grasp_corners=GRASP_CORNERS, spec_hook=None):
+    # spec_hook(spec) runs just before compile, so experiments (e.g. the grabber
+    # proof of concept) can add geometry without forking this file. None = stock model.
     spec = mujoco.MjSpec.from_string(build_cloth_xml(timestep))
 
-    # attach two independent copies of the SO101 arm, each with its own name prefix
+    # attach two independent copies of the SO101 arm, each with its own name prefix.
+    # both sit on the south edge, both rotated the same way (ARM_BASE_QUAT) -- no
+    # more mirrored 180deg-about-z split, since neither arm needs to face "away"
+    # from the other anymore.
     left_spec = mujoco.MjSpec.from_file(ARM_XML_PATH)
-    lf = spec.worldbody.add_frame(pos=ARM_BASE_LEFT)
+    lf = spec.worldbody.add_frame(pos=ARM_BASE_LEFT, quat=ARM_BASE_QUAT)
     lf.attach_body(left_spec.body("base"), "left_", "")
 
     right_spec = mujoco.MjSpec.from_file(ARM_XML_PATH)
-    rf = spec.worldbody.add_frame(pos=ARM_BASE_RIGHT)
-    rf.quat = [0.0, 0.0, 0.0, 1.0]   # 180 deg about z, so this arm faces -x toward the cloth
+    rf = spec.worldbody.add_frame(pos=ARM_BASE_RIGHT, quat=ARM_BASE_QUAT)
     rf.attach_body(right_spec.body("base"), "right_", "")
 
     # SIM-ONLY GRASP CHEAT: a real gripper can't reliably pinch flat cloth, so we fake
@@ -625,9 +780,13 @@ def compile_model(timestep, grasp_corners=GRASP_CORNERS):
     # and flips data.eq_active). WELD is used over CONNECT because its relative pose is
     # settable at runtime -- CONNECT bakes its anchor at compile (home pose), which would
     # hold the cloth ~9cm from the claw. the cloth grid is row-major (index = ix*COUNT+iy);
-    # by default each gripper gets one weld, to its diagonal corner: left cloth_10 at
-    # (-h, +h), right cloth_110 at (+h, -h). grasp_corners can list several vertices
-    # per gripper, one weld each, so a gripper can pick up stacked corners.
+    # by default each gripper gets one weld: left cloth_10 at (-h, +h), right
+    # cloth_110 at (+h, -h). both arms now sit side-by-side on the south (-y)
+    # table edge (same y, offset in x) rather than diagonal corners, so these are
+    # simply the two default single-grasp vertices -- both remain reachable from
+    # the new base positions (see cloth_fold_rl/README.md's reachability table).
+    # grasp_corners can list several vertices per gripper, one weld each, so a
+    # gripper can pick up stacked corners.
     for prefix, vertices in grasp_corners.items():
       for vertex in vertices:
         eq = spec.add_equality()
@@ -641,6 +800,9 @@ def compile_model(timestep, grasp_corners=GRASP_CORNERS):
         # torquescale=0 -> position-only weld (a point vertex has no meaningful orientation);
         # relpose_pos is overwritten at grab time in close_gripper.
         eq.data[:] = [0.0, 0.0, 0.0,  0.0, 0.0, 0.0,  1.0, 0.0, 0.0, 0.0,  0.0]
+
+    if spec_hook is not None:
+        spec_hook(spec)
 
     model = spec.compile()
 
@@ -726,6 +888,8 @@ def make_render_fn(model, data):
         np.array(side_faces, dtype=faces.dtype).reshape(-1, 3),  # side walls
     ])
 
+    last_vertices = {"v": None}
+
     def render_fn(scene):
         # mjviser auto-tracks the first movable body -- which here is a cloth corner
         # vertex, so the camera chases that wobbling corner and the whole scene
@@ -733,6 +897,13 @@ def make_render_fn(model, data):
         scene.camera_tracking_enabled = False
         scene.update_from_mjdata(data)
         vertices = np.array(data.flexvert_xpos)
+        # step_fn only advances physics once every n_substeps calls (see run_*.py's
+        # step_fn), so most render_fn calls see an UNCHANGED cloth. add_mesh_simple
+        # re-sends the whole mesh over the websocket every time it's called; skip the
+        # resend when nothing moved instead of paying that cost for a no-op frame.
+        if last_vertices["v"] is not None and np.array_equal(vertices, last_vertices["v"]):
+            return
+        last_vertices["v"] = vertices.copy()
         # visual slab, decoupled from the physics radius: a vertex center rests
         # ~CLOTH_RADIUS above the table, so drop to the cloth's actual bottom surface
         # (center - radius, ~table level) and build a thin VISUAL_THICKNESS slab up
