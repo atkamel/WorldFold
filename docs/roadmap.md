@@ -140,8 +140,8 @@ The CPU-bound harvest ran ~7 s/episode on 6 workers.
 | M5c.1 | Profile one DAgger round and one eval: time split into physics step / rendering / policy inference / teacher labels / pipe IPC / training, per process | a table in results.md that says where the hours go | ☐ |
 | M5c.2 | Cheap GPU wins in the loop: CUDA graphs / `torch.compile` for batched inference (the 10-step diffusion sampler is latency-bound: 104 ms for a batch of 14), fewer DDIM steps or a distilled one-step head; batch MLP teacher labels on the GPU in the main process | inference + labels < 5% of rollout time, with identical actions (determinism test) | ☐ |
 | M5c.3 | Overlap GPU and CPU inside a run: evaluate round r on the CPU while training round r+1 candidates on the GPU; run CPU-bound queues (harvest, re-evals) during every training phase | GPU busy > 50% across a DAgger run | ☐ |
-| M5c.4 | GPU physics feasibility: MuJoCo Warp / MJX with this cloth (flex) model. Port the half-fold env, then re-run the expert benchmark and the M1.7 ceilings | expert ceiling within intervals of the CPU sim, or a written reason it can't be. Only then: thousands of parallel envs | ☐ |
-| M5c.5 | Batched GPU rendering of the three cameras (MuJoCo Warp / Madrona-style) once M5c.4 holds | vision rollouts no slower than state rollouts | ☐ |
+| M5c.4 | GPU physics feasibility: MuJoCo Warp / MJX with this cloth (flex) model. Port the half-fold env, then re-run the expert benchmark and the M1.7 ceilings | expert ceiling within intervals of the CPU sim, or a written reason it can't be. Only then: thousands of parallel envs | ❌ closed: loads (flex OK) but ~2× slower than one CPU core at best (274 vs 576 steps/s) and drifts > 1 cm from the CPU trajectory by step 15 (results.md) |
+| M5c.5 | Batched GPU rendering of the three cameras (MuJoCo Warp / Madrona-style) once M5c.4 holds | vision rollouts no slower than state rollouts | ❌ closed: gated on M5c.4, which failed |
 
 M5c.1-M5c.3 are safe any time: they don't change the simulator. M5c.4 changes the
 physics every result so far was measured on, so it gates on matching the CPU ceilings,

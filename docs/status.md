@@ -54,8 +54,8 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | M5c.1 profile | ◐ instrumented (`rollout(stats=)`, `imitation.viz.profile`) | run the profile | queue 2 |
 | M5c.2 GPU inference wins | ◐ CUDA-graph sampler done: 12.7× faster, bit-identical | share of rollout time from M5c.1 | queue 2 |
 | M5c.3 overlap GPU/CPU | ◐ `imitation.cpu_slot` (cross-process CPU lock around rollouts) done + tested | measure GPU busy % with two lanes | queue 2 |
-| M5c.4 GPU physics feasibility | ◐ installing mujoco-warp 3.10.0 in `.venv-warp` (approved) | cloth support, batched stepping, expert ceiling vs CPU | task bbxccvf4m |
-| M5c.5 batched GPU rendering | ☐ gated on M5c.4 | — | after M5c.4 |
+| M5c.4 GPU physics feasibility | ❌ closed: slower than 1 CPU core, trajectory drifts > 1 cm by step 15 | — | done |
+| M5c.5 batched GPU rendering | ❌ closed (gate M5c.4 failed) | — | done |
 
 ## Environment
 
@@ -113,7 +113,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-25 · M5b.3 ❌ closed (distill_v2: best round 0 = 95/92/30; rounds transfer the teacher's id_hard weakness, not its recovery) → M4.2 closed with margin; harvest_v2 frozen (1679 eps); IQL made diffusion-aware (per-sample losses) after the queue crashed on it; remaining work relaunched as visible task bdbxibw36; mujoco-warp env (approved) installing as task bbxccvf4m · COMMIT
+- 2026-09-25 · M5c.4 ❌ closed: MuJoCo Warp 3.10 loads the cloth model but runs ≤274 world-steps/s (CPU 1 thread 576) and drifts >1 cm from the CPU trajectory by step 15; M5c.5 closed with it; tools `imitation/gpu_sim/` · COMMIT
+- 2026-09-25 · M5b.3 ❌ closed (distill_v2: best round 0 = 95/92/30; rounds transfer the teacher's id_hard weakness, not its recovery) → M4.2 closed with margin; harvest_v2 frozen (1679 eps); IQL made diffusion-aware (per-sample losses) after the queue crashed on it; remaining work relaunched as visible task bdbxibw36; mujoco-warp env (approved) installing as task bbxccvf4m · fee819f
 - 2026-09-25 · M5c.3 mechanism: `imitation.cpu_slot` — rollouts hold one cross-process CPU slot when IMITATION_CPU_SLOT is set, so parallel lanes overlap GPU training with simulation without exceeding the worker cap; 94 fast + 10 slow green · 5024dd0
 - 2026-09-25 · M5c.1 profiling hooks + `imitation.viz.profile`; M5c.2 CUDA-graph diffusion sampler (301→24 ms, bit-identical; int timestep schedule, identical to before); 92 fast + 10 slow green · 57cd487
 - 2026-09-25 · Pre-VLA tracker added to status.md; M4.1 closed ✅ (vision BC 128² on the finished path: 94.5/91.0/26.5); M5b.6 fine-placement added as M5b.2 follow-up; closure rule written into roadmap; queue restarted as a visible task (bpbn1o3yx) after the previous session's processes ended · df44dc0

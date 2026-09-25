@@ -83,6 +83,32 @@ M5b.1 reports the checkpoint re-evaluated under the fixed sampler.
 
 ## Throughput (Phase 5c)
 
+### M5c.4 — GPU physics feasibility (MuJoCo Warp) — **closed: not viable for this model** (2026-09-25)
+
+Separate env `.venv-warp` (mujoco 3.10.0 + mujoco-warp 3.10.0 + warp-lang 1.14.0; 1.17
+fails to compile mujoco-warp's sensor kernels). The pinned `.venv` is untouched. The exact
+compiled half-fold model (domain randomization applied, seed 100000) and one expert
+episode's physics inputs (ctrl, weld switches, weld offsets per control step) were exported
+from the pinned CPU sim (`imitation/gpu_sim/export_episode.py`) and replayed
+(`imitation/gpu_sim/warp_check.py`, result `outputs/imitation/gpu_sim/ep_100000/warp_check.json`).
+
+| check | result |
+|---|---|
+| load the model (1 flex, 121 cloth vertices, 375 dof, 6 weld equalities) | ✅ `put_model` accepts it |
+| replay procedure sanity (CPU, same inputs) | ✅ max \|Δqpos\| = 0.0 |
+| trajectory match, GPU vs CPU, same inputs | ❌ 0.6 mm after step 1, 2.8 mm at step 10, **> 1 cm from step 15**, max 9.7 cm, final 4.6 cm (172 steps) |
+| throughput, CPU 1 thread | 576.5 physics steps/s |
+| throughput, GPU, nworld 1 / 16 / 64 / 256 | 21 / 164 / **274** / 198 world-steps/s (47 / 97 / 234 / 1,293 ms per batched step) |
+
+Verdict: **not viable.** At best (nworld=64) the GPU is ~2× *slower than one CPU core* and
+~20× slower than the 10-worker CPU pool. Past 64 worlds it degrades: the per-world
+constraint solve for 375 dof plus flex contacts is dense (blocked Cholesky), which is what
+batches poorly. It also doesn't reproduce the CPU trajectory (float32 + a different
+solver path, amplified by the cloth), so every result would need a new baseline even if it
+were fast. No cheap follow-up: revisit only with a future mujoco-warp release, and then
+against a fresh expert-ceiling baseline. **M5c.5** (batched GPU rendering) is gated on this
+and closes with it.
+
 ### M5c.2 — diffusion sampling as one CUDA graph (2026-09-25)
 
 The 10-step DDIM sampler is ~60 tiny kernels; its latency was launch overhead, not
