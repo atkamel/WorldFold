@@ -228,7 +228,24 @@ seeds, renders offscreen with MuJoCo, and writes an mp4 with a fold-score/grasp 
 plus a JSON of outcomes. `--ckpt expert` renders the teacher for comparison. A vision
 checkpoint gets its cameras rendered each replan, exactly as in training.
 
-## 10. Reproducing a result
+## 10. Where the GPU is used, and where it can't be
+
+The sim is MuJoCo 3.10 on the **CPU**: worker processes, one per core. Rollouts, DAgger
+labelling and evaluation are bound by physics at ~50-250 ms per control step. Moving
+physics to the GPU would need MJX or MuJoCo Warp. That's a different simulator from the
+pinned one every number was measured on, with its own cloth (flex) support, so it's a
+milestone of its own, not a speed switch. Everything learned runs on the **GPU**:
+- training (bf16 autocast; image frames kept on the GPU when they fit, else pinned host memory);
+- policy inference for every rollout, batched across workers and padded to a fixed shape;
+- teacher targets for distillation, computed once per dataset in large GPU batches
+  (`WindowSampler._cache_teacher_targets`) instead of inside every training step:
+  2,000 steps took 226 s → 160 s with a diffusion teacher, before frames moved on-GPU.
+
+Independent CPU-bound and GPU-bound jobs run side by side. Phase 5b used three
+tracks: vision distillation, offline RL + re-evaluations, and the final
+figures/demos, each with a worker budget summing to the 16 cores.
+
+## 11. Reproducing a result
 
 A number in `results.md` is reproducible from three things: the dataset `manifest.json`
 (content hash), the checkpoint's `run.json` (git commit, config, checkpoint hash), and

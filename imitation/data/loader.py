@@ -71,12 +71,35 @@ class WindowSampler:
         self.weight_tag = np.concatenate([np.concatenate(dense_w) if dense_w else np.zeros(0),
                                           np.ones(self.n_label)]).astype(np.int8)   # W: 1 = oversample
         self.images = {}
-        if self.cameras:                     # uint8 frames stay on the host, pinned for fast copies
-            pin = device.type == "cuda" if isinstance(device, torch.device) else str(device).startswith("cuda")
-            for cam in self.cameras:
-                arr = torch.as_tensor(np.concatenate([ep.images[cam] for ep in episodes]))
-                self.images[cam] = arr.pin_memory() if pin else arr
+        self.images_on_device = False
+        if self.cameras:
+            cuda = torch.device(device).type == "cuda"
+            host = {cam: torch.as_tensor(np.concatenate([ep.images[cam] for ep in episodes])) for cam in self.cameras}
+            nbytes = sum(a.numel() for a in host.values())
+            # On the GPU when they fit comfortably (the gather then never touches the CPU: at
+            # 128^2 the host-side gather held the GPU at ~8% utilization); otherwise pinned
+            # host memory with per-batch copies -- the lazy path for datasets larger than VRAM.
+            if cuda and nbytes < 0.35 * torch.cuda.mem_get_info(torch.device(device))[0]:
+                self.images = {c: a.to(device) for c, a in host.items()}
+                self.images_on_device = True
+            else:
+                self.images = {c: (a.pin_memory() if cuda else a) for c, a in host.items()}
         self.rows = torch.cat([self.dense_t, self.lab_t])          # each sample's step row
+        self.teacher_y = None
+        if teacher is not None:
+            self._cache_teacher_targets()
+
+    @torch.no_grad()
+    def _cache_teacher_targets(self, chunk_rows=8192):
+        """The teacher's chunk for every step, computed once in large GPU batches. It is one
+        [N, K, A] table (per step, not per window) instead of a teacher forward pass inside
+        every training step -- for a 10-step diffusion teacher that was most of the step time."""
+        ys = []
+        for i in range(0, self.n_dense, chunk_rows):
+            t, st = self.dense_t[i:i + chunk_rows], self.dense_start[i:i + chunk_rows]
+            ys.append(self.teacher.sample(self._history(t, st, h=self.teacher.obs_horizon)).clamp(-1, 1).float())
+        self.teacher_y = torch.cat(ys)[:, :self.K] if ys else torch.zeros((0, self.K, self.act_pad.shape[1]),
+                                                                        device=self.device)
 
     def __len__(self):
         return self.n_dense + self.n_label
@@ -100,9 +123,7 @@ class WindowSampler:
             t, st, p = self.dense_t[di], self.dense_start[di], self.dense_p[di]
             X[dense] = self._history(t, st)
             if self.teacher is not None:
-                with torch.no_grad():
-                    y = self.teacher.sample(self._history(t, st, h=self.teacher.obs_horizon)).clamp(-1, 1).float()
-                Y[dense], M[dense] = y[:, :K], 1.0
+                Y[dense], M[dense] = self.teacher_y[di], 1.0
             else:
                 win = p[:, None] + torch.arange(K, device=self.device)[None]
                 Y[dense] = self.act_pad[win]
@@ -113,8 +134,11 @@ class WindowSampler:
             Y[~dense], M[~dense] = self.labels[li], 1.0
         imgs = None
         if self.cameras:
-            rows = self.rows[idx].cpu()
-            imgs = {c: self.images[c][rows].to(self.device, non_blocking=True) for c in self.cameras}
+            if self.images_on_device:
+                imgs = {c: self.images[c][self.rows[idx]] for c in self.cameras}
+            else:
+                rows = self.rows[idx].cpu()
+                imgs = {c: self.images[c][rows].to(self.device, non_blocking=True) for c in self.cameras}
         return X, Y, M, imgs
 
     def image_stats(self, n=4096, seed=0):
