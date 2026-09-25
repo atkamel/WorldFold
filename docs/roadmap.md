@@ -4,7 +4,10 @@ What we are building, in order, with an exit criterion per milestone. Current po
 [status.md](status.md). Spec: [imitation.md](imitation.md). Numbers:
 [results.md](results.md).
 
-**Rule: every milestone exits with a committed artifact, not a claim.**
+**Rule: every milestone exits with a committed artifact, not a claim.** A milestone closes
+either ✅ (exit met) or ❌ (closed with evidence in results.md and a named follow-up
+milestone if a cheap next lever exists). "Complete before the VLA" means no ☐ or ◐
+remains above Phase 6.
 
 ---
 
@@ -93,7 +96,7 @@ privileged.
 
 | | milestone | exit | status |
 |---|---|---|---|
-| M4.1 | Image obs plumbing: dict passthrough, ≥128² + wrist cam, visual DR, separate image store, lazy DataLoader, per-modality norm | image-conditioned policy trains | ◐ trains (vision BC 97.0 / 94.5 / 21.5), but scope open: 96² main cam, no dict passthrough, no lazy loader, no per-modality norm |
+| M4.1 | Image obs plumbing: dict passthrough, ≥128² + wrist cam, visual DR, separate image store, lazy DataLoader, per-modality norm | image-conditioned policy trains | ✅ full scope done (dict obs, 128² + wrists, visual DR, image store, lazy sampler, per-camera norm); vision BC on it 94.5 / 91.0 / 26.5 (results.md) |
 | M4.2 | `PrivilegedPolicyTeacher` → on-policy distillation through the Phase 3 loop unchanged | sensor-only student within a stated margin of privileged | ◐ ID within 1 pp, shift +26 pp, recovery −33.5 pp (not met); ran through a copied loop, not the Phase 3 loop — fixed by A0.4 (PolicyTeacher) |
 | M4.3 | Vision success / fold-score detector (labels free in sim) | agreement rate vs the sim metric | ✅ 91.8% [87.8, 94.6] |
 
@@ -120,6 +123,7 @@ Ordered by expected payoff. Phase 6 starts after M5b.1-M5b.3.
 | M5b.2 | Shifted-pose coverage: DAgger and distill rollouts from id_hard-like poses on a new disjoint `SHIFT_SEED_BASE` (with a disjointness test); no loop visits shifted starts today | privileged id_hard ≥ 85% without losing recovery | ❌ not met: 2 rounds, id_hard 72 → 61-64.5%; the failures are fine-placement stalls (S1), not missing coverage (results.md) |
 | M5b.3 | Vision recovery: ≥ 60% perturbed distill rollouts, 128² main camera, keep rule that also scores id_hard | sensor-only recovery within 15 pp of its teacher | ☐ |
 | M5b.4 | Offline RL retry, only with action diversity (multi-policy or high-σ harvest, per-episode subsampling so stalls don't dominate) | ≥ DAgger on ID and recovery, else drop RL from the plan | ☐ |
+| M5b.6 | Fine placement (follow-up to M5b.2's diagnosis: shifted-pose failures are S1 stalls 4-12 cm off goal, where the student under-imitates the expert's slow measured-miss corrections): sweep the replan interval (8 / 4 / 2) at eval, then retrain with placement-phase oversampling if the sweep helps | privileged id_hard ≥ 85%, or the sweep shows replanning isn't the lever (closed with evidence) | ☐ |
 | M5b.5 | Hygiene: re-run M2.1-M2.3 under deterministic eval; re-freeze image versions with image-inclusive hashes if they're used for a result | numbers reproduce exactly | ☐ |
 
 ## Phase 5c — Throughput: make real use of the GPU

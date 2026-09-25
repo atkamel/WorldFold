@@ -223,6 +223,22 @@ grippers open) + fold score. Trained on `v1_img` + `v1_failures_img` (37,468 tra
   student rollouts (the distill rounds' own episodes, never trained on): **235/256 = 91.8% [87.8, 94.6]**.
   The "always success" baseline is 208/256 = 81.2%. Errors: 14 false "folded", 7 missed.
 
+### M4.1 closure — vision BC on the finished Phase 4 path (2026-09-25)
+
+Same recipe as the first vision BC (expert labels, 30k steps, batch 256), now with every M4.1
+scope item in place: 128² main camera + two 64² wrist cameras from `HalfFoldEnv(obs_mode="dict")`,
+per-camera per-channel normalization fit on the training frames, lazy `WindowSampler`.
+Dataset `v1_img128` (`532f8a9c08b6`, images in the digest). n=200, deterministic eval.
+
+| policy | id_easy | id_hard | recovery | infer ms (batch 16) |
+|---|---|---|---|---|
+| vision BC, 96², fixed /255 (Phase 4) | 194/200 = 97.0% [93.6, 98.6] | 189/200 = 94.5% [90.4, 96.9] | 43/200 = 21.5% [16.4, 27.7] | 7.5 |
+| **vision BC, 128², per-camera norm, lazy loader** | 189/200 = 94.5% [90.4, 96.9] | 182/200 = 91.0% [86.2, 94.2] | 53/200 = 26.5% [20.9, 33.0] | 9.6 |
+
+No regression outside the intervals (id_easy and id_hard overlap, recovery +5 pp). Training
+30k steps took 1,000 s. Failure codes (128²): id_easy F1 11; id_hard F1 13, G1 5; recovery
+G1 106, F1 39, S1 2. Recovery is still the gap; M5b.3 targets it.
+
 ## Ablations
 
 ### M2.3 — privileged-features ablation (2026-09-24)

@@ -35,6 +35,28 @@ All in `results.md`.
 [reports/2026-09-24-phase1-5.md](reports/2026-09-24-phase1-5.md), with a shareable copy at
 https://claude.ai/artifact/GWfhYiGusezV6rWqpziQQi.
 
+## Pre-VLA milestone tracker
+
+Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA starts
+(roadmap rule). Updated every pass.
+
+| milestone | state | closes via | where it runs |
+|---|---|---|---|
+| M4.1 image plumbing | ✅ 2026-09-25 | vision BC on the finished path, 94.5 / 91.0 / 26.5 | done |
+| M4.2 distillation margin | ◐ recovery gap | M5b.3 result | queue `phase5b_seq.sh`, step 1 (running) |
+| M5.3 offline RL | ❌ (v1) | M5b.4 result, or drop RL with evidence | queue step 2 |
+| M5b.1 diffusion DAgger | ✅ | — | done |
+| M5b.2 shifted poses | ❌ closed, diagnosed | follow-up M5b.6 | — |
+| M5b.3 vision recovery | ☐ running | distill_v2 rounds | queue step 1 |
+| M5b.4 offline RL retry | ☐ queued | harvest_v2 → IQL → probe → eval | queue step 2 |
+| M5b.5 hygiene / determinism | ☐ queued | re-evals + repeat check | queue step 3 |
+| M5b.6 fine placement | ☐ next queue | replan sweep, then targeted retrain | queue 2 |
+| M5c.1 profile | ☐ next queue | time breakdown table | queue 2 |
+| M5c.2 GPU inference wins | ☐ next queue | compile / CUDA graphs with identical actions | queue 2 |
+| M5c.3 overlap GPU/CPU | ☐ next queue | GPU > 50% busy across a DAgger run | queue 2 |
+| M5c.4 GPU physics feasibility | ☐ next queue | separate env; expert ceiling vs CPU | queue 2 (study) |
+| M5c.5 batched GPU rendering | ☐ gated on M5c.4 | — | after M5c.4 |
+
 ## Environment
 
 | | |
@@ -91,7 +113,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-25 · CPU relief: policy-teacher labels moved from every worker's CPU to one batched GPU call; workers only simulate; runs capped at 10 workers, one CPU job at a time (phase5b_seq.sh, resumed distill + harvest); harvest resume keeps code counts; on-GPU frames → training at 94-96% GPU · COMMIT
+- 2026-09-25 · Pre-VLA tracker added to status.md; M4.1 closed ✅ (vision BC 128² on the finished path: 94.5/91.0/26.5); M5b.6 fine-placement added as M5b.2 follow-up; closure rule written into roadmap; queue restarted as a visible task (bpbn1o3yx) after the previous session's processes ended · COMMIT
+- 2026-09-25 · CPU relief: policy-teacher labels moved from every worker's CPU to one batched GPU call; workers only simulate; runs capped at 10 workers, one CPU job at a time (phase5b_seq.sh, resumed distill + harvest); harvest resume keeps code counts; on-GPU frames → training at 94-96% GPU · dc8e9c0
 - 2026-09-25 · Roadmap Phase 5c (GPU throughput) added: training faster, but rollouts/eval are CPU-physics-bound with the GPU at 2-17%; profile → inference/compile → overlap → GPU physics feasibility · fa83335
 - 2026-09-24 · GPU acceleration: teacher targets cached once per dataset on GPU (226→160 s / 2k steps), image frames on-GPU when they fit; Phase 5b split into 3 parallel tracks (vision / RL+re-eval / figures) · f6dfcdd
 - 2026-09-24 · M5b.2 not met: shifted-pose DAgger 2 rounds, id_hard 61/64.5% vs 72% start; diagnosed as fine-placement stalls; best privileged stays dagger_diff/round_1; M5b.3 running · d05343a
