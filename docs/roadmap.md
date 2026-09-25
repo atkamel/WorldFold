@@ -122,6 +122,27 @@ Ordered by expected payoff. Phase 6 starts after M5b.1-M5b.3.
 | M5b.4 | Offline RL retry, only with action diversity (multi-policy or high-σ harvest, per-episode subsampling so stalls don't dominate) | ≥ DAgger on ID and recovery, else drop RL from the plan | ☐ |
 | M5b.5 | Hygiene: re-run M2.1-M2.3 under deterministic eval; re-freeze image versions with image-inclusive hashes if they're used for a result | numbers reproduce exactly | ☐ |
 
+## Phase 5c — Throughput: make real use of the GPU
+
+Added 2026-09-25. Measured during Phase 5b: **training got faster** (distillation 2,000
+steps 226 s → 160 s with cached teacher targets; image frames now stay on the GPU), but
+**end-to-end wall-clock didn't move much**. Rollouts and evaluation are ~80% of the time
+and bound by CPU MuJoCo physics. During them the GPU sits at **2-17% utilization**. One
+n=200 × 3-set eval takes ~30-40 min, and a DAgger round ~1 h, of which training is ~15 min.
+The CPU-bound harvest ran ~7 s/episode on 6 workers.
+
+| | milestone | exit | status |
+|---|---|---|---|
+| M5c.1 | Profile one DAgger round and one eval: time split into physics step / rendering / policy inference / teacher labels / pipe IPC / training, per process | a table in results.md that says where the hours go | ☐ |
+| M5c.2 | Cheap GPU wins in the loop: CUDA graphs / `torch.compile` for batched inference (the 10-step diffusion sampler is latency-bound: 104 ms for a batch of 14), fewer DDIM steps or a distilled one-step head; batch MLP teacher labels on the GPU in the main process | inference + labels < 5% of rollout time, with identical actions (determinism test) | ☐ |
+| M5c.3 | Overlap GPU and CPU inside a run: evaluate round r on the CPU while training round r+1 candidates on the GPU; run CPU-bound queues (harvest, re-evals) during every training phase | GPU busy > 50% across a DAgger run | ☐ |
+| M5c.4 | GPU physics feasibility: MuJoCo Warp / MJX with this cloth (flex) model. Port the half-fold env, then re-run the expert benchmark and the M1.7 ceilings | expert ceiling within intervals of the CPU sim, or a written reason it can't be. Only then: thousands of parallel envs | ☐ |
+| M5c.5 | Batched GPU rendering of the three cameras (MuJoCo Warp / Madrona-style) once M5c.4 holds | vision rollouts no slower than state rollouts | ☐ |
+
+M5c.1-M5c.3 are safe any time: they don't change the simulator. M5c.4 changes the
+physics every result so far was measured on, so it gates on matching the CPU ceilings,
+and its numbers would start a new results baseline.
+
 ## Phase 6 — Language-conditioned folds and the VLA  *(ref. milestone 3, reframed)*
 
 | | milestone | exit | status |
