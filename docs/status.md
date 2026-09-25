@@ -48,7 +48,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | M5b.1 diffusion DAgger | ✅ | — | done |
 | M5b.2 shifted poses | ❌ closed, diagnosed | follow-up M5b.6 | — |
 | M5b.3 vision recovery | ❌ closed: distillation transfers teacher weakness | follow-up in M5b.6 sweep | done |
-| M5b.4 offline RL retry | ◐ harvest_v2 frozen (1679 eps); IQL running | IQL eval vs 98.0 / 72.0 / 72.5 | queue `phase5b_rest.sh` (task bdbxibw36) |
+| M5b.4 offline RL retry | ◐ iql_v3 collapsed (54/24/18: actor fed 75% failures — sampling bug); corrected iql_v4 training | iql_v4 eval vs 98.0 / 72.0 / 72.5, else drop RL | task br2lq5y0p (GPU), eval after the CPU queue |
 | M5b.5 hygiene / determinism | ☐ queued | re-evals + repeat check | queue step 3 |
 | M5b.6 fine placement | ☐ queued | replan 4 / 2 sweep, privileged + vision | task bdbxibw36 |
 | M5c.1 profile | ◐ instrumented (`rollout(stats=)`, `imitation.viz.profile`) | run the profile | queue 2 |
@@ -113,7 +113,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-25 · M5c.4 ❌ closed: MuJoCo Warp 3.10 loads the cloth model but runs ≤274 world-steps/s (CPU 1 thread 576) and drifts >1 cm from the CPU trajectory by step 15; M5c.5 closed with it; tools `imitation/gpu_sim/` · COMMIT
+- 2026-09-25 · M5b.4: harvest_v2 gives 3× advantage spread; iql_v3 collapsed to 54/24/18 because uniform outcome stratification fed the actor 75% failures; fix = separate actor sampling (`--actor-strata natural`), iql_v4 training (final attempt before dropping RL) · COMMIT
+- 2026-09-25 · M5c.4 ❌ closed: MuJoCo Warp 3.10 loads the cloth model but runs ≤274 world-steps/s (CPU 1 thread 576) and drifts >1 cm from the CPU trajectory by step 15; M5c.5 closed with it; tools `imitation/gpu_sim/` · 358bc3b
 - 2026-09-25 · M5b.3 ❌ closed (distill_v2: best round 0 = 95/92/30; rounds transfer the teacher's id_hard weakness, not its recovery) → M4.2 closed with margin; harvest_v2 frozen (1679 eps); IQL made diffusion-aware (per-sample losses) after the queue crashed on it; remaining work relaunched as visible task bdbxibw36; mujoco-warp env (approved) installing as task bbxccvf4m · fee819f
 - 2026-09-25 · M5c.3 mechanism: `imitation.cpu_slot` — rollouts hold one cross-process CPU slot when IMITATION_CPU_SLOT is set, so parallel lanes overlap GPU training with simulation without exceeding the worker cap; 94 fast + 10 slow green · 5024dd0
 - 2026-09-25 · M5c.1 profiling hooks + `imitation.viz.profile`; M5c.2 CUDA-graph diffusion sampler (301→24 ms, bit-identical; int timestep schedule, identical to before); 92 fast + 10 slow green · 57cd487

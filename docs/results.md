@@ -269,6 +269,39 @@ grippers open) + fold score. Trained on `v1_img` + `v1_failures_img` (37,468 tra
   student rollouts (the distill rounds' own episodes, never trained on): **235/256 = 91.8% [87.8, 94.6]**.
   The "always success" baseline is 208/256 = 81.2%. Errors: 14 false "folded", 7 missed.
 
+### M5b.4 — offline RL retry with action diversity (2026-09-25)
+
+**Harvest `harvest_v2`** (`febfb9275058`): 1,679 episodes from 4 policies (BC chunk-MLP,
+diffusion BC, `dagger_v2/round_3`, `dagger_diff/round_1`) × σ ∈ {0.1, 0.3}, 30% knocked,
+stratified to ≥ 60 per failure code. 1,141 success, 271 G1, 145 F1, 122 S1.
+
+**Critic probe** (`imitation.rl.probe`, iql_v3 critics on harvest_v2) vs harvest_v1 (M5.3):
+
+| | harvest_v1 (1 policy, σ 0.1) | harvest_v2 (4 policies × 2 σ) |
+|---|---|---|
+| V gap, success − failed | 0.72 | 0.51 |
+| A spread (std, all transitions) | 0.018 | **0.054** (3×) |
+| A gap, success − failed | −0.0005 | +0.003 |
+
+The diversity bought action contrast: advantages spread 3× wider. Per outcome group:
+A mean −0.019 to −0.025, std 0.047-0.066.
+
+**iql_v3** (from `dagger_diff/round_1`: diffusion actor, advantage-weighted denoising loss;
+standardized A, T=1, clip 20; `max_per_episode` 12; critic *and actor* sampled uniformly over
+outcome codes). 27,231 transitions (success 20,451 / G1 3,264 / F1 1,812 / S1 1,704). 40k steps.
+
+| policy | id_easy | id_hard | recovery |
+|---|---|---|---|
+| dagger_diff/round_1 (start) | 196/200 = 98.0% | 144/200 = 72.0% | 145/200 = 72.5% |
+| **iql_v3** | 108/200 = 54.0% [47.1, 60.8] | 48/200 = 24.0% [18.6, 30.4] | 36/200 = 18.0% [13.3, 23.9] |
+
+**Collapse; the cause was my sampling design.** Uniform stratification over the 4 outcome
+codes present put **75% failed-episode transitions in every actor batch**, and advantage
+weights near 1 can't undo that, so the actor imitated failures (G1 101-120 per set). The
+stratification belongs to the critic (it must see failures to value them), not the actor.
+Fix: `--actor-strata natural` samples the actor batch separately; advantages are computed on
+the actor's own batch (**iql_v4**, below).
+
 ### M5b.3 — vision recovery via distillation (distill_v2) — **exit NOT met** (2026-09-25)
 
 Student: `vision` at 128² (per-camera norm, lazy sampler). Teacher: `dagger_diff/round_1`

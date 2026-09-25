@@ -60,7 +60,7 @@ def expectile_loss(diff, tau):
 
 def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, tau=0.7, beta=3.0,
               lr_critic=3e-4, lr_policy=1e-4, target_ema=0.005, macro=8, adv_clip=100.0, adv_norm=False, seed=0,
-              max_per_episode=None, strata="natural", log=print):
+              max_per_episode=None, strata="natural", actor_strata="natural", log=print):
     """adv_norm: weight = exp(A / std(A) / beta) instead of exp(beta * A). With a sparse
     0/1 reward the raw advantages here are ~1e-2, so exp(3 A) ~ 1 and the update is plain
     BC over all data, failures included (iql_v1). Standardizing sets the sharpness per batch."""
@@ -88,6 +88,10 @@ def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, 
     codes = {c: int((tr["code"] == i).sum()) for i, c in enumerate(CODES)}
     log(f"transitions by outcome {codes}; sampling {strata}; max/episode {max_per_episode}")
     sample_w = torch.as_tensor(stratified_weights(tr["code"], strata), device=device)
+    # The actor samples separately (M5b.4 fix): stratifying *its* batch put ~80% failed-episode
+    # actions into every advantage-weighted regression step (iql_v3 collapsed to 54/24/18%).
+    # The critic needs the failures to value them; the actor shouldn't be fed mostly them.
+    actor_w = torch.as_tensor(stratified_weights(tr["code"], actor_strata), device=device)
     log(f"{len(uniq)} episodes -> {n} macro transitions ({int((tr['source'] == 1).sum())} student), "
         f"success-terminal {int(tr['done'].sum())}")
     T = {k: torch.as_tensor(v, device=device) for k, v in tr.items()}
@@ -120,7 +124,10 @@ def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, 
         with torch.no_grad():
             for p, tp in zip(critics.parameters(), target.parameters()):
                 tp.lerp_(p, target_ema)
-            adv = tq - v.detach()
+            ia = torch.multinomial(actor_w, batch, replacement=True)
+            sa = enc(T["obs"][ia])
+            aa = (T["act"][ia] * T["valid"][ia, :, None]).flatten(1)
+            adv = torch.min(*target.q(sa, aa)) - critics.v(sa).squeeze(-1)
             if adv_norm:
                 w = torch.exp(adv / (adv.std() + 1e-6) / beta).clamp(max=adv_clip)
             else:
@@ -128,11 +135,11 @@ def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, 
         # advantage-weighted regression through the policy's own per-row loss: L1 for a
         # chunk MLP, the denoising loss for a diffusion policy. The data's 8 executed actions
         # fill the first `macro` slots of the K-chunk; the rest are masked out.
-        act_chunk = torch.zeros((len(idx), policy.chunk, policy.action_dim), device=device)
-        act_chunk[:, :macro] = T["act"][idx]
-        mask = torch.zeros((len(idx), policy.chunk), device=device)
-        mask[:, :macro] = T["valid"][idx]
-        err = policy.compute_loss(T["obs"][idx], act_chunk, mask, per_sample=True)
+        act_chunk = torch.zeros((len(ia), policy.chunk, policy.action_dim), device=device)
+        act_chunk[:, :macro] = T["act"][ia]
+        mask = torch.zeros((len(ia), policy.chunk), device=device)
+        mask[:, :macro] = T["valid"][ia]
+        err = policy.compute_loss(T["obs"][ia], act_chunk, mask, per_sample=True)
         loss_p = (w * err).mean()
         opt_p.zero_grad(set_to_none=True)
         loss_p.backward()
@@ -151,7 +158,7 @@ def train_iql(init, versions, out, root=DEFAULT_ROOT, steps=40_000, batch=1024, 
     info = {"git_commit": git_commit(), "init": str(init), "datasets": hashes, "n_episodes": len(uniq),
             "n_transitions": n, "iql": {"steps": steps, "batch": batch, "tau": tau, "beta": beta, "macro": macro,
                                         "lr_critic": lr_critic, "lr_policy": lr_policy, "adv_clip": adv_clip, "adv_norm": adv_norm,
-                                        "max_per_episode": max_per_episode, "strata": strata,
+                                        "max_per_episode": max_per_episode, "strata": strata, "actor_strata": actor_strata,
                                         "seed": seed},
             "checkpoint": {"path": str(ckpt), "sha256": sha}, "history": history}
     (out / "run.json").write_text(json.dumps(info, indent=1))
@@ -172,11 +179,13 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--max-per-episode", type=int, default=None, help="subsample long episodes (stalls)")
     ap.add_argument("--strata", choices=["natural", "uniform"], default="natural",
-                    help="uniform: each outcome code gets equal sampling weight")
+                    help="critic sampling; uniform: each outcome code gets equal weight")
+    ap.add_argument("--actor-strata", choices=["natural", "uniform"], default="natural",
+                    help="actor (AWR) sampling; keep natural")
     args = ap.parse_args()
     train_iql(args.init, args.versions, args.out, root=args.root, steps=args.steps, tau=args.tau, beta=args.beta,
               adv_norm=args.adv_norm, adv_clip=args.adv_clip, seed=args.seed,
-              max_per_episode=args.max_per_episode, strata=args.strata)
+              max_per_episode=args.max_per_episode, strata=args.strata, actor_strata=args.actor_strata)
 
 
 if __name__ == "__main__":
