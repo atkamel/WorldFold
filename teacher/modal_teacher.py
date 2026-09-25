@@ -943,3 +943,152 @@ def server_fastbench(configs: str = "baseline,fast,fast_noretry", concurrency: s
             srv[1].close()
     print("FASTBENCH_DONE " + json.dumps([{k: r[k] for k in ("config", "clients", "calls_per_s", "lat_median_s", "retry_rate", "gpu_util_mean")} for r in out["results"]]), flush=True)
     return out
+
+
+# =============================================================================================
+# Fast-server round 2 (L40S, 8 CPU / 32 GB): client-side 224 resize (his exact function -> identical
+# model input), more clients, 2 server processes, candidates 3->1 (quality knob, reported separately).
+#   PYTHONUTF8=1 python -m modal run --detach teacher/modal_teacher.py::server_fastbench2
+# =============================================================================================
+def _frames_224(frames):
+    """Resize with HIS function (openpi_client.image_tools.resize_with_pad, PIL bilinear) inside his venv.
+    The server's ResizeImages then returns the image unchanged (it short-circuits on 224x224 input), so the
+    model sees exactly the same pixels as when the server resizes."""
+    import pathlib, subprocess
+    import numpy as np
+    d = pathlib.Path(VOL_PATH, "frames"); d.mkdir(exist_ok=True)
+    for k, v in frames.items():
+        np.save(d / f"{k}_full.npy", v)
+    code = ("import numpy as np, pathlib; from openpi_client import image_tools as it\n"
+            f"d = pathlib.Path('{d}')\n"
+            "for k in ('top_rgb','left_rgb','right_rgb'):\n"
+            "    im = np.load(d / f'{k}_full.npy'); np.save(d / f'{k}_224.npy', it.resize_with_pad(im, 224, 224))\n")
+    subprocess.run([f"{SRC}/.venv/bin/python", "-c", code], check=True)
+    return {k: np.load(d / f"{k}_224.npy") for k in frames}
+
+
+@app.function(image=image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3600, cpu=8, memory=32768)
+def server_fastbench2(warm_max_s: int = 300, measure_s: int = 45, garment: str = "top_short"):
+    import asyncio, base64, json, os, pathlib, subprocess, threading, time
+    import numpy as np, websockets
+
+    stamp = time.strftime("%H%M%S")
+    pdir = pathlib.Path(VOL_PATH, "profile"); pdir.mkdir(exist_ok=True)
+    full = _his_frames()
+    small = _frames_224(full)
+    print("FRAMES full " + json.dumps({k: list(v.shape) for k, v in full.items()}) +
+          " small " + json.dumps({k: list(v.shape) for k, v in small.items()}), flush=True)
+    gid = {"top_long": 0, "top_short": 1, "pant_long": 2, "pant_short": 3}[garment]
+    base_cfg = dict(json.load(open(f"{CKPT}/assets/inference_config.json"))["per_garment_type"][garment])
+    base_cfg.pop("k_execute", None); base_cfg.pop("num_steps", None)
+    state = [-1.24, -1.69, 1.49, 1.05, -0.08, -0.01, 1.24, -1.69, 1.49, 1.05, -0.08, -0.01]
+
+    def img_fields(fr):
+        return {f"observation.images.{k}": {"base64": base64.b64encode(np.ascontiguousarray(v).tobytes()).decode(),
+                                             "shape": list(v.shape), "dtype": "uint8"} for k, v in fr.items()}
+    IMG = {"full": img_fields(full), "224": img_fields(small)}
+
+    gpu = []
+    def sampler():
+        while True:
+            try:
+                o = subprocess.check_output(["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"], text=True)
+                gpu.append((time.time(), int(o.strip())))
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(0.25)
+    threading.Thread(target=sampler, daemon=True).start()
+
+    async def client(cid, port, imgs, cfg, n_cand, rec, stop):
+        ia = None
+        async with websockets.connect(f"ws://localhost:{port}", max_size=100 * 1024 * 1024, open_timeout=120,
+                                      ping_interval=None, compression=None) as ws:
+            while not stop.is_set():
+                body = {"type": "infer_chunk", "session_id": f"c{cid}", "garment_type_id": gid,
+                        "observation.state": state, "inference_config": cfg, **imgs}
+                if ia is not None:
+                    body["initial_actions"] = ia
+                msg = json.dumps(body)
+                t = time.perf_counter(); await ws.send(msg)
+                r = json.loads(await asyncio.wait_for(ws.recv(), 1800)); dt = time.perf_counter() - t
+                if "error" in r:
+                    raise RuntimeError(r["error"])
+                acts = np.asarray(r["actions"], dtype=np.float32)
+                rec.append({"t": time.time(), "dt": dt, "bytes": len(msg), "finite": bool(np.isfinite(acts).all()),
+                            "amax": float(np.abs(acts).max())})
+                ia = r.get("next_initial_actions")
+
+    async def phase(ports, n_clients, imgs, cfg, n_cand, seconds=None, warm=False):
+        rec, stop = [], asyncio.Event()
+        tasks = [asyncio.create_task(client(i, ports[i % len(ports)], imgs, cfg, n_cand, rec, stop)) for i in range(n_clients)]
+        t0 = time.time(); w = 3 * n_clients
+        while True:
+            await asyncio.sleep(0.5)
+            el = time.time() - t0
+            if warm:
+                last = [x["dt"] for x in rec[-w:]]
+                if (len(last) == w and max(last) < max(2.0, 2.5 * float(np.median(last)))) or el > warm_max_s:
+                    break
+            elif el >= seconds:
+                break
+        stop.set()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        return rec, t0, time.time()
+
+    FAST = dict(FAST_CONFIGS["fast_noretry"])
+    # (label, n_servers, clients, image set, candidates) -- servers restarted only when n_servers changes
+    plan = [("ref full-res", 1, 4, "full", None), ("ref full-res", 1, 16, "full", None),
+            ("client-224", 1, 4, "224", None), ("client-224", 1, 16, "224", None),
+            ("client-224 N=1 (quality knob)", 1, 16, "224", 1),
+            ("client-224 x2 servers", 2, 16, "224", None)]
+    out = {"stamp": stamp, "gpu": "L40S", "cpu": 8, "mem_gb": 32, "garment": garment, "env": FAST, "results": []}
+    servers, cur_k = [], None
+
+    def stop_servers():
+        for proc, logf, _ in servers:
+            proc.terminate()
+        for proc, logf, _ in servers:
+            try:
+                proc.wait(30)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            logf.close()
+        servers.clear()
+
+    try:
+        for label, k, n_clients, imgset, cand in plan:
+            if k != cur_k:
+                stop_servers()
+                frac = f"{min(0.8, 0.85 / k):.2f}"
+                for i in range(k):
+                    servers.append(_launch_server(8000 + i, pdir / f"fb2-{stamp}-k{k}-{i}.log", mem_fraction=frac, extra_env=FAST))
+                t0 = time.time()
+                for proc, _, ready in servers:
+                    while not ready.is_set():
+                        if proc.poll() is not None:
+                            raise SystemExit("server died during load")
+                        time.sleep(1)
+                print(f"READY k={k} in {time.time() - t0:.0f}s", flush=True); cur_k = k
+            ports = [8000 + i for i in range(k)]
+            cfg = dict(base_cfg)
+            if cand is not None:
+                cfg["num_rollout_candidates"] = cand
+            n_cand = int(cfg.get("num_rollout_candidates", 1))
+            tw = time.time()
+            asyncio.run(phase(ports, n_clients, IMG[imgset], cfg, n_cand, warm=True))
+            rec, t0, t1 = asyncio.run(phase(ports, n_clients, IMG[imgset], cfg, n_cand, seconds=measure_s))
+            g = [u for ts, u in gpu if t0 <= ts <= t1]
+            dts = np.array([x["dt"] for x in rec]) if rec else np.array([np.nan])
+            res = {"label": label, "servers": k, "clients": n_clients, "images": imgset, "candidates": n_cand,
+                   "warm_s": round(t0 - tw, 1), "calls": len(rec), "calls_per_s": len(rec) / (t1 - t0),
+                   "lat_median_s": float(np.median(dts)), "lat_p95_s": float(np.percentile(dts, 95)),
+                   "request_MB": (rec[0]["bytes"] / 1e6) if rec else None,
+                   "all_finite": all(x["finite"] for x in rec), "act_absmax": max((x["amax"] for x in rec), default=None),
+                   "gpu_util_mean": float(np.mean(g)) if g else None}
+            out["results"].append(res); print("BENCH2 " + json.dumps(res), flush=True)
+            f = pdir / f"fastbench2-{stamp}.json"; tmp = f.with_suffix(".tmp")
+            tmp.write_text(json.dumps(out, indent=2)); os.replace(tmp, f); vol.commit()
+    finally:
+        stop_servers()
+    print("FASTBENCH2_DONE", flush=True)
+    return out
