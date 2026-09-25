@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-09-23 · **Branch:** `feature/imitation` · **Phase:** 5b (close the gaps before the VLA)
+**Updated:** 2026-09-25 · **Branch:** `feature/imitation` · **Phase:** 5b/5c final queue (**paused** 15:16)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -30,10 +30,25 @@ All in `results.md`.
 
 ## Next action
 
-**M5b.1 — DAgger from the diffusion checkpoint** (roadmap Phase 5b). Then M5b.2
-(shifted-pose rollouts) and M5b.3 (vision recovery). Full dated report with demo videos:
-[reports/2026-09-24-phase1-5.md](reports/2026-09-24-phase1-5.md), with a shareable copy at
-https://claude.ai/artifact/GWfhYiGusezV6rWqpziQQi.
+**PAUSED 2026-09-25 15:16 (laptop closed); nothing is running.** Resume with a visible task:
+
+    sh outputs/imitation/runs/phase5b_resume.sh
+
+It runs sequentially (≤10 workers):
+1. DAgger r4 round 1 (`--resume` reuses the frozen rollouts `v1_dagger_diff_r1_dagger_r4_r1`, so only the train and eval steps run).
+2. Evaluations: `diff_v1_s2`, `vision_t0_128_s1` at replan 2, `iql_v4` at replan 8 and 4.
+3. Demos at replan 4 / 2.
+4. M5c.1 profile re-run (the label look-ahead is now timed).
+5. M5c.3 part 2.
+
+Done before the pause and not yet in results.md:
+- `diff_v1_s1` eval, 99.5 / 83.0 / 62.0 (`runs/diff_v1_s1.eval.log`).
+- M5c.3 part 1, 57 min over the DAgger rollouts with overlapping lanes: GPU mean 32%, busy (>10%) in 64% of 5 s samples (`runs/m5c3_gpu.csv`, `m5c3_window.csv`).
+
+Then:
+- Record these results.
+- Close M5b.4 and M5c.1-3.
+- Write `docs/reports/2026-09-2x-phase5b.md` and republish the page (same URL).
 
 ## Pre-VLA milestone tracker
 
@@ -48,12 +63,12 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | M5b.1 diffusion DAgger | ✅ | — | done |
 | M5b.2 shifted poses | ❌ closed, diagnosed | follow-up M5b.6 | — |
 | M5b.3 vision recovery | ❌ closed: distillation transfers teacher weakness | follow-up in M5b.6 sweep | done |
-| M5b.4 offline RL retry | ◐ iql_v3 collapsed (54/24/18: actor fed 75% failures — sampling bug); corrected iql_v4 training | iql_v4 eval vs 98.0 / 72.0 / 72.5, else drop RL | task br2lq5y0p (GPU), eval after the CPU queue |
-| M5b.5 hygiene / determinism | ☐ queued | re-evals + repeat check | queue step 3 |
+| M5b.4 offline RL retry | ◐ iql_v3 collapsed (54/24/18: actor fed 75% failures — sampling bug); corrected iql_v4 training | iql_v4 eval (replan 8 and 4) vs the privileged best, else drop RL | trained; eval in `phase5b_resume.sh` |
+| M5b.5 hygiene / determinism | ✅ 2026-09-25: repeat identical; M2.1/M2.3 re-evals inside original intervals | — | done |
 | M5b.6 fine placement | ❌ closed: replan 4 → privileged 99.5/77.0/79.5, vision replan 2 recovery 41%; id_hard < 85% | adopted as operating points | done |
-| M5c.1 profile | ◐ instrumented (`rollout(stats=)`, `imitation.viz.profile`) | run the profile | queue 2 |
-| M5c.2 GPU inference wins | ◐ CUDA-graph sampler done: 12.7× faster, bit-identical | share of rollout time from M5c.1 | queue 2 |
-| M5c.3 overlap GPU/CPU | ◐ `imitation.cpu_slot` (cross-process CPU lock around rollouts) done + tested | measure GPU busy % with two lanes | queue 2 |
+| M5c.1 profile | ◐ instrumented (`rollout(stats=)`, `imitation.viz.profile`) | profile ran (eval ~36-41 ms/step wall, physics ~50%, inference ≤7%); re-run with label timing | `phase5b_resume.sh` |
+| M5c.2 GPU inference wins | ◐ CUDA-graph sampler done: 12.7× faster, bit-identical | share of rollout time from M5c.1 | `phase5b_resume.sh` profile |
+| M5c.3 overlap GPU/CPU | ◐ `imitation.cpu_slot` (cross-process CPU lock around rollouts) done + tested | measure GPU busy % across a DAgger run | part 1 done (busy 64%, mean 32%); part 2 in `phase5b_resume.sh` |
 | M5c.4 GPU physics feasibility | ❌ closed: slower than 1 CPU core, trajectory drifts > 1 cm by step 15 | — | done |
 | M5c.5 batched GPU rendering | ❌ closed (gate M5c.4 failed) | — | done |
 
@@ -63,7 +78,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 |---|---|
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
-| tests | 90 fast + 10 slow, all passing (`pytest -m "not slow"` / `-m slow`) |
+| tests | 96 fast + 10 slow (`pytest -m "not slow"` / `-m slow`) |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -113,7 +128,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-09-25 · M5b.6 closed: replan sweep — privileged best at replan 4 (99.5/77.0/79.5, +5 id_hard, +7 recovery), vision recovery 30→41% at replan 2; id_hard target 85% not reached; operating points adopted · COMMIT
+- 2026-09-25 · M5b.5 ✅ (determinism repeat identical; M2.1/M2.3 re-evals inside original intervals); detector v2 on 128² (92.6% agreement); M5c.1 profile ran; pipeline.md Data section; expert label look-ahead now timed in profiles; `imitation.viz.gpu_busy`; diffusion seeds 1-2 + vision seed 1 trained; final queue **paused** at 15:16 (resume script) · 96 fast tests pass · COMMIT
+- 2026-09-25 · M5b.6 closed: replan sweep — privileged best at replan 4 (99.5/77.0/79.5, +5 id_hard, +7 recovery), vision recovery 30→41% at replan 2; id_hard target 85% not reached; operating points adopted · 111241e
 - 2026-09-25 · M5b.4: harvest_v2 gives 3× advantage spread; iql_v3 collapsed to 54/24/18 because uniform outcome stratification fed the actor 75% failures; fix = separate actor sampling (`--actor-strata natural`), iql_v4 training (final attempt before dropping RL) · e7f2523
 - 2026-09-25 · M5c.4 ❌ closed: MuJoCo Warp 3.10 loads the cloth model but runs ≤274 world-steps/s (CPU 1 thread 576) and drifts >1 cm from the CPU trajectory by step 15; M5c.5 closed with it; tools `imitation/gpu_sim/` · 358bc3b
 - 2026-09-25 · M5b.3 ❌ closed (distill_v2: best round 0 = 95/92/30; rounds transfer the teacher's id_hard weakness, not its recovery) → M4.2 closed with margin; harvest_v2 frozen (1679 eps); IQL made diffusion-aware (per-sample losses) after the queue crashed on it; remaining work relaunched as visible task bdbxibw36; mujoco-warp env (approved) installing as task bbxccvf4m · fee819f

@@ -124,7 +124,7 @@ Ordered by expected payoff. Phase 6 starts after M5b.1-M5b.3.
 | M5b.3 | Vision recovery: ≥ 60% perturbed distill rollouts, 128² main camera, keep rule that also scores id_hard | sensor-only recovery within 15 pp of its teacher | ☐ |
 | M5b.4 | Offline RL retry, only with action diversity (multi-policy or high-σ harvest, per-episode subsampling so stalls don't dominate) | ≥ DAgger on ID and recovery, else drop RL from the plan | ☐ |
 | M5b.6 | Fine placement (follow-up to M5b.2's diagnosis: shifted-pose failures are S1 stalls 4-12 cm off goal, where the student under-imitates the expert's slow measured-miss corrections): sweep the replan interval (8 / 4 / 2) at eval, then retrain with placement-phase oversampling if the sweep helps | privileged id_hard ≥ 85%, or the sweep shows replanning isn't the lever (closed with evidence) | ❌ closed: replanning *is* a lever (privileged @4: 99.5 / 77.0 / 79.5; vision @2 recovery 30 → 41%) but id_hard peaks at 77%; operating points adopted (results.md) |
-| M5b.5 | Hygiene: re-run M2.1-M2.3 under deterministic eval; re-freeze image versions with image-inclusive hashes if they're used for a result | numbers reproduce exactly | ☐ |
+| M5b.5 | Hygiene: re-run M2.1-M2.3 under deterministic eval; re-freeze image versions with image-inclusive hashes if they're used for a result | numbers reproduce exactly | ✅ 2026-09-25: repeat eval identical; all four re-evals inside the original intervals; image results use `v1_img128` (images in the digest) (results.md) |
 
 ## Phase 5c — Throughput: make real use of the GPU
 

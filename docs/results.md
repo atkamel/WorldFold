@@ -81,6 +81,28 @@ padded batches. Sampling now uses one fixed-seed noise shared by all rows, so it
 deterministic function of the observation. **The M2.4 diffusion numbers predate this**;
 M5b.1 reports the checkpoint re-evaluated under the fixed sampler.
 
+### M5b.5 — M2.1 / M2.3 checkpoints re-evaluated, deterministic (2026-09-25)
+
+The same checkpoints, re-evaluated at n=200 under the current deterministic eval (padded
+batches, fixed seeds, replan 8, 10 workers). Nothing was retrained. The original rows (M2.1,
+M2.3) stay as they were; these are the numbers to quote from now on.
+
+| run | id_easy | id_hard | recovery | original (id_easy / id_hard / recovery) |
+|---|---|---|---|---|
+| bc_v1_s0 | 196/200 = 98.0% [95.0, 99.2] | 139/200 = 69.5% [62.8, 75.5] | 77/200 = 38.5% [32.0, 45.4] | 97.5 / 72.5 / 37.0 |
+| bc_v1_s1 | 193/200 = 96.5% [93.0, 98.3] | 138/200 = 69.0% [62.3, 75.0] | 66/200 = 33.0% [26.9, 39.8] | 96.5 / 68.5 / 30.5 |
+| abl_proprio_s0 (48) | 186/200 = 93.0% [88.6, 95.8] | 99/200 = 49.5% [42.6, 56.4] | 50/200 = 25.0% [19.5, 31.4] | 92.0 / 48.5 / 26.0 |
+| abl_proprio_corners_s0 (74) | 191/200 = 95.5% [91.7, 97.6] | 93/200 = 46.5% [39.7, 53.4] | 44/200 = 22.0% [16.8, 28.2] | 96.0 / 45.0 / 27.0 |
+
+Failure codes: bc_v1_s0 recovery G1 71, F1 50, S1 2; abl_proprio_s0 id_hard G1 63, F1 38;
+abl_proprio_corners_s0 id_hard G1 69, F1 23, S1 15.
+
+**Determinism check:** `bc_v1_s0` evaluated a second time (`eval_det_repeat.json`) gives
+identical per-set counts and failure codes (`imitation.viz.pick same`: identical). The
+same checkpoint also matched its dagger_v2 round-0 evaluation (196 / 139 / 77) from the day
+before. Every original row lies inside its re-evaluation's interval, so the M2.1 and M2.3
+readings stand: seeds agree, and cloth state is worth ~20-25 pp on id_hard.
+
 ## Throughput (Phase 5c)
 
 ### M5c.4 — GPU physics feasibility (MuJoCo Warp) — **closed: not viable for this model** (2026-09-25)
@@ -268,6 +290,19 @@ grippers open) + fold score. Trained on `v1_img` + `v1_failures_img` (37,468 tra
 - **Exit — agreement with the sim's success flag** on the final frame of held-out
   student rollouts (the distill rounds' own episodes, never trained on): **235/256 = 91.8% [87.8, 94.6]**.
   The "always success" baseline is 208/256 = 81.2%. Errors: 14 false "folded", 7 missed.
+
+### M4.3 re-run — detector on 128² frames with per-camera normalization (success_v2) (2026-09-25)
+
+Same recipe on the finished Phase 4 path: `v1_img128` + `v1_failures_img128` (the failures
+re-rendered at 128² so the two versions don't mix frame sizes; images in both digests),
+per-channel normalization fit on the training frames, 8k steps. 4,668 val frames.
+
+- Val frames: **accuracy 95.0%**, fold-score MAE 0.019 (v1: 94.9%, 0.022).
+- Agreement with the sim's success flag on the final frame of held-out `distill_v2` round 1-2
+  rollouts (never trained on): **237/256 = 92.6% [88.7, 95.2]**. "Always success" baseline:
+  170/256 = 66.4%, a harder set than v1's (81.2%), so the margin over the baseline is wider
+  (+26 pp vs +11 pp). Errors: 16 false "folded", 3 missed.
+  Artifacts: `outputs/imitation/runs/success_v2/`, `success_v2.agree.log`.
 
 ### M5b.6 — replan-interval sweep (fine placement / re-grasp) (2026-09-25)
 

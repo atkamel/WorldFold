@@ -8,8 +8,9 @@ Times four representative loops on the same seeds and worker count:
   dagger_expert  a student rolled out with the scripted expert shadowing + labelling
   dagger_policy  a vision student with a policy teacher labelling on the GPU
 and reports, per simulated step: worker physics, worker rendering, worker teacher work
-(shadowing), main-process planning (policy + GPU labels), and main-process waiting. The
-worker columns are summed over workers, so they're compared against wall x workers.
+(shadowing), worker teacher labels (the scripted expert's look-ahead simulation),
+main-process planning (policy + GPU labels), and main-process waiting. The worker columns
+are summed over workers, so they're compared against wall x workers.
 Training throughput comes from existing `run.json` files (steps / seconds).
 """
 
@@ -34,7 +35,7 @@ def run(name, controller, pool_kwargs, seeds, workers):
     wall = stats["wall_s"]
     row = {"loop": name, "episodes": len(seeds), "steps": steps, "wall_s": round(wall, 1),
            "ms_per_step_wall": round(1000 * wall / steps, 2)}
-    for k in ("physics_s", "render_s", "teacher_s"):          # worker-side, summed over workers
+    for k in ("physics_s", "render_s", "teacher_s", "label_s"):   # worker-side, summed over workers
         row[k.replace("_s", "_share")] = round(stats.get(k, 0.0) / (wall * workers), 3)
     for k in ("plan_s", "wait_s"):                             # main process
         row[k.replace("_s", "_share_main")] = round(stats.get(k, 0.0) / wall, 3)

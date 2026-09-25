@@ -83,8 +83,10 @@ def _worker(pipe, env_kwargs):
                 info = dict(info, _timing=(t1 - t0, t2 - t1 - env.last_render_s, env.last_render_s))
                 pipe.send(("ok", (obs, float(r), bool(term), bool(trunc), _info_small(info, images),
                                   np.asarray(action, dtype=np.float32))))
-            elif cmd == "label":
-                pipe.send(("ok", teacher.label_chunk(env, horizon=int(arg))))
+            elif cmd == "label":       # (labels, seconds): the expert's look-ahead is real simulation (M5c.1)
+                t0 = time.perf_counter()
+                labels = teacher.label_chunk(env, horizon=int(arg))
+                pipe.send(("ok", (labels, time.perf_counter() - t0)))
             elif cmd == "resync":
                 pipe.send(("ok", teacher.expert.resync() if hasattr(teacher, "expert") else {}))
             elif cmd == "close":
@@ -404,7 +406,9 @@ def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_
             elif cmd == "resync":
                 advance(i)
             elif cmd == "label":
-                awaiting[i] = payload
+                awaiting[i], label_s = payload
+                if stats is not None:
+                    stats["label_s"] = stats.get("label_s", 0.0) + label_s
             elif cmd == "step":
                 obs, r, term, trunc, info, executed = payload
                 timing = info.pop("timing", None)
