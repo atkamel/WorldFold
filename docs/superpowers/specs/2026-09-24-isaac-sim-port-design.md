@@ -30,10 +30,12 @@ milestones. Existing MuJoCo checkpoints are not expected to transfer.
 - Isaac Sim 4.5.0 container (`nvcr.io/nvidia/isaac-sim:4.5.0`), the version
   that runs on the RTX 2080 Ti nodes available on WATcloud. Newer versions on
   3090/4090 nodes are a later concern.
-- Inside the container: `pip install mujoco so101-nexus gymnasium numpy` into
-  Isaac's Python (`./python.sh -m pip install ...`). `mujoco` and `so101-nexus`
-  are needed only so `mujuco/sim_main.py` can be imported for its constants and
-  the SO101 MJCF asset path.
+- Inside the container: `./python.sh -m pip install gymnasium`. `so101-nexus`
+  requires Python 3.12 and Isaac Sim 4.5 ships 3.10, so neither it nor
+  `mujoco` can be installed there. Nothing in `isaac/` imports `sim_main`.
+- Particle cloth only exists on the GPU pipeline, so the `World` is created
+  with `backend="torch", device="cuda:0"` and all reads go through the physics
+  views (link transforms are not written back to USD on that pipeline).
 - Runs headless. Images come from the Isaac camera sensor, not a window.
 
 ## Package layout
@@ -42,15 +44,24 @@ milestones. Existing MuJoCo checkpoints are not expected to transfer.
 isaac/
   __init__.py
   README.md            how to run on WATcloud (SLURM, container, pip installs)
-  convert_so101.py     one-shot: so101-nexus MJCF -> isaac/assets/so101.usd
-  assets/so101.usd     committed output of convert_so101.py
+  so101_assets.py      fetches the pinned so101-nexus wheel, unpacks the SO101
+                       MJCF and meshes into isaac/assets/ (gitignored), merges
+                       the file's two top-level <default> blocks for the importer
   isaac_env.py         IsaacClothFoldEnv
   smoke_test.py        runnable check: contract + scripted grasp and lift
+  tests/test_math.py   rotation helpers, runs without Isaac Sim
+mujuco/
+  cloth_params.py      constants, camera_axes, sensor_depth, StateOnlyWrapper,
+                       check_contract: numpy and gymnasium only, shared by both sims
 ```
 
-One change outside the package: `cloth_fold_rl/fold_env.py` stops reading
-MuJoCo internals (`env.data.xpos`, `env._corner_ids`, `env._site_id`) and
-calls two new accessor methods instead. `ClothFoldEnv` gains those two methods.
+No USD is committed: the env imports the MJCF with the Isaac MJCF importer at
+construction (about a second per arm), so there is no converter step.
+
+Changes outside the package: `sim_main.py` imports its constants from
+`cloth_params.py` and gains the two accessor methods below;
+`cloth_fold_rl/fold_env.py` calls those accessors instead of reading MuJoCo
+internals and imports `ClothFoldEnv` lazily so it loads without `mujoco`.
 
 ## Interface contract
 
@@ -92,15 +103,15 @@ def gripper_position(self, prefix) -> np.ndarray   # (3,) world, gripper frame o
 
 ## Shared constants
 
-`isaac_env.py` imports from `mujuco/sim_main.py`: `TABLE_TOP_Z`,
+`isaac_env.py` imports from `mujuco/cloth_params.py`: `TABLE_TOP_Z`,
 `CLOTH_COUNT`, `CLOTH_SPACING`, `CLOTH_MASS`, `CLOTH_HALF`, `ARM_XML_PATH`,
 `ARM_BASE_LEFT`, `ARM_BASE_RIGHT`, `ARM_BASE_QUAT`, `ARM_JOINTS`,
 `GRIPPER_OPEN`, `GRIPPER_CLOSED`, `JOINT_DELTA_SCALE`, `GRASP_CORNERS`,
 `GRASP_RADIUS`, `HOLD_STEPS`, `WORKSPACE_XY`, `SUCCESS_FOLD_SCORE`,
 `CORNER_PLACED_DIST`, `TASK_NAMES`, `DEPTH_*`, `CAMERA_POS`, `CAMERA_TARGET`,
-and the functions `camera_axes` and the depth noise model (extracted from
-`ClothFoldEnv._sensor_depth` into a module-level function so both envs call
-it). Geometry cannot drift between the two sims.
+`CAMERA_FOVY_DEG`, and the functions `camera_axes` and `sensor_depth` (the
+depth noise model, extracted from `ClothFoldEnv._sensor_depth`). Geometry
+cannot drift between the two sims.
 
 Isaac-only knobs live at the top of `isaac_env.py`, each a plain constant:
 physics dt (1/240), cloth stretch/bend/shear stiffness, cloth damping,
@@ -117,17 +128,24 @@ Built in Python on `isaacsim.core.api.World` at env construction.
   on the table. Vertices ordered row-major with index `ix * CLOTH_COUNT + iy`
   so `GRASP_CORNERS`, corner indices, and sample indices match MuJoCo. Total
   mass `CLOTH_MASS`. Self-collision off (matches MuJoCo).
-- Arms: `isaac/assets/so101.usd`, produced by `convert_so101.py` from
-  `ARM_XML_PATH` with the Isaac MJCF importer. Two references at
-  `ARM_BASE_LEFT` and `ARM_BASE_RIGHT`, both rotated by `ARM_BASE_QUAT`. Joints
-  in `ARM_JOINTS` plus `gripper` are position-driven; joint limits come from
-  the MJCF. A gripper frame prim per arm reproduces the MJCF `gripperframe`
-  site offset (read from the XML by the converter and stored in the USD).
+- Arms: the merged SO101 MJCF imported twice with the Isaac MJCF importer
+  (`fix_base`, sites on, self collision off), at `ARM_BASE_LEFT` and
+  `ARM_BASE_RIGHT`, both rotated by `ARM_BASE_QUAT`. The importer applies no
+  drives, so the env applies angular position drives to `ARM_JOINTS` plus
+  `gripper` with the stiffness, damping, and max-force knobs. Joint limits
+  come from the MJCF. The importer also adds a second `PhysicsScene`, which
+  the env removes before enabling GPU dynamics on the world's scene. The
+  gripper frame is the gripper link's physics pose composed with the
+  `gripperframe` site offset parsed from the MJCF, exactly MuJoCo's site
+  definition.
 - Camera: `isaacsim.sensors.camera.Camera` at `CAMERA_POS` aimed at
   `CAMERA_TARGET` using `camera_axes`, resolution `image_size`, vertical FOV
   matching the MJCF camera default. Annotators: RGB and
   `distance_to_image_plane`.
-- Lighting: one dome light plus one distant light. Not tuned in milestone 1.
+- Lighting: one dome light plus one distant light, only when images are
+  requested. Intensities are knobs. The camera frame is rolled so that image-up
+  equals MuJoCo's camera up; verified by rendering both sims from the shared
+  pose.
 
 ## Stepping
 
@@ -147,14 +165,12 @@ Same semantics as the MuJoCo weld:
   and is allowed by `weld_mask[prefix]`, if the distance from the gripper frame
   to that particle is below `grasp_radius`, capture the offset in the gripper
   frame and pin the particle. When open, unpin all.
-- Pin: set the particle's inverse mass to zero and, each substep, write its
-  position to gripper frame plus captured offset with zero velocity. Unpin
-  restores the original mass.
+- Pin: set the particle's mass to zero through the cloth physics view
+  (`ClothPrim.set_particle_masses` is broken in 4.5) and, each substep, write
+  its position to gripper frame plus captured offset. Unpin restores the rest
+  mass. The spike showed a zero-mass particle holds its written position
+  exactly, while position-writing alone drifts by a few millimetres.
 - `grasp_active(prefix)` is true when any of that arm's corners is pinned.
-- Fallback if per-particle mass is not writable in 4.5: create a
-  `PhysxPhysicsAttachment` between the gripper link and the cloth with a small
-  attachment radius around the corner, delete it on release. The spike below
-  decides which.
 
 ## Observations
 
@@ -191,17 +207,19 @@ runs Isaac Sim.
 4. Throughput: `smoke_test.py` prints control steps per second for `state` and
    `hybrid` at 84x84 on the 2080 Ti. Target is at least 5 steps/s in `state`
    mode; below that, cloth resolution or substeps get revisited before
-   milestone 2.
+   milestone 2. Measured 2026-09-25 on a 2080 Ti: 22 steps/s state, 17 steps/s
+   hybrid. Lifting the pinned corner 8 cm dragged the anchor corners 6 cm; the
+   fold wrapper terminates at 20 cm, and cloth friction is the knob to revisit.
 5. Existing MuJoCo tests still pass after the `fold_env.py` accessor change:
    `python -m pytest mujuco/tests cloth_angles/tests`.
 
-## Spike (before env code)
+## Spike (done 2026-09-25, scripts not kept)
 
-Throwaway script, not kept: import the SO101 MJCF into Isaac Sim 4.5, print
-joint names, limits, and drive settings, and locate the gripper frame; create
-a particle cloth and attempt to zero one particle's inverse mass and move it.
-Outcome decides the grasp mechanism and whether the MJCF importer output is
-usable or the arm needs the URDF from the SO-ARM100 repo instead.
+Findings that shaped the code above: particle cloth needs the GPU pipeline;
+`set_particle_masses` is broken but the physics view works; the MJCF importer
+rejects two top-level `<default>` blocks (merged in `so101_assets.py`), applies
+no drives, and adds its own `PhysicsScene`; link poses must be read from
+physics views; Isaac startup is about 13 s once the shader cache is warm.
 
 ## Risks
 
