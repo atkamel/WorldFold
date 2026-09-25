@@ -269,6 +269,37 @@ grippers open) + fold score. Trained on `v1_img` + `v1_failures_img` (37,468 tra
   student rollouts (the distill rounds' own episodes, never trained on): **235/256 = 91.8% [87.8, 94.6]**.
   The "always success" baseline is 208/256 = 81.2%. Errors: 14 false "folded", 7 missed.
 
+### M5b.6 — replan-interval sweep (fine placement / re-grasp) (2026-09-25)
+
+Same checkpoints, evaluated with the chunk re-planned every 8 (default), 4 or 2 steps.
+n=200, deterministic. Privileged = `dagger_diff/round_1` (diffusion); vision =
+`vision_t0_128` (best camera student, M5b.3 round 0).
+
+| policy | replan | id_easy | id_hard | recovery |
+|---|---|---|---|---|
+| privileged | 8 | 196/200 = 98.0% [95.0, 99.2] | 144/200 = 72.0% [65.4, 77.8] | 145/200 = 72.5% [65.9, 78.2] |
+| privileged | **4** | 199/200 = 99.5% [97.2, 99.9] | **154/200 = 77.0% [70.7, 82.3]** | **159/200 = 79.5% [73.4, 84.5]** |
+| privileged | 2 | 198/200 = 99.0% [96.4, 99.7] | 149/200 = 74.5% [68.0, 80.0] | 153/200 = 76.5% [70.2, 81.8] |
+| vision | 8 | 190/200 = 95.0% [91.0, 97.3] | 184/200 = 92.0% [87.4, 95.0] | 60/200 = 30.0% [24.1, 36.7] |
+| vision | 4 | 192/200 = 96.0% [92.3, 98.0] | 186/200 = 93.0% [88.6, 95.8] | 73/200 = 36.5% [30.1, 43.4] |
+| vision | **2** | 188/200 = 94.0% [89.8, 96.5] | 182/200 = 91.0% [86.2, 94.2] | **82/200 = 41.0% [34.4, 47.9]** |
+
+Failure codes, privileged @4: id_hard S1 32, F1 11, G1 3; recovery F1 15, S1 14, G1 11, M1 1.
+Vision @2: recovery G1 72, F1 43, S1 3.
+
+Reading:
+- **Replanning more often is a real, free lever**: no retraining. The privileged policy gains
+  +5 pp id_hard and +7 pp recovery at replan 4 (the recovery gain is outside the intervals'
+  overlap only marginally; id_hard intervals overlap). 2 is past the optimum: chunks
+  re-planned every 2 steps lose the temporal consistency action chunking is for.
+- The vision student's **recovery rises monotonically** with tighter replanning (30 → 36.5 →
+  41%) at no cost elsewhere: re-grasping after a knock is closed-loop work.
+- **Exit not met**: privileged id_hard peaks at 77% (target 85%). The remaining id_hard
+  failures are still S1 fine-placement stalls (32 of 46). Replanning narrows the gap but
+  doesn't close it.
+- **Adopted as operating points**: privileged replan 4 (99.5 / 77.0 / 79.5), vision replan 2
+  (94.0 / 91.0 / 41.0). The vision-vs-privileged recovery gap at these settings is 38.5 pp.
+
 ### M5b.4 — offline RL retry with action diversity (2026-09-25)
 
 **Harvest `harvest_v2`** (`febfb9275058`): 1,679 episodes from 4 policies (BC chunk-MLP,
