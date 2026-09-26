@@ -1,0 +1,4 @@
+  id_easy   success 99% (198/200)  fold 0.910  grasp 100%  failures {'F1': 2}  482s
+  id_hard   success 74% (149/200)  fold 0.770  grasp 95%  failures {'S1': 28, 'G1': 11, 'M1': 1, 'F1': 11}  597s
+  recovery  success 76% (153/200)  fold 0.841  grasp 100%  failures {'G1': 12, 'S1': 20, 'F1': 15}  667s
+wrote outputs\imitation\runs\dagger_diff\round_1\eval_r2.json

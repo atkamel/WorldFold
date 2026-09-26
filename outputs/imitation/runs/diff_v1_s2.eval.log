@@ -1,0 +1,4 @@
+  id_easy   success 100% (200/200)  fold 0.911  grasp 100%  failures {}  624s
+  id_hard   success 85% (170/200)  fold 0.877  grasp 96%  failures {'G1': 9, 'F1': 16, 'S1': 5}  871s
+  recovery  success 60% (121/200)  fold 0.806  grasp 97%  failures {'F1': 31, 'G1': 43, 'S1': 5}  1009s
+wrote outputs\imitation\runs\diff_v1_s2\eval_r8.json
