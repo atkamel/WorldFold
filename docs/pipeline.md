@@ -31,17 +31,23 @@ Everything runs with the pinned env: `.venv/Scripts/python.exe` (Windows) with
 
 ---
 
-## Where it stands (2026-09-24)
+## Where it stands (2026-09-26)
 
 | stage | id_easy | id_hard | recovery |
 |---|---|---|---|
 | expert (ceiling) | 100% | 97% | 96% |
-| BC | 98.0% | 69.5% | 38.5% |
-| DAgger (privileged state) | 97.0% | 64.5% | 65.0% |
-| sensor-only student (cameras) | 97.5% | 90.5% | 31.5% |
+| BC, chunk-MLP | 98.0% | 69.5% | 38.5% |
+| BC, diffusion (seeds 0 / 1 / 2) | 100 / 99.5 / 100% | 77.0 / 83.0 / 85.0% | 55.5 / 62.0 / 60.5% |
+| **DAgger, diffusion, replan 4** (privileged best) | 99.5% | 77.0% | 79.5% |
+| **sensor-only student, replan 2** (cameras + proprio) | 94.0% | 91.0% | 41.0% (seed 1: 34.5%) |
 
 n = 200 per set; intervals and details in [results.md](results.md). Offline RL (IQL) was
-tried and did *not* beat DAgger, see §8.
+tried three times and never beat the imitation policy; it is dropped (§8). The dated report
+with the videos is [reports/2026-09-25-phase5b.md](reports/2026-09-25-phase5b.md).
+
+**Operating points.** Evaluate and demo the privileged policy with `--replan-every 4` and
+the camera student with `--replan-every 2`; the default 8 is kept for comparability with
+older rows.
 
 ## The data: what goes where
 
@@ -249,11 +255,14 @@ cameras (64²), plus the 48 sensor-available proprio dims.
    twin Q over macro-actions, and advantage-weighted regression into the same chunk MLP.
    The result is an ordinary checkpoint for `evaluate` and `demo`.
 
-**Status: it didn't help here.** On single-policy harvest data the critic ranks states
-well but can't rank actions (advantages ≈ 0 ± 0.02 on both successful and failed
-trajectories). The update then reduces to BC over everything, stalls included, and
-recovery fell 16-20 pp (results.md, M5.3). It needs more action diversity before it can
-beat DAgger.
+**Status: dropped from the plan (M5b.4, 2026-09-26).** On single-policy harvest data the
+critic ranked states but not actions, and recovery fell 16-20 pp (M5.3). A second harvest
+from 4 policies × 2 noise levels (`harvest_v2`, `--ckpts ... --noise 0.1 0.3 --min-per-code`)
+tripled the advantage spread but left the success-vs-failure action gap at ≈ 0. IQL with a
+diffusion actor (advantage-weighted denoising, `compute_loss(per_sample=True)`) then cloned
+the harvest mix: 89.0 / 34.0 / 34.5 vs 98 / 72 / 72.5 for its start (results.md). The code
+stays for reference; `imitation.rl.probe` reports a critic's action contrast before any
+policy training.
 
 ## 9. Demo: `imitation.demo`
 
@@ -286,6 +295,15 @@ simulate (and render, for image students). Long runs are capped at **10 sim work
 one CPU job at a time** (`outputs/imitation/runs/phase5b_seq.sh`), not all 16 cores
 continuously. It's slower in calendar time, but it keeps the CPU out of sustained full
 load; the GPU carries the learning at ~95% utilization during training.
+
+**Measured (Phase 5c, results.md).** Where the hours go (`imitation.viz.profile`): physics
+is ~50% of worker time in eval and policy-teacher loops, and the scripted expert's label
+look-ahead is 43% of expert-DAgger time. Main-process inference is 1.7-6.0% after the
+diffusion sampler became one CUDA graph (301 → 24 ms per batch, bit-identical). Parallel
+queues share one sim pool via `IMITATION_CPU_SLOT=<lock file>` (`imitation/cpu_slot.py`).
+Even so, the GPU is kernel-active only ~27% across a DAgger run, because there is little
+independent GPU work. MuJoCo Warp on this cloth model is slower than one CPU core and
+diverges from the CPU trajectory (M5c.4), so the physics stays on the CPU.
 
 ## 11. Reproducing a result
 

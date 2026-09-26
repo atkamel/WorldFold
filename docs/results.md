@@ -131,6 +131,44 @@ were fast. No cheap follow-up: revisit only with a future mujoco-warp release, a
 against a fresh expert-ceiling baseline. **M5c.5** (batched GPU rendering) is gated on this
 and closes with it.
 
+### M5c.1 — where the hours go (2026-09-26)
+
+`imitation.viz.profile`: 20 episodes (seeds 100000-100019), 10 workers, privileged =
+`dagger_diff/round_1` (diffusion, CUDA-graph sampler), vision = `vision_t0_128`, replan 8.
+Worker columns are summed over workers ÷ (wall × 10). Main-process columns are ÷ wall.
+`outputs/imitation/profile.json`.
+
+| loop | ms / step (wall, pool) | physics | rendering | expert label look-ahead | main: plan (inference + GPU labels) |
+|---|---|---|---|---|---|
+| eval, state policy | 35.7 | 53.4% | — | — | 6.0% |
+| eval, vision policy | 41.1 | 50.0% | 7.5% | — | 2.7% |
+| DAgger, scripted expert labels | 86.1 | 21.9% | — | **43.0%** | 1.7% |
+| DAgger, vision student + policy teacher on GPU | 45.8 | 49.5% | 14.4% | — | 4.8% |
+
+Per-step costs on one core: physics 188-227 ms (100 cloth substeps), rendering 3 cameras
+31 ms (66 ms when the policy-teacher loop also renders at label time). Training throughput
+(`run.json`): chunk-MLP 99-125 steps/s, diffusion 13.9 steps/s (9.2 before the lazy
+loader), vision 16.6-30 steps/s.
+
+Where the hours go:
+- **Physics** is the largest single share of every loop that doesn't use the expert. The
+  remaining ~40% of worker time is outside `env.step`: pipe round-trips, waiting for the
+  next batched plan, and the tail of a 20-episode run where fewer than 10 envs are left
+  (episodes take 80-250 steps). Longer runs have a smaller tail.
+- **Expert-labelled DAgger is 2.4× slower per step** than evaluation: each label simulates
+  the expert ahead on a cloned state, which is twice the cost of the steps actually taken.
+  A policy teacher on the GPU removes it (45.8 ms/step).
+- **Inference is small**: 1.7-6.0% of wall time in the main process.
+
+### M5c.2 exit check (2026-09-26)
+
+Exit: inference + labels < 5% of rollout time, with identical actions. Actions are
+bit-identical (test). Share: vision eval 2.7%, DAgger with GPU policy-teacher labels 4.8%,
+expert DAgger 1.7% — met. **State-policy eval with the diffusion head: 6.0% at replan 8,
+just over.** It doubles at the adopted replan 4. **Closed ❌ narrowly.** The 10 DDIM steps
+are the remaining cost. The follow-up, if Phase 6 needs faster privileged rollouts, is fewer
+sampling steps or a distilled one-step head, measured against the same eval sets.
+
 ### M5c.3 — GPU busy across a DAgger run with overlapping lanes — **exit not met** (2026-09-25)
 
 `nvidia-smi utilization.gpu` (the share of each sample period in which a kernel ran),
@@ -434,6 +472,32 @@ weights near 1 can't undo that, so the actor imitated failures (G1 101-120 per s
 stratification belongs to the critic (it must see failures to value them), not the actor.
 Fix: `--actor-strata natural` samples the actor batch separately; advantages are computed on
 the actor's own batch (**iql_v4**, below).
+
+**iql_v4** (same data, critic and settings as iql_v3; the actor samples the natural outcome
+mix, 75% success transitions). 40k steps. n=200, deterministic, evaluated at replan 8 and at
+the adopted replan 4.
+
+| policy | replan | id_easy | id_hard | recovery |
+|---|---|---|---|---|
+| dagger_diff/round_1 (start) | 8 | 196/200 = 98.0% | 144/200 = 72.0% | 145/200 = 72.5% |
+| dagger_diff/round_1 (start) | 4 | 199/200 = 99.5% | 154/200 = 77.0% | 159/200 = 79.5% |
+| **iql_v4** | 8 | 178/200 = 89.0% [83.9, 92.6] | 68/200 = 34.0% [27.8, 40.8] | 69/200 = 34.5% [28.3, 41.3] |
+| **iql_v4** | 4 | 138/200 = 69.0% [62.3, 75.0] | 37/200 = 18.5% [13.7, 24.5] | 51/200 = 25.5% [20.0, 32.0] |
+
+Failure codes @8: id_hard G1 95, S1 27, F1 8, M1 2; recovery G1 55, F1 43, S1 33.
+@4: id_hard G1 94, S1 61, F1 8; recovery G1 58, S1 57, F1 33, M1 1.
+
+**Exit not met; RL is dropped from the plan.** The sampling fix removed the collapse
+(iql_v3 54 / 24 / 18) but not the regression: −38 pp id_hard and −38 pp recovery at replan 8.
+It is worse at replan 4, where the start policy is best. The cause is the M5.3 one, now
+measured on diverse data. The critic separates states (V gap 0.51) but not actions: the
+success-minus-failure advantage gap is +0.003 against a spread of 0.054 (probe). So the
+AWR weights stay near 1, and the actor clones the harvest mix. That mix includes BC and
+dagger_v2 actions and σ = 0.3 noise, which is where the grasp misses (G1 95) come from.
+Two harvests, two critics and three actor schemes (M5.3, iql_v3, iql_v4) all end below the
+imitation policy. Offline RL doesn't pay on this task at this data scale. The imitation +
+DAgger path carries forward; revisit RL only with on-policy fine-tuning or a learned reward
+(not in the pre-VLA scope).
 
 ### M5b.3 — vision recovery via distillation (distill_v2) — **exit NOT met** (2026-09-25)
 

@@ -26,7 +26,7 @@ DAgger (on the states the student visits)         Phase 3
         ↓
 privileged → sensor-only distillation             Phase 4
         ↓
-offline RL polish (IQL/AWAC)                      Phase 5
+offline RL polish (IQL/AWAC)                      Phase 5 — dropped 2026-09-25 (M5b.4)
         ↓
 lightweight deployed policy → robot               Phase 7
 ```
@@ -110,7 +110,7 @@ rewrite later.
 |---|---|---|---|
 | M5.1 | Student rollout harvest, 1000-2000 rollouts stratified by failure code | reward variance exists to learn from | ✅ `harvest_v1`, 1000 eps, 81% success |
 | M5.2 | RL-usable reward: sparse critic label, clipped toggle spikes, `unstable` tagged, `build_transitions()`, chunk-as-macro-action | documented in `imitation.md` §7 | ✅ |
-| M5.3 | IQL or AWAC warm-started from the DAgger policy | ≥ the imitation student on ID and recovery | ❌ not met: IQL −16-20 pp on recovery (results.md); parked |
+| M5.3 | IQL or AWAC warm-started from the DAgger policy | ≥ the imitation student on ID and recovery | ❌ closed: not met twice more in M5b.4 (iql_v4 89/34/34.5 vs 98/72/72.5); **RL dropped from the plan** (results.md) |
 
 ## Phase 5b — Close the gaps found in Phases 2-5
 
@@ -122,7 +122,7 @@ Ordered by expected payoff. Phase 6 starts after M5b.1-M5b.3.
 | M5b.1 | DAgger from the diffusion checkpoint (`diff_v1_s0`); diffusion BC is already +10-12 pp over chunk-MLP under shift | beats `dagger_v2/round_3` on id_easy + recovery by > 1 SE at n=200 | ✅ round 1: 98.0 / 72.0 / 72.5, +1.74 SE |
 | M5b.2 | Shifted-pose coverage: DAgger and distill rollouts from id_hard-like poses on a new disjoint `SHIFT_SEED_BASE` (with a disjointness test); no loop visits shifted starts today | privileged id_hard ≥ 85% without losing recovery | ❌ not met: 2 rounds, id_hard 72 → 61-64.5%; the failures are fine-placement stalls (S1), not missing coverage (results.md) |
 | M5b.3 | Vision recovery: ≥ 60% perturbed distill rollouts, 128² main camera, keep rule that also scores id_hard | sensor-only recovery within 15 pp of its teacher | ☐ |
-| M5b.4 | Offline RL retry, only with action diversity (multi-policy or high-σ harvest, per-episode subsampling so stalls don't dominate) | ≥ DAgger on ID and recovery, else drop RL from the plan | ☐ |
+| M5b.4 | Offline RL retry, only with action diversity (multi-policy or high-σ harvest, per-episode subsampling so stalls don't dominate) | ≥ DAgger on ID and recovery, else drop RL from the plan | ❌ closed 2026-09-25: harvest_v2 tripled the advantage spread but not the success-vs-failure gap (+0.003); iql_v4 89.0/34.0/34.5 @8, 69.0/18.5/25.5 @4 vs 98/72/72.5 → **RL dropped** (results.md) |
 | M5b.6 | Fine placement (follow-up to M5b.2's diagnosis: shifted-pose failures are S1 stalls 4-12 cm off goal, where the student under-imitates the expert's slow measured-miss corrections): sweep the replan interval (8 / 4 / 2) at eval, then retrain with placement-phase oversampling if the sweep helps | privileged id_hard ≥ 85%, or the sweep shows replanning isn't the lever (closed with evidence) | ❌ closed: replanning *is* a lever (privileged @4: 99.5 / 77.0 / 79.5; vision @2 recovery 30 → 41%) but id_hard peaks at 77%; operating points adopted (results.md) |
 | M5b.5 | Hygiene: re-run M2.1-M2.3 under deterministic eval; re-freeze image versions with image-inclusive hashes if they're used for a result | numbers reproduce exactly | ✅ 2026-09-25: repeat eval identical; all four re-evals inside the original intervals; image results use `v1_img128` (images in the digest) (results.md) |
 
@@ -137,9 +137,9 @@ The CPU-bound harvest ran ~7 s/episode on 6 workers.
 
 | | milestone | exit | status |
 |---|---|---|---|
-| M5c.1 | Profile one DAgger round and one eval: time split into physics step / rendering / policy inference / teacher labels / pipe IPC / training, per process | a table in results.md that says where the hours go | ☐ |
-| M5c.2 | Cheap GPU wins in the loop: CUDA graphs / `torch.compile` for batched inference (the 10-step diffusion sampler is latency-bound: 104 ms for a batch of 14), fewer DDIM steps or a distilled one-step head; batch MLP teacher labels on the GPU in the main process | inference + labels < 5% of rollout time, with identical actions (determinism test) | ☐ |
-| M5c.3 | Overlap GPU and CPU inside a run: evaluate round r on the CPU while training round r+1 candidates on the GPU; run CPU-bound queues (harvest, re-evals) during every training phase | GPU busy > 50% across a DAgger run | ☐ |
+| M5c.1 | Profile one DAgger round and one eval: time split into physics step / rendering / policy inference / teacher labels / pipe IPC / training, per process | a table in results.md that says where the hours go | ✅ 2026-09-26: table in results.md — physics ~50% of worker time; expert label look-ahead 43% of DAgger (2.4× slower per step); inference 1.7-6.0% |
+| M5c.2 | Cheap GPU wins in the loop: CUDA graphs / `torch.compile` for batched inference (the 10-step diffusion sampler is latency-bound: 104 ms for a batch of 14), fewer DDIM steps or a distilled one-step head; batch MLP teacher labels on the GPU in the main process | inference + labels < 5% of rollout time, with identical actions (determinism test) | ❌ closed narrowly 2026-09-26: CUDA-graph sampler 12.7×, bit-identical; share < 5% in 3 of 4 loops, 6.0% for diffusion state eval (results.md) |
+| M5c.3 | Overlap GPU and CPU inside a run: evaluate round r on the CPU while training round r+1 candidates on the GPU; run CPU-bound queues (harvest, re-evals) during every training phase | GPU busy > 50% across a DAgger run | ❌ closed 2026-09-25: CPU slot works (one sim pool across 3 lanes), but GPU kernel-active 27% across a DAgger run (32% with overlapping lanes); physics-bound, and M5c.4 ruled out GPU physics (results.md) |
 | M5c.4 | GPU physics feasibility: MuJoCo Warp / MJX with this cloth (flex) model. Port the half-fold env, then re-run the expert benchmark and the M1.7 ceilings | expert ceiling within intervals of the CPU sim, or a written reason it can't be. Only then: thousands of parallel envs | ❌ closed: loads (flex OK) but ~2× slower than one CPU core at best (274 vs 576 steps/s) and drifts > 1 cm from the CPU trajectory by step 15 (results.md) |
 | M5c.5 | Batched GPU rendering of the three cameras (MuJoCo Warp / Madrona-style) once M5c.4 holds | vision rollouts no slower than state rollouts | ❌ closed: gated on M5c.4, which failed |
 
