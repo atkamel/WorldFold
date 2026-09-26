@@ -131,6 +131,28 @@ were fast. No cheap follow-up: revisit only with a future mujoco-warp release, a
 against a fresh expert-ceiling baseline. **M5c.5** (batched GPU rendering) is gated on this
 and closes with it.
 
+### M5c.3 — GPU busy across a DAgger run with overlapping lanes — **exit not met** (2026-09-25)
+
+`nvidia-smi utilization.gpu` (the share of each sample period in which a kernel ran),
+sampled every 5 s over one DAgger round at replan 4 (`dagger_r4`, above). The window came in
+two parts because the queue was paused after the rollouts froze.
+`imitation.viz.gpu_busy`, files `runs/m5c3_gpu*.csv` / `m5c3_window*.csv`.
+
+| part | what ran | window | samples | mean GPU util | samples > 10% |
+|---|---|---|---|---|---|
+| 1 | lane A DAgger rollouts; lane B (`diff_v1_s1` eval, CPU) and lane C (`vision_t0_128_s1` training, GPU) overlapping under the CPU slot | 57.0 min | 648 | 32.3% | 63.9% |
+| 2 | lane A alone: round-1 training (GPU) + 600 eval episodes | 50.0 min | 561 | 21.7% | 66.7% |
+| **whole run** | | 107 min | 1,209 | **27.4%** | 65.2% |
+
+**Exit (> 50% busy) not met.** The GPU does work in two-thirds of the samples but is kernel-active
+only ~27% of the time. The loop is CPU-physics-bound: each control step is 100 cloth substeps,
+~200 ms of one core (M5c.1). The overlap mechanism (`IMITATION_CPU_SLOT`) works: it kept the
+sim at one 10-worker pool across three concurrent queues. Part 1 shows the extra lanes lifting
+GPU use (32 vs 22%), but only while there is independent GPU work to run, and the pipeline has
+little of it. Filling the GPU needs the physics on it, which M5c.4 ruled out. Known defect: the
+slot isn't fair. A lane that releases and re-takes it between evaluation sets beats a lane
+polling every 2 s, so lane A waited 37 min behind lane B's whole evaluation.
+
 ### M5c.2 — diffusion sampling as one CUDA graph (2026-09-25)
 
 The 10-step DDIM sampler is ~60 tiny kernels; its latency was launch overhead, not
@@ -192,6 +214,33 @@ The intervals touch on id_hard and are disjoint on recovery. It's a single seed 
 batched call against a 400 ms replan interval (8 steps × 50 ms), which fits the loop,
 but that's ~100× the MLP (§8 deployment budget). Next: DAgger from the diffusion
 checkpoint, which should combine both gains.
+
+### Diffusion BC seed variance (seeds 0-2) (2026-09-25)
+
+Same recipe as M2.4 (`diffusion`, v1, 30k steps, batch 1024, replan 8), seeds 1 and 2 trained
+on the lazy loader (2,152 / 2,171 s vs 3,263 s for seed 0). n=200, deterministic eval. Seed 0
+is its deterministic re-evaluation (M5b.1 round 0).
+
+| seed | id_easy | id_hard | recovery |
+|---|---|---|---|
+| 0 (`diff_v1_s0`) | 200/200 = 100.0% [98.1, 100.0] | 154/200 = 77.0% [70.7, 82.3] | 111/200 = 55.5% [48.6, 62.2] |
+| 1 | 199/200 = 99.5% [97.2, 99.9] | 166/200 = 83.0% [77.2, 87.6] | 124/200 = 62.0% [55.1, 68.4] |
+| 2 | 200/200 = 100.0% [98.1, 100.0] | **170/200 = 85.0% [79.4, 89.3]** | 121/200 = 60.5% [53.6, 67.0] |
+
+Failure codes: seed 1 id_hard F1 20, S1 10, G1 4, recovery G1 48, F1 21, S1 7; seed 2 id_hard
+F1 16, G1 9, S1 5, recovery G1 43, F1 31, S1 5.
+
+Reading:
+- **Seed 0 is the weakest of three**, and every Phase 5b experiment started from it. The
+  shifted-set spread across seeds is 8 pp (77-85), about the size of the effects that
+  M5b.2 and M5b.6 were chasing. The chunk-MLP spread was ~4 pp (M2.1).
+- Seeds 1-2 have **fewer S1 stalls** on id_hard (10 and 5, vs 13 for seed 0 and 33 for
+  `dagger_diff/round_1`, all at replan 8). DAgger from seed 0 *added* S1 stalls while it lifted recovery. The
+  fine-placement stall is partly a property of the training run, not only of the data.
+- Plain BC seed 2 reaches the M5b.2 target (id_hard ≥ 85%) without any shifted-pose data.
+  But it trails the DAgger policy on recovery (60.5 vs 72.5-79.5%).
+- Consequence for every later comparison: single-seed deltas under ~8 pp on id_hard are not
+  evidence. Phase 6+ milestones should be judged on ≥ 2 seeds.
 
 ## Offline RL
 
@@ -335,6 +384,24 @@ Reading:
 - **Adopted as operating points**: privileged replan 4 (99.5 / 77.0 / 79.5), vision replan 2
   (94.0 / 91.0 / 41.0). The vision-vs-privileged recovery gap at these settings is 38.5 pp.
 
+### Vision student seed variance at the operating point (replan 2) (2026-09-25)
+
+`vision_t0_128` recipe (128², per-camera norm, teacher-relabelled `v1_img128`, 30k steps,
+batch 256) with seed 1 (1,290 s of training, vs 1,812 s for seed 0 under concurrent load).
+n=200, deterministic, replan 2.
+
+| seed | id_easy | id_hard | recovery |
+|---|---|---|---|
+| 0 (`vision_t0_128`) | 188/200 = 94.0% [89.8, 96.5] | 182/200 = 91.0% [86.2, 94.2] | 82/200 = 41.0% [34.4, 47.9] |
+| 1 | 190/200 = 95.0% [91.0, 97.3] | 177/200 = 88.5% [83.3, 92.2] | 69/200 = 34.5% [28.3, 41.3] |
+
+Seed 1 failure codes: recovery G1 78, F1 45, S1 8; id_hard F1 9, G1 8, S1 6.
+
+The shifted-set result reproduces (88.5-91%). Recovery spreads 6.5 pp between seeds, with
+overlapping intervals. The camera student's recovery at its operating point is **35-41%**,
+and seed 0's 41% is the upper end. Recovery failures stay mostly G1: the re-grasp after a
+knock is still the missing skill.
+
 ### M5b.4 — offline RL retry with action diversity (2026-09-25)
 
 **Harvest `harvest_v2`** (`febfb9275058`): 1,679 episodes from 4 policies (BC chunk-MLP,
@@ -442,6 +509,27 @@ Reading:
   called out here.
 
 ## DAgger rounds
+
+### DAgger at the adopted replan 4 (dagger_r4) — not kept (2026-09-25)
+
+From `dagger_diff/round_1` on its chain `v1_dagger_diff_r1`, one round of 64 rollouts
+**re-planned every 4 steps** (β 0.3, 30% knocked, shadowing expert labels at every replan:
+1,725 labels) → `v1_dagger_diff_r1_dagger_r4_r1` (`5a3fcacb5fa2`, 576 eps). 15k warm-start
+steps, evaluated at replan 4, n=200, deterministic. Round 0 is M5b.6's replan-4 evaluation
+of the same checkpoint on the same seeds. The run was paused after the rollouts froze and
+resumed with `--resume`, which reused the frozen round.
+
+| round | trained on | id_easy | id_hard | recovery | gain (SE, 3 sets) | kept |
+|---|---|---|---|---|---|---|
+| 0 @4 | `v1_dagger_diff_r1` | 199/200 = 99.5% [97.2, 99.9] | 154/200 = 77.0% [70.7, 82.3] | 159/200 = 79.5% [73.4, 84.5] | — | yes |
+| 1 @4 | `…_dagger_r4_r1` | 198/200 = 99.0% [96.4, 99.7] | 152/200 = 76.0% [69.6, 81.4] | 152/200 = 76.0% [69.6, 81.4] | −0.8 | no |
+
+Failure codes, round 1: id_hard S1 32, F1 10, G1 6; recovery S1 20, F1 16, G1 12.
+
+Reading: labelling at the finer replan interval adds no signal. id_hard failures are
+still S1 stalls at the same count (32 vs 32 at round 0). This is the third attempt at the
+fine-placement gap by more data of the same kind (M5b.2 shifted poses, M5b.6 replan,
+this). **Best privileged policy stays `dagger_diff/round_1` at replan 4.**
 
 ### M5b.2 — shifted-pose coverage (dagger_shift) — **exit NOT met** (2026-09-24)
 
