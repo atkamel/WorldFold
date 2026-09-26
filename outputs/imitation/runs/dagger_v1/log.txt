@@ -1,0 +1,32 @@
+== round 0: evaluating outputs\imitation\runs\bc_v1_s0\final.pt
+  id_easy   success 98% (195/200)  fold 0.907  grasp 100%  failures {'F1': 5}  543s
+  id_hard   success 67% (134/200)  fold 0.808  grasp 91%  failures {'S1': 17, 'F1': 22, 'G1': 27}  1031s
+  recovery  success 38% (77/200)  fold 0.747  grasp 98%  failures {'F1': 54, 'G1': 65, 'S1': 4}  1215s
+== round 1: beta 0.300, 128 student rollouts from outputs\imitation\runs\bc_v1_s0\final.pt
+   rollouts: student success 106/128, 2174 teacher labels, froze v1_dagger_v1_r1 (512 episodes), 1314s
+normalizer clamp: 0.0061% of train obs entries at +-10
+device cuda | 446 train / 66 val episodes | 34875 samples (1847 DAgger labels) | chunk_mlp 8.65M params
+  step   2000  train 0.0223  val(ema) 0.0740  22s
+  step   4000  train 0.0152  val(ema) 0.0747  45s
+  step   6000  train 0.0129  val(ema) 0.0743  66s
+  step   8000  train 0.0111  val(ema) 0.0741  89s
+  step  10000  train 0.0094  val(ema) 0.0743  111s
+  step  12000  train 0.0082  val(ema) 0.0744  135s
+  step  14000  train 0.0075  val(ema) 0.0745  158s
+  step  15000  train 0.0037  val(ema) 0.0745  169s
+  id_easy   success 88% (176/200)  fold 0.884  grasp 100%  failures {'G1': 2, 'S1': 16, 'F1': 6}  542s
+  id_hard   success 43% (86/200)  fold 0.718  grasp 93%  failures {'S1': 66, 'G1': 29, 'F1': 14, 'M1': 5}  803s
+  recovery  success 41% (82/200)  fold 0.749  grasp 100%  failures {'F1': 29, 'S1': 59, 'G1': 29, 'M1': 1}  878s
+   round 1: score 1.290 (gain -0.070 = -1.3 SE) -> best outputs\imitation\runs\bc_v1_s0\final.pt
+== round 2: beta 0.150, 128 student rollouts from outputs\imitation\runs\bc_v1_s0\final.pt
+   rollouts: student success 101/128, 2122 teacher labels, froze v1_dagger_v1_r2 (640 episodes), 1105s
+normalizer clamp: 0.0079% of train obs entries at +-10
+device cuda | 559 train / 81 val episodes | 36787 samples (3759 DAgger labels) | chunk_mlp 8.65M params
+  step   2000  train 0.0296  val(ema) 0.0773  22s
+  step   4000  train 0.0176  val(ema) 0.0780  45s
+  step   6000  train 0.0147  val(ema) 0.0780  67s
+  step   8000  train 0.0125  val(ema) 0.0779  90s
+  step  10000  train 0.0108  val(ema) 0.0778  111s
+  step  12000  train 0.0095  val(ema) 0.0779  134s
+  step  14000  train 0.0086  val(ema) 0.0780  157s
+  step  15000  train 0.0042  val(ema) 0.0781  168s

@@ -1,0 +1,91 @@
+{
+ "git_commit": "3ed0aedac9c8ebc8130d4f88c522885bf33652e9-dirty",
+ "dataset": {
+  "root": "outputs/imitation/datasets",
+  "version": "v1_dagger_diff_r1_dagger_r4_r1",
+  "content_hash": "5a3fcacb5fa2d46da8f6aee3b47d65334dbfb040a054293258978865e45fbf9a",
+  "n_episodes": 576,
+  "n_train_samples": 35955,
+  "n_dagger_labels": 2927,
+  "clamped_fraction": 0.00014372535224538296,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "diffusion",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "cond_dim": 256,
+   "channels": [
+    128,
+    256
+   ],
+   "train_steps": 100,
+   "infer_steps": 10
+  },
+  "n_params": 7348748
+ },
+ "train": {
+  "steps": 15000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 4.0,
+  "obs_subset": null,
+  "init_from": "outputs\\imitation\\runs\\dagger_diff\\round_1\\final.pt",
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 750.6
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\dagger_r4\\round_1\\final.pt",
+  "sha256": "840198fd4b5ce22808e08111fc0f23df52884150ed3ab4eee9c23c0a7b86a5d1"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.008034521376248448,
+   "val_loss": 0.05503465844228925
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.006964802322909236,
+   "val_loss": 0.05243963966653741
+  },
+  {
+   "step": 6000,
+   "train_loss": 0.0059679364785552025,
+   "val_loss": 0.05485451788473037
+  },
+  {
+   "step": 8000,
+   "train_loss": 0.004461734124924987,
+   "val_loss": 0.06738038417164242
+  },
+  {
+   "step": 10000,
+   "train_loss": 0.0031226795457769186,
+   "val_loss": 0.08352210976713882
+  },
+  {
+   "step": 12000,
+   "train_loss": 0.0020658540102886035,
+   "val_loss": 0.09592563731871925
+  },
+  {
+   "step": 14000,
+   "train_loss": 0.0013945939717814326,
+   "val_loss": 0.10631061359922664
+  },
+  {
+   "step": 15000,
+   "train_loss": 0.0005784160399343819,
+   "val_loss": 0.10526834106824813
+  }
+ ]
+}

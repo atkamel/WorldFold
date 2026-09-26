@@ -1,0 +1,49 @@
+{
+ "git_commit": "c95c4315e09d886cee22dbfe16afe9df76e431a4-dirty",
+ "dataset": {
+  "root": "outputs/imitation/datasets",
+  "version": "smoke_dagger_r1",
+  "content_hash": "c9ca6ea68254b08d4373469dc94f7fd1a95c13ee6d60d32992b8b15c8eab79f7",
+  "n_episodes": 33,
+  "n_train_samples": 2835,
+  "n_dagger_labels": 301
+ },
+ "policy": {
+  "kind": "chunk_mlp",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "width": 512,
+   "depth": 4,
+   "dropout": 0.1
+  },
+  "n_params": 8645312
+ },
+ "train": {
+  "steps": 300,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 4.0,
+  "init_from": "outputs\\imitation\\smoke\\bc\\final.pt",
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 3.7
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\smoke\\dagger\\round_1\\final.pt",
+  "sha256": "b1bbcb665bc4b39b2a9990a04e9b20aea3acd1b3f794d062ee4826034080a5de"
+ },
+ "history": [
+  {
+   "step": 300,
+   "train_loss": 0.02301687337458134,
+   "val_loss": 0.21931806206703186
+  }
+ ]
+}

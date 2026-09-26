@@ -1,0 +1,17 @@
+{
+ "seed": 100000,
+ "steps": 172,
+ "success": true,
+ "fold_score": 0.8665822132822857,
+ "n_substeps": 100,
+ "timestep": 0.0005,
+ "nq": 375,
+ "nv": 375,
+ "nu": 12,
+ "neq": 6,
+ "nflex": 1,
+ "nflexvert": 121,
+ "nbody": 136,
+ "ngeom": 66,
+ "mujoco": "3.10.0"
+}

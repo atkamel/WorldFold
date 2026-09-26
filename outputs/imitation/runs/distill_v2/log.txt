@@ -1,0 +1,59 @@
+== teacher: outputs/imitation/runs/dagger_diff/round_1/final.pt | student: vision | score sets ('id_easy', 'id_hard', 'recovery') | shift fraction 0.3 | relabel True
+== round 0: evaluating outputs\imitation\runs\vision_t0_128\final.pt
+  id_easy   success 95% (190/200)  fold 0.904  grasp 100%  failures {'F1': 9, 'G1': 1}  753s
+  id_hard   success 92% (184/200)  fold 0.895  grasp 100%  failures {'G1': 3, 'F1': 13}  784s
+  recovery  success 30% (60/200)  fold 0.692  grasp 96%  failures {'F1': 53, 'G1': 87}  1493s
+== round 1: beta 0.300, 128 student rollouts from outputs\imitation\runs\vision_t0_128\final.pt
+   rollouts: student success 86/128, 2370 teacher labels, froze v1_img128_distill_v2_r1 (512 episodes), 787s
+normalizer clamp: 0.0328% of train obs entries at +-10
+device cuda | 449 train / 63 val episodes | 50125 samples (16157 DAgger labels) | vision 8.61M params
+  step   2000  train 0.0395  val(ema) 0.1012  233s
+== teacher: outputs/imitation/runs/dagger_diff/round_1/final.pt | student: vision | score sets ('id_easy', 'id_hard', 'recovery') | shift fraction 0.3 | relabel True
+== resuming at round 1 from outputs\imitation\runs\vision_t0_128\final.pt on v1_img128
+== round 1: beta 0.300, 128 student rollouts from outputs\imitation\runs\vision_t0_128\final.pt
+   reusing frozen v1_img128_distill_v2_r1 (512 episodes)
+   rollouts: student success 86/128, 2370 teacher labels, froze v1_img128_distill_v2_r1 (512 episodes), 0s
+normalizer clamp: 0.0328% of train obs entries at +-10
+device cuda | 449 train / 63 val episodes | 50125 samples (16157 DAgger labels) | vision 8.61M params
+  step   2000  train 0.0396  val(ema) 0.1017  224s
+  step   4000  train 0.0270  val(ema) 0.0998  431s
+  step   6000  train 0.0233  val(ema) 0.1004  645s
+  step   8000  train 0.0209  val(ema) 0.1007  873s
+  step  10000  train 0.0190  val(ema) 0.1011  1119s
+== teacher: outputs/imitation/runs/dagger_diff/round_1/final.pt | student: vision | score sets ('id_easy', 'id_hard', 'recovery') | shift fraction 0.3 | relabel True
+== resuming at round 1 from outputs\imitation\runs\vision_t0_128\final.pt on v1_img128
+== round 1: beta 0.300, 128 student rollouts from outputs\imitation\runs\vision_t0_128\final.pt
+   reusing frozen v1_img128_distill_v2_r1 (512 episodes)
+   rollouts: student success 86/128, 2370 teacher labels, froze v1_img128_distill_v2_r1 (512 episodes), 0s
+normalizer clamp: 0.0328% of train obs entries at +-10
+device cuda | 449 train / 63 val episodes | 50125 samples (16157 DAgger labels) | vision 8.61M params
+  step   2000  train 0.0395  val(ema) 0.1014  209s
+  step   4000  train 0.0269  val(ema) 0.0994  420s
+  step   6000  train 0.0233  val(ema) 0.1000  635s
+  step   8000  train 0.0208  val(ema) 0.1002  848s
+  step  10000  train 0.0189  val(ema) 0.1006  1053s
+  step  12000  train 0.0176  val(ema) 0.1007  1258s
+  step  14000  train 0.0165  val(ema) 0.1009  1464s
+  step  15000  train 0.0082  val(ema) 0.1009  1567s
+  id_easy   success 98% (195/200)  fold 0.904  grasp 100%  failures {'G1': 2, 'F1': 2, 'S1': 1}  584s
+  id_hard   success 74% (147/200)  fold 0.799  grasp 100%  failures {'G1': 8, 'S1': 27, 'F1': 18}  785s
+  recovery  success 35% (70/200)  fold 0.712  grasp 98%  failures {'S1': 27, 'G1': 60, 'F1': 43}  1141s
+   round 1: score 2.060 (gain -0.110 = -1.8 SE) -> best outputs\imitation\runs\vision_t0_128\final.pt
+== round 2: beta 0.150, 128 student rollouts from outputs\imitation\runs\vision_t0_128\final.pt
+   rollouts: student success 84/128, 2393 teacher labels, froze v1_img128_distill_v2_r2 (640 episodes), 632s
+normalizer clamp: 0.0385% of train obs entries at +-10
+device cuda | 563 train / 77 val episodes | 66959 samples (32991 DAgger labels) | vision 8.61M params
+  step   2000  train 0.0517  val(ema) 0.1171  249s
+  step   4000  train 0.0331  val(ema) 0.1156  498s
+  step   6000  train 0.0289  val(ema) 0.1161  746s
+  step   8000  train 0.0255  val(ema) 0.1163  994s
+  step  10000  train 0.0236  val(ema) 0.1167  1242s
+  step  12000  train 0.0216  val(ema) 0.1168  1490s
+  step  14000  train 0.0206  val(ema) 0.1170  1738s
+  step  15000  train 0.0101  val(ema) 0.1171  1862s
+  id_easy   success 94% (189/200)  fold 0.898  grasp 100%  failures {'F1': 5, 'G1': 2, 'S1': 4}  599s
+  id_hard   success 68% (136/200)  fold 0.710  grasp 96%  failures {'G1': 19, 'S1': 42, 'F1': 3}  842s
+  recovery  success 32% (65/200)  fold 0.687  grasp 96%  failures {'S1': 35, 'G1': 71, 'F1': 29}  1168s
+   round 2: score 1.950 (gain -0.220 = -3.4 SE) -> best outputs\imitation\runs\vision_t0_128\final.pt
+   gain below 1.0 SE: stopping
+best checkpoint: outputs\imitation\runs\vision_t0_128\final.pt

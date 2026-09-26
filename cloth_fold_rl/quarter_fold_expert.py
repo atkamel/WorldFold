@@ -58,6 +58,7 @@ class QuarterFoldExpert:
     def reset(self):
         for key, expert in self.experts.items():
             expert.reset()
+            expert.rng = np.random.default_rng(expert.seed)   # per episode, not per worker
             expert.release_allowed = False
             self.correction[key] = np.zeros(3)
         self.retries = {key: 0 for key in self.experts}
@@ -84,11 +85,27 @@ class QuarterFoldExpert:
         self.retries[key] += 1
         self.done_steps[key] = 0
 
-    def act(self):
+    def resync(self):
+        """Re-infer every current-stage arm's phase from the sim state, for when a
+        learner has been driving (DAgger labelling). Retry bookkeeping restarts."""
+        for (s, p), expert in self.experts.items():
+            if s == self.env.stage:
+                expert.infer_phase(placed=self.env._placed(self.moves[(s, p)]))
+                self.done_steps[(s, p)] = 0
+        self._update_release_gate()
+        return self.phases()
+
+    def _update_release_gate(self):
+        # release once every arm has reached hold. An arm already past hold (a
+        # learner released it) counts too, or the other arm would hold forever.
         arms = self._arms()
-        if all(e.PHASES[e.phase] == "hold" for e in arms.values()):
+        if all(e.PHASES[e.phase] in ("hold",) + FoldExpert.RELEASE_PHASES for e in arms.values()):
             for e in arms.values():
                 e.release_allowed = True
+
+    def act(self):
+        arms = self._arms()
+        self._update_release_gate()
         for (s, p), expert in self.experts.items():
             if s == self.env.stage:
                 self._maybe_retry((s, p), expert)

@@ -1,0 +1,28 @@
+  id_easy   success 100% (100/100)  fold 0.911  grasp 100%  failures {}  189s
+  id_hard   success 97% (97/100)  fold 0.902  grasp 100%  failures {'S1': 2, 'F1': 1}  257s
+  recovery  success 96% (96/100)  fold 0.898  grasp 100%  failures {'R1': 4}  285s
+wrote outputs/imitation/gate_m1_7/expert_ceiling.json
+resync_only  success 92/100  reasons {'success': 92, 'truncated': 8}
+    fail seed 3 t_switch 28 phases {'left_': 'lift', 'right_': 'lift'} truncated
+    fail seed 16 t_switch 57 phases {'left_': 'lift', 'right_': 'hold'} truncated
+    fail seed 24 t_switch 39 phases {'left_': 'lift', 'right_': 'lift'} truncated
+    fail seed 25 t_switch 43 phases {'left_': 'lift', 'right_': 'lift'} truncated
+    fail seed 35 t_switch 40 phases {'left_': 'lift', 'right_': 'lift'} truncated
+    fail seed 41 t_switch 46 phases {'left_': 'lift', 'right_': 'lift'} truncated
+    fail seed 54 t_switch 67 phases {'left_': 'lift', 'right_': 'hold'} truncated
+    fail seed 94 t_switch 65 phases {'left_': 'lift', 'right_': 'lift'} truncated
+noisy        success 94/100  reasons {'success': 94, 'truncated': 6}
+    fail seed 26 t_switch 49 phases {'left_': 'lift', 'right_': 'hold'} truncated
+    fail seed 28 t_switch 24 phases {'left_': 'lift', 'right_': 'lift'} truncated
+    fail seed 34 t_switch 66 phases {'left_': 'lift', 'right_': 'hold'} truncated
+    fail seed 41 t_switch 46 phases {'left_': 'lift', 'right_': 'lift'} truncated
+    fail seed 89 t_switch 41 phases {'left_': 'lift', 'right_': 'lift'} truncated
+    fail seed 97 t_switch 51 phases {'left_': 'lift', 'right_': 'hold'} truncated
+random       success 93/100  reasons {'success': 93, 'truncated': 7}
+    fail seed 4 t_switch 35 phases {'left_': 'approach', 'right_': 'approach'} truncated
+    fail seed 33 t_switch 64 phases {'left_': 'retreat', 'right_': 'approach'} truncated
+    fail seed 45 t_switch 26 phases {'left_': 'lift', 'right_': 'lift'} truncated
+    fail seed 53 t_switch 26 phases {'left_': 'approach', 'right_': 'lift'} truncated
+    fail seed 58 t_switch 30 phases {'left_': 'lift', 'right_': 'approach'} truncated
+    fail seed 62 t_switch 29 phases {'left_': 'lift', 'right_': 'lift'} truncated
+    fail seed 75 t_switch 44 phases {'left_': 'approach', 'right_': 'approach'} truncated

@@ -1,0 +1,12 @@
+{
+ "ckpt": "expert",
+ "episodes": [
+  {
+   "seed": 100000,
+   "steps": 172,
+   "success": true,
+   "fold_score": 0.8665822132822857,
+   "termination_reason": "success"
+  }
+ ]
+}

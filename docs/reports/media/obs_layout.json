@@ -1,0 +1,267 @@
+{
+ "obs_dim": 139,
+ "base_env_dim": 141,
+ "blocks": [
+  {
+   "start": 0,
+   "end": 4,
+   "dims": 5,
+   "block": "proprio L",
+   "name": "joint positions",
+   "units": "rad",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 5,
+   "end": 9,
+   "dims": 5,
+   "block": "proprio L",
+   "name": "joint velocities",
+   "units": "rad/s",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 10,
+   "end": 10,
+   "dims": 1,
+   "block": "proprio L",
+   "name": "gripper command",
+   "units": "ctrl",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 11,
+   "end": 13,
+   "dims": 3,
+   "block": "proprio L",
+   "name": "end-effector position",
+   "units": "m",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 14,
+   "end": 17,
+   "dims": 4,
+   "block": "proprio L",
+   "name": "end-effector quaternion",
+   "units": "",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 18,
+   "end": 23,
+   "dims": 6,
+   "block": "proprio L",
+   "name": "end-effector velocity (ang, lin)",
+   "units": "rad/s, m/s",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 24,
+   "end": 24,
+   "dims": 1,
+   "block": "proprio L",
+   "name": "grasp flag (sim weld)",
+   "units": "0/1",
+   "policy_sensor": false,
+   "robot_available": false
+  },
+  {
+   "start": 25,
+   "end": 29,
+   "dims": 5,
+   "block": "proprio R",
+   "name": "joint positions",
+   "units": "rad",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 30,
+   "end": 34,
+   "dims": 5,
+   "block": "proprio R",
+   "name": "joint velocities",
+   "units": "rad/s",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 35,
+   "end": 35,
+   "dims": 1,
+   "block": "proprio R",
+   "name": "gripper command",
+   "units": "ctrl",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 36,
+   "end": 38,
+   "dims": 3,
+   "block": "proprio R",
+   "name": "end-effector position",
+   "units": "m",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 39,
+   "end": 42,
+   "dims": 4,
+   "block": "proprio R",
+   "name": "end-effector quaternion",
+   "units": "",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 43,
+   "end": 48,
+   "dims": 6,
+   "block": "proprio R",
+   "name": "end-effector velocity (ang, lin)",
+   "units": "rad/s, m/s",
+   "policy_sensor": true,
+   "robot_available": true
+  },
+  {
+   "start": 49,
+   "end": 49,
+   "dims": 1,
+   "block": "proprio R",
+   "name": "grasp flag (sim weld)",
+   "units": "0/1",
+   "policy_sensor": false,
+   "robot_available": false
+  },
+  {
+   "start": 50,
+   "end": 61,
+   "dims": 12,
+   "block": "cloth",
+   "name": "4 corner positions",
+   "units": "m",
+   "policy_sensor": false,
+   "robot_available": false
+  },
+  {
+   "start": 62,
+   "end": 73,
+   "dims": 12,
+   "block": "cloth",
+   "name": "4 corner velocities",
+   "units": "m/s",
+   "policy_sensor": false,
+   "robot_available": false
+  },
+  {
+   "start": 74,
+   "end": 100,
+   "dims": 27,
+   "block": "cloth",
+   "name": "9 sampled vertices",
+   "units": "m",
+   "policy_sensor": false,
+   "robot_available": false
+  },
+  {
+   "start": 101,
+   "end": 103,
+   "dims": 3,
+   "block": "cloth",
+   "name": "centre of mass",
+   "units": "m",
+   "policy_sensor": false,
+   "robot_available": false
+  },
+  {
+   "start": 104,
+   "end": 106,
+   "dims": 3,
+   "block": "cloth",
+   "name": "height min / max / mean",
+   "units": "m",
+   "policy_sensor": false,
+   "robot_available": false
+  },
+  {
+   "start": 107,
+   "end": 118,
+   "dims": 12,
+   "block": "cloth",
+   "name": "corner-to-goal vectors",
+   "units": "m",
+   "policy_sensor": false,
+   "robot_available": false
+  },
+  {
+   "start": 119,
+   "end": 119,
+   "dims": 1,
+   "block": "task",
+   "name": "mean corner progress",
+   "units": "0-1",
+   "policy_sensor": false,
+   "robot_available": false
+  },
+  {
+   "start": 120,
+   "end": 131,
+   "dims": 12,
+   "block": "task",
+   "name": "goal keypoints",
+   "units": "m",
+   "policy_sensor": false,
+   "robot_available": true
+  },
+  {
+   "start": 132,
+   "end": 135,
+   "dims": 4,
+   "block": "task",
+   "name": "per-corner progress",
+   "units": "0-1",
+   "policy_sensor": false,
+   "robot_available": false
+  },
+  {
+   "start": 136,
+   "end": 136,
+   "dims": 1,
+   "block": "task",
+   "name": "time left",
+   "units": "0-1",
+   "policy_sensor": false,
+   "robot_available": true
+  },
+  {
+   "start": 137,
+   "end": 137,
+   "dims": 1,
+   "block": "wrapper",
+   "name": "stage",
+   "units": "0-1",
+   "policy_sensor": false,
+   "robot_available": true
+  },
+  {
+   "start": 138,
+   "end": 138,
+   "dims": 1,
+   "block": "wrapper",
+   "name": "settle counter",
+   "units": "0-1",
+   "policy_sensor": false,
+   "robot_available": false
+  }
+ ],
+ "note": "base env emits 141 (4-dim task one-hot); M1.1 drops it and appends stage + settle"
+}

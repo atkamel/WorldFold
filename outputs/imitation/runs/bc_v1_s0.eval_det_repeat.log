@@ -1,0 +1,4 @@
+  id_easy   success 98% (196/200)  fold 0.907  grasp 100%  failures {'F1': 4}  517s
+  id_hard   success 70% (139/200)  fold 0.801  grasp 90%  failures {'F1': 23, 'G1': 30, 'S1': 8}  780s
+  recovery  success 38% (77/200)  fold 0.741  grasp 97%  failures {'F1': 50, 'G1': 71, 'S1': 2}  1035s
+wrote outputs/imitation/runs/bc_v1_s0/eval_det_repeat.json
