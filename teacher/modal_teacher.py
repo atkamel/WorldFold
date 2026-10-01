@@ -139,6 +139,8 @@ isaac_image = (
     .env({"OMNI_KIT_ACCEPT_EULA": "YES", "ACCEPT_EULA": "Y", "PRIVACY_CONSENT": "Y",
           "__GLX_VENDOR_LIBRARY_NAME": "nvidia", "VK_ICD_FILENAMES": "/etc/vulkan/icd.d/nvidia_icd.json",
           "XDG_RUNTIME_DIR": "/tmp"})
+    .add_local_file(str(_TEACHER / "real_in_sim_patch.py"), remote_path="/opt/teacher/real_in_sim_patch.py")
+    .add_local_file(str(_TEACHER / "isaac_timing_patch.py"), remote_path="/opt/teacher/isaac_timing_patch.py")
 )
 
 # local code mounts (last layers; changing these files does not rebuild the image)
@@ -1186,18 +1188,26 @@ def isaac_smoke():
 # ---------------------------------------------------------------------------------------------
 @app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3 * 3600, cpu=8, memory=32768)
 def isaac_eval(num_workers: int = 1, num_episodes: int = 1, garment_types: str = "top_short", max_steps: int = 600,
-               server_mode: str = "fast", extra: str = "", tag: str = ""):
+               server_mode: str = "fast", extra: str = "", tag: str = "",
+               checkpoint: str = "lehome_sim", config_name: str = "pi_modified_bc_rl", real_in_sim: bool = False):
+    """real_in_sim=True: run the REAL-robot checkpoint in Isaac with his real-aligned top camera + unit adapter."""
     import json, os, pathlib, re, subprocess, time
+    ckpt_dir = f"{VOL_PATH}/checkpoints/{checkpoint}"
+    ris_env, ris_args = {}, []
+    if real_in_sim:
+        print(subprocess.run(["python", "/opt/teacher/real_in_sim_patch.py", SRC], capture_output=True, text=True).stdout.strip(), flush=True)
+        ris_env = {"TEACHER_REAL_IN_SIM": "1"}
+        ris_args = ["--top_camera_width", "1280", "--top_camera_height", "720", "--aug_config", json.dumps(REAL_ALIGNED_AUG)]
     stamp = time.strftime("%Y%m%d-%H%M%S") + (f"-{tag}" if tag else "")
     out_dir = pathlib.Path(VOL_PATH, "isaac", f"eval-{stamp}"); out_dir.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, JAX_PLATFORMS="cuda", JAX_COMPILATION_CACHE_DIR=f"{VOL_PATH}/jax_cache",
                JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS="0", XLA_PYTHON_CLIENT_PREALLOCATE="false",
-               PYTHONUNBUFFERED="1", WANDB_MODE="disabled", **FAST_CONFIGS[server_mode])
+               PYTHONUNBUFFERED="1", WANDB_MODE="disabled", **FAST_CONFIGS[server_mode], **ris_env)
     cmd = [f"{SRC}/.venv/bin/python", "-u", "scripts/run_eval.py",
-           "--checkpoint_dir", CKPT, "--config_name", "pi_modified_bc_rl",
+           "--checkpoint_dir", ckpt_dir, "--config_name", config_name,
            "--num_workers", str(num_workers), "--num_episodes", str(num_episodes),
            "--garment_types", *garment_types.split(","), "--max_steps", str(max_steps),
-           "--no_wandb", "--no_save_dataset", "--video_dir", str(out_dir)] + (extra.split() if extra else [])
+           "--no_wandb", "--no_save_dataset", "--video_dir", str(out_dir)] + ris_args + (extra.split() if extra else [])
     print("EVAL_CMD " + " ".join(cmd), flush=True)
     keys = re.compile(r"EVAL SUMMARY|OVERALL|SR=|success|Success|episode|Episode|ERROR|Error|Traceback|hung|dead|"
                       r"Server|server|Starting|ready|Ready|garment|steps/s|fps|FPS|timeout|Timeout")
@@ -1212,7 +1222,141 @@ def isaac_eval(num_workers: int = 1, num_episodes: int = 1, garment_types: str =
                 vol.commit(); last_commit = time.time()
         p.wait()
     res = {"exit": p.returncode, "wall_s": round(time.time() - t0, 1), "dir": str(out_dir),
-           "num_workers": num_workers, "num_episodes": num_episodes, "server_mode": server_mode}
+           "num_workers": num_workers, "num_episodes": num_episodes, "server_mode": server_mode,
+           "checkpoint": checkpoint, "config_name": config_name, "real_in_sim": real_in_sim}
     (out_dir / "result.json").write_text(json.dumps(res, indent=2)); vol.commit()
     print("ISAAC_EVAL_DONE " + json.dumps(res), flush=True)
     return res
+
+
+# ---------------------------------------------------------------------------------------------
+# lehome_real (real-robot checkpoint) in Isaac: staging, real-aligned sim rendering, video rendering.
+# ---------------------------------------------------------------------------------------------
+# Deterministic subset of his configs/rl_pipeline_sim_to_real.yaml: the top-camera pose/lens that he
+# calibrated against the real overhead camera, orange arms, no random jitter.
+REAL_ALIGNED_AUG = {
+    "top_camera_pos_offset": [-0.016, 0.27, 0.12],
+    "top_camera_rot_offset_deg": [-24.0, 0.0, 0.0],
+    "top_camera_focal_scale": 0.79,
+    "arm_color_range": 1.0,
+    "step_color_tint": False,     # defaults to True in his code: recolours the garment every step
+}
+# Real deployment settings (his record_real_dagger.py + README serve command). The real policy runs at
+# 20 Hz and the sim at 30 Hz, so 5 actions (0.25 s) are stretched to 8 sim steps (0.267 s).
+REAL_INFERENCE_CFG = {"actions_to_execute": 5, "k_execute": 1.6, "actions_to_keep": 1, "execute_in_n_steps": 8,
+                      "num_steps": 10, "time_threshold_inpaint": 0.5, "cfg_scale": 5.0, "noise_temperature": 0.9,
+                      "num_rollout_candidates": 1}
+
+
+@app.function(image=image, volumes={VOL_PATH: vol}, timeout=3600, cpu=4, memory=8192)
+def stage_real_checkpoint():
+    import json, os, pathlib, subprocess
+    os.environ["HF_HUB_DISABLE_XET"] = "1"
+    d = pathlib.Path(VOL_PATH, "checkpoints", "lehome_real"); d.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["hf", "download", "IliaLarchenko/lehome_real", "--local-dir", str(d)], check=True)
+    need = ["params/_METADATA", "params/manifest.ocdbt", "assets/real_bc/norm_stats.json"]
+    missing = [f for f in need if not (d / f).exists()]
+    assert not missing, f"checkpoint incomplete: {missing}"
+    cfg = {"per_garment_type": {g: dict(REAL_INFERENCE_CFG) for g in ("top_long", "top_short", "pant_long", "pant_short")}}
+    (d / "assets" / "inference_config.json").write_text(json.dumps(cfg, indent=2))
+    total = sum(p.stat().st_size for p in d.rglob("*") if p.is_file())
+    vol.commit()
+    print(f"REAL_CHECKPOINT_OK {total / 1e9:.2f} GB at {d}")
+    return total
+
+
+@app.function(image=image, volumes={VOL_PATH: vol}, timeout=3600, cpu=4, memory=16384)
+def render_isaac_videos(eval_dir: str, every: int = 2):
+    """Turn his per-episode pkls into small mp4s (top + both wrist cams) next to them, so only mp4s need downloading."""
+    import glob, json, os, pickle
+    import imageio
+    import numpy as np
+    out = []
+    for pkl in sorted(glob.glob(f"{VOL_PATH}/isaac/{eval_dir}/**/temp_episodes/*.pkl", recursive=True)):
+        d = pickle.load(open(pkl, "rb")); fr = d["frames"]
+
+        def tile(f):
+            imgs = []
+            for k in ("observation.images.top_rgb", "observation.images.left_rgb", "observation.images.right_rgb"):
+                im = np.asarray(f[k])[..., :3]
+                h, w = im.shape[:2]; step = max(1, round(h / 240))
+                im = im[::step, ::step]
+                imgs.append(im[:240, :426] if im.shape[1] > 400 else im[:240, :320])
+            hh = min(i.shape[0] for i in imgs)
+            return np.concatenate([i[:hh] for i in imgs], 1)
+        frames = [tile(f) for f in fr[::every]]
+        frames += [frames[-1]] * 30
+        mp4 = pkl[:-4] + ".mp4"; tmp = pkl[:-4] + ".tmp.mp4"
+        imageio.mimwrite(tmp, frames, fps=max(1, 30 // every), macro_block_size=1); os.replace(tmp, mp4)
+        last = fr[-1]
+        st = np.stack([np.asarray(f["observation.state"], dtype=np.float32) for f in fr])
+        ac = np.stack([np.asarray(f["action"], dtype=np.float32) for f in fr])
+        diag = {"state_start": st[0].round(2).tolist(), "state_end": st[-1].round(2).tolist(),
+                "action_min": ac.min(0).round(2).tolist(), "action_max": ac.max(0).round(2).tolist(),
+                "L_moved_rad": float(np.abs(st[:, :5] - st[0, :5]).max()), "R_moved_rad": float(np.abs(st[:, 6:11] - st[0, 6:11]).max()),
+                "L_grip_range": [float(st[:, 5].min()), float(st[:, 5].max())], "R_grip_range": [float(st[:, 11].min()), float(st[:, 11].max())]}
+        print("DIAG " + os.path.basename(pkl) + " " + json.dumps(diag), flush=True)
+        info = {"episode": os.path.basename(pkl), "frames": len(fr), "mp4": mp4,
+                "check_status_last": np.asarray(last.get("check_status", [])).tolist(),
+                "top_shape": list(np.asarray(last["observation.images.top_rgb"]).shape)}
+        imageio.imwrite(pkl[:-4] + "_first.png", tile(fr[0])); imageio.imwrite(pkl[:-4] + "_last.png", tile(last))
+        out.append(info); print("VIDEO " + json.dumps(info), flush=True)
+    vol.commit()
+    return out
+
+
+# ---------------------------------------------------------------------------------------------
+# Isaac per-stage timing + worker scaling (one L40S, 16 CPU, 64 GB).  Reports, per Roy's rule:
+# where we are vs the single-episode floor and the parallel floor on THIS hardware.
+#   modal run --detach teacher/modal_teacher.py::isaac_timing
+# ---------------------------------------------------------------------------------------------
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3600, cpu=16, memory=65536)
+def isaac_timing(workers: str = "1,4", garment_types: str = "top_short"):
+    import glob, json, os, pathlib, shutil, subprocess, time
+    import numpy as np
+    RATE = 1.95 + 16 * 0.047 + 64 * 0.008          # USD per hour for this container
+    print(subprocess.run(["python", "/opt/teacher/isaac_timing_patch.py", SRC], capture_output=True, text=True).stdout.strip(), flush=True)
+    tdir = pathlib.Path(VOL_PATH, "isaac", "timing"); tdir.mkdir(parents=True, exist_ok=True)
+    out = {"hardware": "1x L40S, 16 CPU, 64 GB", "usd_per_hour": round(RATE, 2), "phases": []}
+    for w in [int(x) for x in workers.split(",")]:
+        tag = f"w{w}-{int(time.time())}"
+        os.environ["TEACHER_TIMING_TAG"] = tag
+        t0 = time.time()
+        res = isaac_eval.local(num_workers=w, num_episodes=(1 if w == 1 else 2), garment_types=garment_types,
+                               server_mode="fast", tag=f"timing-w{w}")
+        wall = time.time() - t0
+        eps = [json.load(open(f)) for f in sorted(glob.glob(str(tdir / f"{tag}_*.json")))]
+        if not eps:
+            print(f"TIMING_PHASE workers={w} produced no timing files", flush=True); continue
+        cat = lambda k: np.concatenate([np.asarray(e[k], dtype=float) for e in eps])  # noqa: E731
+        post = cat("post"); steps = sum(len(e["step"]) for e in eps)
+        # a teacher call happens on a minority of steps and is much slower than a cached-action step
+        thr = float(np.percentile(post, 50)) * 2.5
+        call = post[post > thr]; nocall = post[post <= thr]
+        ep_s = [float(np.sum(e["ser"]) + np.sum(e["post"]) + np.sum(e["step"])) for e in eps]
+        phase = {
+            "workers": w, "episodes": len(eps), "steps_total": int(steps), "phase_wall_s": round(wall, 1),
+            "per_step_ms": {
+                "serialise_obs": round(float(np.mean(cat("ser"))) * 1e3, 1),
+                "post_no_teacher(transport+proxy)": round(float(np.mean(nocall)) * 1e3, 1),
+                "env_step(physics+render)": round(float(np.mean(cat("step"))) * 1e3, 1),
+                "teacher_calls_amortised": round(float(np.sum(call) - len(call) * np.mean(nocall)) / steps * 1e3, 1),
+                "TOTAL": round(float(np.sum(cat("ser")) + np.sum(post) + np.sum(cat("step"))) / steps * 1e3, 1),
+            },
+            "teacher_call_s_median": round(float(np.median(call)), 3) if len(call) else None,
+            "teacher_calls": int(len(call)),
+            "floor_components_ms": {"physics_only_step": round(float(np.median(cat("phys_only"))) * 1e3, 1),
+                                    "render_only": round(float(np.median(cat("render_only"))) * 1e3, 1)},
+            "episode_s_mean_in_loop": round(float(np.mean(ep_s)), 1),
+            "steps_per_episode_mean": round(steps / len(eps), 1),
+            "throughput_in_loop_eps_per_hr": round(w * 3600 / float(np.mean(ep_s)), 1),
+            "usd_per_100_episodes_in_loop": round(RATE / (w * 3600 / float(np.mean(ep_s))) * 100, 2),
+            "successes": int(sum(e["success"] for e in eps)),
+        }
+        out["phases"].append(phase); print("TIMING_PHASE " + json.dumps(phase), flush=True)
+        # the eval's per-episode pkls are 1-1.6 GB each: not needed after timing
+        for d in glob.glob(f"{res['dir']}/**/temp_episodes", recursive=True):
+            shutil.rmtree(d, ignore_errors=True)
+        f = tdir / f"summary-{int(time.time())}.json"; f.write_text(json.dumps(out, indent=2)); vol.commit()
+    print("ISAAC_TIMING_DONE " + json.dumps(out), flush=True)
+    return out

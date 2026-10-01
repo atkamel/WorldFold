@@ -1,0 +1,54 @@
+{
+  "hardware": "1x L40S, 16 CPU, 64 GB",
+  "usd_per_hour": 3.21,
+  "phases": [
+    {
+      "workers": 1,
+      "episodes": 2,
+      "steps_total": 899,
+      "phase_wall_s": 352.6,
+      "per_step_ms": {
+        "serialise_obs": 7.8,
+        "post_no_teacher(transport+proxy)": 23.8,
+        "env_step(physics+render)": 63.4,
+        "teacher_calls_amortised": 101.1,
+        "TOTAL": 196.2
+      },
+      "teacher_call_s_median": 0.454,
+      "teacher_calls": 181,
+      "floor_components_ms": {
+        "physics_only_step": 12.3,
+        "render_only": 28.3
+      },
+      "episode_s_mean_in_loop": 88.2,
+      "steps_per_episode_mean": 449.5,
+      "throughput_in_loop_eps_per_hr": 40.8,
+      "usd_per_100_episodes_in_loop": 7.87,
+      "successes": 1
+    },
+    {
+      "workers": 4,
+      "episodes": 4,
+      "steps_total": 1557,
+      "phase_wall_s": 402.5,
+      "per_step_ms": {
+        "serialise_obs": 7.7,
+        "post_no_teacher(transport+proxy)": 25.9,
+        "env_step(physics+render)": 74.0,
+        "teacher_calls_amortised": 105.3,
+        "TOTAL": 212.9
+      },
+      "teacher_call_s_median": 0.477,
+      "teacher_calls": 314,
+      "floor_components_ms": {
+        "physics_only_step": 12.5,
+        "render_only": 29.5
+      },
+      "episode_s_mean_in_loop": 82.9,
+      "steps_per_episode_mean": 389.2,
+      "throughput_in_loop_eps_per_hr": 173.8,
+      "usd_per_100_episodes_in_loop": 1.85,
+      "successes": 3
+    }
+  ]
+}
