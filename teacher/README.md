@@ -105,6 +105,23 @@ stable, and gives an identical result on the flank sim. 2 ms is ~4× faster but 
 - His 1,000-episode dataset `lehome/dataset_challenge_merged` (LeRobot v3; `four_types_merged/` etc.) is in the same world, so it's usable for the student.
 - The real-robot version of the teacher: [`IliaLarchenko/lehome_real`](https://huggingface.co/IliaLarchenko/lehome_real).
 
+## Project 1 status: Isaac Sim runs on Modal (2026-10-01)
+
+- **Vulkan/RTX works on Modal L40S** (driver 580, `NVIDIA_DRIVER_CAPABILITIES=all`, ICD at `/etc/vulkan/icd.d/nvidia_icd.json`): `modal run teacher/isaac_probe.py::vulkan_probe`.
+- **`isaac_image`** in `modal_teacher.py` = teacher image + his locked `lehome-challenge` env (Isaac Sim 5.1.0 via `uv sync`,
+  IsaacLab fork, `flatdict`/`setuptools<70`/`warp-lang==1.12.1` pins, zenity stub, 1 GB garment assets). Builds in ~9 min on CPU.
+- **`::isaac_smoke`**: Isaac boots headless in **34 s cold / 16.5 s warm**.
+- **`::isaac_eval`** runs his own `scripts/run_eval.py` (Isaac worker -> proxy -> `serve.py`) with the fast server env.
+  First run, 1 worker, `top_short` unseen garments, server_mode=fast (retry on):
+  **1/2 success** (`Top_Short_Unseen_1` folded in 299 steps; `Top_Short_Unseen_0` failed at 600). Summary in `results/isaac/`.
+  - 600-step episode = ~157 s wall (**~0.26 s/step**); 299-step episode = ~52 s. Isaac boot + scene ~45 s, reset ~5 s.
+  - **Retry fired on only 18% of chunks in the real episode** (21 of 120), not 100% as in the synthetic benchmark (which replayed one
+    start frame). So the same-quality server config is much closer to the `fast_noretry` numbers in real use.
+  - Estimated split (not yet measured): teacher ~15-20% of episode time, Isaac physics + 3-camera rendering ~80%. One Isaac process = one env
+    (`--device cpu`), so parallelism = many worker processes. A measured per-stage breakdown is the next step.
+- Gotchas: `modal run --detach` apps linger after finishing (`modal app stop <id> --yes`); the eval writes ~0.8-1.6 GB of pkl per episode
+  unless `--metrics_only` is passed via `--extra`.
+
 ## Data safety (lessons from past RunPod/Modal runs)
 
 One file per episode, written `tmp → os.replace`. A sha256 **completion marker written last**. `vol.commit()` after

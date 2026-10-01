@@ -103,6 +103,44 @@ image = (
     .env({"MUJOCO_GL": "osmesa", "PYOPENGL_PLATFORM": "osmesa"})
 )
 
+# ---- Isaac Sim image (Project 1): his locked lehome-challenge env on top of the teacher image ----
+LEHOME_CHALLENGE_SHA = "5ea947ed83abf414180f4c503dbb31b9d6aa39f8"
+CH = f"{SRC}/lehome-challenge"
+isaac_image = (
+    image
+    .apt_install("cmake", "ninja-build", "pkg-config", "python3-dev", "libgl1-mesa-dev", "libglfw3", "libglfw3-dev",
+                 "libglew-dev", "xorg-dev", "libxi-dev", "libxinerama-dev", "libxcursor1", "libxrandr2", "libglu1-mesa",
+                 "libvulkan1", "vulkan-tools", "libxt6", "libsm6", "libice6")
+    # Isaac calls zenity for GUI dialogs, which blocks headless runs
+    .run_commands("printf '#!/bin/sh\\nexit 0\\n' > /usr/local/bin/zenity && chmod +x /usr/local/bin/zenity")
+    .run_commands(
+        f"cd {SRC} && git submodule update --init lehome-challenge",
+        f"test \"$(git -C {CH} rev-parse HEAD)\" = {LEHOME_CHALLENGE_SHA} && echo CHALLENGE_SHA_OK",
+    )
+    .run_commands(f"cd {CH} && uv sync")     # locked: isaacsim[all,extscache]==5.1.0, torch 2.7.0, lerobot 0.4.3 (big layer)
+    .run_commands(
+        f"echo yes > {CH}/.venv/lib/python3.11/site-packages/isaacsim/kit/EULA_ACCEPTED",
+        f"git clone --depth 1 https://github.com/lehome-official/IsaacLab.git {CH}/third_party/IsaacLab",
+        f"cd {CH} && bash -c 'source .venv/bin/activate && ./third_party/IsaacLab/isaaclab.sh -i none' || echo ISAACLAB_SH_FAILED_CONTINUING",
+        f"cd {CH} && uv pip install 'setuptools<70' wheel --python .venv/bin/python",
+        f"cd {CH} && uv pip install flatdict==4.0.1 --no-build-isolation --python .venv/bin/python",
+        f"cd {CH} && uv pip install -e third_party/IsaacLab/source/isaaclab --python .venv/bin/python",
+        f"cd {CH} && uv pip install -e source/lehome --python .venv/bin/python",
+        # IsaacLab leaves warp-lang unpinned; 1.12.1 is the last release Isaac Sim 5.1 works with
+        f"cd {CH} && uv pip install warp-lang==1.12.1 --python .venv/bin/python",
+        f"cd {CH} && .venv/bin/python -c \"import isaacsim; print('ISAACSIM_IMPORT_OK')\"",
+    )
+    .run_commands(
+        f"cd {SRC} && uv pip install toml && uv pip install --no-deps -e lehome-challenge/source/lehome/",
+        f"cd {SRC} && .venv/bin/python -c \"import lehome_solution.eval; print('MAIN_VENV_EVAL_IMPORT_OK')\" || echo MAIN_VENV_EVAL_IMPORT_FAILED",
+    )
+    .run_commands(f"cd {CH} && hf download lehome/asset_challenge --repo-type dataset --local-dir Assets "
+                  "&& ls Assets/objects/Challenge_Garment/Release | head -5")
+    .env({"OMNI_KIT_ACCEPT_EULA": "YES", "ACCEPT_EULA": "Y", "PRIVACY_CONSENT": "Y",
+          "__GLX_VENDOR_LIBRARY_NAME": "nvidia", "VK_ICD_FILENAMES": "/etc/vulkan/icd.d/nvidia_icd.json",
+          "XDG_RUNTIME_DIR": "/tmp"})
+)
+
 # local code mounts (last layers; changing these files does not rebuild the image)
 image = (image
          .add_local_dir(str(_REPO / "mujuco"), remote_path="/opt/sims/main/mujuco")
@@ -1092,3 +1130,89 @@ def server_fastbench2(warm_max_s: int = 300, measure_s: int = 45, garment: str =
         stop_servers()
     print("FASTBENCH2_DONE", flush=True)
     return out
+
+
+# =============================================================================================
+# Project 1: Isaac Sim (his lehome-challenge env) on Modal. L40S = RTX GPU, Vulkan verified (isaac_probe.py).
+#   modal run --detach teacher/modal_teacher.py::isaac_smoke     (does Isaac start headless? how long?)
+# =============================================================================================
+ISAAC_SMOKE_CODE = """
+import time; t = time.time()
+from isaacsim import SimulationApp
+app = SimulationApp({'headless': True})
+print('ISAAC_STARTED_S', round(time.time() - t, 1), flush=True)
+import omni.kit.app
+print('KIT_VERSION', omni.kit.app.get_app().get_build_version(), flush=True)
+for _ in range(5):
+    app.update()
+print('ISAAC_UPDATE_OK', flush=True)
+app.close()
+"""
+
+
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3600, cpu=8, memory=32768)
+def isaac_smoke():
+    import json, pathlib, subprocess, time
+    logs = pathlib.Path(VOL_PATH, "isaac"); logs.mkdir(exist_ok=True)
+    stamp = time.strftime("%H%M%S")
+    v = subprocess.run("vulkaninfo --summary 2>&1 | grep -E 'deviceName' | head -2", shell=True, capture_output=True, text=True)
+    print("VULKAN " + " | ".join(v.stdout.split("\n")), flush=True)
+    res = {}
+    keys = ("ISAAC_", "KIT_VERSION", "Error", "error", "Vulkan", "Traceback", "RTX", "Failed", "failed")
+    for attempt in (1, 2):       # 2nd start shows the warm (shader/extension cache) time
+        t0 = time.time()
+        logf = logs / f"smoke-{stamp}-{attempt}.log"
+        with open(logf, "w") as f:
+            p = subprocess.Popen([f"{CH}/.venv/bin/python", "-u", "-c", ISAAC_SMOKE_CODE], cwd=CH,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            for line in p.stdout:
+                f.write(line)
+                if any(k in line for k in keys):
+                    print(f"[isaac{attempt}] " + line.rstrip()[:300], flush=True)
+            p.wait(1800)
+        res[f"attempt{attempt}"] = {"exit": p.returncode, "wall_s": round(time.time() - t0, 1)}
+        print("SMOKE " + json.dumps(res[f"attempt{attempt}"]), flush=True)
+        vol.commit()
+        if p.returncode != 0:
+            break
+    print("ISAAC_SMOKE_DONE " + json.dumps(res), flush=True)
+    return res
+
+
+# ---------------------------------------------------------------------------------------------
+# Step 3: his own eval (Isaac Sim workers -> proxy -> serve.py) with our checkpoint.
+#   modal run --detach teacher/modal_teacher.py::isaac_eval --num-episodes 1 --garment-types top_short
+# server_mode: "baseline" | "fast" | "fast_noretry"  (env from FAST_CONFIGS, inherited by his serve.py)
+# ---------------------------------------------------------------------------------------------
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3 * 3600, cpu=8, memory=32768)
+def isaac_eval(num_workers: int = 1, num_episodes: int = 1, garment_types: str = "top_short", max_steps: int = 600,
+               server_mode: str = "fast", extra: str = "", tag: str = ""):
+    import json, os, pathlib, re, subprocess, time
+    stamp = time.strftime("%Y%m%d-%H%M%S") + (f"-{tag}" if tag else "")
+    out_dir = pathlib.Path(VOL_PATH, "isaac", f"eval-{stamp}"); out_dir.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ, JAX_PLATFORMS="cuda", JAX_COMPILATION_CACHE_DIR=f"{VOL_PATH}/jax_cache",
+               JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS="0", XLA_PYTHON_CLIENT_PREALLOCATE="false",
+               PYTHONUNBUFFERED="1", WANDB_MODE="disabled", **FAST_CONFIGS[server_mode])
+    cmd = [f"{SRC}/.venv/bin/python", "-u", "scripts/run_eval.py",
+           "--checkpoint_dir", CKPT, "--config_name", "pi_modified_bc_rl",
+           "--num_workers", str(num_workers), "--num_episodes", str(num_episodes),
+           "--garment_types", *garment_types.split(","), "--max_steps", str(max_steps),
+           "--no_wandb", "--no_save_dataset", "--video_dir", str(out_dir)] + (extra.split() if extra else [])
+    print("EVAL_CMD " + " ".join(cmd), flush=True)
+    keys = re.compile(r"EVAL SUMMARY|OVERALL|SR=|success|Success|episode|Episode|ERROR|Error|Traceback|hung|dead|"
+                      r"Server|server|Starting|ready|Ready|garment|steps/s|fps|FPS|timeout|Timeout")
+    t0 = time.time(); last_commit = t0
+    with open(out_dir / "run_eval.log", "w") as f:
+        p = subprocess.Popen(cmd, cwd=SRC, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        for line in p.stdout:
+            f.write(f"{time.time() - t0:8.1f} {line}"); f.flush()
+            if keys.search(line):
+                print(f"[{time.time() - t0:6.0f}s] " + line.rstrip()[:260], flush=True)
+            if time.time() - last_commit > 60:
+                vol.commit(); last_commit = time.time()
+        p.wait()
+    res = {"exit": p.returncode, "wall_s": round(time.time() - t0, 1), "dir": str(out_dir),
+           "num_workers": num_workers, "num_episodes": num_episodes, "server_mode": server_mode}
+    (out_dir / "result.json").write_text(json.dumps(res, indent=2)); vol.commit()
+    print("ISAAC_EVAL_DONE " + json.dumps(res), flush=True)
+    return res

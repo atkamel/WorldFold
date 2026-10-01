@@ -1,0 +1,24 @@
+Config: pi_modified_bc_rl
+Checkpoint: /vol/checkpoints/lehome_sim
+Resolution: 640x480
+Workers: 1
+Success head: integrated
+Garment subset: unseen
+Randomized: False
+
+Run time:          6m 53s
+Episodes done:     2 / 2  (100.0%)
+Time per episode:  206.5s avg
+ETA:               0s (completed)  (~now local)
+--------------------------------------------------
+EVAL SUMMARY
+==================================================
+OVERALL: 1/2  SR=50.0% [0.0%-100.0%]  reward=0.500
+WEIGHTED:  SR=50.0% [0.0%-100.0%]  reward=0.500
+
+By garment type:
+  top_short: 1/2  SR=50.0% [0.0%-100.0%]  reward=0.500
+
+By garment:
+  Top_Short_Unseen_0: 0/1 (0.0%)  avg_reward=0.000
+  Top_Short_Unseen_1: 1/1 (100.0%)  avg_reward=1.000
