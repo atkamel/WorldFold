@@ -1310,19 +1310,36 @@ def render_isaac_videos(eval_dir: str, every: int = 2):
 # where we are vs the single-episode floor and the parallel floor on THIS hardware.
 #   modal run --detach teacher/modal_teacher.py::isaac_timing
 # ---------------------------------------------------------------------------------------------
-@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3600, cpu=16, memory=65536)
-def isaac_timing(workers: str = "1,4", garment_types: str = "top_short"):
-    import glob, json, os, pathlib, shutil, subprocess, time
-    import numpy as np
-    RATE = 1.95 + 16 * 0.047 + 64 * 0.008          # USD per hour for this container
+TIMING_CPU, TIMING_MEM_GB = 24, 96
+
+
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3600, cpu=TIMING_CPU, memory=TIMING_MEM_GB * 1024)
+def isaac_timing(workers: str = "8,12", garment_types: str = "top_short"):
+    import glob, json, os, pathlib, shutil, subprocess, threading, time
+    import numpy as np, psutil
+    RATE = 1.95 + TIMING_CPU * 0.047 + TIMING_MEM_GB * 0.008          # USD per hour for this container
+    samples = []                                                     # (t, gpu_util, gpu_mem_mb, cpu_cores_busy, ram_gb)
+
+    def sampler():
+        psutil.cpu_percent(None)
+        while True:
+            try:
+                o = subprocess.check_output(["nvidia-smi", "--query-gpu=utilization.gpu,memory.used",
+                                             "--format=csv,noheader,nounits"], text=True).strip().split(",")
+                samples.append((time.time(), int(o[0]), int(o[1]), psutil.cpu_percent(None) / 100 * psutil.cpu_count(),
+                                psutil.virtual_memory().used / 1e9))
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(0.5)
+    threading.Thread(target=sampler, daemon=True).start()
     print(subprocess.run(["python", "/opt/teacher/isaac_timing_patch.py", SRC], capture_output=True, text=True).stdout.strip(), flush=True)
     tdir = pathlib.Path(VOL_PATH, "isaac", "timing"); tdir.mkdir(parents=True, exist_ok=True)
-    out = {"hardware": "1x L40S, 16 CPU, 64 GB", "usd_per_hour": round(RATE, 2), "phases": []}
+    out = {"hardware": f"1x L40S, {TIMING_CPU} CPU, {TIMING_MEM_GB} GB", "usd_per_hour": round(RATE, 2), "phases": []}
     for w in [int(x) for x in workers.split(",")]:
         tag = f"w{w}-{int(time.time())}"
         os.environ["TEACHER_TIMING_TAG"] = tag
         t0 = time.time()
-        res = isaac_eval.local(num_workers=w, num_episodes=(1 if w == 1 else 2), garment_types=garment_types,
+        res = isaac_eval.local(num_workers=w, num_episodes=max(1, w // 2), garment_types=garment_types,
                                server_mode="fast", tag=f"timing-w{w}")
         wall = time.time() - t0
         eps = [json.load(open(f)) for f in sorted(glob.glob(str(tdir / f"{tag}_*.json")))]
@@ -1334,6 +1351,14 @@ def isaac_timing(workers: str = "1,4", garment_types: str = "top_short"):
         thr = float(np.percentile(post, 50)) * 2.5
         call = post[post > thr]; nocall = post[post <= thr]
         ep_s = [float(np.sum(e["ser"]) + np.sum(e["post"]) + np.sum(e["step"])) for e in eps]
+        # resource use while ALL workers were stepping at once
+        a = max(e.get("t_start", 0) for e in eps); b = min(e.get("t_end", 0) for e in eps)
+        win = [x for x in samples if a <= x[0] <= b] or [x for x in samples if x[0] >= t0]
+        res_use = {"overlap_window_s": round(max(0.0, b - a), 1),
+                   "gpu_util_mean": round(float(np.mean([x[1] for x in win])), 1), "gpu_util_p90": float(np.percentile([x[1] for x in win], 90)),
+                   "gpu_mem_gb_max": round(max(x[2] for x in win) / 1024, 1),
+                   "cpu_cores_busy_mean": round(float(np.mean([x[3] for x in win])), 1),
+                   "ram_gb_max": round(max(x[4] for x in win), 1)} if win else {}
         phase = {
             "workers": w, "episodes": len(eps), "steps_total": int(steps), "phase_wall_s": round(wall, 1),
             "per_step_ms": {
@@ -1352,6 +1377,7 @@ def isaac_timing(workers: str = "1,4", garment_types: str = "top_short"):
             "throughput_in_loop_eps_per_hr": round(w * 3600 / float(np.mean(ep_s)), 1),
             "usd_per_100_episodes_in_loop": round(RATE / (w * 3600 / float(np.mean(ep_s))) * 100, 2),
             "successes": int(sum(e["success"] for e in eps)),
+            "resources": res_use,
         }
         out["phases"].append(phase); print("TIMING_PHASE " + json.dumps(phase), flush=True)
         # the eval's per-episode pkls are 1-1.6 GB each: not needed after timing

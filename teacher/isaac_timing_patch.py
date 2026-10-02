@@ -21,7 +21,7 @@ edits = [
     ("    length = 0\n    success = False\n",
      "    length = 0\n    success = False\n"
      "    import time as _tm\n"
-     "    _T = {\"ser\": [], \"post\": [], \"step\": []}\n"),
+     "    _T = {\"ser\": [], \"post\": [], \"step\": [], \"t_start\": _tm.time()}\n"),
     ("        resp = policy.post(\"/infer\", policy.serialize_observation(obs))\n",
      "        _t0 = _tm.perf_counter()\n"
      "        _payload = policy.serialize_observation(obs)\n"
@@ -44,7 +44,8 @@ edits = [
      "        _fn = f\"/vol/isaac/timing/{_os.environ.get('TEACHER_TIMING_TAG', 'run')}_{_os.environ.get('LEHOME_WORKER_LABEL', 'W')}_{int(_tm.time() * 1000)}.json\"\n"
      "        with open(_fn, \"w\") as _f:\n"
      "            _json.dump({\"ser\": _T[\"ser\"], \"post\": _T[\"post\"], \"step\": _T[\"step\"], \"phys_only\": _phys,\n"
-     "                        \"render_only\": _rend, \"length\": length, \"success\": bool(success)}, _f)\n"
+     "                        \"render_only\": _rend, \"length\": length, \"success\": bool(success),\n"
+     "                        \"t_start\": _T[\"t_start\"], \"t_end\": _T[\"t_start\"] + sum(_T[\"ser\"]) + sum(_T[\"post\"]) + sum(_T[\"step\"])}, _f)\n"
      "        print(f\"[timing] wrote {_fn}\", flush=True)\n"
      "    except Exception as _e:\n"
      "        print(f\"[timing] failed: {_e!r}\", flush=True)\n"
