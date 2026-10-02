@@ -36,10 +36,8 @@ image = (
     .env({"OMNI_KIT_ACCEPT_EULA": "YES", "ACCEPT_EULA": "Y", "PRIVACY_CONSENT": "Y",
           "__GLX_VENDOR_LIBRARY_NAME": "nvidia", "VK_ICD_FILENAMES": "/etc/vulkan/icd.d/nvidia_icd.json",
           "XDG_RUNTIME_DIR": "/tmp"})
-    .run_commands(
-        "python -c \"import importlib.util, pathlib; "
-        "kit = pathlib.Path(importlib.util.find_spec('isaacsim').origin).parent / 'kit'; "
-        "(kit / 'EULA_ACCEPTED').write_text('yes'); print('EULA', kit)\"")
+    # OMNI_KIT_ACCEPT_EULA above accepts the licence on first import; this just fails the build early
+    .run_commands("python -c \"import isaacsim; print('ISAACSIM_IMPORT_OK')\"")
     # local code last, so editing it does not rebuild the Isaac layers
     .add_local_dir(str(_REPO / "isaac"), f"{REMOTE_REPO}/isaac", ignore=["assets", "__pycache__"])
     .add_local_dir(str(_REPO / "mujuco"), f"{REMOTE_REPO}/mujuco", ignore=["simulations", "__pycache__"])
