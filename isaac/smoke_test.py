@@ -4,7 +4,7 @@
     ./python.sh /path/to/WorldFold/isaac/smoke_test.py --mode hybrid
 
 Exits non-zero if the observation contract drifts, the weld cheat fails to
-grasp and lift the corner, or the fold wrapper cannot run on the env.
+grasp and lift the corner, or the fold / half-fold wrappers cannot run on the env.
 """
 
 import argparse
@@ -114,6 +114,23 @@ def wrapper_runs(env):
     print("fold wrapper ok, obs", obs.shape, "fold_score", round(info["fold_score"], 4))
 
 
+def half_fold_runs(env):
+    from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS, HalfFoldEnv
+    # one World per process, so reuse the env with the half fold's weld corners instead of building another
+    env.grasp_corners = dict(GRASP_CORNERS)
+    env.grasp_radius = GRASP_RADIUS
+    wrapped = HalfFoldEnv(base_env=env, seed=0)
+    obs, info = wrapped.reset(seed=0)
+    assert info["fold_score"] < 0.05, f"half fold starts {info['fold_score']:.3f} folded"
+    for _ in range(30):
+        obs, reward, terminated, truncated, info = wrapped.step(wrapped.action_space.sample())
+        if terminated or truncated:
+            obs, info = wrapped.reset()
+    assert obs.shape == wrapped.observation_space.shape
+    print("half fold wrapper ok, fold_score", round(info["fold_score"], 4),
+          "move_distance", [round(d, 3) for d in info["move_distance"]])
+
+
 def throughput(env, n_steps=30):
     env.reset(seed=1)
     action = np.zeros(14, dtype=np.float32)
@@ -133,6 +150,7 @@ def main():
     check_contract(env)
     grasp_and_lift(env)
     wrapper_runs(env)
+    half_fold_runs(env)
     throughput(env)
     if args.mode == "hybrid":
         obs, _ = env.reset(seed=2)

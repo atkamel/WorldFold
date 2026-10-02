@@ -1,4 +1,4 @@
-"""Rotation helpers used for camera aiming, pin offsets, and EE velocity. Runs without Isaac Sim."""
+"""Rotation helpers used for camera and light aiming, pin offsets, and the EE quaternion. Runs without Isaac Sim."""
 
 import sys
 from pathlib import Path
@@ -7,7 +7,9 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from isaac.isaac_env import _matrix_from_quat, _quat_from_matrix, _quat_mul, _rotvec_between  # noqa: E402
+import pytest  # noqa: E402
+
+from isaac.isaac_env import LIGHTS, _matrix_from_quat, _quat_facing, _quat_from_matrix  # noqa: E402
 from mujuco.cloth_params import CAMERA_POS, CAMERA_TARGET, camera_axes  # noqa: E402
 
 
@@ -33,18 +35,19 @@ def test_camera_pose_roundtrip():
     assert np.allclose(R2 @ np.array([1.0, 0.0, 0.0]), forward, atol=1e-6)
 
 
-def test_quat_mul_matches_matrix_product():
+def test_quat_sign_matches_mujoco():
+    # proprio carries the EE quaternion, so Isaac must pick the same one of q / -q as mju_mat2Quat
+    mujoco = pytest.importorskip("mujoco")
     rng = np.random.default_rng(1)
-    for _ in range(50):
-        Ra = random_rotation(rng)
-        Rb = random_rotation(rng)
-        q = _quat_mul(_quat_from_matrix(Ra), _quat_from_matrix(Rb))
-        assert np.allclose(_matrix_from_quat(q), Ra @ Rb, atol=1e-6)
+    for _ in range(200):
+        R = random_rotation(rng)
+        expected = np.zeros(4)
+        mujoco.mju_mat2Quat(expected, R.ravel())
+        assert np.allclose(_quat_from_matrix(R), expected, atol=1e-9)
 
 
-def test_rotvec_between_recovers_small_rotation():
-    angle = 0.2
-    axis = np.array([0.0, 0.0, 1.0])
-    q_from = np.array([1.0, 0.0, 0.0, 0.0])
-    q_to = np.array([np.cos(angle / 2), *(np.sin(angle / 2) * axis)])
-    assert np.allclose(_rotvec_between(q_from, q_to), angle * axis, atol=1e-6)
+def test_lights_face_mujoco_directions():
+    for direction, _ in LIGHTS:
+        d = np.asarray(direction, dtype=float) / np.linalg.norm(direction)
+        R = _matrix_from_quat(_quat_facing(direction))
+        assert np.allclose(R @ np.array([0.0, 0.0, -1.0]), d, atol=1e-9)

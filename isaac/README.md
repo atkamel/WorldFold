@@ -51,6 +51,39 @@ env = SingleCornerFoldEnv(base_env=IsaacClothFoldEnv(observation_mode="state"))
 Only one env per process: Isaac Sim's `World` is a singleton. Use
 `observation_mode="hybrid"` for RGB and depth from the shared camera pose.
 
+## Half fold
+
+```python
+from isaac.isaac_env import make_half_fold_env
+
+env = make_half_fold_env()          # cloth_fold_rl.quarter_fold_env.HalfFoldEnv on Isaac
+```
+
+Stage 0 of the quarter fold on its own, with the same wrapper code MuJoCo
+runs. Both arms work: the left carries cloth_10 onto cloth_0's start, the right
+carries cloth_120 onto cloth_110's start. **Success:** both carried corners
+are within 5 cm of their targets with both grippers open, and that holds for
+20 consecutive control steps (1.0 s). The episode fails first if cloth_0 or
+cloth_110 is dragged more than 0.20 m or the cloth goes unstable, and it runs
+for at most 250 steps. In MuJoCo the scripted expert completes it on 8/8 seeds
+in 77-214 steps (`python -m cloth_fold_rl.quarter_fold_expert --half`).
+
+## Sensors
+
+Each item matches MuJoCo's `ClothFoldEnv`:
+
+- Camera `main`: `CAMERA_POS` aimed at `CAMERA_TARGET`, vertical FOV
+  `CAMERA_FOVY_DEG`, `image_size` resolution. Depth is distance to the image
+  plane (MuJoCo's depth buffer), run through the shared `sensor_depth` noise
+  model. Other `camera_names` raise.
+- Proprio: joints in MuJoCo order (checked at build time), commanded gripper,
+  gripperframe site pose with `mju_mat2Quat`'s quaternion sign, and
+  instantaneous site velocity `[angular, linear]` in world axes, as
+  `mj_objectVelocity` returns it.
+- Scene look: the same two light directions and strengths as the MJCF, plus
+  the camera headlight, floor colour and size. `LIGHT_INTENSITY` sets the
+  overall brightness, which is not calibrated against MuJoCo.
+
 ## Knobs
 
 Isaac-only tuning constants sit at the top of `isaac_env.py`: physics dt,

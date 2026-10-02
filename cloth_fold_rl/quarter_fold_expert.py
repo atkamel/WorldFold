@@ -22,7 +22,7 @@ import argparse
 import numpy as np
 
 from cloth_fold_rl.expert import FoldExpert
-from cloth_fold_rl.quarter_fold_env import STAGES, QuarterFoldEnv
+from cloth_fold_rl.quarter_fold_env import HalfFoldEnv, QuarterFoldEnv
 
 # per (stage, arm): metres past the goal to place the corner at (the mean
 # spring-back measured on the stock cloth). Stage 1 carries both west-edge
@@ -46,7 +46,7 @@ class QuarterFoldExpert:
         self.experts = {}
         self.moves = {}
         self.correction = {}
-        for s, stage in enumerate(STAGES):
+        for s, stage in enumerate(env.stages):
             for k, move in enumerate(stage.moves):
                 self.moves[(s, move.prefix)] = move
                 goal = lambda m=move, s=s: env.goal(m) + OVERSHOOT[(s, m.prefix)] + self.correction[(s, m.prefix)]
@@ -119,8 +119,9 @@ def main():
     ap.add_argument("--episodes", type=int, default=5)
     ap.add_argument("--seed-base", type=int, default=0)
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--half", action="store_true", help="stage 0 only (HalfFoldEnv)")
     args = ap.parse_args()
-    env = QuarterFoldEnv()
+    env = HalfFoldEnv() if args.half else QuarterFoldEnv()
     env.unwrapped.domain_randomization = True
     expert = QuarterFoldExpert(env)
     rows = []

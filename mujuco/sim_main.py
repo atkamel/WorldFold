@@ -166,6 +166,9 @@ class ClothFoldEnv(gym.Env):
         mujoco.mj_objectVelocity(self.model, self.data, mujoco.mjtObj.mjOBJ_BODY, bid, v, 0)
         return v[3:6]   # [angular(3), linear(3)] -> keep linear
 
+    def cloth_positions(self):
+        return np.array(self.data.xpos[self._cloth_body_ids])   # (N*N, 3), row-major vertex index ix*N + iy
+
     def corner_positions(self):
         return np.array(self.data.xpos[self._corner_ids])   # (4, 3) cloth_0, cloth_10, cloth_110, cloth_120
 

@@ -19,6 +19,9 @@ def test_accessors_match_mujoco_state():
     left = env.gripper_position("left_")
     assert left.shape == (3,)
     assert np.allclose(left, env.data.site_xpos[env._site_id["left_"]])
+    cloth = env.cloth_positions()
+    assert np.allclose(cloth, env.data.xpos[env._cloth_body_ids])
+    assert np.allclose(cloth[[0, 10, 110, 120]], env.corner_positions())
     # returned arrays are copies: mutating them must not touch the sim
     corners[0, 0] += 1.0
     assert not np.allclose(corners, env.corner_positions())

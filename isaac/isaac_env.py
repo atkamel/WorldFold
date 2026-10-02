@@ -37,6 +37,14 @@ DRIVE_DAMPING           = 30.0
 DRIVE_MAX_FORCE         = 3.35                # N m, MJCF forcerange
 CLOTH_SPEED_LIMIT       = 20.0                # m/s; replaces MuJoCo's qacc explosion check
 CAMERA_CLIP             = (0.05, 10.0)
+# lights mirror build_cloth_xml's two <light>s plus MuJoCo's default headlight (diffuse 0.4, ambient 0.1):
+# same directions, same relative strengths. LIGHT_INTENSITY (Isaac units per unit of MuJoCo diffuse) is a knob.
+LIGHT_INTENSITY         = 1000.0
+LIGHTS                  = (((0.0, 0.0, -1.0), 0.9), ((-0.5, 0.5, -1.0), 0.4))   # (direction, MuJoCo diffuse)
+HEADLIGHT_DIFFUSE       = 0.4
+HEADLIGHT_AMBIENT       = 0.1
+FLOOR_SIZE              = 4.0                 # MJCF floor plane size="2 2", half-extents
+FLOOR_COLOR             = (0.3, 0.3, 0.35)
 DEVICE                  = "cuda:0"            # particle cloth only exists on the GPU pipeline
 
 ARM_PRIMS = {"left_": "/World/left_arm", "right_": "/World/right_arm"}
@@ -47,7 +55,7 @@ _app = None
 
 def start_app(headless=True):
     """Creates the SimulationApp once and pulls in the Isaac modules this file uses."""
-    global _app, torch, omni, World, FixedCuboid, ParticleMaterial
+    global _app, torch, omni, World, FixedCuboid, GroundPlane, ParticleMaterial
     global ClothPrim, SingleClothPrim, SingleParticleSystem, Articulation, RigidPrim, SingleXFormPrim, Camera
     global Gf, UsdGeom, UsdLux, UsdPhysics
     if _app is not None:
@@ -59,7 +67,7 @@ def start_app(headless=True):
     from isaacsim.core.utils.extensions import enable_extension
     enable_extension("isaacsim.asset.importer.mjcf")
     from isaacsim.core.api import World
-    from isaacsim.core.api.objects import FixedCuboid
+    from isaacsim.core.api.objects import FixedCuboid, GroundPlane
     from isaacsim.core.api.materials import ParticleMaterial
     from isaacsim.core.prims import ClothPrim, SingleClothPrim, SingleParticleSystem, Articulation, RigidPrim, SingleXFormPrim
     from isaacsim.sensors.camera import Camera
@@ -102,28 +110,14 @@ def _matrix_from_quat(q):
     ])
 
 
-def _quat_mul(a, b):
-    aw, ax, ay, az = a
-    bw, bx, by, bz = b
-    return np.array([
-        aw * bw - ax * bx - ay * by - az * bz,
-        aw * bx + ax * bw + ay * bz - az * by,
-        aw * by - ax * bz + ay * bw + az * bx,
-        aw * bz + ax * by - ay * bx + az * bw,
-    ])
-
-
-def _rotvec_between(q_from, q_to):
-    # small-angle rotation vector taking q_from to q_to, world frame
-    conj = np.array([q_from[0], -q_from[1], -q_from[2], -q_from[3]])
-    d = _quat_mul(q_to, conj)
-    if d[0] < 0:
-        d = -d
-    sin_half = np.linalg.norm(d[1:])
-    if sin_half < 1e-9:
-        return np.zeros(3)
-    angle = 2.0 * np.arctan2(sin_half, d[0])
-    return d[1:] / sin_half * angle
+def _quat_facing(direction):
+    # wxyz rotation whose local -Z points along direction (USD lights and cameras look down -Z)
+    z = -np.asarray(direction, dtype=float)
+    z = z / np.linalg.norm(z)
+    helper = np.array([1.0, 0.0, 0.0]) if abs(z[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    x = np.cross(helper, z)
+    x = x / np.linalg.norm(x)
+    return _quat_from_matrix(np.column_stack([x, np.cross(z, x), z]))
 
 
 def cloth_grid_mesh():
@@ -149,7 +143,10 @@ class IsaacClothFoldEnv(gym.Env):
     metadata = {"render_modes": ["rgb_array"], "render_fps": 20}
 
     def __init__(self, control_dt=0.05, max_episode_steps=200, observation_mode="state", image_size=(84, 84),
-                 n_cloth_samples=9, n_tasks=4, grasp_corners=None, grasp_radius=GRASP_RADIUS, headless=True):
+                 camera_names=None, n_cloth_samples=9, n_tasks=4, grasp_corners=None, grasp_radius=GRASP_RADIUS,
+                 headless=True):
+        if camera_names is not None and list(camera_names) != ["main"]:
+            raise NotImplementedError("only the shared 'main' camera is ported")
         start_app(headless)
         self.control_dt = control_dt
         self.max_episode_steps = max_episode_steps
@@ -196,7 +193,6 @@ class IsaacClothFoldEnv(gym.Env):
         self._joint_targets = {p: np.zeros(6) for p in self.prefixes}
         self._gripper_closed = {p: False for p in self.prefixes}
         self._pinned = {p: {} for p in self.prefixes}      # vertex index -> offset in gripper frame
-        self._ee_prev = {}
         self._step_count = 0
         self._task_id = 0
         self._goal_corners = np.zeros((4, 3))
@@ -209,7 +205,7 @@ class IsaacClothFoldEnv(gym.Env):
     def _build_scene(self):
         self.world = World(stage_units_in_meters=1.0, physics_dt=PHYSICS_DT, rendering_dt=PHYSICS_DT,
                            backend="torch", device=DEVICE)
-        self.world.scene.add_default_ground_plane()
+        self.world.scene.add(GroundPlane("/World/floor", name="floor", size=FLOOR_SIZE, color=np.array(FLOOR_COLOR)))
         self.world.scene.add(FixedCuboid("/World/table", name="table",
                                          position=np.array([0.0, 0.0, TABLE_TOP_Z / 2.0]),
                                          scale=np.array([TABLE_SIZE, TABLE_SIZE, TABLE_TOP_Z]),
@@ -234,6 +230,8 @@ class IsaacClothFoldEnv(gym.Env):
             self._build_lights()
             self._build_camera()
         self.world.reset()
+        # proprio slices joints by position, so the DOF order must be MuJoCo's
+        assert list(self.arms["left_"].dof_names) == ARM_JOINTS + [GRIPPER_JOINT], self.arms["left_"].dof_names
         self._dof_limits = _npy(self.arms["left_"].get_dof_limits())[0]     # (6, 2), same model for both arms
         self._cloth_rest = _npy(self.cloth.get_world_positions())[0].copy()
         self._rest_masses = _npy(self.cloth._physics_view.get_masses()).copy()
@@ -293,11 +291,15 @@ class IsaacClothFoldEnv(gym.Env):
 
     def _build_lights(self):
         stage = self.world.stage
-        dome = UsdLux.DomeLight.Define(stage, "/World/dome_light")
-        dome.CreateIntensityAttr(300.0)
-        sun = UsdLux.DistantLight.Define(stage, "/World/sun_light")
-        sun.CreateIntensityAttr(1000.0)
-        UsdGeom.Xformable(sun).AddRotateXYZOp().Set(Gf.Vec3f(-40.0, 20.0, 0.0))
+        dome = UsdLux.DomeLight.Define(stage, "/World/ambient_light")
+        dome.CreateIntensityAttr(LIGHT_INTENSITY * HEADLIGHT_AMBIENT)
+        head_dir = np.array(CAMERA_TARGET) - np.array(CAMERA_POS)
+        lights = list(LIGHTS) + [(head_dir, HEADLIGHT_DIFFUSE)]
+        for i, (direction, diffuse) in enumerate(lights):
+            light = UsdLux.DistantLight.Define(stage, f"/World/light_{i}")
+            light.CreateIntensityAttr(LIGHT_INTENSITY * diffuse)
+            w, x, y, z = _quat_facing(direction)
+            UsdGeom.Xformable(light).AddOrientOp().Set(Gf.Quatf(float(w), Gf.Vec3f(float(x), float(y), float(z))))
 
     def _build_camera(self):
         H, W = self.image_size
@@ -327,13 +329,26 @@ class IsaacClothFoldEnv(gym.Env):
 
     def gripper_pose(self, prefix):
         # gripperframe site = gripper link pose composed with the MJCF site offset; the link pose comes
-        # from the physics view because the GPU pipeline does not write link transforms back to USD
+        # from the physics view because the GPU pipeline does not write link transforms back to USD.
+        # The quaternion goes through a rotation matrix so its sign follows mju_mat2Quat, as in MuJoCo's proprio.
         link_pos, link_quat = self.gripper_links[prefix].get_world_poses()
         link_pos = _npy(link_pos)[0]
-        link_quat = _npy(link_quat)[0]
-        pos = link_pos + _matrix_from_quat(link_quat) @ self._site_pos
-        quat = _quat_mul(link_quat, self._site_quat)
+        link_R = _matrix_from_quat(_npy(link_quat)[0])
+        pos = link_pos + link_R @ self._site_pos
+        quat = _quat_from_matrix(link_R @ _matrix_from_quat(self._site_quat))
         return pos, quat
+
+    def gripper_velocity(self, prefix):
+        # [angular(3), linear(3)] of the gripperframe site in world axes, mj_objectVelocity(flg_local=0)'s layout.
+        # PhysX reports the link's centre-of-mass velocity, so shift the linear part to the site.
+        link = self.gripper_links[prefix]
+        lin = _npy(link.get_linear_velocities()).reshape(-1, 3)[0]
+        ang = _npy(link.get_angular_velocities()).reshape(-1, 3)[0]
+        link_pos, link_quat = link.get_world_poses()
+        com_local = _npy(link.get_coms()[0]).reshape(-1, 3)[0]
+        com = _npy(link_pos)[0] + _matrix_from_quat(_npy(link_quat)[0]) @ com_local
+        site = self.gripper_position(prefix)
+        return np.concatenate([ang, lin + np.cross(ang, site - com)])
 
     def gripper_position(self, prefix):
         return self.gripper_pose(prefix)[0]
@@ -409,13 +424,8 @@ class IsaacClothFoldEnv(gym.Env):
             pos, quat = self.gripper_pose(p)
             proprio += list(pos)
             proprio += list(quat)
-            prev_pos, prev_quat = self._ee_prev.get(p, (pos, quat))
-            ang_vel = _rotvec_between(prev_quat, quat) / self.control_dt
-            lin_vel = (pos - prev_pos) / self.control_dt
-            proprio += list(ang_vel)
-            proprio += list(lin_vel)
+            proprio += list(self.gripper_velocity(p))
             proprio.append(float(self.grasp_active(p)))
-            self._ee_prev[p] = (pos, quat)
         proprio = np.array(proprio, dtype=np.float32)
 
         onehot = np.zeros(self.n_tasks, dtype=np.float32)
@@ -548,7 +558,6 @@ class IsaacClothFoldEnv(gym.Env):
 
         for _ in range(self.settle_substeps):
             self._substep()
-        self._ee_prev = {}
 
         self._task_id = int(opts.get("task", self.np_random.integers(self.n_tasks)))
         corners0 = self.corner_positions().copy()
@@ -597,3 +606,14 @@ class IsaacClothFoldEnv(gym.Env):
     def close(self):
         if _app is not None:
             _app.close()
+
+
+def make_half_fold_env(observation_mode="state", seed=None, headless=True):
+    """cloth_fold_rl.quarter_fold_env.HalfFoldEnv on Isaac Sim; see HalfFoldEnv for the success state."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS, HALF_FOLD_MAX_STEPS, HalfFoldEnv
+    base = IsaacClothFoldEnv(observation_mode=observation_mode, max_episode_steps=HALF_FOLD_MAX_STEPS,
+                             grasp_corners=GRASP_CORNERS, grasp_radius=GRASP_RADIUS, headless=headless)
+    return HalfFoldEnv(base_env=base, seed=seed)
