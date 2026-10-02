@@ -21,9 +21,11 @@ from mujuco.cloth_params import (
 
 # Isaac-only knobs (MuJoCo has its own equivalents inside the MJCF / flexcomp)
 PHYSICS_DT              = 1.0 / 100.0         # LeHome steps at 1/90; 1/100 divides the 0.05 s control step
-TABLE_SIZE              = 0.60
+TABLE_SIZE              = 0.70                # room for the moved cloth and its reset jitter
 CLOTH_SUBDIV            = 10                  # particles per grid gap: 101x101 at 3 mm, ~LeHome's garment particle count
-CLOTH_CENTER            = (0.0, 0.0)          # cloth centre on the table, x y
+# cloth centre on the table, x y: 14 cm toward the arms, so the half fold's far corners (32 cm from each arm's
+# base) are inside the reach where the gripper can point straight down at the table (about 32 cm)
+CLOTH_CENTER            = (0.0, -0.14)
 # LeHome's particle_garment_cfg.yaml, except: its particle_mass (10 g per particle) would make this 10,201-particle
 # sheet ~100 kg, so the sheet weighs CLOTH_MASS in total; its gravity_scale of 2 is undocumented, real gravity is 1;
 # its adhesion of 0.1 pulls the cloth onto every rigid surface it touches, the table included, and real cloth on a

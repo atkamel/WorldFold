@@ -1,8 +1,8 @@
 """Runnable check for IsaacClothFoldEnv on Isaac Sim 5.1; on Modal: modal run isaac/modal_isaac.py
 
-Exits non-zero if the observation contract drifts, a friction pinch fails to grasp, lift and release the near-left
-corner, or the fold / half-fold wrappers cannot run on the env. State mode runs the physics checks; hybrid mode
-checks the contract, throughput and the RGB/depth frame.
+Exits non-zero if the observation contract drifts, the scripted friction half fold (isaac/half_fold_demo.py) fails
+to carry both far corners most of the way, or the fold / half-fold wrappers cannot run on the env. State mode runs
+the physics checks; hybrid mode checks the contract, throughput and the RGB/depth frame.
 """
 
 import argparse
@@ -16,62 +16,21 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from isaac.isaac_env import IsaacClothFoldEnv   # noqa: E402
-from mujuco.cloth_params import JOINT_DELTA_SCALE, TABLE_TOP_Z, check_contract   # noqa: E402
-
-MOVING_CORNER = 0          # cloth_0, the left arm's near corner: inside its top-down reach
-OTHER_CORNERS = [1, 2, 3]
-PINCH_HEIGHT = 0.010       # fixed fingertip above the table: its pad rests on the table
-LIFT_HEIGHT = 0.10
-INWARD = np.array([1.0, 1.0, 0.0]) / np.sqrt(2)     # jaw opens across the corner, toward the cloth centre
-IK_SEED = [0.5717, -0.3365, 0.8595, 1.0478, -0.165]  # left arm above cloth_0, fingers down
+from mujuco.cloth_params import check_contract   # noqa: E402
 
 
-def drive_to(env, q_goal, grip, n_steps):
-    action = np.zeros(14, dtype=np.float32)
-    action[6] = grip
-    action[13] = 1.0
-    for _ in range(n_steps):
-        q = env.joint_positions("left_")[:5]
-        action[0:5] = np.clip((q_goal - q) / JOINT_DELTA_SCALE, -1.0, 1.0)
-        env.step(action)
-
-
-def grasp_and_lift(env):
+def half_fold_episode(env):
+    # the scripted friction half fold: both arms must pinch their far corners and carry them most of the way
+    from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS, HALF_FOLD_MAX_STEPS, HalfFoldEnv
+    from isaac.half_fold_demo import run_episode
     from isaac.pinch import PinchIK
-    ik = PinchIK()
-    env.grasp_corners = {"left_": (0,), "right_": (120,)}
-    env.reset(seed=0)
-    corners0 = env.corner_positions().copy()
-    corner = corners0[MOVING_CORNER]
-    tip = np.array([corner[0], corner[1], TABLE_TOP_Z + PINCH_HEIGHT]) - 0.005 * INWARD
-    q_above, e_above = ik.solve("left_", tip + [0.0, 0.0, 0.06], INWARD, IK_SEED)
-    q_pinch, e_pinch = ik.solve("left_", tip, INWARD, q_above)
-    q_lift, e_lift = ik.solve("left_", tip + [0.0, 0.0, LIFT_HEIGHT], INWARD, q_pinch)
-    print(f"pinch IK err: above {e_above * 1000:.1f} mm, pinch {e_pinch * 1000:.1f} mm, lift {e_lift * 1000:.1f} mm")
-    assert max(e_above, e_pinch, e_lift) < 0.002, "IK could not reach the pinch poses"
-
-    def drift():
-        return float(np.linalg.norm(env.corner_positions()[OTHER_CORNERS] - corners0[OTHER_CORNERS], axis=1).max())
-
-    drive_to(env, q_above, grip=1.0, n_steps=35)
-    drive_to(env, q_pinch, grip=1.0, n_steps=15)
-    gap = float(np.linalg.norm(env.gripper_position("left_") - tip))
-    drive_to(env, q_pinch, grip=-1.0, n_steps=12)
-    print(f"pinch: fingertip {gap * 1000:.1f} mm from its target, grasp {env.grasp_active('left_')}")
-    assert env.grasp_active("left_"), "gripper closed but the corner is not between the jaws"
-
-    drive_to(env, q_lift, grip=-1.0, n_steps=30)
-    lifted = env.corner_positions()[MOVING_CORNER, 2]
-    rise = lifted - corners0[MOVING_CORNER, 2]
-    print(f"lift: corner rise {rise:.4f} m, other corners drift {drift():.4f} m")
-    assert rise > 0.05, "the friction pinch did not lift the corner"
-    assert drift() < 0.10, "the other corners were dragged during the lift (fold wrapper terminates at 0.20)"
-
-    drive_to(env, q_lift, grip=1.0, n_steps=20)
-    dropped = lifted - env.corner_positions()[MOVING_CORNER, 2]
-    print(f"release: corner fell {dropped:.4f} m")
-    assert dropped > 0.03, "opening the gripper did not release the corner"
-    print("grasp/lift ok")
+    env.grasp_corners = dict(GRASP_CORNERS)
+    env.grasp_radius = GRASP_RADIUS
+    env.max_episode_steps = HALF_FOLD_MAX_STEPS
+    row = run_episode(HalfFoldEnv(base_env=env, seed=0), PinchIK(), seed=0)
+    print("scripted half fold:", row)
+    assert row["fold_score"] > 0.5, "the friction grasps did not carry the far corners most of the way"
+    print("half fold ok")
 
 
 def wrapper_runs(env):
@@ -122,7 +81,7 @@ def main():
     env = IsaacClothFoldEnv(observation_mode=args.mode)
     check_contract(env)
     if args.mode == "state":     # physics checks; hybrid only adds rendering, checked below
-        grasp_and_lift(env)
+        half_fold_episode(env)
         wrapper_runs(env)
         half_fold_runs(env)
     throughput(env)

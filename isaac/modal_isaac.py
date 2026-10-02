@@ -1,10 +1,11 @@
-"""Runs isaac/smoke_test.py (IsaacClothFoldEnv on LeHome's stack: contract, friction grasp, wrappers) on a Modal L40S.
+"""Runs isaac/smoke_test.py (IsaacClothFoldEnv on LeHome's stack: contract, friction half fold, wrappers) on a Modal
+L40S.
 
     pip install modal && modal setup                   # once
     modal run isaac/modal_isaac.py                     # state and hybrid, one container each, in parallel
     modal run isaac/modal_isaac.py --modes state
     modal volume get worldfold-isaac smoke/<stamp> .   # logs + hybrid RGB/depth frames
-    modal run isaac/modal_isaac.py::scripted --episodes 10    # scripted half-fold baseline, multi-seed
+    modal run isaac/modal_isaac.py::half_fold --episodes 3    # scripted friction half fold, with videos
 
 Same Isaac stack as isaac_image in teacher/modal_teacher.py (branch ROY-vla-teacher): LeHome's locked
 lehome-challenge env (Isaac Sim 5.1.0, Python 3.11, torch 2.7.0) plus LeHome's IsaacLab fork and the
@@ -100,7 +101,7 @@ def _run(tag, args, out_dir):
     return {"tag": tag, "exit": proc.returncode, "wall_s": round(time.time() - t0, 1)}
 
 
-@app.function(image=image, gpu="L40S", cpu=8, memory=32768, timeout=3600, volumes={VOL_PATH: vol})
+@app.function(image=image, gpu="L40S", cpu=8, memory=32768, timeout=1200, volumes={VOL_PATH: vol})
 def smoke(mode: str, stamp: str):
     out_dir = pathlib.Path(VOL_PATH, "smoke", stamp)
     args = ["isaac/smoke_test.py", "--mode", mode]
@@ -109,14 +110,14 @@ def smoke(mode: str, stamp: str):
     return _run(mode, args, out_dir)
 
 
-@app.function(image=image, gpu="L40S", cpu=8, memory=32768, timeout=3600, volumes={VOL_PATH: vol})
-def scripted(episodes: int = 10, seed_base: int = 0):
-    """Multi-seed eval of the open-loop scripted half fold (cloth_fold_rl/scripted_half_fold.py) on Isaac."""
+@app.function(image=image, gpu="L40S", cpu=8, memory=32768, timeout=1200, volumes={VOL_PATH: vol})
+def half_fold(episodes: int = 3):
+    """The scripted two-arm friction half fold (isaac/half_fold_demo.py), with a video per episode."""
     import time
-    out_dir = pathlib.Path(VOL_PATH, "scripted", time.strftime("%Y%m%d-%H%M%S"))
-    args = ["-m", "cloth_fold_rl.scripted_half_fold", "--isaac", "--episodes", str(episodes),
-            "--seed-base", str(seed_base)]
-    return _run("scripted", args, out_dir)
+    out_dir = pathlib.Path(VOL_PATH, "half_fold", time.strftime("%Y%m%d-%H%M%S"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return _run("half_fold", ["isaac/half_fold_demo.py", "--episodes", str(episodes), "--video-dir", str(out_dir)],
+                out_dir)
 
 
 @app.local_entrypoint()

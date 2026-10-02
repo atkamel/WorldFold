@@ -12,7 +12,7 @@ dynamics, LeHome's SO101 robot, and LeHome's particle-cloth machinery.
 ```bash
 pip install modal && modal setup                      # once
 modal run isaac/modal_isaac.py                        # smoke test, state and hybrid in parallel, L40S
-modal run isaac/modal_isaac.py::scripted --episodes 10   # open-loop scripted half fold over 10 seeds
+modal run isaac/modal_isaac.py::half_fold --episodes 3   # scripted friction half fold, a video per episode
 modal volume get worldfold-isaac smoke/<stamp> .
 ```
 
@@ -62,8 +62,11 @@ From LeHome:
   device the grippers pass through it, LeHome issue #36). On the CPU device the
   cloth is read and reset through its USD points, as LeHome does.
 
-From WorldFold (`mujuco/cloth_params.py`): the table, the cloth's size, the arm
-base poses and the `main` camera.
+From WorldFold (`mujuco/cloth_params.py`): the table height, the cloth's size,
+the arm base poses and the `main` camera. Isaac-only: the cloth sits 14 cm closer
+to the arms (`CLOTH_CENTER`), so the half fold's far corners are inside the
+reach where the gripper can point straight down at the table, and the table is
+0.70 m to hold it and its reset jitter.
 
 **Reset** drops the cloth LeHome-style: `DROP_HEIGHT` (5 cm) above its resting
 height with a random roll and pitch of up to `DROP_TILT_DEG` (10 deg), seeded
@@ -84,10 +87,13 @@ wrappers ask: the gripper is commanded closed with one of its corners
 gripper frame.
 
 `isaac/pinch.py` solves top-down pinch poses (fingers down, jaw opening across
-the corner) with IK on LeHome's URDF. A pinch with the fixed fingertip 1 cm
-above the table lifts a corner 10+ cm (smoke test). The arm reaches straight
-down to the table only within about 30 cm in front of its base, which covers
-the cloth's near corners and not its far ones.
+the corner) with IK on LeHome's URDF; the arm reaches straight down to the table
+within about 32 cm of its base. `isaac/half_fold_demo.py` is a scripted two-arm
+half fold built on it: each arm pinches its far corner, lifts, carries it past
+the near corner and releases. Both grasps hold and carry the corners about 25 of
+their 30 cm (fold score about 0.6 to 0.8), but none of the first episodes meets
+`HalfFoldEnv`'s success test (both corners within 5 cm for 1 s): the cloth
+slides about 5 cm when the jaws close and springs back about 5 cm after release.
 
 ## Sensors
 

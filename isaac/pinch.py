@@ -19,7 +19,7 @@ from isaac.isaac_env import _matrix_from_quat
 
 URDF = os.path.join(ASSETS_ROOT, "robots", "so101_new_calib.urdf")
 SITE_LINK = "gripper_frame_link"
-ORIENTATION_WEIGHT = 0.1     # metres of position error per radian of orientation error
+ORIENTATION_WEIGHT = 0.1     # metres of position error per radian of orientation error, at the pinch
 
 
 def _rot(axis, angle):
@@ -79,8 +79,9 @@ class PinchIK:
         T = self._fk(np.asarray(q[:5], float))
         return pos + R0 @ T[:3, 3], R0 @ T[:3, :3]
 
-    def solve(self, prefix, tip, jaw_dir, seed_q, iters=300):
-        """Joint angles (rad, 5) for the pinch pose, and the reached site position's error (m)."""
+    def solve(self, prefix, tip, jaw_dir, seed_q, orientation_weight=ORIENTATION_WEIGHT, iters=300):
+        """Joint angles (rad, 5) for the pinch pose, and the reached site position's error (m). Lift and carry poses
+        can pass a lower orientation_weight: there the fingers may tilt a little to keep the position."""
         x = -np.array([jaw_dir[0], jaw_dir[1], 0.0])
         x /= np.linalg.norm(x)
         z = np.array([0.0, 0.0, -1.0])
@@ -90,7 +91,7 @@ class PinchIK:
         def error(q):
             p, R = self.site_pose(prefix, q)
             w = 0.5 * sum(np.cross(R[:, i], Rt[:, i]) for i in range(3))
-            return np.concatenate([tip - p, ORIENTATION_WEIGHT * w])
+            return np.concatenate([tip - p, orientation_weight * w])
 
         q = np.clip(np.asarray(seed_q[:5], float), self.low, self.high)
         for _ in range(iters):
