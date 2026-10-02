@@ -5,8 +5,9 @@ cloth_fold_rl.fold_env.SingleCornerFoldEnv(base_env=IsaacClothFoldEnv(...))
 runs the existing SB3 pipeline unchanged. Scene geometry comes from
 mujuco/cloth_params.py so the two simulators cannot drift apart.
 
-Call start_app() (or construct the env, which does it) before importing
-anything else from Isaac Sim in the same process.
+Targets Isaac Sim 5.1.0 on Python 3.11, the version the LeHome challenge stack
+(teacher/ on the ROY-vla-teacher branch) runs. Call start_app() (or construct the
+env, which does it) before importing anything else from Isaac Sim in the same process.
 """
 
 import numpy as np
@@ -406,9 +407,10 @@ class IsaacClothFoldEnv(gym.Env):
     # ---- observations ----
     def _render_image(self):
         self.world.render()
-        frame = self.camera.get_current_frame()
-        rgb = np.asarray(self.camera.get_rgba())[:, :, :3].astype(np.uint8)
-        raw = np.asarray(frame["distance_to_image_plane"], dtype=np.float32)
+        # 5.1 annotators may hold their data on the GPU; ask for host copies
+        H, W = self.image_size
+        rgb = np.asarray(self.camera.get_rgba(device="cpu"))[:, :, :3].astype(np.uint8)
+        raw = np.asarray(self.camera.get_depth(device="cpu"), dtype=np.float32).reshape(H, W)
         raw = np.where(np.isfinite(raw), raw, DEPTH_MAX + 1.0)
         depth = sensor_depth(raw, self._pixel_angle, self.np_random)
         return rgb, depth[:, :, None].astype(np.float32)
@@ -504,7 +506,7 @@ class IsaacClothFoldEnv(gym.Env):
         self._apply_masses()
 
     def _apply_masses(self):
-        # ClothPrim.set_particle_masses is broken in Isaac Sim 4.5, so write the physics view directly.
+        # ClothPrim.set_particle_masses calls a get_masses it never defines (4.5 and 5.1), so write the physics view directly.
         masses = self._rest_masses.copy()
         for prefix in self.prefixes:
             for vtx in self._pinned[prefix]:

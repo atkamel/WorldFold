@@ -1,6 +1,6 @@
 """Fetches the SO101 MJCF and meshes from the pinned so101-nexus wheel.
 
-so101-nexus needs Python 3.12 and Isaac Sim ships 3.10, so the wheel is only
+so101-nexus needs Python 3.12 and Isaac Sim 5.1 ships 3.11, so the wheel is only
 downloaded and unzipped, never installed. The Isaac MJCF importer accepts a
 single top-level <default> block, and the SO101 file has two, so they are
 merged into so101_merged.xml next to the original.

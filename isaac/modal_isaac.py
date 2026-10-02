@@ -5,8 +5,10 @@
     modal run isaac/modal_isaac.py --modes hybrid
     modal volume get worldfold-isaac smoke/<stamp> .   # logs + hybrid RGB/depth frames
 
-Isaac Sim 4.5.0 from NVIDIA's pip index, the same version as the WATcloud container the env was
-written against. Isaac needs an RTX GPU (L40S / RTX PRO 6000); A100/H100/H200 cannot run it.
+Isaac Sim 5.1.0 on Python 3.11 from NVIDIA's pip index with torch 2.7.0 (cu128): the versions the
+LeHome challenge lock pins (teacher/modal_teacher.py's isaac_image on ROY-vla-teacher), so WorldFold
+and the VLA teacher share one Isaac Sim. Isaac needs an RTX GPU (L40S / RTX PRO 6000); A100/H100/H200
+cannot run it.
 Each mode runs in its own process because Isaac Sim's World is one per process.
 Long runs: add --detach, then check `modal app list` and stop the app when it is done.
 """
@@ -25,13 +27,14 @@ vol = modal.Volume.from_name("worldfold-isaac", create_if_missing=True)
 # Vulkan/GL user-space libs and env as in teacher/modal_teacher.py's isaac_image, which runs Isaac
 # headless on Modal L40S; the NVIDIA driver itself is injected by Modal's GPU runtime.
 image = (
-    modal.Image.debian_slim(python_version="3.10")      # Isaac Sim 4.5 wheels are cp310 only
+    modal.Image.debian_slim(python_version="3.11")      # Isaac Sim 5.1 wheels are cp311 only
     .apt_install("libvulkan1", "vulkan-tools", "libegl1", "libgl1", "libglu1-mesa", "libglib2.0-0",
                  "libxt6", "libsm6", "libice6", "libxrandr2", "libxinerama1", "libxcursor1", "libxi6",
                  "libxext6", "libx11-6")
     # Isaac calls zenity for GUI dialogs, which blocks headless runs
     .run_commands("printf '#!/bin/sh\\nexit 0\\n' > /usr/local/bin/zenity && chmod +x /usr/local/bin/zenity")
-    .pip_install("isaacsim[all,extscache]==4.5.0", extra_index_url="https://pypi.nvidia.com")
+    .pip_install("torch==2.7.0", index_url="https://download.pytorch.org/whl/cu128")
+    .pip_install("isaacsim[all,extscache]==5.1.0", extra_index_url="https://pypi.nvidia.com")
     .pip_install("gymnasium", "pillow")
     .env({"OMNI_KIT_ACCEPT_EULA": "YES", "ACCEPT_EULA": "Y", "PRIVACY_CONSENT": "Y",
           "__GLX_VENDOR_LIBRARY_NAME": "nvidia", "VK_ICD_FILENAMES": "/etc/vulkan/icd.d/nvidia_icd.json",

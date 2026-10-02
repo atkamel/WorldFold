@@ -17,14 +17,18 @@ modal run isaac/modal_isaac.py            # smoke test, state then hybrid, on an
 modal volume get worldfold-isaac smoke/<stamp> .
 ```
 
-Isaac Sim 4.5.0 is installed from NVIDIA's pip index, the same version as the
-WATcloud container. The image build happens once and doesn't use a GPU. Each
+The image has Isaac Sim 5.1.0 on Python 3.11 from NVIDIA's pip index, plus
+torch 2.7.0. These are the versions the LeHome challenge stack pins, which the
+VLA teacher runs on (`teacher/` on `ROY-vla-teacher`). The image build happens
+once and doesn't use a GPU. Each
 run prints its logs and saves them, plus the hybrid RGB/depth frames, to the
 `worldfold-isaac` volume.
 
 ## Running on WATcloud
 
-Isaac Sim needs an RTX GPU. The 2080 Ti nodes run Isaac Sim 4.5.0.
+Isaac Sim needs an RTX GPU. The env targets Isaac Sim 5.1.0. The commands
+below are from the 4.5.0 port and haven't been tried with the 5.1.0 container,
+`nvcr.io/nvidia/isaac-sim:5.1.0`.
 
 ```bash
 # login node
