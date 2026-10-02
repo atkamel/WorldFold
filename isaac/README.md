@@ -9,6 +9,19 @@ runs the SB3 pipeline unchanged. Scene constants are shared through
 Milestone 1 covers the environment only. Not ported: `ee_delta` mode, the
 physical grabber, mass/friction/damping randomisation, the viewer.
 
+## Running on Modal
+
+```bash
+pip install modal && modal setup          # once
+modal run isaac/modal_isaac.py            # smoke test, state then hybrid, on an L40S
+modal volume get worldfold-isaac smoke/<stamp> .
+```
+
+Isaac Sim 4.5.0 is installed from NVIDIA's pip index, the same version as the
+WATcloud container. The image build happens once and doesn't use a GPU. Each
+run prints its logs and saves them, plus the hybrid RGB/depth frames, to the
+`worldfold-isaac` volume.
+
 ## Running on WATcloud
 
 Isaac Sim needs an RTX GPU. The 2080 Ti nodes run Isaac Sim 4.5.0.
