@@ -14,5 +14,3 @@ outputs/cloth_angles/*
 .DS_Store
 MUJOCO_LOG.TXT
 
-# Isaac Sim: SO101 assets fetched from the so101-nexus wheel on first run
-isaac/assets/

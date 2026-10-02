@@ -1,41 +1,53 @@
-"""Isaac Sim drop-in for mujuco.sim_main.ClothFoldEnv, joint_delta mode only.
+"""WorldFold's cloth-fold env on LeHome's Isaac stack: a drop-in for mujuco.sim_main.ClothFoldEnv in joint_delta mode.
 
-Same 14-dim action, same observation dict, same reward and termination, so
-cloth_fold_rl.fold_env.SingleCornerFoldEnv(base_env=IsaacClothFoldEnv(...))
-runs the existing SB3 pipeline unchanged. Scene geometry comes from
-mujuco/cloth_params.py so the two simulators cannot drift apart.
+Same 14-dim action and observation dict as ClothFoldEnv, so cloth_fold_rl's wrappers (SingleCornerFoldEnv,
+HalfFoldEnv) run on it unchanged. The scene (isaac/lab_scene.py) is IsaacLab with LeHome's SO101 arms, particle
+cloth parameters and simulation setup (lehome-challenge a805ad2); the table, cloth size, arm base poses and
+camera come from mujuco/cloth_params.py. Nothing attaches the cloth: the jaws hold it by friction and adhesion.
 
-Call start_app() (or construct the env, which does it) before importing
-anything else from Isaac Sim in the same process.
+Call start_app() (or construct the env, which does it) before importing anything else from Isaac Sim or IsaacLab.
 """
+
+import time
 
 import numpy as np
 import gymnasium as gym
 
 from mujuco.cloth_params import (
-    TABLE_TOP_Z, CLOTH_COUNT, CLOTH_SPACING, CLOTH_RADIUS, CLOTH_MASS,
-    ARM_BASE_LEFT, ARM_BASE_RIGHT, ARM_BASE_QUAT, ARM_JOINTS,
-    GRIPPER_OPEN, GRIPPER_CLOSED, JOINT_DELTA_SCALE, GRASP_CORNERS, GRASP_RADIUS,
-    HOLD_STEPS, SETTLE_STEPS, ARM_TIMESTEP, WORKSPACE_XY, SUCCESS_FOLD_SCORE,
-    CORNER_PLACED_DIST, TASK_NAMES, DEPTH_MAX, CAMERA_POS, CAMERA_TARGET, CAMERA_FOVY_DEG,
-    camera_axes, sensor_depth,
+    CLOTH_COUNT, CLOTH_SPACING, CLOTH_MASS, ARM_JOINTS, GRIPPER_OPEN, GRIPPER_CLOSED, JOINT_DELTA_SCALE,
+    GRASP_CORNERS, GRASP_RADIUS, HOLD_STEPS, SETTLE_STEPS, ARM_TIMESTEP, WORKSPACE_XY, SUCCESS_FOLD_SCORE,
+    CORNER_PLACED_DIST, TASK_NAMES, DEPTH_MAX, CAMERA_FOVY_DEG, sensor_depth,
 )
-from isaac.so101_assets import ensure_so101_mjcf, gripperframe_offset
 
 # Isaac-only knobs (MuJoCo has its own equivalents inside the MJCF / flexcomp)
-PHYSICS_DT              = 1.0 / 240.0
+PHYSICS_DT              = 1.0 / 100.0         # LeHome steps at 1/90; 1/100 divides the 0.05 s control step
 TABLE_SIZE              = 0.60
-CLOTH_STRETCH_STIFFNESS = 1e4
-CLOTH_BEND_STIFFNESS    = 100.0
-CLOTH_SHEAR_STIFFNESS   = 100.0
-CLOTH_SPRING_DAMPING    = 0.2
-PARTICLE_CONTACT_OFFSET = CLOTH_RADIUS * 1.5
-PARTICLE_REST_OFFSET    = CLOTH_RADIUS        # vertex centre rests CLOTH_RADIUS above the table, as in MuJoCo
-CLOTH_FRICTION          = 0.4
-DRIVE_STIFFNESS         = 1000.0              # sts3215 position servo, MJCF kp=998
-DRIVE_DAMPING           = 30.0
-DRIVE_MAX_FORCE         = 3.35                # N m, MJCF forcerange
+CLOTH_SUBDIV            = 10                  # particles per grid gap: 101x101 at 3 mm, ~LeHome's garment particle count
+CLOTH_CENTER            = (0.0, 0.0)          # cloth centre on the table, x y
+# LeHome's particle_garment_cfg.yaml, except: its particle_mass (10 g per particle) would make this 10,201-particle
+# sheet ~100 kg, so the sheet weighs CLOTH_MASS in total; its gravity_scale of 2 is undocumented, real gravity is 1;
+# its adhesion of 0.1 pulls the cloth onto every rigid surface it touches, the table included, and real cloth on a
+# dry table has none
+CLOTH_GRAVITY_SCALE     = 1.0
+CLOTH_ADHESION          = 0.0
+# Reset drops the cloth LeHome-style so it lands with some slack instead of perfectly flat: from DROP_HEIGHT above
+# its resting height with a random roll and pitch of up to DROP_TILT_DEG (LeHome drops garments from ~0.6 m, +-36 deg)
+DROP_HEIGHT             = 0.05
+DROP_TILT_DEG           = 10.0
+# High-friction lining on the inner face of each finger, as on the real gripper: a flat pad PAD_LINING_THICKNESS
+# thick over LeHome's capsule pads. Each mm on both sides closes the jaw gap 2 mm earlier; at 3 mm the pads meet at
+# about -0.015 rad, so closing to GRIPPER_CLOSED squeezes.
+PAD_LINING_THICKNESS    = 0.003
+PAD_LINING_FRICTION     = 1.5
+# LeHome's USD root frame in the MJCF base frame (ARM_BASE_* poses): same kinematics, with the root offset and
+# turned +90 deg about z. Fitted on six joint poses, residual under 0.3 mm.
+USD_ROOT_OFFSET         = np.array([0.0164, -0.0208, -0.0324])
+USD_ROOT_YAW            = np.array([np.cos(np.pi / 4), 0.0, 0.0, np.sin(np.pi / 4)])
+# gripperframe site in the gripper link frame: the so101_new_calib MJCF's site (LeHome's URDF gripper_frame_link)
+GRIPPERFRAME_POS        = np.array([-0.0079, -0.000218121, -0.0981274])
+GRIPPERFRAME_QUAT       = np.array([0.0, 0.0, 1.0, 0.0])
 CLOTH_SPEED_LIMIT       = 20.0                # m/s; replaces MuJoCo's qacc explosion check
+KIT_TICK_PERIOD_S       = 30.0                # state mode ticks Kit this often; its hang detector allows 120 s
 CAMERA_CLIP             = (0.05, 10.0)
 # lights mirror build_cloth_xml's two <light>s plus MuJoCo's default headlight (diffuse 0.4, ambient 0.1):
 # same directions, same relative strengths. LIGHT_INTENSITY (Isaac units per unit of MuJoCo diffuse) is a knob.
@@ -45,33 +57,18 @@ HEADLIGHT_DIFFUSE       = 0.4
 HEADLIGHT_AMBIENT       = 0.1
 FLOOR_SIZE              = 4.0                 # MJCF floor plane size="2 2", half-extents
 FLOOR_COLOR             = (0.3, 0.3, 0.35)
-DEVICE                  = "cuda:0"            # particle cloth only exists on the GPU pipeline
 
-ARM_PRIMS = {"left_": "/World/left_arm", "right_": "/World/right_arm"}
 GRIPPER_JOINT = "gripper"
 
 _app = None
 
 
-def start_app(headless=True):
-    """Creates the SimulationApp once and pulls in the Isaac modules this file uses."""
-    global _app, torch, omni, World, FixedCuboid, GroundPlane, ParticleMaterial
-    global ClothPrim, SingleClothPrim, SingleParticleSystem, Articulation, RigidPrim, SingleXFormPrim, Camera
-    global Gf, UsdGeom, UsdLux, UsdPhysics
-    if _app is not None:
-        return _app
-    from isaacsim import SimulationApp
-    _app = SimulationApp({"headless": headless})
-    import torch
-    import omni.kit.commands
-    from isaacsim.core.utils.extensions import enable_extension
-    enable_extension("isaacsim.asset.importer.mjcf")
-    from isaacsim.core.api import World
-    from isaacsim.core.api.objects import FixedCuboid, GroundPlane
-    from isaacsim.core.api.materials import ParticleMaterial
-    from isaacsim.core.prims import ClothPrim, SingleClothPrim, SingleParticleSystem, Articulation, RigidPrim, SingleXFormPrim
-    from isaacsim.sensors.camera import Camera
-    from pxr import Gf, UsdGeom, UsdLux, UsdPhysics
+def start_app(headless=True, cameras=False):
+    """Launches Isaac Sim once through IsaacLab's AppLauncher on the CPU device, as LeHome's scripts do."""
+    global _app
+    if _app is None:
+        from isaaclab.app import AppLauncher
+        _app = AppLauncher(headless=headless, enable_cameras=cameras, device="cpu").app
     return _app
 
 
@@ -80,9 +77,6 @@ def _npy(x):
         return x.cpu().numpy()
     return np.asarray(x)
 
-
-def _dev(x):
-    return torch.as_tensor(np.asarray(x), device=DEVICE, dtype=torch.float32)
 
 
 def _quat_from_matrix(R):
@@ -120,22 +114,36 @@ def _quat_facing(direction):
     return _quat_from_matrix(np.column_stack([x, np.cross(z, x), z]))
 
 
-def cloth_grid_mesh():
-    # row-major grid, index = ix * CLOTH_COUNT + iy, same as MuJoCo's flexcomp
+def cloth_grid_mesh(subdiv=1):
+    # row-major grid, index = ix * n + iy, same as MuJoCo's flexcomp; subdiv splits each grid gap into finer particles
+    n = (CLOTH_COUNT - 1) * subdiv + 1
+    step = CLOTH_SPACING / subdiv
     half = (CLOTH_COUNT - 1) * CLOTH_SPACING / 2.0
     points = []
-    for ix in range(CLOTH_COUNT):
-        for iy in range(CLOTH_COUNT):
-            points.append((ix * CLOTH_SPACING - half, iy * CLOTH_SPACING - half, 0.0))
+    for ix in range(n):
+        for iy in range(n):
+            points.append((ix * step - half, iy * step - half, 0.0))
     faces = []
-    for ix in range(CLOTH_COUNT - 1):
-        for iy in range(CLOTH_COUNT - 1):
-            a = ix * CLOTH_COUNT + iy
-            b = a + CLOTH_COUNT
+    for ix in range(n - 1):
+        for iy in range(n - 1):
+            a = ix * n + iy
+            b = a + n
             c = a + 1
             d = b + 1
             faces += [a, b, c, c, b, d]
     return points, faces
+
+
+def usd_root_pose(base_pos, base_quat):
+    """World pose (pos, wxyz) of LeHome's SO101 USD root for an arm whose MJCF base sits at base_pos, base_quat."""
+    R = _matrix_from_quat(base_quat)
+    return np.asarray(base_pos) + R @ USD_ROOT_OFFSET, _quat_from_matrix(R @ _matrix_from_quat(USD_ROOT_YAW))
+
+
+def grid_particles(subdiv):
+    # particle index of each MuJoCo grid vertex (cloth_0..cloth_120, row-major) in the subdivided mesh
+    n = (CLOTH_COUNT - 1) * subdiv + 1
+    return np.array([(ix * subdiv) * n + iy * subdiv for ix in range(CLOTH_COUNT) for iy in range(CLOTH_COUNT)])
 
 
 class IsaacClothFoldEnv(gym.Env):
@@ -147,24 +155,27 @@ class IsaacClothFoldEnv(gym.Env):
                  headless=True):
         if camera_names is not None and list(camera_names) != ["main"]:
             raise NotImplementedError("only the shared 'main' camera is ported")
-        start_app(headless)
+        self.observation_mode = observation_mode
+        self.image_size = image_size
+        self._use_image = observation_mode in ("pixels", "hybrid")
+        self._use_cloth = observation_mode in ("state", "hybrid")
+        start_app(headless, cameras=self._use_image)
+        import torch
+        from isaac.lab_scene import SceneEnv, make_cfg
+        self._torch = torch
+
         self.control_dt = control_dt
         self.max_episode_steps = max_episode_steps
         self.n_substeps = int(round(control_dt / PHYSICS_DT))
-        self.settle_substeps = int(round(SETTLE_STEPS * ARM_TIMESTEP / PHYSICS_DT))
+        self.settle_steps = int(round(SETTLE_STEPS * ARM_TIMESTEP / control_dt))
         self.grasp_corners = dict(GRASP_CORNERS if grasp_corners is None else grasp_corners)
         self.grasp_radius = grasp_radius
         self.prefixes = ["left_", "right_"]
         self.action_mode = "joint_delta"
         self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(14,), dtype=np.float32)
-
-        self.observation_mode = observation_mode
-        self.image_size = image_size
         self.camera_names = ["main"]
         self.n_cloth_samples = n_cloth_samples
         self.n_tasks = n_tasks
-        self._use_image = observation_mode in ("pixels", "hybrid")
-        self._use_cloth = observation_mode in ("state", "hybrid")
 
         per_arm = len(ARM_JOINTS) * 2 + 1 + 7 + 6 + 1
         P = per_arm * len(self.prefixes)
@@ -186,13 +197,20 @@ class IsaacClothFoldEnv(gym.Env):
         n_vert = CLOTH_COUNT * CLOTH_COUNT
         self._corner_idx = [0, CLOTH_COUNT - 1, (CLOTH_COUNT - 1) * CLOTH_COUNT, n_vert - 1]
         self._sample_idx = np.linspace(0, n_vert - 1, self.n_cloth_samples).astype(int)
+        self._grid = grid_particles(CLOTH_SUBDIV)
         self.weld_mask = {p: None for p in self.prefixes}
 
-        self._build_scene()
+        cfg = make_cfg(PHYSICS_DT, self.n_substeps, image_size if self._use_image else None)
+        self.lab = SceneEnv(cfg, CLOTH_CENTER)
+        self.arms = self.lab.arms
+        left = self.arms["left_"]
+        self._dof_limits = _npy(left.data.soft_joint_pos_limits[0, self.lab.joint_ids["left_"]])   # (6, 2), both arms
+        self._particles = self.lab.cloth_rest.copy()
+        self._kit_ticked = time.time()
+        self._particle_vel = np.zeros_like(self._particles)
 
-        self._joint_targets = {p: np.zeros(6) for p in self.prefixes}
+        self._joint_targets = {p: self._home() for p in self.prefixes}
         self._gripper_closed = {p: False for p in self.prefixes}
-        self._pinned = {p: {} for p in self.prefixes}      # vertex index -> offset in gripper frame
         self._step_count = 0
         self._task_id = 0
         self._goal_corners = np.zeros((4, 3))
@@ -201,166 +219,71 @@ class IsaacClothFoldEnv(gym.Env):
         self._action_clipped = False
         self._domain_params = {}
 
-    # ---- scene ----
-    def _build_scene(self):
-        self.world = World(stage_units_in_meters=1.0, physics_dt=PHYSICS_DT, rendering_dt=PHYSICS_DT,
-                           backend="torch", device=DEVICE)
-        self.world.scene.add(GroundPlane("/World/floor", name="floor", size=FLOOR_SIZE, color=np.array(FLOOR_COLOR)))
-        self.world.scene.add(FixedCuboid("/World/table", name="table",
-                                         position=np.array([0.0, 0.0, TABLE_TOP_Z / 2.0]),
-                                         scale=np.array([TABLE_SIZE, TABLE_SIZE, TABLE_TOP_Z]),
-                                         color=np.array([0.55, 0.4, 0.25])))
-        self._build_cloth()
-        self.arms = {}
-        self.gripper_links = {}
-        mjcf = ensure_so101_mjcf()
-        site_pos, site_quat = gripperframe_offset(mjcf)
-        self._site_pos = np.array(site_pos)
-        self._site_quat = np.array(site_quat)
-        for prefix, base in (("left_", ARM_BASE_LEFT), ("right_", ARM_BASE_RIGHT)):
-            self._import_arm(mjcf, ARM_PRIMS[prefix], base)
-            view = Articulation(ARM_PRIMS[prefix] + "/base", name=prefix + "arm")
-            self.world.scene.add(view)
-            self.arms[prefix] = view
-            link = RigidPrim(ARM_PRIMS[prefix] + "/base/gripper", name=prefix + "gripper_link")
-            self.world.scene.add(link)
-            self.gripper_links[prefix] = link
-        self._fix_physics_scene()
-        if self._use_image:
-            self._build_lights()
-            self._build_camera()
-        self.world.reset()
-        # proprio slices joints by position, so the DOF order must be MuJoCo's
-        assert list(self.arms["left_"].dof_names) == ARM_JOINTS + [GRIPPER_JOINT], self.arms["left_"].dof_names
-        self._dof_limits = _npy(self.arms["left_"].get_dof_limits())[0]     # (6, 2), same model for both arms
-        self._cloth_rest = _npy(self.cloth.get_world_positions())[0].copy()
-        self._rest_masses = _npy(self.cloth._physics_view.get_masses()).copy()
-
-    def _fix_physics_scene(self):
-        # the MJCF importer adds a second PhysicsScene without GPU dynamics, which the particle cloth needs
-        context = self.world.get_physics_context()
-        keep = context.prim_path
-        stage = self.world.stage
-        for prim in list(stage.Traverse()):
-            if prim.IsA(UsdPhysics.Scene) and prim.GetPath().pathString != keep:
-                stage.RemovePrim(prim.GetPath())
-        context.enable_gpu_dynamics(True)
-        context.set_broadphase_type("GPU")
-
-    def _build_cloth(self):
-        stage = self.world.stage
-        points, faces = cloth_grid_mesh()
-        mesh = UsdGeom.Mesh.Define(stage, "/World/cloth")
-        mesh.GetPointsAttr().Set([Gf.Vec3f(*p) for p in points])
-        mesh.GetFaceVertexIndicesAttr().Set(faces)
-        mesh.GetFaceVertexCountsAttr().Set([3] * (len(faces) // 3))
-        mesh.GetDisplayColorAttr().Set([Gf.Vec3f(0.8, 0.2, 0.2)])
-        mesh.GetDoubleSidedAttr().Set(True)
-        mesh.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, TABLE_TOP_Z + CLOTH_RADIUS + 0.001))
-        system = SingleParticleSystem("/World/particle_system",
-                                      particle_contact_offset=PARTICLE_CONTACT_OFFSET,
-                                      contact_offset=PARTICLE_CONTACT_OFFSET,
-                                      rest_offset=PARTICLE_REST_OFFSET,
-                                      solid_rest_offset=PARTICLE_REST_OFFSET,
-                                      fluid_rest_offset=PARTICLE_REST_OFFSET * 0.6)
-        material = ParticleMaterial("/World/particle_material", friction=CLOTH_FRICTION)
-        SingleClothPrim("/World/cloth", system, material,
-                        particle_mass=CLOTH_MASS / (CLOTH_COUNT * CLOTH_COUNT), self_collision=False,
-                        stretch_stiffness=CLOTH_STRETCH_STIFFNESS, bend_stiffness=CLOTH_BEND_STIFFNESS,
-                        shear_stiffness=CLOTH_SHEAR_STIFFNESS, spring_damping=CLOTH_SPRING_DAMPING)
-        self.cloth = ClothPrim("/World/cloth", name="cloth")
-        self.world.scene.add(self.cloth)
-
-    def _import_arm(self, mjcf, prim_path, base_pos):
-        ok, cfg = omni.kit.commands.execute("MJCFCreateImportConfig")
-        cfg.set_fix_base(True)
-        cfg.set_make_default_prim(False)
-        cfg.set_import_sites(True)
-        cfg.set_self_collision(False)
-        omni.kit.commands.execute("MJCFCreateAsset", mjcf_path=mjcf, import_config=cfg, prim_path=prim_path)
-        SingleXFormPrim(prim_path).set_world_pose(np.array(base_pos), np.array(ARM_BASE_QUAT))
-        stage = self.world.stage
-        for name in ARM_JOINTS + [GRIPPER_JOINT]:
-            prim = stage.GetPrimAtPath(prim_path + "/joints/" + name)
-            drive = UsdPhysics.DriveAPI.Apply(prim, "angular")
-            drive.GetTypeAttr().Set("force")
-            drive.GetStiffnessAttr().Set(DRIVE_STIFFNESS)
-            drive.GetDampingAttr().Set(DRIVE_DAMPING)
-            drive.GetMaxForceAttr().Set(DRIVE_MAX_FORCE)
-            drive.GetTargetPositionAttr().Set(0.0)
-
-    def _build_lights(self):
-        stage = self.world.stage
-        dome = UsdLux.DomeLight.Define(stage, "/World/ambient_light")
-        dome.CreateIntensityAttr(LIGHT_INTENSITY * HEADLIGHT_AMBIENT)
-        head_dir = np.array(CAMERA_TARGET) - np.array(CAMERA_POS)
-        lights = list(LIGHTS) + [(head_dir, HEADLIGHT_DIFFUSE)]
-        for i, (direction, diffuse) in enumerate(lights):
-            light = UsdLux.DistantLight.Define(stage, f"/World/light_{i}")
-            light.CreateIntensityAttr(LIGHT_INTENSITY * diffuse)
-            w, x, y, z = _quat_facing(direction)
-            UsdGeom.Xformable(light).AddOrientOp().Set(Gf.Quatf(float(w), Gf.Vec3f(float(x), float(y), float(z))))
-
-    def _build_camera(self):
-        H, W = self.image_size
-        right, up = camera_axes(CAMERA_POS, CAMERA_TARGET)
-        forward = np.cross(up, right)
-        # Isaac's "world" camera axes put +X forward; the roll below makes image-up equal MuJoCo's camera up
-        R = np.column_stack([forward, -up, -right])
-        self.camera = Camera("/World/main_camera", name="main_camera", resolution=(W, H))
-        self.camera.set_world_pose(np.array(CAMERA_POS), _quat_from_matrix(R), camera_axes="world")
-        self.camera.initialize()                              # creates the render product the setters below need
-        aperture = 20.955
-        self.camera.set_horizontal_aperture(aperture)
-        self.camera.set_vertical_aperture(aperture * H / W)
-        self.camera.set_focal_length((aperture * H / W) / (2.0 * np.tan(np.radians(CAMERA_FOVY_DEG) / 2.0)))
-        self.camera.set_clipping_range(CAMERA_CLIP[0], CAMERA_CLIP[1])
-        self.camera.add_distance_to_image_plane_to_frame()
+    @staticmethod
+    def _home():
+        q = np.zeros(6)
+        q[5] = GRIPPER_OPEN
+        return q
 
     # ---- state readers ----
+    def _refresh_cloth(self):
+        # particle velocities as the mean over the last control step (the CPU device has no particle velocity view)
+        positions = self.lab.particle_positions()
+        self._particle_vel = (positions - self._particles) / self.control_dt
+        self._particles = positions
+
+    def _particle_positions(self):
+        return self._particles
+
     def cloth_positions(self):
-        return _npy(self.cloth.get_world_positions())[0]
+        # the MuJoCo grid's 121 vertices, picked out of the denser simulated mesh
+        return self._particles[self._grid]
 
     def cloth_velocities(self):
-        return _npy(self.cloth.get_velocities())[0]
+        return self._particle_vel[self._grid]
 
     def corner_positions(self):
         return self.cloth_positions()[self._corner_idx]
 
+    def _gripper_link(self, prefix):
+        data = self.arms[prefix].data
+        b = self.lab.gripper_body[prefix]
+        return data, b, _npy(data.body_link_pos_w[0, b]), _matrix_from_quat(_npy(data.body_link_quat_w[0, b]))
+
     def gripper_pose(self, prefix):
-        # gripperframe site = gripper link pose composed with the MJCF site offset; the link pose comes
-        # from the physics view because the GPU pipeline does not write link transforms back to USD.
-        # The quaternion goes through a rotation matrix so its sign follows mju_mat2Quat, as in MuJoCo's proprio.
-        link_pos, link_quat = self.gripper_links[prefix].get_world_poses()
-        link_pos = _npy(link_pos)[0]
-        link_R = _matrix_from_quat(_npy(link_quat)[0])
-        pos = link_pos + link_R @ self._site_pos
-        quat = _quat_from_matrix(link_R @ _matrix_from_quat(self._site_quat))
+        # gripperframe site = gripper link pose composed with the site offset. The quaternion goes through a
+        # rotation matrix so its sign follows mju_mat2Quat, as in MuJoCo's proprio.
+        _, _, link_pos, link_R = self._gripper_link(prefix)
+        pos = link_pos + link_R @ GRIPPERFRAME_POS
+        quat = _quat_from_matrix(link_R @ _matrix_from_quat(GRIPPERFRAME_QUAT))
         return pos, quat
 
     def gripper_velocity(self, prefix):
-        # [angular(3), linear(3)] of the gripperframe site in world axes, mj_objectVelocity(flg_local=0)'s layout.
-        # PhysX reports the link's centre-of-mass velocity, so shift the linear part to the site.
-        link = self.gripper_links[prefix]
-        lin = _npy(link.get_linear_velocities()).reshape(-1, 3)[0]
-        ang = _npy(link.get_angular_velocities()).reshape(-1, 3)[0]
-        link_pos, link_quat = link.get_world_poses()
-        com_local = _npy(link.get_coms()[0]).reshape(-1, 3)[0]
-        com = _npy(link_pos)[0] + _matrix_from_quat(_npy(link_quat)[0]) @ com_local
-        site = self.gripper_position(prefix)
-        return np.concatenate([ang, lin + np.cross(ang, site - com)])
+        # [angular(3), linear(3)] of the gripperframe site in world axes, mj_objectVelocity(flg_local=0)'s layout
+        data, b, link_pos, _ = self._gripper_link(prefix)
+        lin = _npy(data.body_link_lin_vel_w[0, b])
+        ang = _npy(data.body_link_ang_vel_w[0, b])
+        return np.concatenate([ang, lin + np.cross(ang, self.gripper_position(prefix) - link_pos)])
 
     def gripper_position(self, prefix):
         return self.gripper_pose(prefix)[0]
 
     def joint_positions(self, prefix):
-        return _npy(self.arms[prefix].get_joint_positions())[0]
+        return _npy(self.arms[prefix].data.joint_pos[0, self.lab.joint_ids[prefix]])
 
     def joint_velocities(self, prefix):
-        return _npy(self.arms[prefix].get_joint_velocities())[0]
+        return _npy(self.arms[prefix].data.joint_vel[0, self.lab.joint_ids[prefix]])
 
     def grasp_active(self, prefix):
-        return len(self._pinned[prefix]) > 0
+        # nothing attaches the cloth, so this reports what the wrappers ask: the gripper is closed with one of its
+        # corners (grasp_corners, filtered by weld_mask) within grasp_radius of the gripper frame
+        if not self._gripper_closed[prefix]:
+            return False
+        pos = self.gripper_position(prefix)
+        allc = self.cloth_positions()
+        allowed = self.weld_mask.get(prefix)
+        return any(np.linalg.norm(allc[vtx] - pos) < self.grasp_radius for vtx in self.grasp_corners[prefix]
+                   if allowed is None or vtx in allowed)
 
     # ---- task helpers (mirror ClothFoldEnv) ----
     # ponytail: duplicated from sim_main; extract shared fold-task functions when a second task variant lands
@@ -374,12 +297,12 @@ class IsaacClothFoldEnv(gym.Env):
         return float(np.clip(1.0 - self._corner_dists() / self._goal_scale, 0.0, 1.0).mean())
 
     def _failed(self):
-        pos = self.cloth_positions()
+        pos = self._particle_positions()
         if not np.all(np.isfinite(pos)):
             return True
         if np.any(np.abs(pos[:, :2]) > WORKSPACE_XY):
             return True
-        speed = np.linalg.norm(self.cloth_velocities(), axis=1)
+        speed = np.linalg.norm(self._particle_vel, axis=1)
         if np.max(speed) > CLOTH_SPEED_LIMIT:
             return True
         return False
@@ -405,10 +328,10 @@ class IsaacClothFoldEnv(gym.Env):
 
     # ---- observations ----
     def _render_image(self):
-        self.world.render()
-        frame = self.camera.get_current_frame()
-        rgb = np.asarray(self.camera.get_rgba())[:, :, :3].astype(np.uint8)
-        raw = np.asarray(frame["distance_to_image_plane"], dtype=np.float32)
+        # the scene renders the camera once per control step
+        out = self.lab.camera.data.output
+        rgb = _npy(out["rgb"][0])[:, :, :3].astype(np.uint8)
+        raw = _npy(out["distance_to_image_plane"][0])[:, :, 0].astype(np.float32)
         raw = np.where(np.isfinite(raw), raw, DEPTH_MAX + 1.0)
         depth = sensor_depth(raw, self._pixel_angle, self.np_random)
         return rgb, depth[:, :, None].astype(np.float32)
@@ -452,9 +375,6 @@ class IsaacClothFoldEnv(gym.Env):
         return obs
 
     # ---- control ----
-    def _write_targets(self, prefix):
-        self.arms[prefix].set_joint_position_targets(_dev(self._joint_targets[prefix][None, :]))
-
     def apply_joint_delta(self, prefix, deltas):
         q = self.joint_positions(prefix)
         for k in range(len(ARM_JOINTS)):
@@ -466,98 +386,51 @@ class IsaacClothFoldEnv(gym.Env):
             if target > high:
                 target = high
             self._joint_targets[prefix][k] = target
-        self._write_targets(prefix)
 
     def set_gripper(self, prefix, command):
-        # hysteresis: < -0.3 close, > 0.3 open, else hold current state
+        # hysteresis: < -0.3 close, > 0.3 open, else hold current state. Nothing attaches the cloth: as in LeHome,
+        # the jaws hold it by friction and adhesion only.
         if command < -0.3:
             self._gripper_closed[prefix] = True
         elif command > 0.3:
             self._gripper_closed[prefix] = False
-        if self._gripper_closed[prefix]:
-            self._joint_targets[prefix][5] = GRIPPER_CLOSED
-            self._try_pin(prefix)
-        else:
-            self._joint_targets[prefix][5] = GRIPPER_OPEN
-            self._unpin_all(prefix)
-        self._write_targets(prefix)
+        self._joint_targets[prefix][5] = GRIPPER_CLOSED if self._gripper_closed[prefix] else GRIPPER_OPEN
 
-    def _try_pin(self, prefix):
-        pos, quat = self.gripper_pose(prefix)
-        R = _matrix_from_quat(quat)
-        allc = self.cloth_positions()
-        allowed = self.weld_mask.get(prefix)
-        for vtx in self.grasp_corners[prefix]:
-            if vtx in self._pinned[prefix]:
-                continue
-            if allowed is not None and vtx not in allowed:
-                continue
-            gap = float(np.linalg.norm(pos - allc[vtx]))
-            if gap < self.grasp_radius:
-                self._pinned[prefix][vtx] = R.T @ (allc[vtx] - pos)
-        self._apply_masses()
-
-    def _unpin_all(self, prefix):
-        if len(self._pinned[prefix]) == 0:
-            return
-        self._pinned[prefix] = {}
-        self._apply_masses()
-
-    def _apply_masses(self):
-        # ClothPrim.set_particle_masses is broken in Isaac Sim 4.5, so write the physics view directly.
-        masses = self._rest_masses.copy()
-        for prefix in self.prefixes:
-            for vtx in self._pinned[prefix]:
-                masses[0, vtx] = 0.0
-        self.cloth._physics_view.set_masses(_dev(masses), torch.arange(1, device=DEVICE))
-
-    def _drive_pins(self):
-        any_pinned = False
-        for prefix in self.prefixes:
-            if len(self._pinned[prefix]) > 0:
-                any_pinned = True
-        if not any_pinned:
-            return
-        allc = self.cloth_positions()
-        for prefix in self.prefixes:
-            if len(self._pinned[prefix]) == 0:
-                continue
-            pos, quat = self.gripper_pose(prefix)
-            R = _matrix_from_quat(quat)
-            for vtx, offset in self._pinned[prefix].items():
-                allc[vtx] = pos + R @ offset
-        self.cloth.set_world_positions(_dev(allc[None, :, :]))
-
-    def _substep(self):
-        self._drive_pins()
-        self.world.step(render=False)
+    def _advance(self):
+        # one control step: the scene holds both arms' joint targets for n_substeps physics steps
+        targets = np.concatenate([self._joint_targets["left_"], self._joint_targets["right_"]])[None, :]
+        self.lab.step(self._torch.as_tensor(targets, dtype=self._torch.float32, device=self.lab.device))
+        if not self._use_image and time.time() - self._kit_ticked > KIT_TICK_PERIOD_S:
+            # state mode only steps physics, which never ticks Kit's main loop, and Kit's hang detector aborts the app
+            # after 120 s without a tick. Tick it the way IsaacLab's SimulationContext.render does when it renders
+            # nothing, with simulation playback paused so the update doesn't step physics. (Image modes render.)
+            self.lab.sim.set_setting("/app/player/playSimulations", False)
+            _app.update()
+            self.lab.sim.set_setting("/app/player/playSimulations", True)
+            self._kit_ticked = time.time()
+        self._refresh_cloth()
 
     # ---- gym API ----
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         opts = options or {}
         self._domain_params = {}
-        self.world.reset()
+        self.lab.reset()
         for prefix in self.prefixes:
-            self._pinned[prefix] = {}
             self._gripper_closed[prefix] = False
-            self._joint_targets[prefix] = np.zeros(6)
-            self._joint_targets[prefix][5] = GRIPPER_OPEN
-            self._write_targets(prefix)
-        self._apply_masses()
+            self._joint_targets[prefix] = self._home()
 
         offset = np.zeros(2)
         if "cloth_pose" in opts:
             pose = np.asarray(opts["cloth_pose"], dtype=float).ravel()
             offset = pose[:2]
-        positions = self._cloth_rest.copy()
-        positions[:, 0] += offset[0]
-        positions[:, 1] += offset[1]
-        self.cloth.set_world_positions(_dev(positions[None, :, :]))
-        self.cloth.set_velocities(_dev(np.zeros((1,) + positions.shape)))
+        tilt = self.np_random.uniform(-DROP_TILT_DEG, DROP_TILT_DEG, size=2)
+        self.lab.reset_cloth(offset, DROP_HEIGHT, (tilt[0], tilt[1], 0.0))
+        self._particles = self.lab.particle_positions()
+        self._particle_vel = np.zeros_like(self._particles)
 
-        for _ in range(self.settle_substeps):
-            self._substep()
+        for _ in range(self.settle_steps):
+            self._advance()
 
         self._task_id = int(opts.get("task", self.np_random.integers(self.n_tasks)))
         corners0 = self.corner_positions().copy()
@@ -588,8 +461,7 @@ class IsaacClothFoldEnv(gym.Env):
         self.set_gripper("right_", float(clipped[13]))
         self.apply_joint_delta("left_", clipped[0:5])
         self.apply_joint_delta("right_", clipped[7:12])
-        for _ in range(self.n_substeps):
-            self._substep()
+        self._advance()
 
         self._step_count += 1
         reward, terms = self._reward()
@@ -604,6 +476,7 @@ class IsaacClothFoldEnv(gym.Env):
         return self._get_obs(), reward, terminated, truncated, self._step_info(terms, reason)
 
     def close(self):
+        self.lab.close()
         if _app is not None:
             _app.close()
 

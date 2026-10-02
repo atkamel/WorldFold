@@ -17,6 +17,7 @@ randomization) for the Cartesian targets the expert uses, including its
 stage-0 OVERSHOOT. Re-run `--solve` and paste its output if the scene changes.
 
     python -m cloth_fold_rl.scripted_half_fold --episodes 20          # evaluate (MuJoCo)
+    modal run isaac/modal_isaac.py::scripted --episodes 10            # evaluate (Isaac Sim 5.1, Modal L40S)
     python -m cloth_fold_rl.scripted_half_fold --solve                # regenerate WAYPOINTS
 """
 
@@ -235,8 +236,13 @@ def main():
     ap.add_argument("--seed-base", type=int, default=0)
     ap.add_argument("--no-randomization", action="store_true", help="disable mass/friction/damping DR")
     ap.add_argument("--solve", action="store_true", help="re-solve WAYPOINTS by IK and print them")
+    ap.add_argument("--isaac", action="store_true", help="evaluate on Isaac Sim (isaac.isaac_env.make_half_fold_env)")
     args = ap.parse_args()
-    env = HalfFoldEnv()
+    if args.isaac:
+        from isaac.isaac_env import make_half_fold_env
+        env = make_half_fold_env()
+    else:
+        env = HalfFoldEnv()
     if args.solve:
         waypoints, schedule = solve_waypoints(env)
         print(format_schedule(schedule))

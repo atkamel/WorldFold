@@ -1,10 +1,8 @@
-"""Runnable check for IsaacClothFoldEnv. Needs Isaac Sim, so it runs on the cluster:
+"""Runnable check for IsaacClothFoldEnv on Isaac Sim 5.1; on Modal: modal run isaac/modal_isaac.py
 
-    ./python.sh /path/to/WorldFold/isaac/smoke_test.py --mode state
-    ./python.sh /path/to/WorldFold/isaac/smoke_test.py --mode hybrid
-
-Exits non-zero if the observation contract drifts, the weld cheat fails to
-grasp and lift the corner, or the fold / half-fold wrappers cannot run on the env.
+Exits non-zero if the observation contract drifts, a friction pinch fails to grasp, lift and release the near-left
+corner, or the fold / half-fold wrappers cannot run on the env. State mode runs the physics checks; hybrid mode
+checks the contract, throughput and the RGB/depth frame.
 """
 
 import argparse
@@ -17,43 +15,15 @@ import numpy as np
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from isaac.isaac_env import IsaacClothFoldEnv, _dev, _npy   # noqa: E402
-from mujuco.cloth_params import JOINT_DELTA_SCALE, check_contract   # noqa: E402
+from isaac.isaac_env import IsaacClothFoldEnv   # noqa: E402
+from mujuco.cloth_params import JOINT_DELTA_SCALE, TABLE_TOP_Z, check_contract   # noqa: E402
 
-MOVING_CORNER = 1          # cloth_10, the left arm's grasp corner
-ANCHOR_CORNERS = [0, 2]    # cloth_0 and cloth_110 must stay put
-LIFT_HEIGHT = 0.08
-
-
-def teleport_and_measure(env, q5, target):
-    q = np.zeros(6, dtype=np.float32)
-    q[:5] = q5
-    arm = env.arms["left_"]
-    arm.set_joint_positions(_dev(q[None, :]))
-    arm.set_joint_velocities(_dev(np.zeros((1, 6))))
-    arm.set_joint_position_targets(_dev(q[None, :]))
-    env.world.step(render=False)
-    return float(np.linalg.norm(env.gripper_position("left_") - target))
-
-
-def search_joint_config(env, target, rng, n_random=300, n_refine=300):
-    """Random search + hill climb over the 5 arm joints for a config that reaches target."""
-    limits = env._dof_limits[:5]
-    best_q = None
-    best_d = np.inf
-    for _ in range(n_random):
-        q = rng.uniform(limits[:, 0], limits[:, 1])
-        d = teleport_and_measure(env, q, target)
-        if d < best_d:
-            best_d = d
-            best_q = q
-    for _ in range(n_refine):
-        q = np.clip(best_q + rng.normal(0.0, 0.08, size=5), limits[:, 0], limits[:, 1])
-        d = teleport_and_measure(env, q, target)
-        if d < best_d:
-            best_d = d
-            best_q = q
-    return best_q, best_d
+MOVING_CORNER = 0          # cloth_0, the left arm's near corner: inside its top-down reach
+OTHER_CORNERS = [1, 2, 3]
+PINCH_HEIGHT = 0.010       # fixed fingertip above the table: its pad rests on the table
+LIFT_HEIGHT = 0.10
+INWARD = np.array([1.0, 1.0, 0.0]) / np.sqrt(2)     # jaw opens across the corner, toward the cloth centre
+IK_SEED = [0.5717, -0.3365, 0.8595, 1.0478, -0.165]  # left arm above cloth_0, fingers down
 
 
 def drive_to(env, q_goal, grip, n_steps):
@@ -67,37 +37,40 @@ def drive_to(env, q_goal, grip, n_steps):
 
 
 def grasp_and_lift(env):
-    rng = np.random.default_rng(0)
+    from isaac.pinch import PinchIK
+    ik = PinchIK()
+    env.grasp_corners = {"left_": (0,), "right_": (120,)}
     env.reset(seed=0)
-    corner = env.corner_positions()[MOVING_CORNER]
-    q_reach, d_reach = search_joint_config(env, corner, rng)
-    q_lift, d_lift = search_joint_config(env, corner + np.array([0.0, 0.0, LIFT_HEIGHT]), rng)
-    print(f"IK search: reach err {d_reach:.4f} m, lift err {d_lift:.4f} m")
-    assert d_reach < env.grasp_radius, "search could not bring the gripper within grasp radius of the corner"
+    corners0 = env.corner_positions().copy()
+    corner = corners0[MOVING_CORNER]
+    tip = np.array([corner[0], corner[1], TABLE_TOP_Z + PINCH_HEIGHT]) - 0.005 * INWARD
+    q_above, e_above = ik.solve("left_", tip + [0.0, 0.0, 0.06], INWARD, IK_SEED)
+    q_pinch, e_pinch = ik.solve("left_", tip, INWARD, q_above)
+    q_lift, e_lift = ik.solve("left_", tip + [0.0, 0.0, LIFT_HEIGHT], INWARD, q_pinch)
+    print(f"pinch IK err: above {e_above * 1000:.1f} mm, pinch {e_pinch * 1000:.1f} mm, lift {e_lift * 1000:.1f} mm")
+    assert max(e_above, e_pinch, e_lift) < 0.002, "IK could not reach the pinch poses"
 
-    env.reset(seed=0)
-    anchors0 = env.corner_positions()[ANCHOR_CORNERS].copy()
-    corner0 = env.corner_positions()[MOVING_CORNER].copy()
-    def anchor_drift():
-        return float(np.linalg.norm(env.corner_positions()[ANCHOR_CORNERS] - anchors0, axis=1).max())
+    def drift():
+        return float(np.linalg.norm(env.corner_positions()[OTHER_CORNERS] - corners0[OTHER_CORNERS], axis=1).max())
 
-    drive_to(env, q_reach, grip=1.0, n_steps=80)
-    gap = float(np.linalg.norm(env.gripper_position("left_") - env.corner_positions()[MOVING_CORNER]))
-    print(f"approach: gripper to corner {gap:.4f} m, anchor drift {anchor_drift():.4f} m")
-    drive_to(env, q_reach, grip=-1.0, n_steps=3)
-    print(f"close: grasp {env.grasp_active('left_')}, anchor drift {anchor_drift():.4f} m")
-    assert env.grasp_active("left_"), f"gripper closed {gap:.4f} m from the corner but no pin engaged"
+    drive_to(env, q_above, grip=1.0, n_steps=35)
+    drive_to(env, q_pinch, grip=1.0, n_steps=15)
+    gap = float(np.linalg.norm(env.gripper_position("left_") - tip))
+    drive_to(env, q_pinch, grip=-1.0, n_steps=12)
+    print(f"pinch: fingertip {gap * 1000:.1f} mm from its target, grasp {env.grasp_active('left_')}")
+    assert env.grasp_active("left_"), "gripper closed but the corner is not between the jaws"
 
-    drive_to(env, q_lift, grip=-1.0, n_steps=60)
-    corner1 = env.corner_positions()[MOVING_CORNER]
-    rise = corner1[2] - corner0[2]
-    drift = anchor_drift()
-    print(f"lift: corner rise {rise:.4f} m, anchor drift {drift:.4f} m, grasp {env.grasp_active('left_')}")
-    assert rise > 0.03, "pinned corner did not lift with the gripper"
-    assert drift < 0.10, "anchor corners were dragged during the lift (fold wrapper terminates at 0.20)"
+    drive_to(env, q_lift, grip=-1.0, n_steps=30)
+    lifted = env.corner_positions()[MOVING_CORNER, 2]
+    rise = lifted - corners0[MOVING_CORNER, 2]
+    print(f"lift: corner rise {rise:.4f} m, other corners drift {drift():.4f} m")
+    assert rise > 0.05, "the friction pinch did not lift the corner"
+    assert drift() < 0.10, "the other corners were dragged during the lift (fold wrapper terminates at 0.20)"
 
     drive_to(env, q_lift, grip=1.0, n_steps=20)
-    assert not env.grasp_active("left_"), "opening the gripper did not release the pin"
+    dropped = lifted - env.corner_positions()[MOVING_CORNER, 2]
+    print(f"release: corner fell {dropped:.4f} m")
+    assert dropped > 0.03, "opening the gripper did not release the corner"
     print("grasp/lift ok")
 
 
@@ -148,9 +121,10 @@ def main():
     args = parser.parse_args()
     env = IsaacClothFoldEnv(observation_mode=args.mode)
     check_contract(env)
-    grasp_and_lift(env)
-    wrapper_runs(env)
-    half_fold_runs(env)
+    if args.mode == "state":     # physics checks; hybrid only adds rendering, checked below
+        grasp_and_lift(env)
+        wrapper_runs(env)
+        half_fold_runs(env)
     throughput(env)
     if args.mode == "hybrid":
         obs, _ = env.reset(seed=2)
@@ -170,4 +144,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException:
+        # Isaac Sim 5.1's Kit logs an uncaught exception and still exits 0, so exit non-zero ourselves
+        import os
+        import traceback
+        traceback.print_exc()
+        os._exit(1)
