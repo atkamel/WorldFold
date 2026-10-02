@@ -32,7 +32,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mujuco"))
 
-from sim_main import ClothFoldEnv, StateOnlyWrapper, TABLE_TOP_Z  # noqa: E402
+from cloth_params import StateOnlyWrapper, TABLE_TOP_Z  # noqa: E402
 
 # corner ordering inside ClothFoldEnv._corner_ids
 IDX_CLOTH_0, IDX_CLOTH_10, IDX_CLOTH_110, IDX_CLOTH_120 = 0, 1, 2, 3
@@ -63,11 +63,14 @@ class SingleCornerFoldEnv(gym.Wrapper):
 
     def __init__(self, max_episode_steps=200, single_arm=True, seed=None,
                  cloth_jitter=CLOTH_JITTER, base_env=None):
-        env = base_env if base_env is not None else ClothFoldEnv(
-            observation_mode="state",
-            action_mode="joint_delta",
-            max_episode_steps=max_episode_steps,
-        )
+        if base_env is None:
+            from sim_main import ClothFoldEnv   # mujoco only where the default env is used
+            base_env = ClothFoldEnv(
+                observation_mode="state",
+                action_mode="joint_delta",
+                max_episode_steps=max_episode_steps,
+            )
+        env = base_env
         super().__init__(env)
         self.single_arm = single_arm
         # ClothFoldEnv.reset only consumes np_random when domain_randomization is
@@ -91,13 +94,13 @@ class SingleCornerFoldEnv(gym.Wrapper):
     # ---- geometry helpers -------------------------------------------------
 
     def _corners(self):
-        return self.env.data.xpos[self.env._corner_ids].copy()
+        return self.env.corner_positions()
 
     def _gripper_pos(self):
-        return self.env.data.site_xpos[self.env._site_id["left_"]].copy()
+        return self.env.gripper_position("left_")
 
     def _moving_corner(self):
-        return self.env.data.xpos[self.env._corner_ids[MOVING_CORNER]].copy()
+        return self._corners()[MOVING_CORNER]
 
     def _corner_to_goal(self):
         return float(np.linalg.norm(self._moving_corner() - self._goal))
