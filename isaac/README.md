@@ -13,7 +13,8 @@ dynamics, LeHome's SO101 robot, and LeHome's particle-cloth machinery.
 pip install modal && modal setup                      # once
 modal run isaac/modal_isaac.py                        # smoke test, state and hybrid in parallel, L40S
 modal run isaac/modal_isaac.py::half_fold --episodes 3   # scripted friction half fold, a video per episode
-modal volume get worldfold-isaac smoke/<stamp> .
+modal volume get worldfold-isaac smoke/<stamp> .      # logs
+modal volume get worldfold-isaac half_fold/<stamp> .  # half fold videos
 ```
 
 The image is LeHome's locked `lehome-challenge` env (Isaac Sim 5.1.0, Python
@@ -63,10 +64,15 @@ From LeHome:
   cloth is read and reset through its USD points, as LeHome does.
 
 From WorldFold (`mujuco/cloth_params.py`): the table height, the cloth's size,
-the arm base poses and the `main` camera. Isaac-only: the cloth sits 14 cm closer
-to the arms (`CLOTH_CENTER`), so the half fold's far corners are inside the
-reach where the gripper can point straight down at the table, and the table is
-0.70 m to hold it and its reset jitter.
+the arm base poses and the `main` camera. Isaac-only: the cloth sits 13.5 cm
+closer to the arms (`CLOTH_CENTER`), the half fold's reset jitter is ±1 cm
+(`CLOTH_JITTER`; MuJoCo uses ±2.5 cm), and the table is 0.70 m. Pointing
+straight down, the gripper reaches the table between about 8 and 32 cm from its
+arm's base, and the 30 cm fold spans that whole range: far corners 32 cm out,
+near corners 7 cm out. More jitter pushes one end out of reach. Tilting the
+fingers reaches further (39 cm at 35 deg), but the 5-joint arm can only lean
+its fingers along the line out from its base, so a tilted pinch has to sweep
+sideways along the cloth's edge, and that sweep didn't hold the cloth.
 
 **Reset** drops the cloth LeHome-style: `DROP_HEIGHT` (5 cm) above its resting
 height with a random roll and pitch of up to `DROP_TILT_DEG` (10 deg), seeded
@@ -87,13 +93,23 @@ wrappers ask: the gripper is commanded closed with one of its corners
 gripper frame.
 
 `isaac/pinch.py` solves top-down pinch poses (fingers down, jaw opening across
-the corner) with IK on LeHome's URDF; the arm reaches straight down to the table
-within about 32 cm of its base. `isaac/half_fold_demo.py` is a scripted two-arm
-half fold built on it: each arm pinches its far corner, lifts, carries it past
-the near corner and releases. Both grasps hold and carry the corners about 25 of
-their 30 cm (fold score about 0.6 to 0.8), but none of the first episodes meets
-`HalfFoldEnv`'s success test (both corners within 5 cm for 1 s): the cloth
-slides about 5 cm when the jaws close and springs back about 5 cm after release.
+the corner) with IK on LeHome's URDF. `isaac/half_fold_demo.py` is a scripted
+two-arm half fold built on it: each arm pinches its far corner, carries it along
+an arc over the fold line onto its near corner through IK waypoints about 2 cm
+apart, releases and backs off. The env moves each joint at most 0.05 rad per
+step from where it is, and the joints lag by different amounts, so the script
+waits at each waypoint until the joints arrive; with a fixed step count per
+pose the grippers wandered off the arc and swung toward the middle. The fold
+takes about 230 steps, so the demo runs 400-step episodes (`HalfFoldEnv`: 250).
+
+The demo scores the whole cloth (`fold_error`): an ideal half fold puts each
+far-half grid vertex on the start of its mirror image across the middle row and
+leaves the near half where it started. `HalfFoldEnv`'s own test only checks the
+two carried corners. Three episodes on Modal: fold score 0.40, 0.44 and 0.61
+(mean vertex error 4.9, 4.6 and 3.2 cm), one meeting `HalfFoldEnv`'s success
+test. None meets the demo's folded bar (mean under 2 cm, max under 5 cm): the
+near edge slides about 4.5 cm during the fold, and the folded edge sags short
+of the near edge between the two carried corners.
 
 ## Sensors
 

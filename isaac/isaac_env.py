@@ -23,9 +23,14 @@ from mujuco.cloth_params import (
 PHYSICS_DT              = 1.0 / 100.0         # LeHome steps at 1/90; 1/100 divides the 0.05 s control step
 TABLE_SIZE              = 0.70                # room for the moved cloth and its reset jitter
 CLOTH_SUBDIV            = 10                  # particles per grid gap: 101x101 at 3 mm, ~LeHome's garment particle count
-# cloth centre on the table, x y: 14 cm toward the arms, so the half fold's far corners (32 cm from each arm's
-# base) are inside the reach where the gripper can point straight down at the table (about 32 cm)
-CLOTH_CENTER            = (0.0, -0.14)
+# cloth centre on the table, x y: 13.5 cm toward the arms. Pointing straight down, the gripper reaches the table
+# between about 8 and 32 cm from its arm's base; this puts the half fold's far corners 32 cm out and its near corners
+# 7 cm out, the 30 cm fold spanning that whole range
+CLOTH_CENTER            = (0.0, -0.135)
+# HalfFoldEnv's reset offset of the cloth, +-m in x and y (MuJoCo: fold_env.CLOTH_JITTER, 2.5 cm). With the fold
+# spanning the whole straight-down reach, 2.5 cm pushes one end out of it; at 1 cm the scripted fold's IK still lands
+# every pinch within 4 mm and every place within 2 cm
+CLOTH_JITTER            = 0.01
 # LeHome's particle_garment_cfg.yaml, except: its particle_mass (10 g per particle) would make this 10,201-particle
 # sheet ~100 kg, so the sheet weighs CLOTH_MASS in total; its gravity_scale of 2 is undocumented, real gravity is 1;
 # its adhesion of 0.1 pulls the cloth onto every rigid surface it touches, the table included, and real cloth on a
@@ -491,4 +496,4 @@ def make_half_fold_env(observation_mode="state", seed=None, headless=True):
     from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS, HALF_FOLD_MAX_STEPS, HalfFoldEnv
     base = IsaacClothFoldEnv(observation_mode=observation_mode, max_episode_steps=HALF_FOLD_MAX_STEPS,
                              grasp_corners=GRASP_CORNERS, grasp_radius=GRASP_RADIUS, headless=headless)
-    return HalfFoldEnv(base_env=base, seed=seed)
+    return HalfFoldEnv(base_env=base, seed=seed, cloth_jitter=CLOTH_JITTER)

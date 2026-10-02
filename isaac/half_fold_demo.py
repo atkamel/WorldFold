@@ -1,9 +1,17 @@
 """Scripted two-arm half fold on Isaac with friction grasps (cloth_fold_rl.quarter_fold_env.HalfFoldEnv).
 
-Each arm pinches its far corner top-down (isaac.pinch, on the corner's actual position after the reset drop), lifts
-it, carries it OVERSHOOT past its goal (the start of the near corner on the same side) to cover spring-back, lowers
-it, releases and backs off, then both hold still for HalfFoldEnv's settle window. Joint targets are servoed through
-HalfFoldEnv's 12-dim action (per arm: 5 joint deltas, gripper).
+Each arm pinches its far corner top-down (isaac.pinch, on the corner's actual position after the reset drop), then
+carries it along an arc over the fold line onto the start of the near corner on the same side, through IK waypoints
+about 2 cm apart, each seeded from the last so the arm keeps one configuration. It releases, backs off, and both arms
+hold still for HalfFoldEnv's settle window. Joint targets are servoed through HalfFoldEnv's 12-dim action (per arm:
+5 joint deltas, gripper), each arm's joints scaled together so they arrive at once, and each pose held until every
+joint is within TRACK_TOL of it: the env sets a joint's target at most JOINT_DELTA_SCALE from where it is now, and
+the joints lag by different amounts, so a fixed step count lets the gripper wander off the planned path. Waypoints
+inside the arc only need WAYPOINT_TOL. A pose pressed against the table or the cloth may never get that close, so
+each segment's last pose gets POSE_SETTLE_STEPS more than its largest joint move needs, then the next one starts.
+
+The result is scored on the whole cloth (fold_error): an ideal half fold puts each far-half grid vertex on the start
+of its mirror image across the middle row and leaves the near half where it started.
 
     modal run isaac/modal_isaac.py::half_fold --episodes 3      # on Modal, with videos
 """
@@ -18,22 +26,38 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from mujuco.cloth_params import JOINT_DELTA_SCALE, TABLE_TOP_Z   # noqa: E402
+from mujuco.cloth_params import CLOTH_COUNT, JOINT_DELTA_SCALE, TABLE_TOP_Z   # noqa: E402
 
-OVERSHOOT = 0.03       # carry past the goal, along the carry direction
 PINCH_HEIGHT = 0.010   # fixed fingertip above the table at the pinch: its pad rests on the table
 PLACE_HEIGHT = 0.011
-LIFT_HEIGHT = 0.05
-# IK seeds above each far corner, fingers down
+ARC_HEIGHT = 0.12      # peak of the carry arc above the fold line; under the cloth's half length, so it never pulls
+ARC_WAYPOINTS = 20
+TRACK_TOL = 0.02       # rad
+WAYPOINT_TOL = 0.06    # rad
+POSE_SETTLE_STEPS = 8
+# episode length (steps of 0.05 s): HalfFoldEnv's 250 is about what the fold alone takes at the action's speed limit
+# (0.05 rad per step: ~60 steps from home to above the corner, ~95 along the arc), leaving no room to settle
+MAX_STEPS = 400
+FOLDED_MEAN = 0.02     # fold_error thresholds (m) for a folded cloth
+FOLDED_MAX = 0.05
+# IK seeds above each far corner
 SEED_Q = {"left_": [0.2614, 1.0654, -1.1908, 1.6581, -2.046], "right_": [-0.2619, 1.0622, -1.1853, 1.6581, 2.1429]}
-# (pose, gripper, dwell steps or None to servo until the slowest joint arrives)
-SCHEDULE = (("above", 1.0, None), ("pinch", 1.0, None), ("pinch", -1.0, 8), ("lift", -1.0, None),
-            ("carry", -1.0, None), ("place", -1.0, None), ("place", 1.0, 6), ("retreat", 1.0, None),
-            ("retreat", 1.0, 25))
+# (segment, gripper, dwell steps on its last pose, or None to servo through its poses)
+SCHEDULE = (("above", 1.0, None), ("pinch", 1.0, None), ("pinch", -1.0, 8), ("arc", -1.0, None),
+            ("arc", 1.0, 6), ("retreat", 1.0, None), ("retreat", 1.0, 25))
+
+
+def fold_error(start, now):
+    """xy distance (m) of each cloth grid vertex from where an ideal half fold puts it."""
+    n = CLOTH_COUNT
+    start, now = start.reshape(n, n, 3), now.reshape(n, n, 3)      # [x index, y index]
+    target = start.copy()
+    target[:, n // 2 + 1:] = start[:, :n // 2][:, ::-1]
+    return np.linalg.norm((now - target)[..., :2], axis=-1)
 
 
 def plan(env, ik):
-    """Joint targets per arm and pose, solved on the cloth as it lies now."""
+    """Joint targets per arm and segment, solved on the cloth as it lies now."""
     base = env.unwrapped
     center = base.cloth_positions().mean(axis=0)
     poses = {}
@@ -43,56 +67,86 @@ def plan(env, ik):
         goal = env.goal(move)
         jaw = np.r_[center[:2] - corner[:2], 0.0]
         jaw /= np.linalg.norm(jaw)
-        carry = np.r_[goal[:2] - corner[:2], 0.0]
-        carry /= np.linalg.norm(carry)
-        pinch = np.array([corner[0], corner[1], TABLE_TOP_Z + PINCH_HEIGHT]) - 0.005 * jaw
-        place = np.array([goal[0], goal[1], TABLE_TOP_Z + PLACE_HEIGHT]) - 0.005 * jaw + OVERSHOOT * carry
+        offset = -0.005 * jaw[:2]
+        pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], TABLE_TOP_Z + PINCH_HEIGHT])
+        # the held point's mirror image across the fold line, so the corner lands on the goal
+        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + PLACE_HEIGHT])
         q, poses[p] = SEED_Q[p], {}
-        # the fingers point straight down at the pinch and the place; lifting and carrying they may tilt a little
-        for name, target, weight in (("above", pinch + [0, 0, 0.04], 0.1), ("pinch", pinch, 0.1),
-                                     ("lift", pinch + [0, 0, LIFT_HEIGHT], 0.02),
-                                     ("carry", place + [0, 0, 0.045], 0.02), ("place", place, 0.05),
-                                     ("retreat", place + [0, 0, 0.05], 0.02)):
-            q, _ = ik.solve(p, target, jaw, q, orientation_weight=weight)
-            poses[p][name] = q
+        for name, target in (("above", pinch + [0, 0, 0.04]), ("pinch", pinch)):
+            q, _ = ik.solve(p, target, jaw, q)
+            poses[p][name] = [q]
+        # half an ellipse from the pinch to the place, rising ARC_HEIGHT over the fold line; along it the fingers may
+        # tilt a little to keep the position
+        poses[p]["arc"], poses[p]["arc_tips"] = [], []
+        for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
+            target = pinch + (place - pinch) * (1.0 - math.cos(math.pi * s)) / 2.0
+            target[2] = pinch[2] + (place[2] - pinch[2]) * s + ARC_HEIGHT * math.sin(math.pi * s)
+            q, _ = ik.solve(p, target, jaw, q, orientation_weight=0.05)
+            poses[p]["arc"].append(q)
+            poses[p]["arc_tips"].append(target)
+        q, _ = ik.solve(p, place + [0, 0, 0.05], jaw, q, orientation_weight=0.02)
+        poses[p]["retreat"] = [q]
     return poses
 
 
 def run_episode(env, ik, seed, frames=None):
     base = env.unwrapped
     env.reset(seed=seed)
+    start = base.cloth_positions().copy()
     poses = plan(env, ik)
-    prev = {p: base.joint_positions(p)[:5] for p in poses}
-    info = {}
+    info, done, steps, track, used = {}, False, 0, 0.0, {}
+
+    def step(target, grip):
+        nonlocal info, done, steps
+        action = np.zeros(12, dtype=np.float32)
+        for p, off in (("left_", 0), ("right_", 6)):
+            delta = (target[p] - base.joint_positions(p)[:5]) / JOINT_DELTA_SCALE
+            action[off:off + 5] = delta / max(1.0, float(np.max(np.abs(delta))))
+            action[off + 5] = grip
+        _, _, terminated, truncated, info = env.step(action)
+        if frames is not None:
+            frames.append(base._render_image()[0])
+        steps += 1
+        done = terminated or truncated
+
     for name, grip, dwell in SCHEDULE:
-        steps = dwell or math.ceil(max(float(np.max(np.abs(poses[p][name] - prev[p]))) for p in poses)
-                                   / JOINT_DELTA_SCALE) + 4
-        for _ in range(steps):
-            action = np.zeros(12, dtype=np.float32)
-            for p, off in (("left_", 0), ("right_", 6)):
-                delta = (poses[p][name] - base.joint_positions(p)[:5]) / JOINT_DELTA_SCALE
-                action[off:off + 5] = np.clip(delta, -1.0, 1.0)
-                action[off + 5] = grip
-            _, _, terminated, truncated, info = env.step(action)
-            if frames is not None:
-                frames.append(base._render_image()[0])
-            if terminated or truncated:
+        before = steps
+        for k in range(1 if dwell else len(poses["left_"][name])):
+            target = {p: poses[p][name][-1 if dwell else k] for p in poses}
+            last = k == len(poses["left_"][name]) - 1
+            budget = math.ceil(max(float(np.max(np.abs(target[p] - base.joint_positions(p)[:5]))) for p in target)
+                               / JOINT_DELTA_SCALE) + (POSE_SETTLE_STEPS if last else 0)
+            tol = TRACK_TOL if last else WAYPOINT_TOL
+            for _ in range(dwell or budget):
+                if not dwell and all(np.max(np.abs(target[p] - base.joint_positions(p)[:5])) < tol for p in target):
+                    break
+                step(target, grip)
+                if done:
+                    break
+            if name == "arc" and not dwell:
+                track = max(track, max(float(np.linalg.norm(base.gripper_position(p) - poses[p]["arc_tips"][k]))
+                                       for p in poses))
+            if done:
                 break
-        prev = {p: poses[p][name] for p in poses}
-        if terminated or truncated:
+        used[name] = used.get(name, 0) + steps - before
+        if done:
             break
-    return {"seed": seed, "success": bool(info["success"]), "fold_score": round(float(info["fold_score"]), 3),
-            "move_distance": [round(d, 3) for d in info["move_distance"]],
-            "anchor_drift": round(info["anchor_drift"], 3), "reason": info["termination_reason"] or "running"}
+    err = fold_error(start, base.cloth_positions())
+    return {"seed": seed, "folded": bool(err.mean() < FOLDED_MEAN and err.max() < FOLDED_MAX),
+            "fold_score": round(1.0 - float(err.mean() / fold_error(start, start).mean()), 3),
+            "error_mean_cm": round(100 * float(err.mean()), 1), "error_max_cm": round(100 * float(err.max()), 1),
+            "arc_tracking_cm": round(100 * track, 1), "steps": used,
+            "half_fold_env_success": bool(info["success"]), "anchor_drift": round(info["anchor_drift"], 3),
+            "reason": info["termination_reason"] or "running"}
 
 
 def make_env(video):
-    from isaac.isaac_env import IsaacClothFoldEnv
-    from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS, HALF_FOLD_MAX_STEPS, HalfFoldEnv
+    from isaac.isaac_env import CLOTH_JITTER, IsaacClothFoldEnv
+    from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS, HalfFoldEnv
     base = IsaacClothFoldEnv(observation_mode="hybrid" if video else "state", image_size=(360, 360),
-                             max_episode_steps=HALF_FOLD_MAX_STEPS, grasp_corners=GRASP_CORNERS,
+                             max_episode_steps=MAX_STEPS, grasp_corners=GRASP_CORNERS,
                              grasp_radius=GRASP_RADIUS)
-    return HalfFoldEnv(base_env=base, seed=0)
+    return HalfFoldEnv(base_env=base, seed=0, cloth_jitter=CLOTH_JITTER)
 
 
 def main():
