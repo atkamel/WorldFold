@@ -798,3 +798,18 @@ Wall time: 2091 s for 20 id_easy episodes and 1136 s for 10 recovery episodes. T
 100 s per episode across 2 workers, mostly 400-step truncations.
 
 Artifacts: `outputs/imitation/isaac/pilot/eval_expert{,_recovery}.json` and `.log`.
+### Isaac end-to-end micro chain (Phase I, I3.1, 2026-10-03)
+
+`tests/imitation/test_isaac_chain.py` gives **6 passed in 32 min** in `.venv-isaac`. The real
+CLIs on the Isaac backend, run on 3 episodes:
+1. collect with the 3-camera rig
+2. chunk-MLP and diffusion BC, 200 steps each
+3. evaluate n = 2 each
+4. 1 DAgger round on 2 episodes with takeover labels (p = 0.5)
+5. vision BC, 100 steps
+6. success detector train + agree
+
+Each stage's artifacts are validated: dataset hashes re-verify, images are present on all 3
+cameras, losses are finite, eval n matches, and the DAgger version is chained to its parent with
+label shapes [L, K, 12]. This is the reusable regression guard for the Isaac pipeline.
+Log: `outputs/isaac/chain/i3_1.log`.

@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import subprocess
 import sys
 import time
@@ -288,9 +289,22 @@ def _i21() -> Result:
     return Result("I2.1", "PASS" if ok else "FAIL", ev)
 
 
-for _mid, _desc in [
-    ("I2.2", "DAgger labels: >= 80% of chunks within 0.05"),
-    ("I3.1", "e2e micro chain: collect -> train -> eval -> dagger -> vision -> detector"),
+@check("I3.1", "e2e micro chain on Isaac (collect -> train -> eval -> dagger -> vision -> detector) green")
+def _i31() -> Result:
+    log = ROOT / "outputs" / "isaac" / "chain" / "i3_1.log"
+    if not log.exists():
+        return Result("I3.1", "FAIL", [f"missing artifact: {log}"])
+    text = log.read_text(encoding="utf-8-sig")
+    ok = "6 passed" in text and git_tracked(log) and results_md_has("I3.1")
+    ev = [line for line in text.splitlines() if "passed" in line]
+    if isaac_available() and os.environ.get("VERIFY_RERUN_CHAIN"):     # 30+ min of sim, so opt-in
+        code, tail = _pytest("-m", "isaac and slow", "tests/imitation/test_isaac_chain.py")
+        ev.append(f"re-run: exit {code}: {tail}")
+        ok &= code == 0
+    return Result("I3.1", "PASS" if ok else "FAIL", ev)
+
+
+for _mid, _desc in [    ("I2.2", "DAgger takeover labels: >= 98% of takeovers complete a full K-step chunk in the pilot DAgger round"),
     ("I3.2", "pilot run: every artifact valid"),
     ("I3.3", "close-out: verify --all PASS in both venvs"),
 ]:
