@@ -59,7 +59,7 @@ def shifted_pose_isaac(seed):
 def eval_set(name, n, backend="mujoco"):
     """(seeds, reset_options fn or None, perturb_fn or None) for a named evaluation set."""
     seeds = list(range(EVAL_SEED_BASE[name], EVAL_SEED_BASE[name] + n))
-    isaac = backend != "mujoco"
+    isaac = backend == "isaac"   # isaac_weld uses the MuJoCo sets
     if name == "id_easy":
         return seeds, None, None
     if name == "id_hard":

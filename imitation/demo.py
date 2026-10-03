@@ -21,7 +21,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from imitation.seeds import EVAL_SEED_BASE
-from imitation.tasks import HalfFoldEnv
+from imitation.tasks import HalfFoldEnv, is_isaac
 
 
 def _overlay(frame, lines):
@@ -102,10 +102,10 @@ def main():
     ap.add_argument("--width", type=int, default=960)
     ap.add_argument("--height", type=int, default=544)
     ap.add_argument("--fps", type=int, default=20)   # control_dt = 0.05 s -> real time
-    ap.add_argument("--backend", choices=("mujoco", "isaac"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld"), default="mujoco")
     ap.add_argument("--demo-size", type=int, default=512, help="isaac: square size of the demo camera")
     args = ap.parse_args()
-    if args.backend == "isaac":
+    if is_isaac(args.backend):
         return isaac_main(args)
 
     import mujoco                    # MuJoCo demo only; the Isaac venv has no mujoco
@@ -149,7 +149,7 @@ def isaac_main(args):
         policy = load_policy(args.ckpt)
         if policy.needs_images:
             cams.update(dict(policy.cameras))
-    env = make_env(backend="isaac", obs_mode="dict", cameras=cams)
+    env = make_env(backend=args.backend, obs_mode="dict", cameras=cams)
     teacher = ScriptedTeacher(env) if policy is None else None
     label = ("scripted expert" if policy is None else
              f"{'vision' if policy.needs_images else 'state'} policy {Path(args.ckpt).parent.name}") + "  [Isaac Sim]"
@@ -189,7 +189,7 @@ def isaac_main(args):
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     imageio.mimwrite(out, frames, fps=args.fps, quality=8, macro_block_size=16)
-    out.with_suffix(".json").write_text(json.dumps({"ckpt": args.ckpt, "backend": "isaac", "episodes": rows},
+    out.with_suffix(".json").write_text(json.dumps({"ckpt": args.ckpt, "backend": args.backend, "episodes": rows},
                                                    indent=1))
     print(f"wrote {out} ({len(frames)} frames), success {sum(r['success'] for r in rows)}/{len(rows)}", flush=True)
     os._exit(0)

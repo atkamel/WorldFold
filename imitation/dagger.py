@@ -100,7 +100,7 @@ def build_parser():
     ap.add_argument("--min-gain-se", type=float, default=1.0, help="stop when a round gains less (in SE)")
     ap.add_argument("--resume", action="store_true", help="continue from <out>/history.json")
     ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
-    ap.add_argument("--backend", choices=("mujoco", "isaac"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld"), default="mujoco")
     ap.add_argument("--teacher", default="expert", help="'expert' or a privileged state-policy checkpoint")
     ap.add_argument("--labels", choices=("lookahead", "takeover"), default=None,
                     help="scripted-teacher labels: look-ahead from a sim snapshot (MuJoCo), or executed expert "
@@ -145,7 +145,8 @@ def main():
         pool_kwargs.update(render=True, cameras=dict(student.cameras))
     log(f"== teacher: {args.teacher} | student: {student.kind} | score sets {sets} | "
         f"shift fraction {args.shift_fraction} | relabel {args.relabel}")
-    labels_mode = args.labels or ("takeover" if args.backend == "isaac" else "lookahead")
+    from imitation.tasks.half_fold import is_isaac
+    labels_mode = args.labels or ("takeover" if is_isaac(args.backend) else "lookahead")
     if labels_mode == "takeover" and args.teacher != "expert":
         raise SystemExit("--labels takeover needs the scripted expert as teacher")
     log(f"   labels: {labels_mode}" + (f" (p={args.takeover_p})" if labels_mode == "takeover" else ""))

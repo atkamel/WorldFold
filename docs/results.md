@@ -913,3 +913,77 @@ cloth by attachment, not by contact.
 - Friction defaults are unchanged: `smoke_test.py --mode state` passes, and the scripted half fold
   still gives fold_score 0.407 at seed 0 (3.7 steps/s).
 - `grasp_mode="weld"` on the CPU device now raises, and the USD-write path was removed.
+### W2 MuJoCo profile on Isaac (2026-10-03)
+
+`IsaacClothFoldEnv(profile="mujoco")`, which is the `isaac_weld` backend in the pipeline. It sets:
+- the cloth centred at (0, 0), with MuJoCo's ±2.5 cm jitter and a flat drop
+- MuJoCo's arm drives (kp 998.22, kd 2.731 + 0.60 joint damping, 3.35 N m, armature 0.028)
+- the dynamics DR, ×U(0.7, 1.3) on cloth mass, cloth–table friction and cloth damping
+- the 250-step cap
+- the weld grasp on the GPU pipeline
+- MuJoCo's eval sets
+
+**Reach of the FoldExpert waypoints** (`isaac/reach_check.py --profile mujoco`):
+- Setup: n = 200 per set, seed 0, approach / descend / lift / carry / place per arm.
+- A pose counts as reachable when descend is within `GRASP_RADIUS` (6 cm) and every other waypoint is within the
+  expert's 2 cm advance distance.
+- The same offsets were also solved with MuJoCo's own `solve_ik` on the MuJoCo arm and cloth, as the parity reference.
+- MuJoCo misses its own descend waypoint by a median of 7.7 mm (id_easy) and 15.7 mm (id_hard), so a flat 6 mm bar
+  would fail MuJoCo itself.
+
+| set | Isaac | MuJoCo (reference) | Isaac Wilson 95% | paired: both / MuJoCo only / Isaac only |
+|---|---|---|---|---|
+| id_easy (±2.5 cm) | 200/200 | 200/200 | 98.1–100% | 200 / 0 / 0 |
+| id_hard (2.5–4 cm) | 122/200 | 130/200 (58.2–71.3%) | 54.1–67.5% | 122 / 8 / 0 |
+
+- The gap is 4.0 pp, within the W2 parity bar of 5 pp.
+- Isaac's reachable id_hard set is a subset of MuJoCo's.
+- The 8 offsets only MuJoCo reaches come from the Isaac cloth resting 6 mm lower (z 0.424 vs 0.430). It adds about
+  2 mm to the median descend error (18.0 vs 15.7 mm).
+- The id_hard misses on both simulators are at approach, lift and carry (worst 36 / 25 / 21 mm on Isaac, 34 / 25 /
+  21 mm on MuJoCo). The expert passes these anyway with its 45-step patience; MuJoCo's id_hard expert score is 97%.
+- Artifacts: `outputs/isaac/reach_mujoco.json`, `outputs/isaac/reach_mujoco_ref.json`.
+
+**Arm drive** (`isaac/profile_check.py`):
+- The test: a one-step 0.05 rad command on each left-arm joint, starting from home, measured as the fraction of the
+  step reached after one control step.
+
+| joint | 0 | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|---|
+| Isaac (MuJoCo profile) | 1.403 | 1.384 | 1.351 | 1.014 | 1.012 |
+| MuJoCo | 1.287 | 1.395 | 1.413 | 1.33 | 1.297 |
+
+- Both simulators exceed 1 because the commanded target, not the measured pose, moves 0.05 rad, and the arm sags
+  below its target at home. Both then hold the reached pose on the following steps.
+- LeHome's drives (kp 17.8) reached ~0.78 in Phase I.
+
+**Dynamics DR** (seeds 5, 5, 6):
+- The draws are identical on a repeat seed, differ across seeds, and stay inside the range.
+- Particle masses and the particle material's friction and damping read back scaled by the drawn values, to within
+  1e-3. Example: seed 6 gives mass ×1.0229, friction ×0.906, damping ×0.921.
+- `randomization=False` restores the spawned values: mass ×1, friction 0.5, damping 0.05.
+- The material write reaches the solver: a 30 cm drop with damping ×0 vs ×40 ends at mean z 0.6073 vs 0.6197
+  after 3 steps.
+- Two findings:
+  - The cloth's soft reset is parsed at the next physics step and restores the spawned masses. The DR is therefore
+    applied after the first settle step.
+  - LeHome's `get_friction` returns a tensor on the GPU pipeline.
+
+**Cloth placement:** on a zero offset the centroid is at (0.000, 0.000). An offset of (0.02, −0.03) is applied
+exactly, and the cloth rests flat at z 0.424.
+
+**Pipeline plumbing:**
+- The `isaac_weld` backend is accepted on every CLI. `eval_set(..., "isaac_weld")` and the recovery perturbation
+  equal MuJoCo's.
+- `make_env("isaac_weld")` gives profile mujoco, 250 steps and 2.5 cm jitter. The "isaac" backend is unchanged.
+- 14 new fast tests.
+
+**Friction profile:** unchanged, but its smoke test is not deterministic run to run. On the friction profile
+(CPU pipeline), `smoke_test.py --mode state` at seed 0 gave these fold_scores:
+- this tree: 0.371, 0.367, 0.320, and 0.486 under a parallel CPU load
+- HEAD 3fb7bc6 (stashed A/B): 0.379, 0.349
+- earlier runs: 0.407 twice
+
+The two distributions can't be told apart. **Correction to the W1 close-out note above:** the matching 0.407 values
+were coincidence, not evidence of determinism. The phase step counts are identical in every run (above 52, pinch 14,
+arc 118); only the cloth outcome varies.

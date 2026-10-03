@@ -387,6 +387,36 @@ def _w1() -> Result:
     return Result("W1", "PASS" if ok else "FAIL", ev)
 
 
+W2_REACH_PARITY_PP = 5.0     # Isaac may reach at most this many points fewer than MuJoCo's own arm, per set
+
+
+@check("W2", "MuJoCo profile on Isaac: expert waypoints reachable on MuJoCo poses at parity with MuJoCo's arm, arm >= 90% of a step in one control step, DR deterministic and applied")
+def _w2() -> Result:
+    reach = ROOT / "outputs" / "isaac" / "reach_mujoco.json"
+    ref = ROOT / "outputs" / "isaac" / "reach_mujoco_ref.json"
+    prof = ROOT / "outputs" / "isaac" / "profile" / "profile.json"
+    missing = [str(p) for p in (reach, ref, prof) if not p.exists()]
+    if missing:
+        return Result("W2", "FAIL", [f"missing artifact: {m}" for m in missing])
+    r, m, p = json.loads(reach.read_text()), json.loads(ref.read_text()), json.loads(prof.read_text())
+    ev, ok = [], True
+    for name, s in r["sets"].items():
+        mj = m["sets"][name]
+        gap = 100.0 * (mj["reachable"] / mj["n"] - s["reachable"] / s["n"])
+        ev.append(f"reach {name}: isaac {s['reachable']}/{s['n']}, mujoco {mj['reachable']}/{mj['n']} "
+                  f"(gap {gap:.1f} pp), isaac worst mm {s['worst_mm']}")
+        ok &= s["n"] >= 200 and mj["n"] == s["n"] and gap <= W2_REACH_PARITY_PP
+    ok &= r["sets"]["id_easy"]["reachable"] == r["sets"]["id_easy"]["n"]
+    ev.append("profile: " + ", ".join(f"{k}={v}" for k, v in p["checks"].items()))
+    ev.append(f"arm step fraction per joint: isaac {p['arm_step_fraction']}, mujoco {p['arm_step_fraction_mujoco']}")
+    ok &= (p["passed"] and git_tracked(reach) and git_tracked(ref) and git_tracked(prof) and results_md_has("W2"))
+    if isaac_available():
+        code, tail = _pytest("-m", "isaac", "tests/imitation/test_isaac_profile.py")
+        ev.append(f"test_isaac_profile.py exit {code}: {tail}")
+        ok &= code == 0
+    return Result("W2", "PASS" if ok else "FAIL", ev)
+
+
 @check("I3.3", "close-out: every other Phase I check passes here, roadmap Phase I rows closed, docs updated")
 def _i33() -> Result:
     ev, ok = [], True
@@ -405,7 +435,8 @@ def _i33() -> Result:
     ev.append(f"open Phase I roadmap rows: {open_rows or 'none'}")
     ok &= not open_rows
     spec = "Simulator backends" in (ROOT / "docs" / "imitation.md").read_text(encoding="utf-8")
-    nxt = "IG.1" in (ROOT / "docs" / "status.md").read_text(encoding="utf-8").split("## Next action")[1][:600]
+    # the friction-grasp follow-up (IG.1) stays scheduled in the Next action section, beside later phases' work
+    nxt = "IG.1" in (ROOT / "docs" / "status.md").read_text(encoding="utf-8").split("## Next action")[1].split("\n## ")[0]
     ev.append(f"imitation.md backend section={spec}; status next action is IG.1={nxt}")
     ok &= spec and nxt
     return Result("I3.3", "PASS" if ok else "FAIL", ev)

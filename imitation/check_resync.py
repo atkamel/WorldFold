@@ -51,15 +51,16 @@ def build_parser():
     ap.add_argument("--episodes", type=int, default=24)
     ap.add_argument("--k", type=int, default=10)
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--backend", choices=("mujoco", "isaac"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld"), default="mujoco")
     ap.add_argument("--out", default=None, help="optional JSON summary (counts per mode)")
     return ap
 
 
 def main():
     args = build_parser().parse_args()
-    if args.backend == "isaac":
-        raise SystemExit("isaac backend: run via the I2.1 expert milestone (EnvPool-based); not yet supported")
+    from imitation.tasks.half_fold import is_isaac
+    if is_isaac(args.backend):
+        raise SystemExit("isaac backends: run via the I2.1 expert milestone (EnvPool-based); not yet supported")
     jobs = [(s, m, args.k) for m in MODES for s in range(args.episodes)]
     with mp.get_context("spawn").Pool(args.workers) as pool:
         rows = pool.map(_run, jobs)

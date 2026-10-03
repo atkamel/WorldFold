@@ -88,7 +88,8 @@ def _worker(pipe, env_kwargs):
     teacher_ckpt = env_kwargs.pop("teacher", None)
     if render:                     # Phase 4: the env returns {"state", cameras...} (M4.1)
         env_kwargs.update(obs_mode="dict", cameras=dict(cameras) if cameras else None)
-    isaac = backend == "isaac"
+    from imitation.tasks.half_fold import is_isaac
+    isaac = is_isaac(backend)
     try:
         env = make_env(backend=backend, **env_kwargs)
     except Exception:
@@ -178,7 +179,8 @@ class EnvPool:
         os.environ.update(_WORKER_THREAD_ENV)
         self.pipes, self.procs = [], []
         # Isaac workers start one at a time: several Kit apps compiling shaders at once can hang
-        serial = (env_kwargs or {}).get("backend") == "isaac"
+        from imitation.tasks.half_fold import is_isaac
+        serial = (env_kwargs or {}).get("backend") and is_isaac(env_kwargs["backend"])
         try:
             for _ in range(n):
                 a, b = ctx.Pipe()

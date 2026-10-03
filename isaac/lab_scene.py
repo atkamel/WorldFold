@@ -57,11 +57,16 @@ LININGS = {"gripper": ((-0.017042, 0.000205, -0.073359), (0.997564, 0.0, -0.0697
            "jaw": ((-0.001287, -0.050919, 0.018299), (0.709761, 0.696602, -0.069295, -0.078629), -1.0, 1.0)}
 
 
-def _robot(prim_path, base_pos):
+def _robot(prim_path, base_pos, drive=None):
+    """drive: {ImplicitActuatorCfg field: value} applied to every actuator group (the MuJoCo profile's
+    MUJOCO_ARM_DRIVE); None keeps LeHome's SO101 drives."""
     pos, rot = usd_root_pose(base_pos, ARM_BASE_QUAT)
     init = SO101_FOLLOWER_CFG.init_state.replace(pos=tuple(float(v) for v in pos), rot=tuple(float(v) for v in rot),
                                                  joint_pos=HOME)
-    return SO101_FOLLOWER_CFG.replace(prim_path=prim_path, init_state=init)
+    cfg = SO101_FOLLOWER_CFG.replace(prim_path=prim_path, init_state=init)
+    if drive:
+        cfg = cfg.replace(actuators={name: act.replace(**drive) for name, act in cfg.actuators.items()})
+    return cfg
 
 
 def _pinhole(H, W, fovy_deg):
@@ -139,8 +144,11 @@ class SceneCfg(DirectRLEnvCfg):
     rig: dict | None = None         # {camera name: square size}, the imitation camera rig (opt-in)
 
 
-def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu"):
+def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", arm_drive=None):
     cfg = SceneCfg()
+    if arm_drive:
+        cfg.left_robot = _robot("/World/Robot/Left_Robot", ARM_BASE_LEFT, arm_drive)
+        cfg.right_robot = _robot("/World/Robot/Right_Robot", ARM_BASE_RIGHT, arm_drive)
     cfg.sim.device = device
     cfg.sim.use_fabric = device != "cpu"        # the GPU pipeline reads state through fabric / tensor views
     cfg.rig = dict(rig) if rig else None
@@ -160,6 +168,7 @@ class SceneEnv(DirectRLEnv):
     def __init__(self, cfg, cloth_center):
         self.cloth_center = np.asarray(cloth_center, dtype=float)
         self.pins = {}          # weld grasp, see _drive_pins
+        self.mass_scale = 1.0   # dynamics DR (set_dynamics); folded into set_pinned_masses
         super().__init__(cfg)
         self.joint_ids = {p: arm.find_joints(JOINTS, preserve_order=True)[0] for p, arm in self.arms.items()}
         self.gripper_body = {p: arm.find_bodies("gripper")[0][0] for p, arm in self.arms.items()}
@@ -300,10 +309,24 @@ class SceneEnv(DirectRLEnv):
         pv = self.cloth._cloth_prim_view._physics_view
         if not hasattr(self, "_rest_masses"):
             self._rest_masses = pv.get_masses().clone()
-        masses = self._rest_masses.clone()
+        masses = self._rest_masses * self.mass_scale
         for idx, _ in self.pins.values():
             masses.view(masses.shape[0], -1)[0, torch.as_tensor(idx, device=masses.device)] = 0.0
         pv.set_masses(masses, torch.arange(masses.shape[0], device=masses.device))
+
+    def set_dynamics(self, mass_scale=1.0, friction_scale=1.0, damping_scale=1.0):
+        """MuJoCo's dynamics DR (sim_main.reset), GPU pipeline: scales the particle masses, the particle material's
+        friction (MuJoCo scales the table's; here it is the cloth's against every rigid, the table included) and its
+        global velocity damping (MuJoCo: the cloth joints' damping), from their spawned values."""
+        if self.device == "cpu":
+            raise ValueError("dynamics DR needs the GPU pipeline (per-particle masses)")
+        mat = self.cloth.particle_material
+        if not hasattr(self, "_rest_material"):
+            self._rest_material = (float(mat.get_friction()), float(mat.get_damping()))
+        self.mass_scale = float(mass_scale)
+        mat.set_friction(self._rest_material[0] * float(friction_scale))
+        mat.set_damping(self._rest_material[1] * float(damping_scale))
+        self.set_pinned_masses()
 
     def _drive_pins(self):
         # the cloth view's set_positions/set_velocities index whole cloths, not particles, so the full buffer is

@@ -381,3 +381,17 @@ MuJoCo-trained normalizers and checkpoints don't transfer.
 - `recovery`: perturbations at t ∈ [35, 140).
 
 Pilot numbers are in results.md. Grasp reliability and the n = 200 retrain are roadmap IG / IS.
+**`isaac_weld` backend (Phase W, W2, 2026-10-03).** This is the MuJoCo setup transferred onto Isaac:
+`IsaacClothFoldEnv(profile="mujoco")`, chosen with `--backend isaac_weld` and recorded in dataset configs. It
+differs from the `isaac` column above in these ways:
+
+| | `isaac_weld` |
+|---|---|
+| grasp | MuJoCo's **weld**: on close, every allowed grasp vertex within `GRASP_RADIUS` is pinned with its offset, a 1.2 cm particle patch at zero mass, driven every substep. It runs on the GPU pipeline (`device="cuda:0"`); `grasp_active` is true while anything is pinned |
+| cloth start | centred at (0, 0) (so no y shift), MuJoCo's ±2.5 cm offset, flat drop, dynamics DR ×U(0.7, 1.3) on cloth mass, cloth–table friction and cloth damping, recorded in `domain_parameters` with MuJoCo's keys |
+| arm | MuJoCo's SO101 drives (kp 998.22, kd 3.331, 3.35 N m, armature 0.028), replacing LeHome's kp 17.8 |
+| episode cap, eval sets, recovery timing | MuJoCo's (250; `eval_set(..., "isaac_weld")` returns the MuJoCo sets) |
+| expert | MuJoCo's `FoldExpert` phase machine on Isaac accessors (`isaac.weld_expert.IsaacFoldExpert`, W3) |
+
+The observation layout is unchanged. The grasp flag is the real weld state. The 101×101 particle cloth still differs
+from the flexcomp, so checkpoints still don't transfer between simulators.

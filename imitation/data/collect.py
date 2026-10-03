@@ -39,7 +39,7 @@ def recovery_perturbation(fraction, t_range=(10, 70), k_range=(5, 15)):
 
 def recovery_perturbation_for(backend, fraction):
     """MuJoCo's (10, 70) onset window scaled by 230/97 for the longer Isaac fold."""
-    if backend == "mujoco":
+    if backend != "isaac":      # mujoco and isaac_weld share MuJoCo's episode timing
         return recovery_perturbation(fraction)
     return recovery_perturbation(fraction, t_range=(24, 166), k_range=(5, 15))
 
@@ -67,9 +67,10 @@ def build_config(args):
     """Dataset config: the CLI args, task, teacher, and (isaac) the pinned stack + knobs hash."""
     config = {k: v for k, v in vars(args).items() if k != "resume"} | {
         "task": "half_fold", "teacher": "QuarterFoldExpert(stage 0)"}
-    if args.backend == "isaac":
+    from imitation.tasks.half_fold import is_isaac
+    if is_isaac(args.backend):
         knobs = Path(__file__).resolve().parents[2] / "isaac" / "isaac_env.py"
-        config["teacher"] = "QuarterFoldExpert(stage 0) [isaac backend]"
+        config["teacher"] = f"QuarterFoldExpert(stage 0) [{args.backend} backend]"
         config["isaac_stack"] = dict(ISAAC_STACK, knobs_sha256=hashlib.sha256(knobs.read_bytes()).hexdigest())
     return config
 
@@ -78,7 +79,7 @@ def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--episodes", type=int, default=400)
     ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
-    ap.add_argument("--backend", choices=("mujoco", "isaac"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld"), default="mujoco")
     ap.add_argument("--render", action="store_true", help="record camera images at collection")
     ap.add_argument("--cameras", default=None, help="e.g. main=128,left_wrist_cam=64,right_wrist_cam=64")
     ap.add_argument("--version", default="v1")

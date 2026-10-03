@@ -72,7 +72,12 @@ class HalfFoldEnv(QuarterFoldEnv):
         return super().step(action)
 
 
-BACKENDS = ("mujoco", "isaac")
+BACKENDS = ("mujoco", "isaac", "isaac_weld")
+
+
+def is_isaac(backend) -> bool:
+    """True for every Isaac Sim backend ("isaac", "isaac_weld")."""
+    return str(backend).startswith("isaac")
 
 
 def make_env(backend="mujoco", **kwargs):
@@ -81,6 +86,8 @@ def make_env(backend="mujoco", **kwargs):
     backend="mujoco": the MuJoCo ClothFoldEnv the pipeline was built on (default, unchanged).
     backend="isaac":  isaac.isaac_env.IsaacClothFoldEnv (Isaac Sim 5.1, friction grasp) with the Isaac
                       episode cap and jitter; needs the .venv-isaac environment and one env per process.
+    backend="isaac_weld": the same Isaac env built with profile="mujoco" (weld grasp, MuJoCo arm drives); episode
+                      cap (HALF_FOLD_MAX_STEPS) and cloth jitter (MuJoCo CLOTH_JITTER) are MuJoCo's.
     """
     if backend == "mujoco":
         return HalfFoldEnv(**kwargs)
@@ -93,5 +100,17 @@ def make_env(backend="mujoco", **kwargs):
             from imitation.vision.render import CAMERAS
             cameras = kwargs.get("cameras") or CAMERAS
         kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras)
+        return HalfFoldEnv(**kwargs)
+    if backend == "isaac_weld":
+        from cloth_fold_rl.fold_env import CLOTH_JITTER
+        from imitation.isaac_runtime import ISAAC_PROFILES, make_isaac_base
+        kwargs.setdefault("max_episode_steps", HALF_FOLD_MAX_STEPS)
+        kwargs.setdefault("cloth_jitter", CLOTH_JITTER)
+        cameras = None
+        if kwargs.get("obs_mode", "state") == "dict":
+            from imitation.vision.render import CAMERAS
+            cameras = kwargs.get("cameras") or CAMERAS
+        kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras,
+                                             profile=ISAAC_PROFILES[backend])
         return HalfFoldEnv(**kwargs)
     raise ValueError(f"backend must be one of {BACKENDS}, got {backend!r}")

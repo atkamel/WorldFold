@@ -56,6 +56,22 @@ GRIPPERFRAME_QUAT       = np.array([0.0, 0.0, 1.0, 0.0])
 # weld grasp (grasp_mode="weld", Phase W): particles within this distance of a welded grid vertex are pinned with it.
 # MuJoCo's grid vertex is one body standing for a 3 cm cell; one 3 mm particle alone would tear out of the sheet.
 WELD_PATCH              = 0.012
+# The so101_new_calib MJCF's sts3215 class, which MuJoCo used for every joint: position actuator kp 998.22, kv 2.731,
+# plus joint damping 0.60 (both damp joint velocity, so they add), armature 0.028, forcerange 3.35 on each
+# actuator. LeHome's SO101 drives are kp 17.8 / kd 0.60 / 10 N m, about 56x softer, so the arm lags its targets.
+# The MJCF's frictionloss (0.052 N m) has no equivalent: PhysX joint friction is a coefficient, not a torque.
+MUJOCO_ARM_DRIVE        = {"stiffness": 998.22, "damping": 2.731 + 0.60, "effort_limit_sim": 3.35, "armature": 0.028}
+# Scene profiles. "lehome" is this env as ported from LeHome (friction grasp on the CPU device, cloth toward the arms,
+# tilted drop). "mujoco" transfers the MuJoCo setup the imitation pipeline was built on (Phase W): the weld grasp
+# (GPU pipeline), the cloth centred, a flat drop, MuJoCo's arm drives and its dynamics DR (reset, ×U(0.7, 1.3) on
+# cloth mass, cloth-table friction and cloth damping while domain_randomization is on).
+PROFILES = {
+    "lehome": {"cloth_center": CLOTH_CENTER, "drop_height": DROP_HEIGHT, "drop_tilt_deg": DROP_TILT_DEG,
+               "arm_drive": None, "dynamics_dr": False, "grasp_mode": "friction", "device": "cpu"},
+    "mujoco": {"cloth_center": (0.0, 0.0), "drop_height": 0.005, "drop_tilt_deg": 0.0,
+               "arm_drive": MUJOCO_ARM_DRIVE, "dynamics_dr": True, "grasp_mode": "weld", "device": "cuda:0"},
+}
+DR_RANGE                = (0.7, 1.3)          # mujuco/sim_main.py reset
 CLOTH_SPEED_LIMIT       = 20.0                # m/s; replaces MuJoCo's qacc explosion check
 KIT_TICK_PERIOD_S       = 30.0                # state mode ticks Kit this often; its hang detector allows 120 s
 CAMERA_CLIP             = (0.05, 10.0)
@@ -166,11 +182,20 @@ class IsaacClothFoldEnv(gym.Env):
 
     def __init__(self, control_dt=0.05, max_episode_steps=200, observation_mode="state", image_size=(84, 84),
                  camera_names=None, n_cloth_samples=9, n_tasks=4, grasp_corners=None, grasp_radius=GRASP_RADIUS,
-                 headless=True, cameras=None, grasp_mode="friction", device="cpu"):
+                 headless=True, cameras=None, grasp_mode=None, device=None, profile="lehome"):
+        # profile: a PROFILES key; grasp_mode and device default to the profile's
         # device: "cpu" (LeHome's choice: on the CUDA device the grippers pass through the cloth) or "cuda:0", whose
         # particle tensor view the weld grasp needs to pin particles exactly (zero mass + set positions, Phase W)
         # grasp_mode: "friction" (the jaws hold the cloth, LeHome's way) or "weld" (MuJoCo's: on close, every allowed
         # grasp corner within grasp_radius attaches to the gripper until it opens -- the Phase W baseline)
+        self.profile = profile
+        self._prof = PROFILES[profile]
+        grasp_mode = grasp_mode or self._prof["grasp_mode"]
+        device = device or self._prof["device"]
+        if self._prof["dynamics_dr"] and device == "cpu":
+            raise ValueError("the dynamics DR needs the GPU pipeline (device='cuda:0')")
+        # MuJoCo's switch (ClothFoldEnv.domain_randomization; HalfFoldEnv sets it): only the "mujoco" profile has DR
+        self.domain_randomization = False
         if grasp_mode not in ("friction", "weld"):
             raise ValueError(grasp_mode)
         if grasp_mode == "weld" and device == "cpu":
@@ -228,8 +253,9 @@ class IsaacClothFoldEnv(gym.Env):
         self._grid = grid_particles(CLOTH_SUBDIV)
         self.weld_mask = {p: None for p in self.prefixes}
 
-        cfg = make_cfg(PHYSICS_DT, self.n_substeps, image_size if self._use_image else None, rig=self.rig, device=device)
-        self.lab = SceneEnv(cfg, CLOTH_CENTER)
+        cfg = make_cfg(PHYSICS_DT, self.n_substeps, image_size if self._use_image else None, rig=self.rig, device=device,
+                       arm_drive=self._prof["arm_drive"])
+        self.lab = SceneEnv(cfg, self._prof["cloth_center"])
         self.arms = self.lab.arms
         left = self.arms["left_"]
         self._dof_limits = _npy(left.data.soft_joint_pos_limits[0, self.lab.joint_ids["left_"]])   # (6, 2), both arms
@@ -500,17 +526,29 @@ class IsaacClothFoldEnv(gym.Env):
             self._gripper_closed[prefix] = False
             self._joint_targets[prefix] = self._home()
 
+        scales = None
+        if self._prof["dynamics_dr"]:
+            # MuJoCo's draw order and keys (sim_main.reset); unrandomized episodes restore the spawned values
+            scales = {"cloth_mass_scale": 1.0, "table_friction_scale": 1.0, "cloth_damping_scale": 1.0}
+            if bool(opts.get("randomization", self.domain_randomization)):
+                scales = {k: float(self.np_random.uniform(*DR_RANGE)) for k in scales}
+                self._domain_params = dict(scales)
+
         offset = np.zeros(2)
         if "cloth_pose" in opts:
             pose = np.asarray(opts["cloth_pose"], dtype=float).ravel()
             offset = pose[:2]
-        tilt = self.np_random.uniform(-DROP_TILT_DEG, DROP_TILT_DEG, size=2)
-        self.lab.reset_cloth(offset, DROP_HEIGHT, (tilt[0], tilt[1], 0.0))
+        tilt_deg = self._prof["drop_tilt_deg"]
+        tilt = self.np_random.uniform(-tilt_deg, tilt_deg, size=2) if tilt_deg else np.zeros(2)
+        self.lab.reset_cloth(offset, self._prof["drop_height"], (tilt[0], tilt[1], 0.0))
         self._particles = self.lab.particle_positions()
         self._particle_vel = np.zeros_like(self._particles)
 
-        for _ in range(self.settle_steps):
+        for k in range(self.settle_steps):
             self._advance()
+            if k == 0 and scales is not None:
+                # after the first step: the soft reset's USD writes are parsed there and restore the spawned masses
+                self.lab.set_dynamics(*scales.values())
 
         self._task_id = int(opts.get("task", self.np_random.integers(self.n_tasks)))
         corners0 = self.corner_positions().copy()

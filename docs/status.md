@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-03 · **Branch:** `feature/isaac-imitation` · **Phase:** W (weld baseline on Isaac): W1 ✅ → W2 next; track G (friction grasp) in a separate session
+**Updated:** 2026-10-03 · **Branch:** `feature/isaac-imitation` · **Phase:** W (weld baseline on Isaac): W1 ✅ W2 ✅ → W3 next; track G (friction grasp) in a separate session
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,8 +41,14 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**Phase W, W2: the MuJoCo profile on Isaac** (roadmap Phase W). W1 ✅: the weld grasp runs on the GPU
-pipeline (`device="cuda:0"`) and tracks within 2.4 mm.
+**Phase W, W3: MuJoCo's expert on Isaac and the expert gate** (roadmap Phase W).
+- Done: W1 ✅, the weld grasp on the GPU pipeline. W2 ✅, the `isaac_weld` backend: MuJoCo's cloth, arm drives,
+  DR, cap and eval sets.
+- W3 first smoke: `IsaacFoldExpert` (FoldExpert on Isaac accessors) grasps, lifts and carries but scores 0/3. The
+  rigid pin holds the corner fixed in the gripper frame, so it swings out as the free wrist pitches, and the
+  lift-above-corner target is never reached.
+- In MuJoCo the soft weld lets the corner hang below the gripper. The next fix: hold pinned offsets in world axes,
+  clamp them at the table, then re-measure the overshoot.
 - **Decision:** the first Isaac prototype uses MuJoCo's easier weld grasp, with the MuJoCo setup
   transferred fully. That covers W1 weld, W2 profile, W3 expert gate, W4 pilot and W5 full retrain.
 - **Track G:** friction-grasp work (IG.1–IG.3) runs in parallel in a separate session on
@@ -77,7 +83,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 116 fast + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 167 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -135,6 +141,15 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-03 · **W2 ✅ MuJoCo profile on Isaac (`isaac_weld` backend).**
+  - Reach of the FoldExpert waypoints is at parity with MuJoCo's own arm: 200/200 and 122/200 vs 200/200 and
+    130/200 (gap 4.0 pp; Isaac's set is a subset of MuJoCo's).
+  - `profile_check` 9/9: arm step response matches MuJoCo; DR is deterministic, applied and read back.
+  - Found and fixed: the soft reset restores masses at the next step, so DR is applied after it.
+  - Found: the friction smoke is nondeterministic run to run (A/B vs HEAD: 0.371/0.367 vs 0.379/0.349).
+  - Sonnet subagent: pipeline plumbing.
+  - Tests: 167 fast pass (4 skipped), 12 slow pass; Isaac `test_isaac_profile` 10/10, `test_isaac_weld` 7/7; `verify W2` and `I3.3` PASS · (this commit)
 
 - 2026-10-03 · **W1 ✅ weld grasp on Isaac.**
   - Uses MuJoCo semantics on the GPU pipeline: zero-mass pins, with positions and velocities set every substep.
