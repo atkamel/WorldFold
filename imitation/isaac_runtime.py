@@ -7,9 +7,12 @@ spans the arms' straight-down reach (isaac/README.md). One Isaac env per process
 
 from __future__ import annotations
 
+import os
 import sys
 
-N_ISAAC = 2                 # concurrent Isaac processes on the 16 GB laptop GPU (re-measured in I0.3)
+# concurrent Isaac processes per job on the 16 GB laptop GPU (measured in I0.3). Two tracks run at once (Phase W:
+# weld baseline 2 + friction-grasp track 1), so a job can lower it with WORLDFOLD_N_ISAAC.
+N_ISAAC = int(os.environ.get("WORLDFOLD_N_ISAAC", "2"))
 ISAAC_MAX_STEPS = 400
 ISAAC_CLOTH_JITTER = 0.01   # = isaac.isaac_env.CLOTH_JITTER (kept literal so this module stays Isaac-free)
 KIT_TICK_S = 30.0           # idle workers tick Kit this often; its hang detector allows 120 s

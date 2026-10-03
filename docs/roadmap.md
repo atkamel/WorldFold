@@ -185,6 +185,24 @@ Added 2026-10-02.
 | IS.1–6 | Full retrain at scale (`isaac_v1` 400 eps, BC ×2 seeds, replan sweep, DAgger, vision ×2, detector ≥ 90%) | n = 200 × 3 sets, Wilson, gains in SE |
 | I-DR | Visual DR in the Isaac rig + dynamics DR | robustness on held-out DR draws |
 
+## Phase W — MuJoCo weld baseline on Isaac (+ parallel friction-grasp track G)
+
+Added 2026-10-03.
+- **Why:** Phase I showed the pipeline runs on Isaac, but with the friction grasp as built the
+  expert collects 2/80 successes and every student trains on 2 demos.
+- **The baseline:** move the full MuJoCo setup into Isaac (weld grasp, cloth pose/jitter, arm
+  drives, dynamics DR, expert, eval sets) and retrain on it.
+- **Track G:** friction-grasp work (IG.1–IG.3) runs in parallel as a separate session on
+  `feature/isaac-grasp`, with 1 Isaac worker against the baseline's 2.
+- **Plan:** [superpowers/plans/2026-10-03-isaac-weld-baseline.md](superpowers/plans/2026-10-03-isaac-weld-baseline.md).
+
+| | milestone | exit | status |
+|---|---|---|---|
+| W1 | Weld grasp in Isaac (`grasp_mode="weld"`): MuJoCo semantics, particle patch pinned each substep | weld_check: tracking < 3 mm while lifted/carried, release drops, mask and hysteresis honoured | ☐ |
+| W2 | MuJoCo profile: cloth (0,0) ±2.5 cm, no tilt, arm drives kp ≈ 998 / kv ≈ 2.73, dynamics DR ×U(0.7,1.3), cap 250, MuJoCo eval sets | reach 200/200 on MuJoCo poses; arm reaches ≥ 90% of a 0.05 rad step in one control step; DR deterministic per seed | ☐ |
+| W3 | MuJoCo FoldExpert on Isaac (backend split, MuJoCo byte-identical), overshoot re-measured | expert gate n = 100: id_easy ≥ 95, id_hard ≥ 90, recovery ≥ 90 | ☐ |
+| W4 | Pilot on the weld baseline (as I3.2) | artifacts valid; diffusion id_easy Wilson LB > 0 | ☐ |
+| W5 | Full keepers retrain at MuJoCo scale (`isaac_v1_weld`, BC ×2 seeds, sweep, DAgger, vision, detector, demos, report) | n = 200 × 3, Wilson, SE rules; MuJoCo-vs-Isaac side-by-side | ☐ |
 ## Phase 6 — Language-conditioned folds and the VLA  *(ref. milestone 3, reframed)*
 
 | | milestone | exit | status |

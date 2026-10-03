@@ -41,15 +41,12 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**IG.1: grasp bench on Isaac** (roadmap, "Later milestones").
-- Phase I is closed. Every stage of the imitation pipeline runs on Isaac Sim, locally on Windows,
-  through the real CLIs, and `python -m imitation.verify --all` passes in both venvs.
-- The bottleneck is the friction grasp as built. The scripted expert succeeds 2/20 on id_easy
-  (2/80 during collection), so BC gets 2 demos and every student scores 0.
-- IG.1–IG.3 make the grasp reliable (bars written in the roadmap). The IS retrain at n = 200
-  follows.
-- Run Isaac jobs from `.venv-isaac` (`. .\isaac\env_windows.ps1`, ≤ 2 workers). Long chains go
-  through resumable scripts like `scripts/isaac_pilot.ps1`, because background tasks stop at 2 h.
+**Phase W, W1: weld grasp in Isaac** (roadmap Phase W).
+- **Decision:** the first Isaac prototype uses MuJoCo's easier weld grasp, with the MuJoCo setup
+  transferred fully. That covers W1 weld, W2 profile, W3 expert gate, W4 pilot and W5 full retrain.
+- **Track G:** friction-grasp work (IG.1–IG.3) runs in parallel in a separate session on
+  `feature/isaac-grasp`, with `WORLDFOLD_N_ISAAC=1`.
+- **Compute:** at most 3 Isaac processes at once (W 2 + G 1).
 ## Pre-VLA milestone tracker
 
 Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA starts
