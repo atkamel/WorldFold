@@ -10,6 +10,9 @@ An episode stores T+1 observed states and the T actions between them:
     rewards[t]   float32[T]            environment reward for that transition (optional)
     terminated[t] bool[T]              environment terminated after it (optional)
     stage[t]     int64[T+1]            task stage the env was in at state t (optional)
+    labels[t]    float32[T, A]         the expert's action at state t, when it differs
+                                       from the action taken (noise, forced release,
+                                       another policy driving) (optional)
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ class StateEpisode:
     rewards: np.ndarray | None = None
     terminated: np.ndarray | None = None
     stage: np.ndarray | None = None
+    labels: np.ndarray | None = None
 
     def __len__(self) -> int:
         """Number of transitions."""
@@ -55,6 +59,12 @@ class StateEpisode:
             raise ValueError("terminated must be bool[T]")
         if self.stage is not None and self.stage.shape != (t + 1,):
             raise ValueError("stage must be int[T+1]")
+        if self.labels is not None and (self.labels.shape != self.actions.shape or self.labels.dtype != np.float32):
+            raise ValueError("labels must be float32 and shaped like actions")
+
+    def expert_actions(self) -> np.ndarray:
+        """The action an imitation learner should copy at each state."""
+        return self.actions if self.labels is None else self.labels
 
     def states(self) -> np.ndarray:
         """float32[T+1, N*N*3 + 15*arms]: flattened vertices followed by robot state."""
@@ -72,7 +82,7 @@ class StateEpisodeStore:
         index = int(existing[-1].stem.split("_")[-1]) + 1 if existing else 0
         path = self.root / f"episode_{index:06d}.npz"
         extra = {k: v for k, v in (("rewards", episode.rewards), ("terminated", episode.terminated),
-                                   ("stage", episode.stage)) if v is not None}
+                                   ("stage", episode.stage), ("labels", episode.labels)) if v is not None}
         np.savez_compressed(path, vertices=episode.vertices, robot=episode.robot,
                             actions=episode.actions, metadata=json.dumps(episode.metadata), **extra)
         return path
@@ -83,7 +93,8 @@ class StateEpisodeStore:
                                metadata=json.loads(str(data["metadata"])),
                                rewards=data["rewards"] if "rewards" in data else None,
                                terminated=data["terminated"] if "terminated" in data else None,
-                               stage=data["stage"] if "stage" in data else None)
+                               stage=data["stage"] if "stage" in data else None,
+                               labels=data["labels"] if "labels" in data else None)
         episode.validate()
         return episode
 

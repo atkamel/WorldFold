@@ -84,6 +84,19 @@ class QuarterFoldExpert:
         self.retries[key] += 1
         self.done_steps[key] = 0
 
+    def use_rest_posture(self):
+        for expert in self.experts.values():
+            expert.use_rest_posture()
+
+    def resync(self):
+        """Call before act() when another policy chose the previous actions."""
+        if self.env.stage == 0:
+            for (s, _), expert in self.experts.items():
+                if s == 0:
+                    expert.resync()
+        elif self._left_clear():
+            self.experts[(1, "right_")].resync()
+
     def act(self):
         arms = self._arms()
         if all(e.PHASES[e.phase] == "hold" for e in arms.values()):
