@@ -27,7 +27,7 @@ from isaaclab.sensors import TiledCamera, TiledCameraCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
 from isaacsim.core.utils.rotations import euler_angles_to_quat
-from pxr import Gf, Usd, UsdGeom, UsdPhysics
+from pxr import Gf, Usd, UsdGeom, UsdPhysics, Vt
 
 import lehome
 from lehome.assets.object.Garment import GarmentObject
@@ -39,6 +39,7 @@ from mujuco.cloth_params import (
 )
 from isaac.isaac_env import (
     CAMERA_CLIP, CLOTH_ADHESION, CLOTH_GRAVITY_SCALE, CLOTH_SUBDIV, FLOOR_COLOR, FLOOR_SIZE, GRIPPER_JOINT,
+    GRIPPERFRAME_POS, GRIPPERFRAME_QUAT,
     HEADLIGHT_AMBIENT, HEADLIGHT_DIFFUSE, LIGHT_INTENSITY, LIGHTS, TABLE_SIZE, PAD_LINING_FRICTION,
     PAD_LINING_THICKNESS, cloth_grid_mesh, usd_root_pose, _matrix_from_quat, _quat_facing, _quat_from_matrix,
 )
@@ -138,8 +139,10 @@ class SceneCfg(DirectRLEnvCfg):
     rig: dict | None = None         # {camera name: square size}, the imitation camera rig (opt-in)
 
 
-def make_cfg(physics_dt, decimation, image_size=None, rig=None):
+def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu"):
     cfg = SceneCfg()
+    cfg.sim.device = device
+    cfg.sim.use_fabric = device != "cpu"        # the GPU pipeline reads state through fabric / tensor views
     cfg.rig = dict(rig) if rig else None
     cfg.decimation = decimation
     cfg.sim.dt = physics_dt
@@ -156,6 +159,7 @@ class SceneEnv(DirectRLEnv):
 
     def __init__(self, cfg, cloth_center):
         self.cloth_center = np.asarray(cloth_center, dtype=float)
+        self.pins = {}          # weld grasp, see _drive_pins
         super().__init__(cfg)
         self.joint_ids = {p: arm.find_joints(JOINTS, preserve_order=True)[0] for p, arm in self.arms.items()}
         self.gripper_body = {p: arm.find_bodies("gripper")[0][0] for p, arm in self.arms.items()}
@@ -242,6 +246,8 @@ class SceneEnv(DirectRLEnv):
     # On the CPU device there is no particle-cloth tensor view: PhysX writes the particles back to the mesh's USD
     # points (use_fabric=False), and GarmentObject reads and resets them there.
     def particle_positions(self):
+        if self.device != "cpu":           # GPU pipeline: the particle-cloth tensor view (world frame)
+            return self.cloth._cloth_prim_view.get_world_positions()[0].detach().cpu().numpy().astype(np.float64)
         # GarmentObject.get_current_mesh_points without its open3d point cloud
         pos, ori = self.cloth.get_world_pose()
         local = self.cloth._get_points_pose().detach().cpu().numpy()
@@ -269,6 +275,79 @@ class SceneEnv(DirectRLEnv):
     def _apply_action(self):
         self.arms["left_"].set_joint_position_target(self.targets[:, :6], joint_ids=self.joint_ids["left_"])
         self.arms["right_"].set_joint_position_target(self.targets[:, 6:], joint_ids=self.joint_ids["right_"])
+        if self.pins:
+            self._drive_pins()
+
+    # ---- weld grasp (IsaacClothFoldEnv grasp_mode="weld", Phase W) ----
+    # pins: {prefix: (particle indices, offsets (k, 3) in the gripperframe site frame)}. The CPU device has no
+    # per-particle mass, so a welded particle is held by writing its position (gripper pose composed with its
+    # captured offset) and velocity (the gripper point's) into the mesh's USD attributes before every physics
+    # substep -- the same path LeHome's reset uses to move particles mid-simulation.
+    def site_pose(self, prefix):
+        """World pose (pos, R) of the gripperframe site: the gripper link composed with the MJCF site offset."""
+        arm = self.arms[prefix]
+        b = self.gripper_body[prefix]
+        link_pos = arm.data.body_link_pos_w[0, b].cpu().numpy().astype(np.float64)
+        link_R = _matrix_from_quat(arm.data.body_link_quat_w[0, b].cpu().numpy().astype(np.float64))
+        return link_pos + link_R @ GRIPPERFRAME_POS, link_R @ _matrix_from_quat(GRIPPERFRAME_QUAT), link_pos, link_R
+
+    def set_pinned_masses(self):
+        """GPU pipeline: pinned particles get zero mass (held exactly where written); everything else its rest mass.
+        ClothPrim.set_particle_masses calls a get_masses it doesn't have, so this uses the physics view directly."""
+        if self.device == "cpu":
+            return
+        pv = self.cloth._cloth_prim_view._physics_view
+        if not hasattr(self, "_rest_masses"):
+            self._rest_masses = pv.get_masses().clone()
+        masses = self._rest_masses.clone()
+        for idx, _ in self.pins.values():
+            masses.view(masses.shape[0], -1)[0, torch.as_tensor(idx, device=masses.device)] = 0.0
+        pv.set_masses(masses, torch.arange(masses.shape[0], device=masses.device))
+
+    def _drive_pins_gpu(self):
+        view = self.cloth._cloth_prim_view
+        pos = view.get_world_positions(clone=False)
+        vel = view.get_velocities(clone=False)
+        for prefix, (idx, offsets) in self.pins.items():
+            if len(idx) == 0:
+                continue
+            site, R, link_pos, _ = self.site_pose(prefix)
+            world = site + offsets @ R.T
+            arm, b = self.arms[prefix], self.gripper_body[prefix]
+            lin = arm.data.body_link_lin_vel_w[0, b].cpu().numpy()
+            ang = arm.data.body_link_ang_vel_w[0, b].cpu().numpy()
+            ti = torch.as_tensor(idx, device=pos.device)
+            pos[0, ti] = torch.as_tensor(world, dtype=pos.dtype, device=pos.device)
+            vel[0, ti] = torch.as_tensor(lin + np.cross(ang, world - link_pos), dtype=vel.dtype, device=vel.device)
+        all_idx = torch.arange(pos.shape[0], device=pos.device)
+        view._physics_view.set_positions(pos, all_idx)
+        view._physics_view.set_velocities(vel, all_idx)
+
+    def _drive_pins(self):
+        if self.device != "cpu":
+            return self._drive_pins_gpu()
+        pos, ori = self.cloth.get_world_pose()
+        pos, ori = pos.detach().cpu().numpy(), ori.detach().cpu().numpy()
+        scale = self.cloth.get_world_scale().detach().cpu().numpy()
+        local = self.cloth._get_points_pose().detach().cpu().numpy().astype(np.float64)
+        mesh = UsdGeom.Mesh(self.cloth._prim)
+        vel_attr = mesh.GetVelocitiesAttr()
+        vel = vel_attr.Get()
+        vel = np.zeros_like(local) if vel is None or len(vel) != len(local) else np.asarray(vel, dtype=np.float64)
+        cloth_R = _matrix_from_quat(ori)
+        for prefix, (idx, offsets) in self.pins.items():
+            if len(idx) == 0:
+                continue
+            site, R, link_pos, _ = self.site_pose(prefix)
+            world = site + offsets @ R.T
+            local[idx] = self.cloth.inverse_transform_points(world, pos, ori, scale)
+            arm, b = self.arms[prefix], self.gripper_body[prefix]
+            lin = arm.data.body_link_lin_vel_w[0, b].cpu().numpy()
+            ang = arm.data.body_link_ang_vel_w[0, b].cpu().numpy()
+            v_world = lin + np.cross(ang, world - link_pos)
+            vel[idx] = (v_world @ cloth_R) / scale
+        self.cloth._prim.GetAttribute("points").Set(Vt.Vec3fArray.FromNumpy(local.astype(np.float32)))
+        vel_attr.Set(Vt.Vec3fArray.FromNumpy(vel.astype(np.float32)))
 
     def _get_observations(self):
         return {"policy": self.targets}

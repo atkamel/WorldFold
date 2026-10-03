@@ -369,11 +369,29 @@ def _i32() -> Result:
     return Result("I3.2", "PASS" if ok else "FAIL", ev)
 
 
+@check("W1", "weld grasp on Isaac (GPU pipeline): engages, tracks < 3 mm lifted/carried, holds on neutral, releases, honours mask")
+def _w1() -> Result:
+    f = ROOT / "outputs" / "isaac" / "weld_cuda" / "weld.json"
+    if not f.exists():
+        return Result("W1", "FAIL", [f"missing artifact: {f}"])
+    d = json.loads(f.read_text())
+    ph = d["phases"]
+    ev = [f"device {d['device']}: " + ", ".join(f"{k}={v}" for k, v in d["checks"].items()),
+          "max tracking mm: " + ", ".join(f"{k} {ph[k]['max_track_mm']}" for k in ("lift", "carry", "hold_neutral")),
+          f"s/step while welded: {ph['carry']['s_per_step']}"]
+    ok = d["passed"] and git_tracked(f) and results_md_has("W1")
+    if isaac_available():
+        code, tail = _pytest("-m", "isaac", "tests/imitation/test_isaac_weld.py")
+        ev.append(f"test_isaac_weld.py exit {code}: {tail}")
+        ok &= code == 0
+    return Result("W1", "PASS" if ok else "FAIL", ev)
+
+
 @check("I3.3", "close-out: every other Phase I check passes here, roadmap Phase I rows closed, docs updated")
 def _i33() -> Result:
     ev, ok = [], True
     for mid, (_, fn) in CHECKS.items():
-        if mid == "I3.3":
+        if mid == "I3.3" or not mid.startswith("I"):      # Phase I checks only
             continue
         try:
             r = fn()

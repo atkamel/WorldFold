@@ -867,3 +867,41 @@ The performance arc (IG grasp reliability, then the IS retrain at n = 200) start
 
 Artifacts: `outputs/imitation/isaac/pilot/` (eval JSONs, `takeover_labels.json`, logs),
 `outputs/imitation/runs/isaac_pilot_*/run.json`, `outputs/imitation/runs/isaac_pilot_detector/agreement.json`.
+## Phase W — MuJoCo weld baseline on Isaac
+
+### W1 weld grasp (2026-10-03)
+
+Weld semantics are MuJoCo's:
+- hysteresis ±0.3
+- every allowed grasp corner within 6 cm attaches on close with its gripperframe offset
+- `weld_mask` applies per stage
+- `grasp_active` is true while anything is welded
+
+On Isaac a grid vertex pins the particles within 1.2 cm of it (21 particles).
+
+**CPU device (LeHome default): fails.** The only write path is the mesh's USD `points`. The
+writes read back exactly (0 mm), but PhysX ignores them mid-simulation: by the next 10 ms substep
+the pinned particles were **14 mm (median) to 36 mm** from target, and max tracking error over the
+lift was 42 mm. The corner rose only 6.5 cm for a 10 cm lift, carried partly by jaw friction. Each
+write also cost 0.15 s. Diagnosed with a per-substep trace (`outputs/isaac/weld_debug.log`).
+
+**GPU pipeline (`device="cuda:0"`): passes** (`isaac/weld_check.py`, `outputs/isaac/weld_cuda/weld.json`).
+This is the old 4.5 port's method: pinned particles get zero mass through the particle physics
+view, and their positions and velocities are set each substep.
+
+| phase | max tracking error | corner z start → end | s / control step |
+|---|---|---|---|
+| close | 0.001 mm | 0.4239 → 0.4239 | 0.161 |
+| lift 10 cm | 1.92 mm | 0.4269 → 0.5151 | 0.158 |
+| carry 10 cm | 2.42 mm | 0.5172 → 0.5144 | 0.165 |
+| hold (neutral command) | 0.00 mm | 0.5144 → 0.5144 | 0.165 |
+| release | — | 0.5076 → 0.4240 (falls to the table) | 0.154 |
+
+The checks all pass:
+- the weld engages, tracks < 3 mm, raises the corner 9 cm, holds on a neutral command and releases
+- a masked corner never pins
+- the cloth rests on the table (z 0.424)
+
+The GPU path also runs faster than the CPU one (0.16 vs 0.29 s per step). LeHome's reason for the
+CPU device (grippers pass through the cloth on CUDA) doesn't matter for the weld, which holds the
+cloth by attachment, not by contact.
