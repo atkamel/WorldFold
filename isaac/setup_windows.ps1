@@ -23,11 +23,13 @@ function Step($name, [scriptblock]$body) {
     if ($LASTEXITCODE -ne 0) { throw "step failed: $name" }
 }
 
-# 1. LeHome's lock (exported from its uv.lock, every entry sha256-pinned); isaacsim from NVIDIA's official index
-Step "lehome lock" { & $uv pip install --python $py --require-hashes @indexes @build `
+# 1. LeHome's dependencies re-resolved for Windows (isaac/requirements-lehome.in, seeded with its uv.lock), every entry sha256-pinned;
+#    isaacsim from NVIDIA's official index. The locks are complete resolved sets, so they install with --no-deps
+#    (re-resolving would trip over LeHome's deliberate packaging==23.0 override)
+Step "lehome lock" { & $uv pip install --python $py --require-hashes --no-deps @indexes @build `
     -r (Join-Path $PSScriptRoot "requirements-lehome-windows.lock") }
 # 2. the IsaacLab fork's own requirements + imitation deps, compiled against LeHome's versions, hashed
-Step "isaaclab + imitation lock" { & $uv pip install --python $py --require-hashes @indexes @build `
+Step "isaaclab + imitation lock" { & $uv pip install --python $py --require-hashes --no-deps @indexes @build `
     -r (Join-Path $PSScriptRoot "requirements-isaaclab-windows.lock") }
 # 3. CUDA torch: PyPI's Windows torch is CPU-only; swap in the cu128 build (hash-pinned, official index)
 Step "torch cu128" { & $uv pip install --python $py --require-hashes --no-deps --reinstall `

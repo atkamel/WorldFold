@@ -1,0 +1,12 @@
+{
+ "milestone": "I0.2",
+ "status": "PASS",
+ "evidence": [
+  "INSTALL_REVIEW.md tracked=True contains SAFE=True",
+  "requirements-lehome-windows.lock tracked=True unhashed=0",
+  "requirements-isaaclab-windows.lock tracked=True unhashed=0",
+  "requirements-torch-cu128-windows.lock tracked=True unhashed=0"
+ ],
+ "commit": "182e098a002296d9d210bfaaf21325a29bd7dd28",
+ "time": "2026-10-03T01:13:16-0400"
+}

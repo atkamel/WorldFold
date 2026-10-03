@@ -135,6 +135,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-03 · **I0.4 ✅** verifier `python -m imitation.verify` (Sonnet subagent, re-verified: 12 tests, I0.1/I0.2/I0.4 PASS). I0.3 lock fixes: LeHome's lock was never resolved for Windows (`isaacsim` pins `pywin32==306`, `networkx==3.3`, `filelock 3.13.1`, `fsspec 2024.6.1`), so `isaac/requirements-lehome-windows.lock` is re-resolved from LeHome's pyproject, seeded with its lock (4 versions changed + 15 Windows-only packages, all hashed). Hashed locks install with `--no-deps`. Install running · (this commit)
+
 - 2026-10-02 · **I0.3 in progress** (paused at the usage limit):
   - `.venv-isaac` was created (Python 3.11.9 + hash-pinned uv 0.12.22).
   - Hashed locks are committed: `isaac/requirements-{lehome,isaaclab,torch-cu128}-windows.lock`, plus `isaac/setup_windows.ps1` and `env_windows.ps1`.
