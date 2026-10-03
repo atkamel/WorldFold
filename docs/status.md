@@ -41,7 +41,7 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**Phase I, I0.2: install review.**
+**Phase I, I0.3: scoped install + smoke test (gate).** I0.2 is done (`isaac/INSTALL_REVIEW.md`); the user approved the install and accepted the EULA. Earlier I0.2 plan, for reference:
 - Fetch lehome-challenge @a805ad2 and the LeHome IsaacLab fork @69f6fa5 (source only) into
   the gitignored `.venv-isaac/src`. Review them, and build a hashed lock.
 - Then ask the user to OK the artifact list and the NVIDIA EULA before I0.3 installs.
@@ -134,6 +134,13 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-02 · **I0.2 ✅ install review:**
+  - Both LeHome repos were fetched at their pinned SHAs and reviewed by two Sonnet subagents, then spot-checked by the lead. Verdict: SAFE.
+  - The lock's isaacsim hashes match the official pypi.nvidia.com index.
+  - Telemetry and the extension registry will be off. CPU torch gets swapped for cu128. `/Assets` is a junction.
+  - The user OK'd the artifact list (~8 GB) and accepted the NVIDIA EULA.
+  - `isaac/INSTALL_REVIEW.md` · (this commit)
 
 - 2026-10-02 · **I0.1 ✅ pulled origin/main (Isaac Sim env, PR #15)** into `feature/imitation`. Resolved `quarter_fold_env.py`: main's `base_env=` + accessors and our 139-D obs. Fixed the silent-breakers: `stages` shadowing (it would have made the half fold 2-stage), the hard-coded one-hot offset, and the isaac test stub. Added Phase I to the roadmap, the subagent policy to CLAUDE.md and `docs/subagents.md`. 116 fast + 12 slow pass; expert benchmark 48/50, rows identical to M1.5 · (this commit)
 

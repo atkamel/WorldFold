@@ -24,3 +24,5 @@ outputs/cloth_angles/*
 .DS_Store
 MUJOCO_LOG.TXT
 .venv-warp/
+.venv-isaac/
+/Assets

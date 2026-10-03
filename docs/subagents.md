@@ -6,6 +6,8 @@ tedious, well-scoped work; the lead agent re-verifies results before a milestone
 
 | date | milestone | model | task | outcome | lead re-verified |
 |---|---|---|---|---|---|
+| 2026-10-02 | I0.2 | sonnet | security review of lehome-challenge @a805ad2 (install code, import path, risky-pattern grep, ASSETS_ROOT, HF assets, uv.lock) | SAFE with caveats (CPU torch on Windows, cwd-based ASSETS_ROOT, `.cn` mirror URLs) | yes: read constant.py; checked 2 isaacsim wheel hashes against pypi.nvidia.com (identical) |
+| 2026-10-02 | I0.2 | sonnet | security review of the LeHome IsaacLab fork @69f6fa5 vs upstream | SAFE: 2 commits, 3 benign changes; telemetry and registry on by default in the kit file | yes: grepped the fork lines and kit settings |
 | 2026-10-02 | I0.1 | sonnet | read-only review of the merge resolution against both parents | no bugs; 4 nits (one fixed: comment on `max_episode_steps` with `base_env`) | yes: findings checked against the file |
 | 2026-10-02 | I0.1 | sonnet | merge fix-ups: `isaac/tests` stub to the 139-D wrapper contract, `pytest.ini` testpaths + `isaac` marker, `HALF_FOLD_MAX_STEPS` single source, `tests/imitation/test_merge_invariants.py` | done; 116 fast pass, 7/7 invariants | yes: fast suite re-run 116 passed |
 | 2026-10-02 | planning | sonnet (Explore) | map imitation ↔ MuJoCo coupling (file:line) | done | spot-checked key files |
