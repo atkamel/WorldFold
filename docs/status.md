@@ -135,6 +135,14 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-02 · **I0.3 in progress** (paused at the usage limit):
+  - `.venv-isaac` was created (Python 3.11.9 + hash-pinned uv 0.12.22).
+  - Hashed locks are committed: `isaac/requirements-{lehome,isaaclab,torch-cu128}-windows.lock`, plus `isaac/setup_windows.ps1` and `env_windows.ps1`.
+  - `start_app` honours `WORLDFOLD_KIT_ARGS`.
+  - The install was started in the background (log: `outputs/isaac/setup.log`).
+  - Resume: check the log ends with `== done`; if not, re-run `powershell -File isaac\setup_windows.ps1` (idempotent). Then run the I0.3 smoke tests and the scope check (`outputs/isaac/scope_before.txt` is the before-listing).
+  - · (this commit)
+
 - 2026-10-02 · **I0.2 ✅ install review:**
   - Both LeHome repos were fetched at their pinned SHAs and reviewed by two Sonnet subagents, then spot-checked by the lead. Verdict: SAFE.
   - The lock's isaacsim hashes match the official pypi.nvidia.com index.

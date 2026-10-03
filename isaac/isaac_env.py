@@ -74,8 +74,12 @@ def start_app(headless=True, cameras=False):
     """Launches Isaac Sim once through IsaacLab's AppLauncher on the CPU device, as LeHome's scripts do."""
     global _app
     if _app is None:
+        import os
         from isaaclab.app import AppLauncher
-        _app = AppLauncher(headless=headless, enable_cameras=cameras, device="cpu").app
+        # extra Kit settings, e.g. the local install's telemetry-off / no-registry / portable-root flags
+        # (isaac/env_windows.ps1); unset on Modal
+        kit_args = os.environ.get("WORLDFOLD_KIT_ARGS", "")
+        _app = AppLauncher(headless=headless, enable_cameras=cameras, device="cpu", kit_args=kit_args).app
     return _app
 
 
