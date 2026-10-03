@@ -37,6 +37,13 @@ def recovery_perturbation(fraction, t_range=(10, 70), k_range=(5, 15)):
     return fn
 
 
+def recovery_perturbation_for(backend, fraction):
+    """MuJoCo's (10, 70) onset window scaled by 230/97 for the longer Isaac fold."""
+    if backend == "mujoco":
+        return recovery_perturbation(fraction)
+    return recovery_perturbation(fraction, t_range=(24, 166), k_range=(5, 15))
+
+
 def printer(t0):
     def progress(n, total, ep):
         m = ep.meta
@@ -106,7 +113,7 @@ def main():
         kw["render"] = True
         kw["cameras"] = parse_cameras(args.cameras)
     with EnvPool(args.workers, kw or None) as pool:
-        rollout(pool, seeds, ExpertController(), perturb_fn=recovery_perturbation(args.recovery_fraction),
+        rollout(pool, seeds, ExpertController(), perturb_fn=recovery_perturbation_for(args.backend, args.recovery_fraction),
                 progress=printer(t0), on_done=save)
     for w in dict.fromkeys((writer, fail_writer)):
         m = w.freeze()

@@ -17,6 +17,7 @@ DAGGER_SEED_BASE = 50_000      # DAgger rollouts: 50_000 + 1000 * round ..
 DISTILL_SEED_BASE = 70_000     # sensor-only distillation rollouts (Phase 4): 70_000 + 1000 * round ..
 HARVEST_SEED_BASE = 400_000    # student rollout harvest for offline RL (Phase 5): 400_000 ..
 SHIFT_SEED_BASE = 500_000      # shifted-pose training rollouts (M5b.2): 500_000 + 1000 * round ..
+TUNE_SEED_BASE = 600_000       # Isaac grasp-tuning blocks: 600_000 ..
 EVAL_SEED_BASE = {"id_easy": 100_000, "id_hard": 200_000, "recovery": 300_000}
 HARD_JITTER = 0.04
 
@@ -24,7 +25,8 @@ HARD_JITTER = 0.04
 SEED_RANGES = {"train": (TRAIN_SEED_BASE, 10_000), "dagger": (DAGGER_SEED_BASE, 70_000),
                "distill": (DISTILL_SEED_BASE, 100_000), "id_easy": (100_000, 200_000),
                "id_hard": (200_000, 300_000), "recovery": (300_000, 400_000),
-               "harvest": (HARVEST_SEED_BASE, 500_000), "shift": (SHIFT_SEED_BASE, 600_000)}
+               "harvest": (HARVEST_SEED_BASE, 500_000), "shift": (SHIFT_SEED_BASE, 600_000),
+               "tune": (TUNE_SEED_BASE, 700_000)}
 
 
 def shifted_pose(seed):
@@ -38,15 +40,34 @@ def shifted_pose(seed):
     return {"cloth_pose": pose}
 
 
-def eval_set(name, n):
+ISAAC_HARD_RMAX = 0.01   # m; largest cloth offset radius all of whose id_hard draws are reachable (isaac/reach_check.py)
+ISAAC_HARD_MIN = 0.01    # m; the forced axis is at least this far off
+ISAAC_RECOVERY_T = (35, 140)   # provisional: MuJoCo 15-60 scaled to the ~230-step Isaac fold (revisit at I2.1)
+
+
+def shifted_pose_isaac(seed):
+    """Isaac id_hard start: reset jitter is 1 cm, so one axis is forced to 1 cm .. ISAAC_HARD_RMAX and the other is
+    within +-ISAAC_HARD_RMAX (the fold only spans the arms' reach for a couple of cm)."""
+    r = ISAAC_HARD_RMAX
+    rng = np.random.default_rng([seed, 17])
+    pose = rng.uniform(-r, r, size=2)
+    axis = rng.integers(2)
+    pose[axis] = np.sign(pose[axis] or 1.0) * rng.uniform(ISAAC_HARD_MIN, r)
+    return {"cloth_pose": pose}
+
+
+def eval_set(name, n, backend="mujoco"):
     """(seeds, reset_options fn or None, perturb_fn or None) for a named evaluation set."""
     seeds = list(range(EVAL_SEED_BASE[name], EVAL_SEED_BASE[name] + n))
+    isaac = backend != "mujoco"
     if name == "id_easy":
         return seeds, None, None
     if name == "id_hard":
-        return seeds, shifted_pose, None
+        return seeds, shifted_pose_isaac if isaac else shifted_pose, None
     if name == "recovery":
+        lo, hi = ISAAC_RECOVERY_T if isaac else (15, 60)
+
         def knock(seed, rng):
-            return Perturbation(t=int(rng.integers(15, 60)), k=int(rng.integers(8, 16)))
+            return Perturbation(t=int(rng.integers(lo, hi)), k=int(rng.integers(8, 16)))
         return seeds, None, knock
     raise KeyError(name)

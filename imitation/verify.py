@@ -250,9 +250,45 @@ def _i13() -> Result:
     return Result("I1.3", "PASS" if ok else "FAIL", ev)
 
 
+@check("I1.2", "Isaac seed sets: ranges disjoint, MuJoCo sets unchanged, id_hard offsets reachable 200/200 at R_max")
+def _i12() -> Result:
+    ev, ok = [], True
+    code, tail = _pytest("tests/imitation/test_seeds.py")
+    ev.append(f"test_seeds.py exit {code}: {tail}")
+    ok &= code == 0
+    reach = ROOT / "outputs" / "isaac" / "reach.json"
+    if not reach.exists():
+        return Result("I1.2", "FAIL", ev + [f"missing artifact: {reach}"])
+    d = json.loads(reach.read_text())
+    row = next((r for r in d["rows"] if abs(r["r_cm"] - d["r_max_cm"]) < 1e-9), None)
+    good = row is not None and row["reachable"] == 1.0 and row["n"] >= 200
+    ev.append(f"R_max {d['r_max_cm']} cm: reachable {row and row['reachable']} of {row and row['n']} ok={good}")
+    ok &= good and git_tracked(reach) and results_md_has("I1.2")
+    return Result("I1.2", "PASS" if ok else "FAIL", ev)
+
+
+@check("I2.1", "Isaac expert (grasp as built) runs as the teacher through EnvPool; pilot rates recorded (no threshold)")
+def _i21() -> Result:
+    ev, ok = [], True
+    for name in ("eval_expert.json", "eval_expert_recovery.json"):
+        path = ROOT / "outputs" / "imitation" / "isaac" / "pilot" / name
+        if not path.exists():
+            ev.append(f"missing artifact: {path}")
+            ok = False
+            continue
+        for s, (k, n) in eval_counts(path).items():
+            lo, hi = wilson(k, n)
+            ev.append(f"{name} {s}: {k}/{n} [{lo:.1f}, {hi:.1f}] (pilot, no threshold)")
+        ok &= git_tracked(path)
+    ok &= results_md_has("I2.1")
+    if isaac_available():
+        code, tail = _pytest("-m", "isaac", "tests/imitation/test_isaac_expert.py")
+        ev.append(f"test_isaac_expert.py exit {code}: {tail}")
+        ok &= code == 0
+    return Result("I2.1", "PASS" if ok else "FAIL", ev)
+
+
 for _mid, _desc in [
-    ("I1.2", "Isaac seed sets disjoint; id_hard ring reachable"),
-    ("I2.1", "Isaac expert (grasp as built): runs clean, rates recorded"),
     ("I2.2", "DAgger labels: >= 80% of chunks within 0.05"),
     ("I3.1", "e2e micro chain: collect -> train -> eval -> dagger -> vision -> detector"),
     ("I3.2", "pilot run: every artifact valid"),

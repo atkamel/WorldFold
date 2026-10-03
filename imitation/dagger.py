@@ -34,7 +34,7 @@ import json
 import time
 from pathlib import Path
 
-from imitation.data.collect import DEFAULT_ROOT, recovery_perturbation
+from imitation.data.collect import DEFAULT_ROOT, recovery_perturbation_for
 from imitation.data.dataset import clamp_fraction  # noqa: F401 (re-exported)
 from imitation.data.schema import DatasetWriter, load_manifest
 from imitation.evaluate import evaluate, resolve_workers
@@ -172,7 +172,7 @@ def main():
                 all_seeds, reset_options = round_seeds(r, args.episodes, args.shift_fraction)
                 seeds = [s for s in all_seeds if s not in writer.done_seeds]
                 rollout(pool, seeds, controller, reset_options=reset_options,
-                        perturb_fn=recovery_perturbation(args.recovery_fraction),
+                        perturb_fn=recovery_perturbation_for(args.backend, args.recovery_fraction),
                         meta_extra={"round": r, "beta": beta, "policy": str(best_ckpt)},
                         on_done=lambda e: writer.add(e, obs_dim=OBS_DIM, action_dim=ACTION_DIM))
                 m = writer.freeze()

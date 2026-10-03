@@ -739,3 +739,35 @@ sim-free pipeline tests pass under the Isaac venv: 83 passed (numpy 1.26, torch 
 - **No visual DR** in this pass (I-DR).
 
 Artifacts: `outputs/isaac/rig/{rig.json,main.png,left_wrist_cam.png,right_wrist_cam.png}`.
+### Isaac evaluation seed sets (Phase I, I1.2, 2026-10-03)
+
+`isaac/reach_check.py` checks reach with no physics. It uses PinchIK on the half_fold_demo pinch
+/ above / place targets, for cloth offsets drawn by the id_hard rule (200 offsets per radius).
+
+| r (cm) | reachable | worst grasp (mm) | worst place (mm) |
+|---|---|---|---|
+| 0.5 | 200/200 | 2.93 | 11.85 |
+| 0.75 | 200/200 | 3.78 | 14.64 |
+| 1.0 | 200/200 | 4.62 | 17.32 |
+| 1.25 | 129/200 | 7.94 | 20.33 |
+| 1.5 | 81/200 | 11.51 | 22.79 |
+| 2.0 | 48/200 | 19.39 | 27.97 |
+
+A flat 4 mm bound is unreachable even at the nominal pose: the place IK is 5–6 mm off at zero
+offset. So reachability is judged against the demo's ±1 cm operating box: grasp ≤ 4.66 mm,
+place ≤ 17.6 mm (the place goal tolerance is 5 cm). That gives **R_max = 1.0 cm**, the training
+jitter itself.
+
+The Isaac sets:
+- **id_easy:** the default reset (±1 cm offset, ≤10° drop tilt).
+- **id_hard:** one axis forced to ±1.0 cm, the other U(±1 cm). It is an *edge-of-training-jitter*
+  set, **not** an out-of-distribution test. A real OOD axis (yaw / larger tilt) goes to the
+  scale-up milestones (IS).
+- **recovery:** id_easy starts plus k ∈ [8, 16) random steps at t ∈ [35, 140), which is
+  MuJoCo's 15–60 scaled to the ~230-step Isaac fold. This is provisional until the expert's mean
+  steps are measured.
+- **Training recovery demos:** t ∈ [24, 166).
+- **New seed block:** `TUNE_SEED_BASE = 600 000` is reserved for grasp tuning (IG).
+
+The MuJoCo sets are unchanged: `shifted_pose(200000)` is identical, a value pinned in
+`test_seeds.py`.

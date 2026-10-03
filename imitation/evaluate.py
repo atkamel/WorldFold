@@ -133,7 +133,7 @@ def evaluate(ckpt, sets=("id_easy",), n=48, workers=None, replan_every=8, pool=N
             timed = _TimedPolicy(policy)
             controller = PolicyController(timed, replan_every=replan_every)
         for name in sets:
-            seeds, reset_options, perturb_fn = eval_set(name, n)
+            seeds, reset_options, perturb_fn = eval_set(name, n, backend)
             t0 = time.time()
             eps = rollout(pool, seeds, controller, reset_options=reset_options, perturb_fn=perturb_fn,
                           meta_extra={"eval_set": name, "checkpoint": str(ckpt)})
