@@ -173,6 +173,8 @@ class IsaacClothFoldEnv(gym.Env):
         # grasp corner within grasp_radius attaches to the gripper until it opens -- the Phase W baseline)
         if grasp_mode not in ("friction", "weld"):
             raise ValueError(grasp_mode)
+        if grasp_mode == "weld" and device == "cpu":
+            raise ValueError("grasp_mode='weld' needs the GPU pipeline (device='cuda:0'); see lab_scene.site_pose")
         self.grasp_mode = grasp_mode
         self._pinned = {"left_": {}, "right_": {}}    # weld: {grid vertex: (particle idx, offsets)}
         # cameras: {name: square size} -- the imitation pipeline's camera rig (main + wrists), read with render_rig();
@@ -434,7 +436,8 @@ class IsaacClothFoldEnv(gym.Env):
         # MuJoCo's set_gripper: while closed, every allowed grasp corner not yet welded that is within grasp_radius of
         # the gripperframe attaches with its current offset (a corner can join later while already holding another).
         # A grid vertex stands for a WELD_PATCH-radius patch of the denser particle mesh, each with its own offset.
-        site, R = self.gripper_pose(prefix)[0], _matrix_from_quat(self.gripper_pose(prefix)[1])
+        site, quat = self.gripper_pose(prefix)
+        R = _matrix_from_quat(quat)
         grid = self.cloth_positions()
         allowed = self.weld_mask.get(prefix)
         added = False
@@ -491,7 +494,8 @@ class IsaacClothFoldEnv(gym.Env):
         self.lab.reset()
         self._pinned = {p: {} for p in self.prefixes}
         self.lab.pins = {}
-        self.lab.set_pinned_masses()
+        if self.grasp_mode == "weld":
+            self.lab.set_pinned_masses()
         for prefix in self.prefixes:
             self._gripper_closed[prefix] = False
             self._joint_targets[prefix] = self._home()

@@ -198,7 +198,7 @@ Added 2026-10-03.
 
 | | milestone | exit | status |
 |---|---|---|---|
-| W1 | Weld grasp in Isaac (`grasp_mode="weld"`): MuJoCo semantics, particle patch pinned each substep | weld_check: tracking < 3 mm while lifted/carried, release drops, mask and hysteresis honoured | ☐ |
+| W1 | Weld grasp in Isaac (`grasp_mode="weld"`): MuJoCo semantics, particle patch pinned each substep | weld_check: tracking < 3 mm while lifted/carried, release drops, mask and hysteresis honoured | ✅ 2026-10-03: GPU pipeline (zero-mass pins); lift 1.92 mm, carry 2.42 mm |
 | W2 | MuJoCo profile: cloth (0,0) ±2.5 cm, no tilt, arm drives kp ≈ 998 / kv ≈ 2.73, dynamics DR ×U(0.7,1.3), cap 250, MuJoCo eval sets | reach 200/200 on MuJoCo poses; arm reaches ≥ 90% of a 0.05 rad step in one control step; DR deterministic per seed | ☐ |
 | W3 | MuJoCo FoldExpert on Isaac (backend split, MuJoCo byte-identical), overshoot re-measured | expert gate n = 100: id_easy ≥ 95, id_hard ≥ 90, recovery ≥ 90 | ☐ |
 | W4 | Pilot on the weld baseline (as I3.2) | artifacts valid; diffusion id_easy Wilson LB > 0 | ☐ |

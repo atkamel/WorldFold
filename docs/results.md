@@ -905,3 +905,11 @@ The checks all pass:
 The GPU path also runs faster than the CPU one (0.16 vs 0.29 s per step). LeHome's reason for the
 CPU device (grippers pass through the cloth on CUDA) doesn't matter for the weld, which holds the
 cloth by attachment, not by contact.
+
+**W1 close-out checks (2026-10-03):**
+- Reset pose on the GPU pipeline: `reset_cloth`'s offset takes effect. With `cloth_pose` (0.05, 0.03),
+  the settled centroid moved from (0.0002, −0.1354) to (0.0501, −0.1056), and back again on a zero offset.
+  n = 1 seed, which is enough for this check since the reset has no randomness besides the drop tilt.
+- Friction defaults are unchanged: `smoke_test.py --mode state` passes, and the scripted half fold
+  still gives fold_score 0.407 at seed 0 (3.7 steps/s).
+- `grasp_mode="weld"` on the CPU device now raises, and the USD-write path was removed.

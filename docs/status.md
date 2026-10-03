@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-02 · **Branch:** `feature/imitation` (merged main) → `feature/isaac-imitation` · **Phase:** I closed (Isaac viability pass) → IG next, then IS / Phase 6
+**Updated:** 2026-10-03 · **Branch:** `feature/isaac-imitation` · **Phase:** W (weld baseline on Isaac): W1 ✅ → W2 next; track G (friction grasp) in a separate session
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,7 +41,8 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**Phase W, W1: weld grasp in Isaac** (roadmap Phase W).
+**Phase W, W2: the MuJoCo profile on Isaac** (roadmap Phase W). W1 ✅: the weld grasp runs on the GPU
+pipeline (`device="cuda:0"`) and tracks within 2.4 mm.
 - **Decision:** the first Isaac prototype uses MuJoCo's easier weld grasp, with the MuJoCo setup
   transferred fully. That covers W1 weld, W2 profile, W3 expert gate, W4 pilot and W5 full retrain.
 - **Track G:** friction-grasp work (IG.1–IG.3) runs in parallel in a separate session on
@@ -134,6 +135,12 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-03 · **W1 ✅ weld grasp on Isaac.**
+  - Uses MuJoCo semantics on the GPU pipeline: zero-mass pins, with positions and velocities set every substep.
+  - The CPU USD-write path was ruled out (14–36 mm drift per substep) and removed; weld on CPU now raises.
+  - A Sonnet review found no bugs. The GPU reset offset was probed and applies.
+  - Friction smoke test unchanged (fold_score 0.407). `verify W1` PASS; `test_isaac_weld` 7/7; 153 fast pass · (this commit; code in 487f4c1)
 
 - 2026-10-03 · **Phase I closed (viability pass).** The whole pipeline runs on Isaac through the real CLIs:
   - I2.1: the Isaac expert, with the friction grasp as built, runs as the teacher. Pilot: 2/20 id_easy, 0/10 recovery.

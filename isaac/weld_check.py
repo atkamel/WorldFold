@@ -25,7 +25,7 @@ CORNER = 10           # cloth_10, the left arm's half-fold corner
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="outputs/isaac/weld")
-    ap.add_argument("--device", default="cpu", help="cpu (LeHome default) or cuda:0 (particle tensor view)")
+    ap.add_argument("--device", default="cuda:0", help="the weld needs the GPU pipeline's particle tensor view")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
