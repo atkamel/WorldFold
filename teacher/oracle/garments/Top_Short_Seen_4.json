@@ -1,0 +1,62 @@
+{
+ "id": 4,
+ "asset_path": "/Assets/objects/Challenge_Garment/Release/Top_Short/Top_Short_Seen_4/TCSC_Top004_1_obj_exp.usd",
+ "visual_usd_paths": [
+  "/Assets/objects/Challenge_Garment/Release/Color_Texture/Fabric045_1K_JPG.usd",
+  "/Assets/objects/Challenge_Garment/Release/Color_Texture/Fabric045_1K_JPG.usd",
+  "/Assets/objects/Challenge_Garment/Release/Color_Texture/Fabric014_1K_JPG.usd",
+  "/Assets/objects/Challenge_Garment/Release/Color_Texture/Fabric045_1K_JPG.usd"
+ ],
+ "scale": [
+  0.65,
+  0.65,
+  0.65
+ ],
+ "check_point": [
+  10309,
+  11029,
+  7217,
+  4539,
+  11266,
+  11378
+ ],
+ "initial_pos_range": [
+  -0.07,
+  -0.02,
+  0.63,
+  0.02,
+  0.02,
+  0.63
+ ],
+ "initial_rot_range": [
+  0,
+  0,
+  0,
+  0,
+  0,
+  0
+ ],
+ "soft_reset_pos_range": [
+  -0.07,
+  -0.02,
+  0.67,
+  0.02,
+  0.02,
+  0.67
+ ],
+ "soft_reset_rot_range": [
+  -20,
+  -22,
+  0,
+  20,
+  22,
+  0
+ ],
+ "success_distance": [
+  17,
+  27,
+  17,
+  7,
+  7
+ ]
+}

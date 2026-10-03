@@ -1,0 +1,25 @@
+{
+  "_note": "Step-3 live procedure. Coordinates in metres, computed from each shirt's settled flat keypoints (live sessions 2026-10-02). grasp = gather slide with the moving finger leading along dir, then lift; carry = move with via points; release params are filled in from the step-2 mechanics test. Re-read keypoints after every step and adjust before sending the next command.",
+  "Top_Long_Seen_0": [
+    {"step": "sleeve_L", "grasp": {"op": "grasp", "arm": "left", "target": [-0.2275, -0.0426], "dir": [0.888, 0.460], "slide": 0.03, "lift": 0.073},
+     "carry": {"op": "move", "arms": {"left": {"pos": [0.0255, -0.0426, 0.552], "via": [[-0.16, -0.0426, 0.615], [-0.07, -0.0426, 0.615]]}}, "ds": 0.0035},
+     "release_at": [0.0255, -0.0426]},
+    {"step": "sleeve_R", "grasp": {"op": "grasp", "arm": "right", "target": [0.2295, -0.0458], "dir": [-0.862, 0.506], "slide": 0.03, "lift": 0.073},
+     "carry": {"op": "move", "arms": {"right": {"pos": [-0.0195, -0.0458, 0.552], "via": [[0.17, -0.0458, 0.615], [0.08, -0.0458, 0.615]]}}, "ds": 0.0035},
+     "release_at": [-0.0195, -0.0458]},
+    {"step": "bottom_up", "grasp_left": {"op": "grasp", "arm": "left", "target": [-0.100, -0.138], "dir": [1, 0], "slide": 0.03, "lift": 0.073},
+     "grasp_right": {"op": "grasp", "arm": "right", "target": [0.094, -0.141], "dir": [-1, 0], "slide": 0.03, "lift": 0.073},
+     "carry": {"op": "move", "arms": {"left": {"pos": [-0.100, 0.122, 0.552], "via": [[-0.100, -0.03, 0.645]]}, "right": {"pos": [0.094, 0.125, 0.552], "via": [[0.094, -0.03, 0.645]]}}, "ds": 0.0035}}
+  ],
+  "Top_Short_Seen_4": [
+    {"step": "sleeve_L", "grasp": {"op": "grasp", "arm": "left", "target": [-0.138, 0.030], "dir": [1, 0], "slide": 0.03, "lift": 0.058},
+     "carry": {"op": "move", "arms": {"left": {"pos": [-0.060, 0.030, 0.548], "via": [[-0.10, 0.030, 0.605]]}}, "ds": 0.0025},
+     "release_at": [-0.060, 0.030]},
+    {"step": "sleeve_R", "grasp": {"op": "grasp", "arm": "right", "target": [0.152, 0.035], "dir": [-1, 0], "slide": 0.03, "lift": 0.058},
+     "carry": {"op": "move", "arms": {"right": {"pos": [0.042, 0.035, 0.548], "via": [[0.10, 0.035, 0.605]]}}, "ds": 0.0025},
+     "release_at": [0.042, 0.035]},
+    {"step": "bottom_up", "grasp_left": {"op": "grasp", "arm": "left", "target": [-0.034, -0.085], "dir": [1, 0], "slide": 0.03, "lift": 0.058},
+     "grasp_right": {"op": "grasp", "arm": "right", "target": [0.048, -0.103], "dir": [-1, 0], "slide": 0.03, "lift": 0.058},
+     "carry": {"op": "move", "arms": {"left": {"pos": [-0.034, 0.091, 0.548], "via": [[-0.034, -0.01, 0.62]]}, "right": {"pos": [0.048, 0.109, 0.548], "via": [[0.048, -0.01, 0.62]]}}, "ds": 0.0025}}
+  ]
+}

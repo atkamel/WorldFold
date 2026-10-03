@@ -1,0 +1,60 @@
+{
+    "id": 900,
+    "asset_path": "/Assets/objects/Challenge_Garment/Release/Top_Short/Top_Short_Unseen_9/towel_grid.usd",
+    "visual_usd_paths": [
+        "/Assets/objects/Challenge_Garment/Release/Color_Texture/Tiles081_1K_JPG.usd",
+        "/Assets/objects/Challenge_Garment/Release/Color_Texture/Fabric079_1K_JPG.usd"
+    ],
+    "scale": [
+        0.45,
+        0.45,
+        0.45
+    ],
+    "check_point": [
+        0,
+        71,
+        2627,
+        2628,
+        5112,
+        5183
+    ],
+    "initial_pos_range": [
+        -0.07,
+        -0.02,
+        0.63,
+        0.02,
+        0.02,
+        0.63
+    ],
+    "initial_rot_range": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+    ],
+    "soft_reset_pos_range": [
+        -0.07,
+        -0.02,
+        0.67,
+        0.02,
+        0.02,
+        0.67
+    ],
+    "soft_reset_rot_range": [
+        -20,
+        -22,
+        0,
+        20,
+        22,
+        0
+    ],
+    "success_distance": [
+        21,
+        25,
+        30,
+        4,
+        12
+    ]
+}

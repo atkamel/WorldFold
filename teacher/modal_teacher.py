@@ -106,6 +106,7 @@ image = (
 # ---- Isaac Sim image (Project 1): his locked lehome-challenge env on top of the teacher image ----
 LEHOME_CHALLENGE_SHA = "5ea947ed83abf414180f4c503dbb31b9d6aa39f8"
 CH = f"{SRC}/lehome-challenge"
+TOWEL_NAME = "Top_Short_Unseen_9"   # flat towel disguised as a short-sleeve top (see teacher/towel/)
 isaac_image = (
     image
     .apt_install("cmake", "ninja-build", "pkg-config", "python3-dev", "libgl1-mesa-dev", "libglfw3", "libglfw3-dev",
@@ -141,6 +142,11 @@ isaac_image = (
           "XDG_RUNTIME_DIR": "/tmp"})
     .add_local_file(str(_TEACHER / "real_in_sim_patch.py"), remote_path="/opt/teacher/real_in_sim_patch.py")
     .add_local_file(str(_TEACHER / "isaac_timing_patch.py"), remote_path="/opt/teacher/isaac_timing_patch.py")
+    .add_local_file(str(_TEACHER / "verts_dump_patch.py"), remote_path="/opt/teacher/verts_dump_patch.py")
+    .add_local_dir(str(_TEACHER / "towel" / TOWEL_NAME),
+                   remote_path=f"{CH}/Assets/objects/Challenge_Garment/Release/Top_Short/{TOWEL_NAME}")
+    .add_local_dir(str(_TEACHER / "oracle"), remote_path="/opt/teacher/oracle", ignore=["__pycache__", "*.png"])
+    .add_local_file(str(_TEACHER / "oracle" / "oracle_fold.py"), remote_path=f"{CH}/scripts/oracle_fold.py")
 )
 
 # local code mounts (last layers; changing these files does not rebuild the image)
@@ -1386,3 +1392,475 @@ def isaac_timing(workers: str = "8,12", garment_types: str = "top_short"):
         f = tdir / f"summary-{int(time.time())}.json"; f.write_text(json.dumps(out, indent=2)); vol.commit()
     print("ISAAC_TIMING_DONE " + json.dumps(out), flush=True)
     return out
+
+
+# ---------------------------------------------------------------------------------------------
+# 4-worker eval with recordings kept and rendered to small mp4s (proven to fit: 16 CPU, 64 GB, one L40S).
+# The 25-minute timeout is a hard spend cap (about 1.35 USD).
+#   modal run --detach teacher/modal_teacher.py::isaac_eval_videos --garment-types top_long,top_short
+# ---------------------------------------------------------------------------------------------
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=1500, cpu=16, memory=65536)
+def isaac_eval_videos(garment_types: str = "top_long,top_short", num_garments: int = 8, num_workers: int = 4,
+                      subset: str = "seen", tag: str = "videos", rl_seed: int = 0):
+    import json, os
+    extra = f"--randomize_garments --num_garments {num_garments} --rl_seed {rl_seed}"
+    extra += {"seen": " --seen_only", "all": " --all", "unseen": ""}[subset]
+    res = isaac_eval.local(num_workers=num_workers, num_episodes=1, garment_types=garment_types,
+                           server_mode="fast", extra=extra, tag=tag)
+    vids = render_isaac_videos.local(os.path.basename(res["dir"]))
+    print("VIDEOS_DONE " + json.dumps({"dir": res["dir"], "n": len(vids)}), flush=True)
+    return {"eval": res, "videos": vids}
+
+
+# ---------------------------------------------------------------------------------------------
+# Towel test: a flat square cloth (teacher/towel/, built by make_towel.py) loaded as a fake
+# short-sleeve top "Top_Short_Unseen_9". The challenge has no towel; the teacher never trained on one.
+# His success check is shirt-specific, so judge by the video.
+#   modal run --detach teacher/modal_teacher.py::isaac_towel
+# ---------------------------------------------------------------------------------------------
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=900, cpu=8, memory=32768)
+def isaac_towel(num_episodes: int = 2, tag: str = "towel", garments: str = TOWEL_NAME,
+                friction: float = -1.0, adhesion: float = -1.0, rl_seed: int = -1):
+    """garments: space-separated garment names (default = the towel); also handy for 1-worker demo videos.
+    friction / adhesion >= 0 override the cloth particle material (his defaults 0.5 / 0.1) = "rubber pads" test."""
+    import json, os, re
+    cfg_p = f"{CH}/source/lehome/lehome/tasks/bedroom/config_file/particle_garment_cfg.yaml"
+    y = open(cfg_p).read()
+    for key, val in (("friction", friction), ("adhesion", adhesion)):
+        if val >= 0:
+            y, n = re.subn(rf"(?m)^(\s+){key}:\s*[0-9.eE+-]+", rf"\g<1>{key}: {val}", y)
+            assert n == 1, f"{key}: expected 1 match, got {n}"
+    open(cfg_p, "w").write(y)
+    print("CLOTH_MATERIAL " + " | ".join(l.strip() for l in y.splitlines() if re.match(r"\s+(friction|adhesion):", l)), flush=True)
+    seed = f" --rl_seed {rl_seed}" if rl_seed >= 0 else ""
+    res = isaac_eval.local(num_workers=1, num_episodes=num_episodes, garment_types="top_short",
+                           server_mode="fast", extra=f"--garment_list {garments}{seed}", tag=tag)
+    vids = render_isaac_videos.local(os.path.basename(res["dir"]), every=1)
+    print("VIDEOS_DONE " + json.dumps({"dir": res["dir"], "n": len(vids)}), flush=True)
+    return {"eval": res, "videos": vids}
+
+
+# ---------------------------------------------------------------------------------------------
+# Scripted "oracle" folding (teacher/oracle/): no policy. It reads the true cloth vertices, plans
+# pick-and-place folds for both arms and scores the result with the neatness metric. It measures
+# what the body (arms, rigid jaws, cloth physics) can do when the brain knows where everything is.
+#   modal run --detach teacher/modal_teacher.py::isaac_oracle
+# jobs: JSON list of {"garment": name, "trials": n, "params": {...}} ("" = the two test shirts once).
+# ---------------------------------------------------------------------------------------------
+ORACLE_DEFAULT_JOBS = [{"garment": "Top_Long_Seen_0", "trials": 1}, {"garment": "Top_Short_Seen_4", "trials": 1}]
+ORACLE_PRESETS = {      # --jobs <name>: avoids quoting JSON on the command line
+    "grasp1": [
+        {"garment": "Top_Long_Seen_0", "mode": "grasp_test", "tag": "g1", "variants": [
+            {"press": 0.0}, {"press": 0.008}, {"press": 0.013}, {"press": 0.02},
+            {"press": 0.013, "slide_len": 0.06}, {"press": 0.013, "inset": 0.035}, {"press": 0.013, "grip_open": 0.42},
+            {"press": 0.013, "fold": "sleeve_R"}, {"press": 0.013, "fold": "bottom_up"}, {"press": 0.02, "fold": "bottom_up"}]},
+        {"garment": "Top_Short_Seen_4", "mode": "grasp_test", "tag": "g1", "variants": [
+            {"press": 0.013}, {"press": 0.013, "fold": "bottom_up"}, {"press": 0.0, "fold": "bottom_up"}]},
+    ],
+}
+
+
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=1500, cpu=4, memory=16384)
+def isaac_oracle(jobs: str = "", tag: str = "oracle", friction: float = 1.5, adhesion: float = 0.5,
+                 cx: float = 0.0, cy: float = 0.0, drop_z: float = 0.63, flat_start: bool = True):
+    import glob, io, json, os, pathlib, pickle, re, select, subprocess, time
+    import imageio
+    import numpy as np
+    job_list = ORACLE_PRESETS[jobs] if jobs in ORACLE_PRESETS else (json.loads(jobs) if jobs else ORACLE_DEFAULT_JOBS)
+    cfg_p = f"{CH}/source/lehome/lehome/tasks/bedroom/config_file/particle_garment_cfg.yaml"
+    y = open(cfg_p).read()
+    for key, val in (("friction", friction), ("adhesion", adhesion)):
+        if val >= 0:
+            y, n = re.subn(rf"(?m)^(\s+){key}:\s*[0-9.eE+-]+", rf"\g<1>{key}: {val}", y)
+            assert n == 1, f"{key}: expected 1 match, got {n}"
+    open(cfg_p, "w").write(y)
+    print("CLOTH_MATERIAL " + " | ".join(l.strip() for l in y.splitlines() if re.match(r"\s+(friction|adhesion):", l)), flush=True)
+    if flat_start:      # the garment is dropped flat at a fixed spot instead of tilted at a random one
+        for name in sorted({j["garment"] for j in job_list}):
+            (jp,) = glob.glob(f"{CH}/Assets/objects/Challenge_Garment/Release/*/{name}/*.json")
+            c = json.load(open(jp))
+            c["initial_pos_range"] = c["soft_reset_pos_range"] = [cx, cy, drop_z, cx, cy, drop_z]
+            c["initial_rot_range"] = c["soft_reset_rot_range"] = [0, 0, 0, 0, 0, 0]
+            json.dump(c, open(jp, "w"), indent=4)
+            print(f"FLAT_START {name} pos=({cx},{cy},{drop_z})", flush=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{tag}"
+    out = pathlib.Path(VOL_PATH, "isaac", f"oracle-{stamp}"); out.mkdir(parents=True, exist_ok=True)
+    first = job_list[0]["garment"]
+    gtype = "_".join(first.split("_")[:2]).lower()
+    env = dict(os.environ, PYTHONPATH="/opt/teacher/oracle", ORACLE_DIR="/opt/teacher/oracle", ORACLE_JOBS=json.dumps(job_list),
+               ORACLE_OUT=str(out), LEHOME_NO_DEPTH="1", LEHOME_DISABLE_KEYBOARD="1", PYTHONUNBUFFERED="1")
+    cmd = [f"{CH}/.venv/bin/python", "-u", "-m", "scripts.oracle_fold", "--garment_type", gtype, "--garment_name", first,
+           "--headless", "--enable_cameras", "--device", "cpu", "--seed", "42"]
+    print("ORACLE_CMD " + " ".join(cmd), flush=True)
+    t0 = time.time(); killed = False
+    keys = re.compile(r"\[oracle\]|Traceback|Error:|error:|Exception|simulation start|Simulation App Start")
+    with open(out / "run.log", "w") as f:
+        p = subprocess.Popen(cmd, cwd=CH, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        while True:
+            ready, _, _ = select.select([p.stdout], [], [], 420)
+            if not ready:
+                print("ORACLE_WATCHDOG no output for 420 s, killing", flush=True); p.kill(); killed = True; break
+            line = p.stdout.readline()
+            if not line:
+                break
+            f.write(line)
+            if keys.search(line) and "carb.launcher" not in line:
+                print(f"[{time.time() - t0:5.0f}s] " + line.rstrip()[:1500], flush=True)
+        p.wait(60)
+    vol.commit()
+    vids = []
+    for pk in sorted(glob.glob(str(out / "*.pkl"))):
+        d = pickle.load(open(pk, "rb"))
+        dec = lambda im: imageio.v2.imread(io.BytesIO(im)) if isinstance(im, (bytes, bytearray)) else np.asarray(im)
+        frames = [dec(fr["img"]) for fr in d["frames"]]
+        if not frames:
+            continue
+        mp4 = pk[:-4] + ".mp4"
+        imageio.mimwrite(mp4 + ".tmp.mp4", frames + [frames[-1]] * 45, fps=22, macro_block_size=1); os.replace(mp4 + ".tmp.mp4", mp4)
+        seen = {}
+        for fr in d["frames"]:
+            if fr["tag"] == "flat" or fr["tag"].endswith((":done", ":held")) or fr["tag"] == "final":
+                seen[fr["tag"]] = fr["img"]
+        for tg, im in seen.items():
+            imageio.imwrite(pk[:-4] + "_" + tg.replace(":", "_") + ".png", dec(im))
+        vids.append({"mp4": mp4, "frames": len(frames), "neat": d["result"].get("neat")})
+        print("ORACLE_VIDEO " + json.dumps(vids[-1]), flush=True)
+    vol.commit()
+    res = {"dir": str(out), "exit": p.returncode, "killed": killed, "wall_s": round(time.time() - t0, 1), "videos": vids}
+    print("ORACLE_DONE " + json.dumps(res), flush=True)
+    return res
+
+
+# ---------------------------------------------------------------------------------------------
+# Live session: Isaac stays up and executes ONE command at a time sent by an outside agent
+# (teacher/oracle/live_client.py puts commands on a Modal Queue and reads the scene back).
+# Dead man's switch: quits after `idle_s` without a command, and at `max_s` regardless.
+#   modal run --detach teacher/modal_teacher.py::isaac_live --garment Top_Long_Seen_0
+# ---------------------------------------------------------------------------------------------
+LIVE_CMD_Q, LIVE_RES_Q = "oracle-live-cmd", "oracle-live-res"
+
+
+def _plain(o):
+    """numpy -> plain Python, so the laptop can unpickle without matching numpy versions."""
+    import numpy as np
+    if isinstance(o, dict):
+        return {k: _plain(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_plain(v) for v in o]
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    if isinstance(o, np.generic):
+        return o.item()
+    return o
+
+
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3600, cpu=4, memory=16384)
+def isaac_live(garment: str = "Top_Long_Seen_0", tag: str = "live", friction: float = 1.5, adhesion: float = 0.5,
+               cx: float = 0.0, cy: float = 0.0, drop_z: float = 0.63, idle_s: int = 300, max_s: int = 3300,
+               pads: str = "capsule", cloth: str = ""):
+    import glob, io, json, os, pathlib, pickle, queue, re, subprocess, threading, time
+    import imageio
+    import numpy as np
+    cfg_p = f"{CH}/source/lehome/lehome/tasks/bedroom/config_file/particle_garment_cfg.yaml"
+    y = open(cfg_p).read()
+    for key, val in (("friction", friction), ("adhesion", adhesion)):
+        if val >= 0:
+            y, n = re.subn(r"(?m)^(\s+)" + key + r":\s*[0-9.eE+-]+", r"\g<1>" + f"{key}: {val}", y)
+            assert n == 1, f"{key}: expected 1 match, got {n}"
+    open(cfg_p, "w").write(y)
+    for jp in glob.glob(f"{CH}/Assets/objects/Challenge_Garment/Release/Top_*/*/*.json"):   # every top starts flat
+        c = json.load(open(jp))
+        c["initial_pos_range"] = c["soft_reset_pos_range"] = [cx, cy, drop_z, cx, cy, drop_z]
+        c["initial_rot_range"] = c["soft_reset_rot_range"] = [0, 0, 0, 0, 0, 0]
+        json.dump(c, open(jp, "w"), indent=4)
+    stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{tag}"
+    out = pathlib.Path(VOL_PATH, "isaac", f"oracle-{stamp}"); out.mkdir(parents=True, exist_ok=True)
+    live_dir = "/tmp/oracle_live"; os.makedirs(live_dir, exist_ok=True)
+    q_cmd = modal.Queue.from_name(LIVE_CMD_Q, create_if_missing=True)
+    q_res = modal.Queue.from_name(LIVE_RES_Q, create_if_missing=True)
+    q_cmd.clear(); q_res.clear()
+    gtype = "_".join(garment.split("_")[:2]).lower()
+    env = dict(os.environ, PYTHONPATH="/opt/teacher/oracle", ORACLE_DIR="/opt/teacher/oracle",
+               ORACLE_JOBS=json.dumps([{"garment": garment}]), ORACLE_OUT=str(out), ORACLE_LIVE_DIR=live_dir,
+               ORACLE_PADS=pads, ORACLE_CLOTH=cloth,
+               LEHOME_NO_DEPTH="1", LEHOME_DISABLE_KEYBOARD="1", PYTHONUNBUFFERED="1")
+    cmd = [f"{CH}/.venv/bin/python", "-u", "-m", "scripts.oracle_fold", "--garment_type", gtype, "--garment_name", garment,
+           "--headless", "--enable_cameras", "--device", "cpu", "--seed", "42"]
+    t0 = time.time()
+    p = subprocess.Popen(cmd, cwd=CH, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    keys = re.compile(r"\[oracle\]|Traceback|Exception|Error:")
+
+    def drain():
+        with open(out / "run.log", "w") as f:
+            for line in p.stdout:
+                f.write(line)
+                if keys.search(line) and "carb.launcher" not in line:
+                    print(f"[{time.time() - t0:5.0f}s] " + line.rstrip()[:600], flush=True)
+    threading.Thread(target=drain, daemon=True).start()
+
+    def wait_res(n, limit):
+        path = f"{live_dir}/res_{n}.pkl"; t1 = time.time()
+        while time.time() - t1 < limit:
+            if os.path.exists(path):
+                return _plain(pickle.load(open(path, "rb")))
+            if p.poll() is not None:
+                return {"info": {"error": f"sim exited with code {p.returncode}"}}
+            time.sleep(0.05)
+        return {"info": {"error": f"no reply within {limit}s"}}
+
+    first = wait_res(0, 600)
+    q_res.put({"n": 0, **first}); print("LIVE_READY " + json.dumps(first.get("info", {}))[:400], flush=True)
+    n, why = 1, "quit"
+    while p.poll() is None:
+        left = max_s - (time.time() - t0)
+        if left <= 0:
+            why = "max_s reached"; c = {"op": "quit"}
+        else:
+            try:
+                c = q_cmd.get(timeout=min(idle_s, left))
+            except queue.Empty:
+                c = None
+            if c is None:
+                why = f"idle {idle_s}s"; c = {"op": "quit"}
+        json.dump(c, open(f"{live_dir}/cmd_{n}.tmp", "w")); os.replace(f"{live_dir}/cmd_{n}.tmp", f"{live_dir}/cmd_{n}.json")
+        r = wait_res(n, 300)
+        q_res.put({"n": n, **r})
+        if c.get("op") == "quit" or "sim exited" in str(r.get("info", {}).get("error", "")):
+            break
+        n += 1
+    print(f"LIVE_END {why} after {n} commands, {time.time() - t0:.0f}s", flush=True)
+    try:
+        p.wait(120)
+    except Exception:
+        p.kill()
+    vids = []
+    for pk in sorted(glob.glob(str(out / "*.pkl"))):
+        d = pickle.load(open(pk, "rb"))
+        dec = lambda im: imageio.v2.imread(io.BytesIO(im)) if isinstance(im, (bytes, bytearray)) else np.asarray(im)
+        frames = [dec(fr["img"]) for fr in d["frames"]]
+        if frames:
+            imageio.mimwrite(pk[:-4] + ".tmp.mp4", frames + [frames[-1]] * 45, fps=22, macro_block_size=1)
+            os.replace(pk[:-4] + ".tmp.mp4", pk[:-4] + ".mp4"); vids.append(pk[:-4] + ".mp4")
+    vol.commit()
+    res = {"dir": str(out), "why": why, "commands": n, "wall_s": round(time.time() - t0, 1), "videos": vids}
+    print("LIVE_DONE " + json.dumps(res), flush=True)
+    return res
+
+
+# ---------------------------------------------------------------------------------------------
+# Grip test (Run 1): automated, physics-only measurements. Two Isaac processes back to back in one container:
+# original capsule pads, then flat pads (teacher/oracle/pads.py). Each tests the cloth as-is and a realistic cloth
+# (~50 g, gravity x1) at 3 carry speeds, then the flat-pad process folds the shirt with its best setting (filmed).
+# Cloth friction/adhesion stay at the challenge's own values (0.5 / 0.1).
+#   modal run --detach teacher/modal_teacher.py::isaac_grip_assay
+# ---------------------------------------------------------------------------------------------
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=1500, cpu=4, memory=16384)
+def isaac_grip_assay(garment: str = "Top_Long_Seen_0", reps: int = 2, budget_s: int = 300, tag: str = "grip1"):
+    import glob, io, json, os, pathlib, pickle, re, select, subprocess, time
+    import imageio
+    import numpy as np
+    t_all = time.time()
+    (jp,) = glob.glob(f"{CH}/Assets/objects/Challenge_Garment/Release/*/{garment}/*.json")
+    c = json.load(open(jp))
+    c["initial_pos_range"] = c["soft_reset_pos_range"] = [0.0, 0.0, 0.63, 0.0, 0.0, 0.63]
+    c["initial_rot_range"] = c["soft_reset_rot_range"] = [0, 0, 0, 0, 0, 0]
+    json.dump(c, open(jp, "w"), indent=4)
+    stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{tag}"
+    out = pathlib.Path(VOL_PATH, "isaac", f"oracle-{stamp}"); out.mkdir(parents=True, exist_ok=True)
+    gtype = "_".join(garment.split("_")[:2]).lower()
+    assay = {"garment": garment, "mode": "grip_assay", "reps": reps, "budget_s": budget_s,
+             "cloth": ["asis", "real"], "speeds": [0.001, 0.0035, 0.010]}
+    fold = {"garment": garment, "mode": "fold_best", "params": {"inset": 0.015}}
+    keys = re.compile(r"\[oracle\] (ASSAY_ROW|assay done|robot pads|cloth variant|FOLD|RESULT|SUMMARY|env ready|fast step|TRIAL|ASSAY FAILED|kin )|Traceback|Error:")
+    summary = {}
+    for pads, jobs in (("capsule", [assay]), ("flat", [assay, fold])):
+        env = dict(os.environ, PYTHONPATH="/opt/teacher/oracle", ORACLE_DIR="/opt/teacher/oracle", ORACLE_JOBS=json.dumps(jobs),
+                   ORACLE_OUT=str(out), ORACLE_PADS=pads, LEHOME_NO_DEPTH="1", LEHOME_DISABLE_KEYBOARD="1", PYTHONUNBUFFERED="1")
+        cmd = [f"{CH}/.venv/bin/python", "-u", "-m", "scripts.oracle_fold", "--garment_type", gtype, "--garment_name", garment,
+               "--headless", "--enable_cameras", "--device", "cpu", "--seed", "42"]
+        t0 = time.time(); killed = False
+        print(f"=== {pads} pads: starting Isaac", flush=True)
+        with open(out / f"run_{pads}.log", "w") as f:
+            p = subprocess.Popen(cmd, cwd=CH, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            while True:
+                ready, _, _ = select.select([p.stdout], [], [], 420)
+                if not ready:
+                    print("WATCHDOG no output for 420 s, killing", flush=True); p.kill(); killed = True; break
+                line = p.stdout.readline()
+                if not line:
+                    break
+                f.write(line)
+                if keys.search(line) and "carb.launcher" not in line:
+                    print(f"[{pads} {time.time() - t0:5.0f}s] " + line.rstrip()[:900], flush=True)
+            p.wait(60)
+        summary[pads] = {"exit": p.returncode, "killed": killed, "wall_s": round(time.time() - t0, 1)}
+        vol.commit()
+    # aggregate the measurements
+    table = {}
+    for pads in ("capsule", "flat"):
+        fpath = out / f"assay_{pads}.json"
+        if not fpath.exists():
+            continue
+        for r in json.load(open(fpath)):
+            k = f"{pads}|{r.get('cloth')}|{r.get('speed_mm_step')}"
+            t = table.setdefault(k, {"n": 0, "errors": 0, "lift": [], "hold": [], "carry": [], "jaw_deg": [], "creep": [], "tip_z": []})
+            t["n"] += 1
+            if "error" in r or any(r.get(x) == "nan" for x in ("after_lift", "after_hold", "after_carry")):
+                t["errors"] += 1
+            for ph, kk in (("after_lift", "lift"), ("after_hold", "hold"), ("after_carry", "carry")):
+                if isinstance(r.get(ph), dict):
+                    t[kk].append(r[ph]["held"])
+            if isinstance(r.get("after_hold"), dict):
+                t["jaw_deg"].append(r["after_hold"]["jaw_deg"])
+            t["creep"].append(r.get("creep_mm_s")); t["tip_z"].append(r.get("tip_z_landed"))
+    for k, t in table.items():
+        m = lambda xs: round(float(np.mean([x for x in xs if x is not None])), 3) if any(x is not None for x in xs) else None
+        print("GRIP_TABLE " + json.dumps({"setup": k, "trials": t["n"], "errors": t["errors"], "held_after_lift": m(t["lift"]),
+                                          "held_after_hold": m(t["hold"]), "held_after_carry": m(t["carry"]), "jaw_deg_holding": m(t["jaw_deg"]),
+                                          "creep_mm_s": m(t["creep"]), "tip_z_landed": m(t["tip_z"])}), flush=True)
+    vids = []
+    for pk in sorted(glob.glob(str(out / "*.pkl"))):
+        d = pickle.load(open(pk, "rb"))
+        dec = lambda im: imageio.v2.imread(io.BytesIO(im)) if isinstance(im, (bytes, bytearray)) else np.asarray(im)
+        frames = [dec(fr["img"]) for fr in d["frames"]]
+        if not frames:
+            continue
+        imageio.mimwrite(pk[:-4] + ".tmp.mp4", frames + [frames[-1]] * 45, fps=22, macro_block_size=1)
+        os.replace(pk[:-4] + ".tmp.mp4", pk[:-4] + ".mp4")
+        last = {}
+        for fr in d["frames"]:
+            if fr["tag"] == "flat" or fr["tag"].endswith(":done") or fr["tag"] == "final":
+                last[fr["tag"]] = fr["img"]
+        for tg, im in last.items():
+            imageio.imwrite(pk[:-4] + "_" + tg.replace(":", "_") + ".png", dec(im))
+        vids.append({"mp4": pk[:-4] + ".mp4", "neat": d["result"].get("neat")})
+    vol.commit()
+    res = {"dir": str(out), "processes": summary, "videos": vids, "wall_s": round(time.time() - t_all, 1)}
+    print("GRIP_DONE " + json.dumps(res), flush=True)
+    return res
+
+
+# ---------------------------------------------------------------------------------------------
+# Teacher under the fixed physics (Run B): flat jaw pads + realistic cloth (~50 g, gravity x1), friction unchanged.
+# Runs his eval (1 worker) on the given garments, saves the cloth vertices at the end of every episode and scores
+# them with the neatness metric (teacher/oracle/fold_metric.py) against each garment's rest shape.
+#   modal run --detach teacher/modal_teacher.py::isaac_teacher_fixed
+# ---------------------------------------------------------------------------------------------
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=1800, cpu=8, memory=32768)
+def isaac_teacher_fixed(garments: str = "Top_Long_Seen_0 Top_Short_Seen_4", num_episodes: int = 4, tag: str = "teacherfix",
+                        mass_per_point: float = 3.4e-6, gravity_scale: float = 1.0, pads: str = "flat"):
+    import glob, json, os, re, shutil, subprocess, sys
+    import numpy as np
+    cfg_p = f"{CH}/source/lehome/lehome/tasks/bedroom/config_file/particle_garment_cfg.yaml"
+    y = open(cfg_p).read()
+    for key, val in (("particle_mass", mass_per_point), ("gravity_scale", gravity_scale)):
+        y, n = re.subn(r"(?m)^(\s+)" + key + r":\s*[0-9.eE+-]+", r"\g<1>" + f"{key}: {val}", y)
+        assert n == 1, f"{key}: expected 1 match, got {n}"
+    open(cfg_p, "w").write(y)
+    print("CLOTH " + " | ".join(l.strip() for l in y.splitlines() if re.match(r"\s+(particle_mass|gravity_scale|friction|adhesion):", l)), flush=True)
+    if pads == "flat":
+        dst = f"{CH}/Assets/robots/lerobot/so101_follower_good.usd"
+        shutil.copy("/opt/teacher/oracle/assets/so101_flatpads.usd", dst)
+        print("PADS flat ->", dst, flush=True)
+    print(subprocess.run(["python", "/opt/teacher/verts_dump_patch.py", SRC], capture_output=True, text=True).stdout.strip(), flush=True)
+    os.environ["TEACHER_VERTS_DIR"] = "/tmp/teacher_verts"
+    res = isaac_eval.local(num_workers=1, num_episodes=num_episodes, garment_types="top_long,top_short",
+                           server_mode="fast", extra="--garment_list " + garments, tag=tag)
+    vdir = os.path.join(res["dir"], "verts"); os.makedirs(vdir, exist_ok=True)
+    for f in glob.glob("/tmp/teacher_verts/*.npz"):
+        shutil.copy(f, vdir)
+    sys.path.insert(0, "/opt/teacher/oracle")
+    import fold_metric as fm
+    import garment_keys as gk
+    rows = []
+    for f in sorted(glob.glob(os.path.join(vdir, "*.npz"))):
+        d = np.load(f); name = "_".join(os.path.basename(f).split("_")[:4])
+        g = np.load(f"/opt/teacher/oracle/garments/{name}.npz")
+        rest = g["points"].astype(float); scale = float(g["scale"][0]); faces = g["faces"]
+        keys = gk.top_keys(rest, g["check_point"])
+        row = dict(garment=name, success=bool(d["success"]), length=int(d["length"]))
+        for k in ("at_stop", "released"):
+            v = d[k].astype(float)
+            if not np.isfinite(v).all():
+                row[k] = "nan"; continue
+            table_z = float(np.percentile(v[:, 2], 1)) - 0.002
+            flat = np.c_[rest[:, :2] * scale, np.full(len(rest), table_z + 0.004)]
+            folds = gk.top_folds(flat[:, :2], keys)
+            sc = fm.score(v, faces, flat, folds, table_z)
+            row[k] = {x: sc[x] for x in ("neat", "vertex_err_cm", "mirror_err_cm", "h95_cm", "area_ratio", "rectangularity", "size_cm")}
+        rows.append(row); print("TEACHER_SCORE " + json.dumps(row), flush=True)
+    json.dump(rows, open(os.path.join(res["dir"], "teacher_scores.json"), "w"), indent=1)
+    vol.commit()
+    vids = render_isaac_videos.local(os.path.basename(res["dir"]), every=1)
+    print("TEACHER_FIXED_DONE " + json.dumps({"dir": res["dir"], "n": len(rows), "videos": len(vids)}), flush=True)
+    return {"eval": res, "scores": rows}
+
+
+# ---------------------------------------------------------------------------------------------
+# Mechanics test (step 2): flat pads + realistic cloth, automated, physics-only.
+#  1) release factorial on the easy shirt's left sleeve: cloth stickiness (adhesion 0.1 vs 0) x open angle
+#     (0.55 vs 1.4 rad) x back-away before lifting (0 vs 2 cm) x lift speed (0.7 vs 4 mm/step), 2 reps each;
+#  2) grasp rule check on the puffy shirt's right sleeve: moving finger leading vs fixed finger leading, 3 reps each.
+#   modal run --detach teacher/modal_teacher.py::isaac_mechanics
+# ---------------------------------------------------------------------------------------------
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=1200, cpu=4, memory=16384)
+def isaac_mechanics(tag: str = "mech1", reps: int = 2, budget_s: int = 420):
+    import glob, json, os, pathlib, re, select, subprocess, time
+    import numpy as np
+    t_all = time.time()
+    for g in ("Top_Long_Seen_0", "Top_Short_Seen_4"):
+        (jp,) = glob.glob(f"{CH}/Assets/objects/Challenge_Garment/Release/*/{g}/*.json")
+        c = json.load(open(jp))
+        c["initial_pos_range"] = c["soft_reset_pos_range"] = [0.0, 0.0, 0.63, 0.0, 0.0, 0.63]
+        c["initial_rot_range"] = c["soft_reset_rot_range"] = [0, 0, 0, 0, 0, 0]
+        json.dump(c, open(jp, "w"), indent=4)
+    stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{tag}"
+    out = pathlib.Path(VOL_PATH, "isaac", f"oracle-{stamp}"); out.mkdir(parents=True, exist_ok=True)
+    jobs = [{"garment": "Top_Long_Seen_0", "mode": "mechanics", "reps": reps, "budget_s": budget_s,
+             "cloth": ["real", "real_noadh"], "opens": [0.55, 1.4], "aways": [0.0, 0.02], "lift_dss": [0.0007, 0.004]},
+            {"garment": "Top_Short_Seen_4", "mode": "grasp_rule", "reps": 3, "side": "R", "cloth_variant": "real"}]
+    env = dict(os.environ, PYTHONPATH="/opt/teacher/oracle", ORACLE_DIR="/opt/teacher/oracle", ORACLE_JOBS=json.dumps(jobs),
+               ORACLE_OUT=str(out), ORACLE_PADS="flat", LEHOME_NO_DEPTH="1", LEHOME_DISABLE_KEYBOARD="1", PYTHONUNBUFFERED="1")
+    cmd = [f"{CH}/.venv/bin/python", "-u", "-m", "scripts.oracle_fold", "--garment_type", "top_long", "--garment_name", "Top_Long_Seen_0",
+           "--headless", "--enable_cameras", "--device", "cpu", "--seed", "42"]
+    keys = re.compile(r"\[oracle\] (MECH_ROW|RULE_ROW|release assay|robot pads|cloth variant|env ready|fast step|MECH FAILED)|Traceback|Error:")
+    t0 = time.time(); killed = False
+    with open(out / "run.log", "w") as f:
+        p = subprocess.Popen(cmd, cwd=CH, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        while True:
+            ready, _, _ = select.select([p.stdout], [], [], 420)
+            if not ready:
+                print("WATCHDOG no output for 420 s, killing", flush=True); p.kill(); killed = True; break
+            line = p.stdout.readline()
+            if not line:
+                break
+            f.write(line)
+            if keys.search(line) and "carb.launcher" not in line:
+                print(f"[{time.time() - t0:5.0f}s] " + line.rstrip()[:700], flush=True)
+        p.wait(60)
+    vol.commit()
+    fm = out / "mech_release_Top_Long_Seen_0.json"
+    if fm.exists():
+        groups = {}
+        for r in json.load(open(fm)):
+            k = (r["cloth"], r["open"], r["away_cm"], r["lift_mm_step"])
+            gr = groups.setdefault(k, {"n": 0, "err": 0, "stuck": [], "drag": [], "between": [], "jaw": []})
+            gr["n"] += 1
+            if "error" in r:
+                gr["err"] += 1; continue
+            gr["stuck"].append(r["stuck"]); gr["drag"].append(r["drag_cm"]); gr["between"].append(r["between_pads"]); gr["jaw"].append(r["jaw_deg_obs"])
+        for k, gr in sorted(groups.items()):
+            m = lambda xs: round(float(np.mean([x for x in xs if x is not None])), 2) if any(x is not None for x in xs) else None
+            print("RELEASE_TABLE " + json.dumps({"cloth": k[0], "open_rad": k[1], "away_cm": k[2], "lift_mm_step": k[3], "trials": gr["n"],
+                                                 "errors": gr["err"], "stuck_verts": m(gr["stuck"]), "clean_share": m([1.0 if s < 20 else 0.0 for s in gr["stuck"]]),
+                                                 "drag_cm": m(gr["drag"]), "between_pads": m(gr["between"]), "jaw_deg": m(gr["jaw"])}), flush=True)
+    fr = out / "mech_rule_Top_Short_Seen_4.json"
+    if fr.exists():
+        for lead in ("moving", "fixed"):
+            rs = [r for r in json.load(open(fr)) if r.get("lead") == lead]
+            ok = [r for r in rs if isinstance(r.get("held_lifted"), int) and r["held_lifted"] > 50]
+            print("RULE_TABLE " + json.dumps({"lead": lead, "trials": len(rs), "lifted_ok": len(ok),
+                                              "held_lifted": [r.get("held_lifted") for r in rs], "between_pads": [r.get("between_pads") for r in rs]}), flush=True)
+    res = {"dir": str(out), "exit": p.returncode, "killed": killed, "wall_s": round(time.time() - t_all, 1)}
+    print("MECH_DONE " + json.dumps(res), flush=True)
+    return res

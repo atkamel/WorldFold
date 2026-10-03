@@ -1,0 +1,57 @@
+{
+ "id": 0,
+ "asset_path": "/Assets/objects/Challenge_Garment/Release/Top_Long/Top_Long_Seen_0/TCLC_002_obj_exp.usd",
+ "visual_usd_paths": [],
+ "scale": [
+  0.45,
+  0.45,
+  0.45
+ ],
+ "check_point": [
+  8077,
+  1711,
+  2578,
+  3942,
+  8738,
+  588
+ ],
+ "initial_pos_range": [
+  -0.08,
+  -0.02,
+  0.63,
+  0.04,
+  0.04,
+  0.63
+ ],
+ "initial_rot_range": [
+  0,
+  0,
+  0,
+  0,
+  0,
+  0
+ ],
+ "soft_reset_pos_range": [
+  -0.08,
+  -0.02,
+  0.73,
+  0.04,
+  0.04,
+  0.73
+ ],
+ "soft_reset_rot_range": [
+  -20,
+  -22,
+  0,
+  20,
+  22,
+  0
+ ],
+ "success_distance": [
+  16,
+  19,
+  16,
+  22,
+  20
+ ]
+}
