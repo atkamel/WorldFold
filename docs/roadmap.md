@@ -147,6 +147,44 @@ M5c.1-M5c.3 are safe any time: they don't change the simulator. M5c.4 changes th
 physics every result so far was measured on, so it gates on matching the CPU ceilings,
 and its numbers would start a new results baseline.
 
+## Phase I — Isaac Sim: make the pipeline run on the new simulator
+
+Added 2026-10-02.
+- `origin/main` (PR #15) brought `isaac/`: the cloth-fold env on LeHome's Isaac Sim 5.1
+  stack, with a friction grasp and no weld.
+- This phase is a **viability pass**. Every stage of the imitation pipeline runs on Isaac
+  through the real CLIs at pilot scale.
+- It runs locally on Windows, in a separate gitignored `.venv-isaac` (Python 3.11). Installs
+  are reviewed and pinned first.
+- Grasp tuning and full-scale retraining are later milestones, listed below.
+- Plan: [superpowers/plans/2026-10-02-isaac-viability.md](superpowers/plans/2026-10-02-isaac-viability.md).
+- Every milestone closes on `python -m imitation.verify <ID>` plus committed evidence.
+
+| | milestone | exit | status |
+|---|---|---|---|
+| I0.1 | Pull: merge `origin/main` into `feature/imitation`; fix the merge silent-breakers (`stages` shadowing, hard-coded one-hot offset, isaac test stub) | fast + slow tests green; MuJoCo expert benchmark 48/50 with rows identical to M1.5 | ✅ 2026-10-02: 116 fast + 12 slow; rows identical |
+| I0.2 | Install review: pinned sources, hashed lock, source review of the LeHome repos, asset audit | `isaac/INSTALL_REVIEW.md`; user OK on artifact list + EULA | ☐ |
+| I0.3 | **Gate:** scoped install in `.venv-isaac` + `isaac/smoke_test.py` state and hybrid on Windows | `SMOKE OK` ×2, CUDA torch, nothing written outside documented paths. Fails → stop and report | ☐ |
+| I0.4 | Verifier `python -m imitation.verify` | its tests green | ☐ |
+| I1.1 | Backend switch (`make_env(backend=)`, EnvPool, CLIs, lazy MuJoCo imports, Isaac worker lifecycle) | tests green in both venvs; MuJoCo unchanged | ☐ |
+| I1.2 | Isaac seed sets (id_easy / id_hard ring / scaled recovery) | disjoint; id_hard reachable 200/200 | ☐ |
+| I1.3 | Isaac camera rig: main 128² + wrists 64² | shapes; wrist pose within 1 mm / 0.5° | ☐ |
+| I2.1 | Isaac expert (grasp as built) as the scripted teacher | runs; pilot rates recorded (no threshold) | ☐ |
+| I2.2 | DAgger labels on Isaac: executed-expert takeover labels (user-approved 2026-10-02) | pilot sanity bar | ☐ |
+| I3.1 | End-to-end micro chain test (Isaac M1.6) | green | ☐ |
+| I3.2 | Pilot run: collect 80, BC ×2, vision, DAgger 1 round, detector, demos | all artifacts valid; pilot rows in results.md | ☐ |
+| I3.3 | Close-out | `verify --all` green in both venvs | ☐ |
+
+**Later milestones (not in the viability pass)**
+
+| | milestone | exit |
+|---|---|---|
+| IG.1 | Grasp bench (per-arm acquired / held / placed / released, anchor drift) | baseline on tuning seeds 600 000+ |
+| IG.2 | Grasp reliability loop (one knob per iteration; adhesion 0, friction ≤ 2.0, no attachments) | per arm, n = 100 on two blocks plus a fresh block: acquired / held / released ≥ 98, placed ≥ 95 |
+| IG.3 | Expert ceiling gate on Isaac | id_easy ≥ 95, id_hard ≥ 90, recovery ≥ 90, check_resync ≥ 90 (n = 100; 92–94 extends to n = 200) |
+| IS.1–6 | Full retrain at scale (`isaac_v1` 400 eps, BC ×2 seeds, replan sweep, DAgger, vision ×2, detector ≥ 90%) | n = 200 × 3 sets, Wilson, gains in SE |
+| I-DR | Visual DR in the Isaac rig + dynamics DR | robustness on held-out DR draws |
+
 ## Phase 6 — Language-conditioned folds and the VLA  *(ref. milestone 3, reframed)*
 
 | | milestone | exit | status |

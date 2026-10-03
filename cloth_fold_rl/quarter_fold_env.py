@@ -53,7 +53,7 @@ import numpy as np
 from cloth_fold_rl.fold_env import (
     CLOTH_JITTER, CTRL_COST, DRAG_LIMIT, GRASP_BONUS, SUCCESS_BONUS, SUCCESS_DIST, W_CARRY, W_REACH,
 )
-from sim_main import CLOTH_COUNT, ClothFoldEnv, StateOnlyWrapper  # noqa: E402 (path set by fold_env)
+from cloth_params import CLOTH_COUNT, StateOnlyWrapper  # noqa: E402 (path set by fold_env; numpy only, so Isaac Sim can import it)
 
 N = CLOTH_COUNT
 CLOTH_0, CLOTH_10, CLOTH_110, CLOTH_120 = 0, N - 1, (N - 1) * N, N * N - 1
@@ -81,8 +81,8 @@ RELEASE_BONUS = 3.0      # potential step for letting go of a placed corner
 STAGE_BONUS = 10.0
 SETTLE_STEPS = 20        # 1.0 s released and placed before a stage completes
 MAX_STEPS = 400
+HALF_FOLD_MAX_STEPS = 250        # stage 0 alone; the expert takes 77-214 (retries included)
 ACTION_DIM = 12
-OBS_TASK_START = 50 + 69   # proprio + cloth_state precede the task block in StateOnlyWrapper
 CORNERS = (CLOTH_0, CLOTH_10, CLOTH_110, CLOTH_120)   # the base env's corner slot order
 
 
@@ -112,18 +112,35 @@ class QuarterFoldEnv(gym.Wrapper):
 
     stages = STAGES     # subclasses may run a prefix of the stages (see imitation.tasks.HalfFoldEnv)
 
-    def __init__(self, max_episode_steps=MAX_STEPS, seed=None, cloth_jitter=CLOTH_JITTER):
-        env = ClothFoldEnv(observation_mode="state", action_mode="joint_delta",
-                           max_episode_steps=max_episode_steps, grasp_corners=GRASP_CORNERS,
-                           grasp_radius=GRASP_RADIUS)
+    def __init__(self, max_episode_steps=MAX_STEPS, seed=None, cloth_jitter=CLOTH_JITTER, base_env=None,
+                 stages=None):
+        # base_env: any ClothFoldEnv drop-in (e.g. isaac.isaac_env.IsaacClothFoldEnv) built in joint_delta
+        # mode with grasp_corners=GRASP_CORNERS and grasp_radius=GRASP_RADIUS; the wrapper reads it through
+        # cloth_positions / gripper_position / grasp_active, plus _get_obs, the goal fields and
+        # _domain_params for the 139-D observation. max_episode_steps only reaches the default env; a
+        # passed-in base_env must already be built with its own (truncation reads base_env.max_episode_steps).
+        if base_env is None:
+            from sim_main import ClothFoldEnv   # mujoco only where the default env is used
+            base_env = ClothFoldEnv(observation_mode="state", action_mode="joint_delta",
+                                    max_episode_steps=max_episode_steps, grasp_corners=GRASP_CORNERS,
+                                    grasp_radius=GRASP_RADIUS)
+        env = base_env
         super().__init__(env)
+        # an explicit stages argument wins; otherwise the class attribute stands, so a
+        # subclass that sets `stages` keeps it (an instance attribute would shadow it)
+        if stages is not None:
+            self.stages = tuple(stages)
         self.cloth_jitter = cloth_jitter
         self._rng = np.random.default_rng(seed)
         self._flat = StateOnlyWrapper(env)
         # observation = base flat state minus the task one-hot (constant per env,
         # so dead) plus stage and settle progress, which drive termination and
-        # would otherwise be hidden wrapper state (reward non-Markovian)
-        self._onehot = slice(OBS_TASK_START, OBS_TASK_START + env.n_tasks)
+        # would otherwise be hidden wrapper state (reward non-Markovian). The
+        # one-hot opens the task block, which follows proprio and cloth_state in
+        # StateOnlyWrapper's key order.
+        spaces = env.observation_space
+        task_start = spaces["proprio"].shape[0] + spaces["cloth_state"].shape[0]
+        self._onehot = slice(task_start, task_start + env.n_tasks)
         dim = self._flat.observation_space.shape[0] - env.n_tasks + 2
         self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(dim,), dtype=np.float32)
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(ACTION_DIM,), dtype=np.float32)
@@ -136,7 +153,7 @@ class QuarterFoldEnv(gym.Wrapper):
     # ---- geometry helpers -------------------------------------------------
 
     def _vertex(self, index):
-        return self.env.data.xpos[self.env._cloth_body_ids[index]]
+        return self.env.cloth_positions()[index]
 
     def goal(self, move):
         return self._start[move.goal]
@@ -207,7 +224,7 @@ class QuarterFoldEnv(gym.Wrapper):
             return GRASP_BONUS - W_CARRY * d
         if self._placed(move):
             return GRASP_BONUS + RELEASE_BONUS - W_CARRY * d
-        gripper = self.env.data.site_xpos[self.env._site_id[move.prefix]]
+        gripper = self.env.gripper_position(move.prefix)
         reach = float(np.linalg.norm(gripper - np.mean([self._vertex(c) for c in move.corners], axis=0)))
         return -W_REACH * reach - W_CARRY * self._start_distance(move)
 
@@ -229,7 +246,7 @@ class QuarterFoldEnv(gym.Wrapper):
         if "cloth_pose" in opts:
             # the base env only records offsets it draws itself
             self.env._domain_params["cloth_offset_xy"] = [float(v) for v in np.ravel(opts["cloth_pose"])[:2]]
-        self._start = self.env.data.xpos[self.env._cloth_body_ids].copy()
+        self._start = self.env.cloth_positions()
         self._stage_start = self._start.copy()
         self.stage = 0
         self._apply_weld_mask()
@@ -271,7 +288,7 @@ class QuarterFoldEnv(gym.Wrapper):
             else:
                 reward += STAGE_BONUS
                 self.stage += 1
-                self._stage_start = self.env.data.xpos[self.env._cloth_body_ids].copy()
+                self._stage_start = self.env.cloth_positions()
                 self._apply_weld_mask()
                 self._set_goals()
                 self._settle_steps = 0
@@ -288,3 +305,22 @@ class QuarterFoldEnv(gym.Wrapper):
         info = dict(info)
         info.update(self._info(reason))
         return self._observe(), float(reward), terminated, truncated, info
+
+
+class HalfFoldEnv(QuarterFoldEnv):
+    """Stage 0 of the quarter fold on its own: fold the cloth in half about y = 0.
+
+    Success state: the left arm has carried cloth_10 to within SUCCESS_DIST (5 cm)
+    of cloth_0's start and the right arm cloth_120 to within 5 cm of cloth_110's
+    start, BOTH grippers are open (the fold holds on its own, not in the jaws),
+    and that has held for SETTLE_STEPS (20 control steps, 1.0 s) in a row. The
+    episode fails first if cloth_0 or cloth_110 is dragged more than DRAG_LIMIT
+    (0.20 m) from its start, or the cloth goes unstable. Success pays
+    SUCCESS_BONUS and info["success"] is True; fold_score is the fraction of the
+    two corners' carry distance covered.
+    """
+
+    def __init__(self, max_episode_steps=HALF_FOLD_MAX_STEPS, seed=None, cloth_jitter=CLOTH_JITTER,
+                 base_env=None):
+        super().__init__(max_episode_steps=max_episode_steps, seed=seed, cloth_jitter=cloth_jitter,
+                         base_env=base_env, stages=STAGES[:1])

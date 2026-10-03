@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-09-26 · **Branch:** `feature/imitation` · **Phase:** 6 next (everything before the VLA is closed)
+**Updated:** 2026-10-02 · **Branch:** `feature/imitation` (merged main) → `feature/isaac-imitation` · **Phase:** I (Isaac Sim viability pass), before 6
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -31,12 +31,23 @@ What's still weak, carried into Phase 6: the last-centimetre S1 stall on shifted
 sensor-only recovery (35-41%, re-grasping), and seed variance (8 pp on id_hard) that is as
 large as most effects measured. All in `results.md`.
 
+**2026-10-02:** `origin/main` brought a new simulator, `isaac/`. It is the cloth-fold env on
+LeHome's Isaac Sim 5.1 stack, with a friction grasp and no weld. Phase I (roadmap) makes this
+pipeline run on it, at pilot scale and locally on Windows. Grasp tuning and the full-scale
+retrain come later (IG, IS).
+
+I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expert benchmark
+rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
+
 ## Next action
 
-**Phase 6, M6.1: fold variants with text instructions** (roadmap). Before starting, decide
-how the expert's `_maybe_retry` (reads the miss from sim vertices) behaves for VLA-specified
-folds. Judge Phase 6 milestones on ≥ 2 seeds. Run long jobs as visible tasks, ≤ 10 workers,
-one sim pool at a time.
+**Phase I, I0.2: install review.**
+- Fetch lehome-challenge @a805ad2 and the LeHome IsaacLab fork @69f6fa5 (source only) into
+  the gitignored `.venv-isaac/src`. Review them, and build a hashed lock.
+- Then ask the user to OK the artifact list and the NVIDIA EULA before I0.3 installs.
+- Plan: `docs/superpowers/plans/2026-10-02-isaac-viability.md`.
+- Delegate well-scoped work to cheap subagents and log it in `docs/subagents.md`.
+- Phase 6 (M6.1) follows Phase I.
 
 ## Pre-VLA milestone tracker
 
@@ -66,7 +77,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 |---|---|
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
-| tests | 96 fast + 10 slow, all passing (`pytest -m "not slow"` / `-m slow`) |
+| tests | 116 fast + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -123,6 +134,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-02 · **I0.1 ✅ pulled origin/main (Isaac Sim env, PR #15)** into `feature/imitation`. Resolved `quarter_fold_env.py`: main's `base_env=` + accessors and our 139-D obs. Fixed the silent-breakers: `stages` shadowing (it would have made the half fold 2-stage), the hard-coded one-hot offset, and the isaac test stub. Added Phase I to the roadmap, the subagent policy to CLAUDE.md and `docs/subagents.md`. 116 fast + 12 slow pass; expert benchmark 48/50, rows identical to M1.5 · (this commit)
 
 - 2026-09-26 · **All pre-VLA milestones closed.** M5b.4 ❌ + RL dropped (iql_v4 89/34/34.5 @8); M5c.1 ✅ (expert label look-ahead 43% of DAgger); M5c.2 ❌ narrowly (6.0% inference share for diffusion eval); M5c.3 ❌ (GPU 27%); DAgger at replan 4 not kept; diffusion seeds 77-85% id_hard, vision seed 1 recovery 34.5%; demos at operating points (4/4, 3/4); dated report 2026-09-25-phase5b.md; page republished · 96 fast + 10 slow pass · fb33f4f
 - 2026-09-25 · M5b.5 ✅ (determinism repeat identical; M2.1/M2.3 re-evals inside original intervals); detector v2 on 128² (92.6% agreement); M5c.1 profile ran; pipeline.md Data section; expert label look-ahead now timed in profiles; `imitation.viz.gpu_busy`; diffusion seeds 1-2 + vision seed 1 trained; final queue **paused** at 15:16 (resume script) · 96 fast tests pass · ac0a45e

@@ -1,0 +1,238 @@
+"""IsaacLab scene behind IsaacClothFoldEnv, built from LeHome's parts (lehome-challenge a805ad2).
+
+From LeHome: the SO101 follower (its USD, with convex-decomposed jaws and capsule finger pads, its actuators,
+link gravity off, self-collision on); the cloth, which is WorldFold's square mesh packaged as a LeHome garment
+(USD plus garment config) and built, read and reset by its GarmentObject with the particle settings in its
+particle_garment_cfg.yaml; and its simulation setup: IsaacLab on the CPU device with PhysX GPU dynamics forced on
+by LeHome's IsaacLab fork. The particle cloth needs GPU dynamics, and on the CUDA device the grippers pass through
+it (LeHome issue #36). From WorldFold: the table, the cloth's size and resolution, the arm base poses and the
+"main" camera (mujuco/cloth_params.py).
+
+Import only after isaac_env.start_app(): IsaacLab modules need the running app.
+"""
+
+import os
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import torch
+from omegaconf import OmegaConf
+
+import isaaclab.sim as sim_utils
+from isaaclab.assets import Articulation
+from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
+from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import TiledCamera, TiledCameraCfg
+from isaaclab.sim import SimulationCfg
+from isaaclab.utils import configclass
+from isaacsim.core.utils.rotations import euler_angles_to_quat
+from pxr import Gf, Usd, UsdGeom, UsdPhysics
+
+import lehome
+from lehome.assets.object.Garment import GarmentObject
+from lehome.assets.robots.lerobot import SO101_FOLLOWER_CFG
+
+from mujuco.cloth_params import (
+    ARM_BASE_LEFT, ARM_BASE_RIGHT, ARM_BASE_QUAT, ARM_JOINTS, CAMERA_FOVY_DEG, CAMERA_POS, CAMERA_TARGET,
+    CLOTH_COUNT, CLOTH_MASS, GRIPPER_OPEN, TABLE_TOP_Z, camera_axes,
+)
+from isaac.isaac_env import (
+    CAMERA_CLIP, CLOTH_ADHESION, CLOTH_GRAVITY_SCALE, CLOTH_SUBDIV, FLOOR_COLOR, FLOOR_SIZE, GRIPPER_JOINT,
+    HEADLIGHT_AMBIENT, HEADLIGHT_DIFFUSE, LIGHT_INTENSITY, LIGHTS, TABLE_SIZE, PAD_LINING_FRICTION,
+    PAD_LINING_THICKNESS, cloth_grid_mesh, usd_root_pose, _matrix_from_quat, _quat_facing, _quat_from_matrix,
+)
+
+PARTICLE_CFG = Path(lehome.__file__).parent / "tasks" / "bedroom" / "config_file" / "particle_garment_cfg.yaml"
+JOINTS = ARM_JOINTS + [GRIPPER_JOINT]
+HOME = {name: 0.0 for name in ARM_JOINTS} | {GRIPPER_JOINT: GRIPPER_OPEN}
+
+
+# LeHome's capsule finger pads (so101_follower_good.usd), in the gripper and jaw link frames: radius 1 cm, 5 cm
+# spine along the capsule's local z; the lining sits on the side facing the other finger (local +x on the fixed
+# finger, -x on the jaw), from the fingertip (local z -0.035 / +0.035) 4.3 cm up the finger
+PAD_RADIUS = 0.01
+LININGS = {"gripper": ((-0.017042, 0.000205, -0.073359), (0.997564, 0.0, -0.069756, 0.0), 1.0, -1.0),
+           "jaw": ((-0.001287, -0.050919, 0.018299), (0.709761, 0.696602, -0.069295, -0.078629), -1.0, 1.0)}
+
+
+def _robot(prim_path, base_pos):
+    pos, rot = usd_root_pose(base_pos, ARM_BASE_QUAT)
+    init = SO101_FOLLOWER_CFG.init_state.replace(pos=tuple(float(v) for v in pos), rot=tuple(float(v) for v in rot),
+                                                 joint_pos=HOME)
+    return SO101_FOLLOWER_CFG.replace(prim_path=prim_path, init_state=init)
+
+
+def _camera(image_size):
+    H, W = image_size
+    right, up = camera_axes(CAMERA_POS, CAMERA_TARGET)
+    forward = np.cross(up, right)
+    # "world" camera axes put +X forward; this roll makes image-up equal MuJoCo's camera up
+    rot = _quat_from_matrix(np.column_stack([forward, -up, -right]))
+    aperture = 20.955
+    return TiledCameraCfg(
+        prim_path="/World/main_camera",
+        offset=TiledCameraCfg.OffsetCfg(pos=tuple(CAMERA_POS), rot=tuple(float(v) for v in rot), convention="world"),
+        data_types=["rgb", "distance_to_image_plane"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=(aperture * H / W) / (2.0 * np.tan(np.radians(CAMERA_FOVY_DEG) / 2.0)),
+            horizontal_aperture=aperture, vertical_aperture=aperture * H / W, clipping_range=CAMERA_CLIP),
+        width=W, height=H)
+
+
+@configclass
+class SceneCfg(DirectRLEnvCfg):
+    decimation = 5
+    episode_length_s = 1.0e6        # IsaacClothFoldEnv decides termination; no auto-resets here
+    action_space = 12               # absolute joint targets, [left 6, right 6]: LeHome's action
+    observation_space = 12
+    state_space = 0
+    sim: SimulationCfg = SimulationCfg(dt=1.0 / 100.0, render_interval=5, device="cpu", use_fabric=False)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1, env_spacing=4.0, replicate_physics=True)
+    left_robot = _robot("/World/Robot/Left_Robot", ARM_BASE_LEFT)
+    right_robot = _robot("/World/Robot/Right_Robot", ARM_BASE_RIGHT)
+    camera: TiledCameraCfg | None = None
+
+
+def make_cfg(physics_dt, decimation, image_size=None):
+    cfg = SceneCfg()
+    cfg.decimation = decimation
+    cfg.sim.dt = physics_dt
+    cfg.sim.render_interval = decimation
+    cfg.camera = _camera(image_size) if image_size is not None else None
+    return cfg
+
+
+class SceneEnv(DirectRLEnv):
+    """Two LeHome SO101 arms, a table and WorldFold's square cloth. Steps absolute joint targets; the
+    observations, reward and termination live in IsaacClothFoldEnv, which reads the scene directly."""
+
+    cfg: SceneCfg
+
+    def __init__(self, cfg, cloth_center):
+        self.cloth_center = np.asarray(cloth_center, dtype=float)
+        super().__init__(cfg)
+        self.joint_ids = {p: arm.find_joints(JOINTS, preserve_order=True)[0] for p, arm in self.arms.items()}
+        self.gripper_body = {p: arm.find_bodies("gripper")[0][0] for p, arm in self.arms.items()}
+        self.targets = torch.zeros((1, 12), device=self.device)
+        self.cloth.initialize()
+
+    def _setup_scene(self):
+        self.arms = {"left_": Articulation(self.cfg.left_robot), "right_": Articulation(self.cfg.right_robot)}
+        self.scene.articulations["left_arm"] = self.arms["left_"]
+        self.scene.articulations["right_arm"] = self.arms["right_"]
+        lining = sim_utils.RigidBodyMaterialCfg(static_friction=PAD_LINING_FRICTION,
+                                                dynamic_friction=PAD_LINING_FRICTION)
+        lining.func("/World/Looks/pad_lining", lining)
+        for arm in (self.cfg.left_robot, self.cfg.right_robot):
+            self._add_linings(arm.prim_path)
+        floor = sim_utils.GroundPlaneCfg(size=(2 * FLOOR_SIZE, 2 * FLOOR_SIZE), color=FLOOR_COLOR)
+        floor.func("/World/floor", floor)
+        table = sim_utils.CuboidCfg(size=(TABLE_SIZE, TABLE_SIZE, TABLE_TOP_Z),
+                                    collision_props=sim_utils.CollisionPropertiesCfg(),
+                                    visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.4, 0.25)))
+        table.func("/World/table", table, translation=(0.0, 0.0, TABLE_TOP_Z / 2.0))
+        self.cloth, self.cloth_rest = self._spawn_cloth()
+        self.camera = None
+        if self.cfg.camera is not None:
+            self.camera = TiledCamera(self.cfg.camera)
+            self.scene.sensors["main"] = self.camera
+            self._spawn_lights()
+
+    def _add_linings(self, robot_path):
+        # a box on each finger's inner face, over LeHome's capsule pad: PAD_LINING_THICKNESS out from the capsule
+        t = PAD_LINING_THICKNESS
+        for link, (center, quat, side, tip) in LININGS.items():
+            local = np.array([side * (PAD_RADIUS + t / 2.0 - 0.0005), 0.0, tip * (0.035 - 0.0215)])
+            R = _matrix_from_quat(quat)
+            box = UsdGeom.Cube.Define(self.sim.stage, f"{robot_path}/{link}/pad_lining")
+            box.CreateSizeAttr(1.0)
+            box.AddTranslateOp().Set(Gf.Vec3d(*(np.asarray(center) + R @ local)))
+            box.AddOrientOp().Set(Gf.Quatf(float(quat[0]), Gf.Vec3f(*(float(v) for v in quat[1:]))))
+            box.AddScaleOp().Set(Gf.Vec3f(t + 0.001, 0.016, 0.043))
+            box.GetDisplayColorAttr().Set([Gf.Vec3f(0.1, 0.1, 0.1)])
+            UsdPhysics.CollisionAPI.Apply(box.GetPrim())
+            sim_utils.bind_physics_material(box.GetPath().pathString, "/World/Looks/pad_lining")
+
+    def _spawn_cloth(self):
+        # WorldFold's square cloth packaged the way LeHome packages a garment: a USD whose default prim holds a
+        # "mesh", plus a garment config. GarmentObject applies LeHome's particle system, material and cloth settings.
+        points, faces = cloth_grid_mesh(CLOTH_SUBDIV)
+        usd = os.path.join(tempfile.mkdtemp(), "square_cloth.usd")
+        stage = Usd.Stage.CreateNew(usd)
+        UsdGeom.SetStageUpAxis(stage, "Z")
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+        stage.SetDefaultPrim(UsdGeom.Xform.Define(stage, "/World").GetPrim())
+        mesh = UsdGeom.Mesh.Define(stage, "/World/mesh")
+        mesh.GetPointsAttr().Set([Gf.Vec3f(*p) for p in points])
+        mesh.GetFaceVertexIndicesAttr().Set(faces)
+        mesh.GetFaceVertexCountsAttr().Set([3] * (len(faces) // 3))
+        mesh.GetDisplayColorAttr().Set([Gf.Vec3f(0.8, 0.2, 0.2)])
+        mesh.GetDoubleSidedAttr().Set(True)
+        stage.GetRootLayer().Save()
+        n = (CLOTH_COUNT - 1) * CLOTH_SUBDIV + 1
+        particle_cfg = OmegaConf.load(PARTICLE_CFG)
+        particle_cfg.objects.garment_config.particle_mass = CLOTH_MASS / (n * n)
+        particle_cfg.objects.particle_material.gravity_scale = CLOTH_GRAVITY_SCALE
+        particle_cfg.objects.particle_material.adhesion = CLOTH_ADHESION
+        z = TABLE_TOP_Z + particle_cfg.objects.particle_system.rest_offset + 0.001
+        self.cloth_pose = np.array([self.cloth_center[0], self.cloth_center[1], z])
+        pose = [float(v) for v in self.cloth_pose]
+        garment_cfg = OmegaConf.create({
+            # GarmentObject joins a leading-slash asset_path onto the working directory
+            "asset_path": "/" + os.path.relpath(usd, os.getcwd()),
+            "visual_usd_paths": [], "scale": [1.0, 1.0, 1.0],
+            "check_point": [0, n - 1, (n - 1) * n, n * n - 1], "success_distance": [],   # the four corners
+            "initial_pos_range": pose + pose, "initial_rot_range": [0.0] * 6,
+            "soft_reset_pos_range": pose + pose, "soft_reset_rot_range": [0.0] * 6,
+        })
+        cloth = GarmentObject("/World/Object/cloth", particle_cfg, garment_cfg, rng=np.random.RandomState(0))
+        return cloth, np.asarray(points) + self.cloth_pose
+
+    # On the CPU device there is no particle-cloth tensor view: PhysX writes the particles back to the mesh's USD
+    # points (use_fabric=False), and GarmentObject reads and resets them there.
+    def particle_positions(self):
+        # GarmentObject.get_current_mesh_points without its open3d point cloud
+        pos, ori = self.cloth.get_world_pose()
+        local = self.cloth._get_points_pose().detach().cpu().numpy()
+        return self.cloth.transform_points(local, pos.detach().cpu().numpy(), ori.detach().cpu().numpy(),
+                                           self.cloth.get_world_scale().detach().cpu().numpy()).astype(np.float64)
+
+    def reset_cloth(self, offset_xy, height, rpy_deg):
+        # LeHome's soft reset puts the initial particles back at the configured pose; then move the cloth up by
+        # height, along by offset_xy and tilt it, so it drops onto the table the way LeHome drops its garments
+        self.cloth.reset()
+        pose = self.cloth_pose + np.array([offset_xy[0], offset_xy[1], height])
+        self.cloth.set_world_pose(position=pose, orientation=euler_angles_to_quat(np.asarray(rpy_deg), degrees=True))
+
+    def _spawn_lights(self):
+        dome = sim_utils.DomeLightCfg(intensity=LIGHT_INTENSITY * HEADLIGHT_AMBIENT)
+        dome.func("/World/ambient_light", dome)
+        head_dir = np.array(CAMERA_TARGET) - np.array(CAMERA_POS)
+        for i, (direction, diffuse) in enumerate(list(LIGHTS) + [(head_dir, HEADLIGHT_DIFFUSE)]):
+            light = sim_utils.DistantLightCfg(intensity=LIGHT_INTENSITY * diffuse)
+            light.func(f"/World/light_{i}", light, orientation=tuple(float(v) for v in _quat_facing(direction)))
+
+    def _pre_physics_step(self, actions):
+        self.targets = actions.clone()
+
+    def _apply_action(self):
+        self.arms["left_"].set_joint_position_target(self.targets[:, :6], joint_ids=self.joint_ids["left_"])
+        self.arms["right_"].set_joint_position_target(self.targets[:, 6:], joint_ids=self.joint_ids["right_"])
+
+    def _get_observations(self):
+        return {"policy": self.targets}
+
+    def _get_rewards(self):
+        return torch.zeros(self.num_envs, device=self.device)
+
+    def _get_dones(self):
+        done = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        return done, done
+
+    def _reset_idx(self, env_ids):
+        super()._reset_idx(env_ids)
+        for arm in self.arms.values():
+            arm.write_root_pose_to_sim(arm.data.default_root_state[env_ids, :7], env_ids)
+            arm.write_joint_state_to_sim(arm.data.default_joint_pos[env_ids], arm.data.default_joint_vel[env_ids],
+                                         env_ids=env_ids)

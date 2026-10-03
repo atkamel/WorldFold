@@ -14,10 +14,8 @@ import time
 import gymnasium as gym
 import numpy as np
 
-from cloth_fold_rl.quarter_fold_env import STAGES, QuarterFoldEnv
+from cloth_fold_rl.quarter_fold_env import HALF_FOLD_MAX_STEPS, STAGES, QuarterFoldEnv  # noqa: F401 (re-exported)
 from imitation.spec import ACTION_DIM, OBS_DIM  # noqa: F401 (re-exported)
-
-HALF_FOLD_MAX_STEPS = 250
 
 
 class HalfFoldEnv(QuarterFoldEnv):

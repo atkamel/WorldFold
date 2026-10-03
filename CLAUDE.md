@@ -24,6 +24,26 @@ Read before doing any work in this repo. Applies to every agent and every sessio
 
 A pass is not finished until status.md reflects it.
 
+## Subagents — use them, sized to the task
+Delegate tedious, well-scoped work to subagents, and pick the cheapest model whose reasoning
+matches the task's complexity. The lead agent keeps design, merges, debugging of unclear
+failures, and the final verification of every milestone. It re-runs the verify commands
+itself and never accepts a subagent's "it passes" on trust.
+
+| task shape | model |
+|---|---|
+| mechanical edits with exact instructions, renames, file listings, log/grep sweeps, doc table updates | `haiku` |
+| scoped code + tests against a written spec, read-only code exploration, web research | `sonnet` |
+| architecture, cross-module design, ambiguous debugging, code review of risky changes | lead agent / `opus` |
+
+- **Prompt contract.** Every subagent prompt states:
+  - the files it may touch
+  - what it must not do (no git commit/push, no installs, no long sim jobs unless told)
+  - the commands to run
+  - the exact output to report
+- **Log every delegation** in `docs/subagents.md` (newest first): date · milestone · model ·
+  task · outcome · whether the lead re-verified.
+
 ## Rules
 - The dataset store is write-once. Anything touching the observation or episode schema
   lands before a version is frozen.

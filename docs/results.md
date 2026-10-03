@@ -26,8 +26,10 @@ own recovery rate is unknown**, which gates the whole recovery arm of the plan.
 
 | 2026-09-23 | half fold | 0-49 (training seeds) | 50 | 48/50 = 96.0% [86.5, 98.9] | 96.7 | — | After M1.5 (IK scratch cache + per-episode IK rng reseed). Per-episode rows identical to M1.1. |
 
+| 2026-10-02 | half fold | 0-49 (training seeds) | 50 | 48/50 = 96.0% [86.5, 98.9] | 96.7 | — | **I0.1, after merging origin/main (Isaac env, PR #15).** The merge moved constants to `cloth_params.py`, switched the wrappers to accessors, and fixed the `stages` shadowing and the hard-coded one-hot offset. Per-episode rows are identical to M1.5 (JSON equal), failing seeds 24 and 35. MuJoCo is unchanged. |
+
 Artifacts: `outputs/imitation/expert_benchmark.json`, `outputs/imitation/expert_benchmark_m1_1.json`,
-`outputs/imitation/expert_benchmark_m1_5.json`
+`outputs/imitation/expert_benchmark_m1_5.json`, `outputs/imitation/expert_benchmark_i0_1.json`
 
 ### Expert ceiling — M1.7 gate (2026-09-23)
 
