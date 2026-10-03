@@ -771,3 +771,30 @@ The Isaac sets:
 
 The MuJoCo sets are unchanged: `shifted_pose(200000)` is identical, a value pinned in
 `test_seeds.py`.
+### Isaac scripted expert, grasp as built (Phase I, I2.1, 2026-10-03) — PILOT, no threshold
+
+`IsaacArmExpert` ports `isaac/half_fold_demo.py`'s pinch / arc fold unchanged and runs inside
+`QuarterFoldExpert` as the pipeline's ScriptedTeacher. It has the release gate, retry on
+measured miss, and resync. Run with `imitation.evaluate --backend isaac --ckpt expert`, 2 Isaac
+workers, wilson 95%.
+
+| set | seeds | n | success | fold score | failures | terminations |
+|---|---|---|---|---|---|---|
+| id_easy | 100000–100019 | 20 | 2/20 = 10% [2.8, 30.1] | 0.609 | G1 ×11, F1 ×3, M1 ×3, S1 ×1 | truncated 15, success 2, cloth_dragged 3 |
+| recovery (resync check) | 300000–300009 | 10 | 0/10 = 0% [0.0, 27.8] | 0.348 | G1 ×7, M1 ×2, S1 ×1 | truncated 8, cloth_dragged 2 |
+
+The expert is weak, and the failures are mostly grasp (G1): a corner dropped or released
+unplaced. Every arm grasps at some point, but the friction pinch doesn't hold through the carry.
+When the retry re-pinches a fallen corner, it can drag the cloth (M1). This is the friction
+grasp *as built*, with no tuning in this pass. Grasp reliability is roadmap IG.1–IG.3. The 10%
+here is at or below the demo's 1/3 on 3 seeds; the intervals are wide.
+
+The mechanics are what this milestone checks, and they work:
+- the phase machine runs pinch → close → arc → place → hold → synchronized release → retreat on
+  both arms (`isaac/expert_smoke.py`)
+- `resync` after random-action perturbations runs without errors on all 10 recovery episodes
+
+Wall time: 2091 s for 20 id_easy episodes and 1136 s for 10 recovery episodes. That's about
+100 s per episode across 2 workers, mostly 400-step truncations.
+
+Artifacts: `outputs/imitation/isaac/pilot/eval_expert{,_recovery}.json` and `.log`.
