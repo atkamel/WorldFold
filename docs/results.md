@@ -813,3 +813,57 @@ Each stage's artifacts are validated: dataset hashes re-verify, images are prese
 cameras, losses are finite, eval n matches, and the DAgger version is chained to its parent with
 label shapes [L, K, 12]. This is the reusable regression guard for the Isaac pipeline.
 Log: `outputs/isaac/chain/i3_1.log`.
+### Isaac pilot run (Phase I, I3.2, 2026-10-03) — PILOT: viability, not performance
+
+This is the whole imitation pipeline run on Isaac through the real CLIs: `scripts/isaac_pilot.ps1`,
+2 Isaac workers, about 7.5 h of sim spread over 4 resumable launches. Intervals are Wilson 95%.
+
+**Data.** The expert collected 80 episodes (30% perturbed) with images from the 3-camera rig at
+collection time.
+- `isaac_pilot` holds **2** successes: 534 steps, hash `a0bbd40bf051`.
+- `isaac_pilot_failures` holds the other 78: 30 733 steps, hash `108c622cfcd7`.
+- The success rate is 2/80 = 2.5% [0.7, 8.7] (clean 1/59, recovery 1/19). This is the friction
+  grasp as built (I2.1); grasp work is IG.
+
+**Training** (1 seed, short budgets) on `isaac_pilot`'s 2 demos. Every trainer fits its data.
+Validation loss rises: that's overfitting to 1–2 demos, which is all the data there is.
+
+| policy | steps | train loss first → last | val loss first → last |
+|---|---|---|---|
+| chunk-MLP | 5000 | 0.0323 → 0.0031 | 0.386 → 0.395 |
+| diffusion | 5000 | 0.0366 → 0.0003 | 0.358 → 0.603 |
+| vision BC (main 128 + wrists 64) | 3000 | 0.0305 → 0.0056 | 0.318 → 0.327 |
+
+**Closed-loop evaluation on Isaac** (`--backend isaac`):
+
+| policy | set | n | success | fold score | failures | inference (batch 16) |
+|---|---|---|---|---|---|---|
+| chunk-MLP @8 | id_easy | 20 | 0/20 [0, 16.1] | 0.089 | G1 ×20 | 2.9 ms |
+| chunk-MLP @8 | recovery | 10 | 0/10 [0, 27.8] | 0.076 | G1 ×10 | 3.0 ms |
+| diffusion @8 | id_easy | 20 | 0/20 [0, 16.1] | 0.087 | G1 ×20 | 11.4 ms (CUDA graph) |
+| diffusion @8 | id_hard | 10 | 0/10 [0, 27.8] | 0.093 | G1 ×10 | 11.5 ms |
+| diffusion @8 | recovery | 10 | 0/10 [0, 27.8] | 0.109 | G1 ×10 | 11.4 ms |
+| vision @2 | id_easy | 10 | 0/10 [0, 27.8] | 0.124 | G1 ×9, M1 ×1 | 7.9 ms |
+
+**DAgger** ran 1 round from the diffusion policy with takeover labels (p = 0.3). It made 16
+student rollouts and **208 takeovers**. **204 of them (98.1%) recorded a full 16-step expert
+chunk**; 4 were cut short by the episode ending, with no resync or IK errors. That meets I2.2's
+pilot bar of ≥ 98%. After retraining on 17 episodes / 195 DAgger labels, round 1 scored 0/20, so
+the keep rule kept the init.
+
+**Success detector** (main camera) agrees with the sim on 79/80 episodes = 98.75% [93.3, 99.8]
+(1 TP, 0 FP, 1 FN). That's barely above the 97.5% majority-class rate, and it was measured on
+the episodes it trained on. This shows the stage runs, not that the detector is good.
+
+**Verdict.** Every stage runs on Isaac and produces valid, hash-verified artifacts:
+- collection with cameras
+- 3 trainers
+- closed-loop evaluation with batched GPU inference, including vision
+- DAgger with takeover labels
+- the detector
+
+None of these numbers is a performance result. With a 2.5% expert, BC has 2 demos to learn from.
+The performance arc (IG grasp reliability, then the IS retrain at n = 200) starts from here.
+
+Artifacts: `outputs/imitation/isaac/pilot/` (eval JSONs, `takeover_labels.json`, logs),
+`outputs/imitation/runs/isaac_pilot_*/run.json`, `outputs/imitation/runs/isaac_pilot_detector/agreement.json`.

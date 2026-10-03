@@ -346,3 +346,38 @@ they do not ship, regardless of success rate.
   (snapshot/restore determinism, teacher labeling side-effect freedom).
 - Datasets are gitignored and reproducible from seed + pinned env; the **manifest hash in
   status.md** is what makes a run auditable.
+
+## 10. Simulator backends (Phase I, 2026-10-03)
+
+The pipeline runs on two simulators, chosen by `backend=` in `imitation.tasks.make_env` and by
+`--backend {mujoco,isaac}` on collect / evaluate / dagger / demo. MuJoCo stays the default and
+is unchanged: collection hashes are identical before and after the switch.
+
+| | MuJoCo (`.venv`, py3.13) | Isaac Sim 5.1 (`.venv-isaac`, py3.11) |
+|---|---|---|
+| base env | `mujuco.sim_main.ClothFoldEnv` | `isaac.isaac_env.IsaacClothFoldEnv` (LeHome stack) |
+| cloth | 11×11 flexcomp | 101×101 PhysX particles; the 121 grid vertices are a subset |
+| grasp | weld when closed within `GRASP_RADIUS` | **friction** pinch; `grasp_active` is a proxy (closed + corner within radius) |
+| cloth start | ±2.5 cm offset, dynamics DR ±30% | centre at y = −0.135 m, ±1 cm offset, ≤10° drop tilt, **no dynamics DR** |
+| episode cap | 250 | 400 (the fold takes ~230 steps at the arm's speed) |
+| expert | `FoldExpert` (MuJoCo IK) | `isaac.fold_expert.IsaacArmExpert` (URDF PinchIK; half_fold_demo's pinch / arc) |
+| DAgger labels | look-ahead from a `mj_getState` snapshot | **takeover**: the expert executes K steps and that chunk is the label (no snapshot exists) |
+| images | MuJoCo renderer, rendered or replayed | TiledCameras in the scene, rendered at collection (Isaac isn't deterministic, so no replay) |
+| processes | one env per worker, 10–14 workers | one Kit app per worker, `N_ISAAC = 2`, started serially, kept alive while idle |
+
+**Observation semantics on Isaac.** The 139-D layout is unchanged (`imitation/spec.py`), but some
+fields mean slightly different things:
+- dims 24/49 (grasp flag) are the proxy above
+- the gripper slot is the commanded target
+- corner velocities are finite differences over a control step
+- every absolute y is shifted by −0.135 m
+
+MuJoCo-trained normalizers and checkpoints don't transfer.
+
+**Isaac eval sets** (`imitation.seeds.eval_set(..., backend="isaac")`) use the same seed bases:
+- `id_easy`: the default reset.
+- `id_hard`: one axis forced to ±1 cm, which is the reach limit (`isaac/reach_check.py`). It's
+  the edge of the training jitter, not an OOD test.
+- `recovery`: perturbations at t ∈ [35, 140).
+
+Pilot numbers are in results.md. Grasp reliability and the n = 200 retrain are roadmap IG / IS.

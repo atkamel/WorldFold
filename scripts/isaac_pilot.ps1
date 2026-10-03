@@ -48,10 +48,10 @@ foreach ($e in @(@("mlp", "id_easy", 20), @("mlp", "recovery", 10), @("diff", "i
 Stage "eval_vision_id_easy" "$out\eval_vision_id_easy.json" {
     & $py -u -m imitation.evaluate --backend isaac --ckpt "$runs\isaac_pilot_vision\final.pt" --sets id_easy --n 10 `
         --replan-every 2 --workers 2 --out "$out\eval_vision_id_easy.json" }
-Stage "dagger" "$runs\isaac_pilot_dagger\history.json" {
+Stage "dagger" "$runs\isaac_pilot_dagger\round_1\final.pt" {
     & $py -u -m imitation.dagger --backend isaac --init "$runs\isaac_pilot_diff\final.pt" --dataset isaac_pilot --root $ds `
         --out "$runs\isaac_pilot_dagger" --rounds 1 --episodes 16 --train-steps 5000 --eval-n 20 --eval-sets id_easy `
-        --score-sets id_easy --workers 2 --labels takeover --takeover-p 0.3 }
+        --score-sets id_easy --workers 2 --labels takeover --takeover-p 0.3 --resume }
 Stage "detector_train" "$runs\isaac_pilot_detector\detector.pt" {
     & $py -u -m imitation.vision.success train --versions isaac_pilot isaac_pilot_failures --root $ds `
         --out "$runs\isaac_pilot_detector" --steps 2000 }

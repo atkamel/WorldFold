@@ -1,0 +1,31 @@
+{
+ "checkpoint": "outputs\\imitation\\runs\\isaac_pilot_mlp\\final.pt",
+ "replan_every": 8,
+ "results": {
+  "id_easy": {
+   "n": 20,
+   "success_rate": 0.0,
+   "mean_fold_score": 0.08924207599958604,
+   "grasp_success": 0.85,
+   "mean_steps_success": null,
+   "termination": {
+    "truncated": 20
+   },
+   "failure_codes": {
+    "G1": 20
+   },
+   "perturbed_failures": 0,
+   "perturbed_steps": 0,
+   "policy_infer_ms": {
+    "ms_per_call": 2.9365000082179904,
+    "mean_batch": 16.0
+   }
+  }
+ },
+ "failure_codes": {
+  "G1": "missed or unstable grasp (an arm never grasped, or dropped its unplaced corner)",
+  "M1": "motion error: anchor corner dragged or sim unstable",
+  "F1": "fold placed with poor alignment (released off target)",
+  "S1": "stalled: timed out still holding / hovering"
+ }
+}

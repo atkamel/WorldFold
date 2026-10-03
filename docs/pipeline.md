@@ -313,3 +313,29 @@ the eval command with its seed set and n. Collection is deterministic per seed,
 evaluation seeds are fixed by `imitation/seeds.py`, and policy inference is padded to a
 fixed batch shape (`rollout.padded_predict`). GPU results otherwise shift ~1e-6 with batch
 size, the cloth sim amplifies that, and the same checkpoint scored 145 then 134/200.
+
+## 12. On Isaac Sim (Phase I)
+
+Use the Isaac venv. Install it once with `isaac/setup_windows.ps1` (reviewed in
+`isaac/INSTALL_REVIEW.md`), then dot-source `isaac/env_windows.ps1` in each session. That script
+sets the caches, the EULA, telemetry off, D3D12 and offline mode.
+
+```powershell
+. .\isaac\env_windows.ps1
+& $env:ISAAC_PY isaac\smoke_test.py --mode state                       # the env works
+& $env:ISAAC_PY -m imitation.data.collect --backend isaac --episodes 80 --render `
+    --cameras main=128,left_wrist_cam=64,right_wrist_cam=64 --version isaac_pilot --workers 2
+& $env:ISAAC_PY -m imitation.train --policy diffusion --dataset isaac_pilot --run outputs\imitation\runs\x
+& $env:ISAAC_PY -m imitation.evaluate --backend isaac --ckpt outputs\imitation\runs\x\final.pt --n 20 --workers 2
+& $env:ISAAC_PY -m imitation.dagger --backend isaac --labels takeover --takeover-p 0.3 ...
+& $env:ISAAC_PY -m imitation.demo --backend isaac --ckpt expert --seeds 100000 --out out.mp4
+```
+
+What to know:
+- `scripts/isaac_pilot.ps1` runs the whole chain resumably. The background-task limit stops long
+  runs every 2 h; relaunching skips finished stages.
+- `tests/imitation/test_isaac_chain.py` (`-m "isaac and slow"`, about 30 min) is the end-to-end
+  regression guard.
+- `python -m imitation.verify --all` checks every Phase I milestone from its committed artifacts.
+- Throughput is about 5 steps/s per worker pair. Most of that time goes to 400-step truncations
+  while the expert's grasp is weak.

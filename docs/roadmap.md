@@ -170,9 +170,9 @@ Added 2026-10-02.
 | I1.2 | Isaac seed sets (id_easy / id_hard ring / scaled recovery) | disjoint; id_hard reachable 200/200 | ✅ 2026-10-03: R_max 1.0 cm (id_hard = edge of jitter, not OOD) |
 | I1.3 | Isaac camera rig: main 128² + wrists 64² | shapes; wrist pose within 1 mm / 0.5° | ✅ 2026-10-03: wrist mount 0.014 mm / 0°, 2.84 steps/s |
 | I2.1 | Isaac expert (grasp as built) as the scripted teacher | runs; pilot rates recorded (no threshold) | ✅ 2026-10-03: runs as teacher; pilot 2/20 id_easy, 0/10 recovery (grasp as built) |
-| I2.2 | DAgger labels on Isaac: executed-expert takeover labels (user-approved 2026-10-02) | pilot sanity bar | ☐ |
+| I2.2 | DAgger labels on Isaac: executed-expert takeover labels (user-approved 2026-10-02) | pilot sanity bar | ✅ 2026-10-03: 204/208 takeovers full chunks (98.1%) |
 | I3.1 | End-to-end micro chain test (Isaac M1.6) | green | ✅ 2026-10-03: 6/6 in 32 min |
-| I3.2 | Pilot run: collect 80, BC ×2, vision, DAgger 1 round, detector, demos | all artifacts valid; pilot rows in results.md | ☐ |
+| I3.2 | Pilot run: collect 80, BC ×2, vision, DAgger 1 round, detector, demos | all artifacts valid; pilot rows in results.md | ✅ 2026-10-03: every stage ran; pilot numbers in results.md |
 | I3.3 | Close-out | `verify --all` green in both venvs | ☐ |
 
 **Later milestones (not in the viability pass)**

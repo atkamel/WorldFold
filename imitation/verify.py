@@ -304,8 +304,72 @@ def _i31() -> Result:
     return Result("I3.1", "PASS" if ok else "FAIL", ev)
 
 
-for _mid, _desc in [    ("I2.2", "DAgger takeover labels: >= 98% of takeovers complete a full K-step chunk in the pilot DAgger round"),
-    ("I3.2", "pilot run: every artifact valid"),
+@check("I2.2", "DAgger takeover labels: >= 98% of takeovers record a full K-step expert chunk (pilot round)")
+def _i22() -> Result:
+    f = ROOT / "outputs" / "imitation" / "isaac" / "pilot" / "takeover_labels.json"
+    if not f.exists():
+        return Result("I2.2", "FAIL", [f"missing artifact: {f}"])
+    d = json.loads(f.read_text())
+    good = d["takeovers"] > 0 and d["full_rate"] >= 0.98 and d["label_shape"][1] == 12
+    ev = [f"{d['version']}: {d['full_chunks']}/{d['takeovers']} full chunks ({d['full_rate']:.1%}), "
+          f"{d['cut_by_episode_end']} cut by episode end, label shape {d['label_shape']}"]
+    ok = good and git_tracked(f) and results_md_has("I2.2")
+    return Result("I2.2", "PASS" if ok else "FAIL", ev)
+
+
+@check("I3.2", "pilot run through the real CLIs: every stage's artifact present and valid (viability, not performance)")
+def _i32() -> Result:
+    pilot = ROOT / "outputs" / "imitation" / "isaac" / "pilot"
+    runs = ROOT / "outputs" / "imitation" / "runs"
+    ev, ok = [], True
+    want = {"eval_mlp_id_easy": 20, "eval_mlp_recovery": 10, "eval_diff_id_easy": 20, "eval_diff_id_hard": 10,
+            "eval_diff_recovery": 10, "eval_vision_id_easy": 10}
+    for name, n in want.items():
+        path = pilot / f"{name}.json"
+        if not path.exists():
+            ev.append(f"missing artifact: {path}")
+            ok = False
+            continue
+        counts = eval_counts(path)
+        good = all(nn == n for _, nn in counts.values()) and git_tracked(path)
+        ev.append(f"{name}: " + ", ".join(f"{s} {k}/{nn}" for s, (k, nn) in counts.items()) + f" ok={good}")
+        ok &= good
+    for run in ("isaac_pilot_mlp", "isaac_pilot_diff", "isaac_pilot_vision"):
+        rj = runs / run / "run.json"
+        if not rj.exists():
+            ev.append(f"missing artifact: {rj}")
+            ok = False
+            continue
+        hist = json.loads(rj.read_text())["history"]
+        fit = hist[-1]["train_loss"] <= 0.5 * hist[0]["train_loss"]
+        ev.append(f"{run}: train loss {hist[0]['train_loss']:.4f} -> {hist[-1]['train_loss']:.4f} fits={fit}")
+        ok &= fit and git_tracked(rj)
+    dag = runs / "isaac_pilot_dagger" / "history.json"
+    if dag.exists():
+        rounds = json.loads(dag.read_text())
+        rounds = rounds if isinstance(rounds, list) else rounds.get("rounds", [])
+        ev.append(f"dagger history: {len(rounds)} entries; tracked={git_tracked(dag)}")
+        ok &= len(rounds) >= 2 and git_tracked(dag)
+    else:
+        ev.append(f"missing artifact: {dag}")
+        ok = False
+    agree = runs / "isaac_pilot_detector" / "agreement.json"
+    if agree.exists():
+        a = json.loads(agree.read_text())
+        ev.append(f"detector agreement {a['agree']}/{a['n']} = {a['rate']:.1%}")
+        ok &= a["n"] > 0 and git_tracked(agree)
+    else:
+        ev.append(f"missing artifact: {agree}")
+        ok = False
+    for name in ("expert", "diffusion", "vision"):
+        mp4 = ROOT / "docs" / "reports" / "media" / f"isaac_pilot_{name}.mp4"
+        ok &= mp4.exists() and git_tracked(mp4)
+        ev.append(f"demo {mp4.name}: exists={mp4.exists()} tracked={git_tracked(mp4)}")
+    ok &= results_md_has("I3.2")
+    return Result("I3.2", "PASS" if ok else "FAIL", ev)
+
+
+for _mid, _desc in [
     ("I3.3", "close-out: verify --all PASS in both venvs"),
 ]:
     CHECKS[_mid] = (_desc, (lambda m=_mid: Result(m, "SKIP", ["not implemented yet"])))
