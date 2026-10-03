@@ -168,7 +168,7 @@ Added 2026-10-02.
 | I0.4 | Verifier `python -m imitation.verify` | its tests green | ✅ 2026-10-03 |
 | I1.1 | Backend switch (`make_env(backend=)`, EnvPool, CLIs, lazy MuJoCo imports, Isaac worker lifecycle) | tests green in both venvs; MuJoCo unchanged | ✅ 2026-10-03: hash-identical MuJoCo, Isaac pool green |
 | I1.2 | Isaac seed sets (id_easy / id_hard ring / scaled recovery) | disjoint; id_hard reachable 200/200 | ☐ |
-| I1.3 | Isaac camera rig: main 128² + wrists 64² | shapes; wrist pose within 1 mm / 0.5° | ☐ |
+| I1.3 | Isaac camera rig: main 128² + wrists 64² | shapes; wrist pose within 1 mm / 0.5° | ✅ 2026-10-03: wrist mount 0.014 mm / 0°, 2.84 steps/s |
 | I2.1 | Isaac expert (grasp as built) as the scripted teacher | runs; pilot rates recorded (no threshold) | ☐ |
 | I2.2 | DAgger labels on Isaac: executed-expert takeover labels (user-approved 2026-10-02) | pilot sanity bar | ☐ |
 | I3.1 | End-to-end micro chain test (Isaac M1.6) | green | ☐ |

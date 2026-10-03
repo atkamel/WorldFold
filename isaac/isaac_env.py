@@ -163,14 +163,17 @@ class IsaacClothFoldEnv(gym.Env):
 
     def __init__(self, control_dt=0.05, max_episode_steps=200, observation_mode="state", image_size=(84, 84),
                  camera_names=None, n_cloth_samples=9, n_tasks=4, grasp_corners=None, grasp_radius=GRASP_RADIUS,
-                 headless=True):
+                 headless=True, cameras=None):
+        # cameras: {name: square size} -- the imitation pipeline's camera rig (main + wrists), read with render_rig();
+        # independent of observation_mode's own 84x84 main image
+        self.rig = dict(cameras) if cameras else {}
         if camera_names is not None and list(camera_names) != ["main"]:
             raise NotImplementedError("only the shared 'main' camera is ported")
         self.observation_mode = observation_mode
         self.image_size = image_size
         self._use_image = observation_mode in ("pixels", "hybrid")
         self._use_cloth = observation_mode in ("state", "hybrid")
-        start_app(headless, cameras=self._use_image)
+        start_app(headless, cameras=self._use_image or bool(self.rig))
         import torch
         from isaac.lab_scene import SceneEnv, make_cfg
         self._torch = torch
@@ -211,7 +214,7 @@ class IsaacClothFoldEnv(gym.Env):
         self._grid = grid_particles(CLOTH_SUBDIV)
         self.weld_mask = {p: None for p in self.prefixes}
 
-        cfg = make_cfg(PHYSICS_DT, self.n_substeps, image_size if self._use_image else None)
+        cfg = make_cfg(PHYSICS_DT, self.n_substeps, image_size if self._use_image else None, rig=self.rig)
         self.lab = SceneEnv(cfg, CLOTH_CENTER)
         self.arms = self.lab.arms
         left = self.arms["left_"]
@@ -420,6 +423,11 @@ class IsaacClothFoldEnv(gym.Env):
             self.lab.sim.set_setting("/app/player/playSimulations", True)
             self._kit_ticked = time.time()
         self._refresh_cloth()
+
+    def render_rig(self):
+        """The camera rig's latest frames, {name: uint8 [3, H, W]} (rendered once per control step)."""
+        return {name: np.ascontiguousarray(np.transpose(_npy(cam.data.output["rgb"][0])[:, :, :3], (2, 0, 1)))
+                .astype(np.uint8) for name, cam in self.lab.rig_cameras.items()}
 
     def keep_alive(self):
         """Tick Kit without stepping physics, for a process that sits idle (e.g. a rollout worker waiting while

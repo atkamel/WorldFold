@@ -230,9 +230,28 @@ def _i11() -> Result:
     return Result("I1.1", "PASS" if ok else "FAIL", ev)
 
 
+@check("I1.3", "camera rig: main 128 + two 64 wrist cameras, right shapes, wrist mount within 1 mm / 0.5 deg")
+def _i13() -> Result:
+    rig = ROOT / "outputs" / "isaac" / "rig" / "rig.json"
+    if not rig.exists():
+        return Result("I1.3", "FAIL", [f"missing artifact: {rig}"])
+    rep = json.loads(rig.read_text())
+    ev, ok = [], git_tracked(rig)
+    for name, f in rep["frames"].items():
+        good = f["shape"] == f["expected"] and f["dtype"] == "uint8" and f["std"] > 1.0
+        ev.append(f"{name}: {f['shape']} {f['dtype']} std {f['std']:.1f} ok={good}")
+        ok &= good
+    for prefix, p in rep["wrist_pose"].items():
+        good = p["pos_err_mm"] < 1.0 and p["rot_err_deg"] < 0.5
+        ev.append(f"{prefix}wrist_cam pose error {p['pos_err_mm']:.3f} mm / {p['rot_err_deg']:.2f} deg ok={good}")
+        ok &= good
+    ev.append(f"dict-mode {rep['dict_steps_per_s']} steps/s; rig.json tracked={git_tracked(rig)}")
+    ok &= results_md_has("I1.3")
+    return Result("I1.3", "PASS" if ok else "FAIL", ev)
+
+
 for _mid, _desc in [
     ("I1.2", "Isaac seed sets disjoint; id_hard ring reachable"),
-    ("I1.3", "camera rig: 3 cameras, right shapes, wrist pose within tolerance"),
     ("I2.1", "Isaac expert (grasp as built): runs clean, rates recorded"),
     ("I2.2", "DAgger labels: >= 80% of chunks within 0.05"),
     ("I3.1", "e2e micro chain: collect -> train -> eval -> dagger -> vision -> detector"),

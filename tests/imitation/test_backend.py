@@ -22,10 +22,16 @@ def test_unknown_backend_rejected():
         make_env(backend="bullet")
 
 
-def test_isaac_dict_mode_waits_for_the_rig():
-    from imitation.tasks.half_fold import make_env
-    with pytest.raises(NotImplementedError):
-        make_env(backend="isaac", obs_mode="dict")
+def test_isaac_rig_reader_checks_the_scene_rig():
+    from types import SimpleNamespace
+    from imitation.vision.isaac_render import IsaacCameraRig
+    frames = {"main": object(), "left_wrist_cam": object()}
+    base = SimpleNamespace(rig={"main": 128, "left_wrist_cam": 64}, render_rig=lambda: frames)
+    env = SimpleNamespace(unwrapped=base)
+    rig = IsaacCameraRig(env, {"main": 128})
+    assert rig.render() == {"main": frames["main"]}
+    with pytest.raises(ValueError):
+        IsaacCameraRig(env, {"main": 96})            # the scene was built at 128
 
 
 @pytest.mark.parametrize("module", ["imitation.rollout", "imitation.evaluate", "imitation.dagger",

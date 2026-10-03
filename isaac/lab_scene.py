@@ -63,21 +63,62 @@ def _robot(prim_path, base_pos):
     return SO101_FOLLOWER_CFG.replace(prim_path=prim_path, init_state=init)
 
 
-def _camera(image_size):
+def _pinhole(H, W, fovy_deg):
+    aperture = 20.955
+    return sim_utils.PinholeCameraCfg(
+        focal_length=(aperture * H / W) / (2.0 * np.tan(np.radians(fovy_deg) / 2.0)),
+        horizontal_aperture=aperture, vertical_aperture=aperture * H / W, clipping_range=CAMERA_CLIP)
+
+
+def _camera(image_size, prim_path="/World/main_camera", data_types=("rgb", "distance_to_image_plane")):
     H, W = image_size
     right, up = camera_axes(CAMERA_POS, CAMERA_TARGET)
     forward = np.cross(up, right)
     # "world" camera axes put +X forward; this roll makes image-up equal MuJoCo's camera up
     rot = _quat_from_matrix(np.column_stack([forward, -up, -right]))
-    aperture = 20.955
     return TiledCameraCfg(
-        prim_path="/World/main_camera",
+        prim_path=prim_path,
         offset=TiledCameraCfg.OffsetCfg(pos=tuple(CAMERA_POS), rot=tuple(float(v) for v in rot), convention="world"),
-        data_types=["rgb", "distance_to_image_plane"],
-        spawn=sim_utils.PinholeCameraCfg(
-            focal_length=(aperture * H / W) / (2.0 * np.tan(np.radians(CAMERA_FOVY_DEG) / 2.0)),
-            horizontal_aperture=aperture, vertical_aperture=aperture * H / W, clipping_range=CAMERA_CLIP),
-        width=W, height=H)
+        data_types=list(data_types), spawn=_pinhole(H, W, CAMERA_FOVY_DEG), width=W, height=H)
+
+
+# The so101-nexus MJCF's wrist_cam, in its `gripper` body (the same frame as LeHome's USD gripper link, see
+# GRIPPERFRAME_POS in isaac_env.py): pos="0 0.04 -0.04", euler="-0.5 0 6.28" (xyz, radians), fovy 75.
+# MuJoCo cameras look down -Z with +Y up, which is the "opengl" offset convention.
+WRIST_CAM_POS = (0.0, 0.04, -0.04)
+WRIST_CAM_EULER = (-0.5, 0.0, 6.28)
+WRIST_CAM_FOVY_DEG = 75.0
+
+
+def wrist_cam_quat():
+    """wxyz of the MJCF wrist_cam frame in the gripper link frame (intrinsic xyz Euler, MuJoCo's default)."""
+    def rot(axis, a):
+        c, s = np.cos(a), np.sin(a)
+        R = np.eye(3)
+        i, j = [(1, 2), (0, 2), (0, 1)][axis]
+        R[i, i], R[i, j], R[j, i], R[j, j] = c, -s, s, c
+        if axis == 1:
+            R[0, 2], R[2, 0] = s, -s
+        return R
+    ex, ey, ez = WRIST_CAM_EULER
+    return _quat_from_matrix(rot(0, ex) @ rot(1, ey) @ rot(2, ez))
+
+
+def _wrist_camera(robot_path, size):
+    return TiledCameraCfg(
+        prim_path=f"{robot_path}/gripper/wrist_cam",
+        offset=TiledCameraCfg.OffsetCfg(pos=WRIST_CAM_POS, rot=tuple(float(v) for v in wrist_cam_quat()),
+                                        convention="opengl"),
+        data_types=["rgb"], spawn=_pinhole(size, size, WRIST_CAM_FOVY_DEG), width=size, height=size)
+
+
+def rig_camera_cfg(name, size):
+    """The imitation pipeline's camera rig (imitation.vision.render.CAMERAS): main + one camera per wrist."""
+    if name == "main":
+        return _camera((size, size), prim_path="/World/rig_main", data_types=("rgb",))
+    if name in ("left_wrist_cam", "right_wrist_cam"):
+        return _wrist_camera("/World/Robot/Left_Robot" if name.startswith("left") else "/World/Robot/Right_Robot", size)
+    raise ValueError(f"unknown rig camera {name!r}")
 
 
 @configclass
@@ -92,10 +133,12 @@ class SceneCfg(DirectRLEnvCfg):
     left_robot = _robot("/World/Robot/Left_Robot", ARM_BASE_LEFT)
     right_robot = _robot("/World/Robot/Right_Robot", ARM_BASE_RIGHT)
     camera: TiledCameraCfg | None = None
+    rig: dict | None = None         # {camera name: square size}, the imitation camera rig (opt-in)
 
 
-def make_cfg(physics_dt, decimation, image_size=None):
+def make_cfg(physics_dt, decimation, image_size=None, rig=None):
     cfg = SceneCfg()
+    cfg.rig = dict(rig) if rig else None
     cfg.decimation = decimation
     cfg.sim.dt = physics_dt
     cfg.sim.render_interval = decimation
@@ -137,6 +180,11 @@ class SceneEnv(DirectRLEnv):
         if self.cfg.camera is not None:
             self.camera = TiledCamera(self.cfg.camera)
             self.scene.sensors["main"] = self.camera
+        self.rig_cameras = {}
+        for name, size in (self.cfg.rig or {}).items():
+            self.rig_cameras[name] = TiledCamera(rig_camera_cfg(name, size))
+            self.scene.sensors[f"rig_{name}"] = self.rig_cameras[name]
+        if self.camera is not None or self.rig_cameras:
             self._spawn_lights()
 
     def _add_linings(self, robot_path):

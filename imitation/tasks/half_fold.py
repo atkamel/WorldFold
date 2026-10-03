@@ -34,7 +34,11 @@ class HalfFoldEnv(QuarterFoldEnv):
         self.last_render_s = 0.0          # profiling (M5c.1): time of the last camera render
         if obs_mode == "dict":
             from imitation.vision.render import CAMERAS, CameraRig
-            self.rig = CameraRig(self, cameras or CAMERAS)
+            if hasattr(self.unwrapped, "render_rig"):     # Isaac: the cameras are part of the scene (I1.3)
+                from imitation.vision.isaac_render import IsaacCameraRig
+                self.rig = IsaacCameraRig(self, cameras or CAMERAS)
+            else:
+                self.rig = CameraRig(self, cameras or CAMERAS)
             self.observation_space = gym.spaces.Dict(
                 {"state": self.observation_space,
                  **{c: gym.spaces.Box(0, 255, (3, n, n), np.uint8) for c, n in self.rig.cameras.items()}})
@@ -82,10 +86,12 @@ def make_env(backend="mujoco", **kwargs):
         return HalfFoldEnv(**kwargs)
     if backend == "isaac":
         from imitation.isaac_runtime import ISAAC_CLOTH_JITTER, ISAAC_MAX_STEPS, make_isaac_base
-        if kwargs.get("obs_mode", "state") != "state":
-            raise NotImplementedError("Isaac camera rig lands in Phase I milestone I1.3")
         kwargs.setdefault("max_episode_steps", ISAAC_MAX_STEPS)
         kwargs.setdefault("cloth_jitter", ISAAC_CLOTH_JITTER)
-        kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"])
+        cameras = None
+        if kwargs.get("obs_mode", "state") == "dict":
+            from imitation.vision.render import CAMERAS
+            cameras = kwargs.get("cameras") or CAMERAS
+        kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras)
         return HalfFoldEnv(**kwargs)
     raise ValueError(f"backend must be one of {BACKENDS}, got {backend!r}")

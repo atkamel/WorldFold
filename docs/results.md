@@ -728,3 +728,14 @@ episode (perturbation → resync path). The `-m slow` suite gives 12 passed. On 
 `tests/imitation/test_isaac_backend.py` gives 3 passed: 2 `EnvPool` Isaac workers reset and
 step with finite 139-D obs, the 400-step cap and ±1 cm offsets, then close cleanly. The
 sim-free pipeline tests pass under the Isaac venv: 83 passed (numpy 1.26, torch 2.7+cu128).
+### Isaac camera rig (Phase I, I1.3, 2026-10-03)
+
+`isaac/rig_check.py`: half fold on Isaac in dict mode, seed 100000, 20 zero-action steps.
+- **Frames:** `main` is 3×128×128 and both wrist cameras are 3×64×64, all uint8, with real
+  content (std 39 / 33 / 25).
+- **Wrist mounts:** each wrist camera's world pose vs the gripper link pose ∘ the so101-nexus
+  MJCF `wrist_cam` offset is **0.014 mm / 0.00°** on both arms.
+- **Throughput:** dict mode runs at 2.84 control steps/s (vs 3.4 in state mode).
+- **No visual DR** in this pass (I-DR).
+
+Artifacts: `outputs/isaac/rig/{rig.json,main.png,left_wrist_cam.png,right_wrist_cam.png}`.
