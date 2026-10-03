@@ -27,12 +27,15 @@ import copy
 import numpy as np
 
 from cloth_fold_rl.quarter_fold_expert import QuarterFoldExpert
-from imitation.sim_state import restore, snapshot
 from imitation.teachers.base import Teacher
 
 # FoldExpert fields that change while it acts (the rest is configuration)
 _PHASE_FIELDS = ("phase", "q_target", "phase_steps", "retreat_target", "release_allowed", "rng")
-_GROUPS = ({"approach", "descend"}, {"lift", "carry", "place", "hold"}, {"release", "retreat", "done"})
+_GROUPS = ({"approach", "descend", "close"}, {"lift", "carry", "place", "hold"}, {"release", "retreat", "done"})
+
+
+def _fields(expert):
+    return getattr(type(expert), "PHASE_FIELDS", _PHASE_FIELDS)
 
 
 def _group(name):
@@ -42,7 +45,13 @@ def _group(name):
 class ScriptedTeacher(Teacher):
     def __init__(self, env, seed=0):
         self.env = env
-        self.expert = QuarterFoldExpert(env, seed=seed)
+        if hasattr(env.unwrapped, "lab"):       # Isaac (Phase I): the friction-pinch expert, no MuJoCo overshoot
+            import numpy as np
+            from isaac.fold_expert import IsaacArmExpert
+            zero = {key: np.zeros(3) for key in ((0, "left_"), (0, "right_"), (1, "left_"), (1, "right_"))}
+            self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=IsaacArmExpert, overshoot=zero)
+        else:
+            self.expert = QuarterFoldExpert(env, seed=seed)
 
     def reset(self, env=None) -> None:
         self.expert.reset()
@@ -54,6 +63,7 @@ class ScriptedTeacher(Teacher):
         return self.expert.phases()
 
     def label_chunk(self, env=None, horizon: int = 16) -> np.ndarray:
+        from imitation.sim_state import restore, snapshot     # MuJoCo state; Isaac labels by takeover (I2.2)
         env = self.env
         snap = snapshot(env)
         saved = self._save_expert()
@@ -90,7 +100,7 @@ class ScriptedTeacher(Teacher):
         for key, x in e.experts.items():
             if key[0] != e.env.stage:
                 continue
-            kept = {f: copy.deepcopy(getattr(x, f)) for f in _PHASE_FIELDS}
+            kept = {f: copy.deepcopy(getattr(x, f)) for f in _fields(x)}
             x.infer_phase(placed=e.env._placed(e.moves[key]))
             if _group(x.PHASES[x.phase]) == _group(x.PHASES[kept["phase"]]):
                 for f, v in kept.items():
@@ -105,7 +115,7 @@ class ScriptedTeacher(Teacher):
     # the expert's phase machine, IK caches and rngs, so labelling is side-effect free
     def _save_expert(self):
         e = self.expert
-        return {"experts": {k: {f: copy.deepcopy(getattr(x, f)) for f in _PHASE_FIELDS} for k, x in e.experts.items()},
+        return {"experts": {k: {f: copy.deepcopy(getattr(x, f)) for f in _fields(x)} for k, x in e.experts.items()},
                 "correction": copy.deepcopy(e.correction), "retries": dict(e.retries),
                 "done_steps": dict(e.done_steps)}
 

@@ -110,3 +110,35 @@ def test_pool_start_failure_raises_instead_of_hanging():
     with pytest.raises(RuntimeError, match="failed to start"):
         EnvPool(1, {"backend": "bogus"})
     assert time.time() - t0 < 60
+
+# ---- takeover labels (Phase I, I2.2): the expert's executed chunk labels the state it took over from ----
+
+def test_pad_chunk_keeps_grippers_and_stills_joints():
+    import numpy as np
+    from imitation.rollout import _pad_chunk
+    acts = [np.full(12, 0.5, np.float32), np.r_[np.full(5, 0.2), -1.0, np.full(5, 0.3), 1.0].astype(np.float32)]
+    chunk = _pad_chunk(acts, 4)
+    assert chunk.shape == (4, 12)
+    np.testing.assert_array_equal(chunk[:2], np.stack(acts))
+    np.testing.assert_array_equal(chunk[2:, [5, 11]], [[-1.0, 1.0], [-1.0, 1.0]])
+    assert not chunk[2:, :5].any() and not chunk[2:, 6:11].any()
+
+
+def test_takeover_controller_hands_over_at_the_given_rate():
+    import numpy as np
+    from imitation.rollout import PolicyController
+
+    class Stub:
+        obs_horizon, chunk, needs_images = 2, 16, False
+
+        def predict(self, obs):
+            return np.zeros((len(obs), 16, 12), np.float32)
+
+    c = PolicyController(Stub(), replan_every=8, takeover=0.3)
+    assert not c.needs_labels                 # no worker look-ahead labels in takeover mode
+    rngs = {i: np.random.default_rng(i) for i in range(400)}
+    plans = c.plan(list(range(400)), np.zeros((400, 2, 139), np.float32), None, rngs)
+    taken = [p for p in plans if p.takeover]
+    assert 0.2 < len(taken) / 400 < 0.4
+    assert all(p.actions is None and p.takeover == 16 and p.label is None for p in taken)
+    assert all(p.actions is not None and p.takeover == 0 for p in plans if not p.takeover)

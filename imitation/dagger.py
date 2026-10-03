@@ -102,6 +102,11 @@ def build_parser():
     ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
     ap.add_argument("--backend", choices=("mujoco", "isaac"), default="mujoco")
     ap.add_argument("--teacher", default="expert", help="'expert' or a privileged state-policy checkpoint")
+    ap.add_argument("--labels", choices=("lookahead", "takeover"), default=None,
+                    help="scripted-teacher labels: look-ahead from a sim snapshot (MuJoCo), or executed expert "
+                         "takeovers (Isaac has no snapshot; Phase I I2.2). Default: lookahead / takeover by backend")
+    ap.add_argument("--takeover-p", type=float, default=0.3,
+                    help="takeover labels: probability the expert takes over at a replan point")
     ap.add_argument("--relabel", action="store_true",
                     help="policy teacher: retrain on every visited step relabelled by it")
     ap.add_argument("--shift-fraction", type=float, default=0.0, help="share of rollouts from shifted poses")
@@ -140,6 +145,10 @@ def main():
         pool_kwargs.update(render=True, cameras=dict(student.cameras))
     log(f"== teacher: {args.teacher} | student: {student.kind} | score sets {sets} | "
         f"shift fraction {args.shift_fraction} | relabel {args.relabel}")
+    labels_mode = args.labels or ("takeover" if args.backend == "isaac" else "lookahead")
+    if labels_mode == "takeover" and args.teacher != "expert":
+        raise SystemExit("--labels takeover needs the scripted expert as teacher")
+    log(f"   labels: {labels_mode}" + (f" (p={args.takeover_p})" if labels_mode == "takeover" else ""))
     with EnvPool(args.workers, pool_kwargs) as pool:
         if args.resume and history_path.exists():
             best_ckpt, best, dataset, first, history = resume_state(out)
@@ -162,8 +171,12 @@ def main():
                 m = load_manifest(args.root, version)
                 log(f"   reusing frozen {version} ({m['n_episodes']} episodes)")
             else:
-                controller = PolicyController(policy, replan_every=args.replan_every, beta=beta, label=True,
-                                              source="dagger", teacher_policy=teacher_policy)
+                if labels_mode == "takeover":    # the expert's executed chunk is the label; beta is moot
+                    controller = PolicyController(policy, replan_every=args.replan_every, source="dagger",
+                                                  takeover=args.takeover_p)
+                else:
+                    controller = PolicyController(policy, replan_every=args.replan_every, beta=beta, label=True,
+                                                  source="dagger", teacher_policy=teacher_policy)
                 writer = DatasetWriter(args.root, version, parent=dataset, resume=args.resume,
                                        config={"round": r, "beta": beta, "policy": str(best_ckpt),
                                                "replan_every": args.replan_every, "episodes": args.episodes,

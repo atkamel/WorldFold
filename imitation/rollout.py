@@ -251,6 +251,8 @@ class Plan:
     actions: np.ndarray | None
     label: np.ndarray | None = None      # teacher chunk label to store at this step
     actor: int = ACTOR_STUDENT
+    takeover: int = 0                    # >0: the teacher takes over for this many real steps, and what it does
+                                         # becomes the label of this state (Isaac DAgger labels, Phase I I2.2)
 
 
 class Controller:
@@ -298,8 +300,12 @@ class PolicyController(Controller):
     the diffusion teacher). The scripted expert still labels in the workers, since it
     needs the live sim."""
 
-    def __init__(self, policy, replan_every=8, beta=0.0, label=False, source="student", teacher_policy=None):
+    def __init__(self, policy, replan_every=8, beta=0.0, label=False, source="student", teacher_policy=None,
+                 takeover=0.0):
+        """takeover: probability that the scripted teacher takes over at a replan point; its executed chunk is
+        the label (no look-ahead, so no sim snapshot -- Isaac has none). Used instead of label/beta."""
         self.policy = policy
+        self.takeover = takeover
         self.teacher_policy = teacher_policy
         self.replan_every = replan_every
         self.horizon = max(policy.obs_horizon, teacher_policy.obs_horizon if teacher_policy else 0)
@@ -319,6 +325,9 @@ class PolicyController(Controller):
             labels = list(padded_predict(t, obs_hist[:, -t.obs_horizon:])[:, :self.label_horizon])
         plans = []
         for j, slot in enumerate(slots):
+            if self.takeover > 0 and rngs[slot].random() < self.takeover:
+                plans.append(Plan(actions=None, actor=ACTOR_TEACHER, takeover=self.label_horizon))
+                continue
             label = labels[j] if labels is not None else None
             use_teacher = label is not None and self.beta > 0 and rngs[slot].random() < self.beta
             chunk = label if use_teacher else chunks[j]
@@ -358,6 +367,9 @@ class _Slot:
     queue_actor: int = ACTOR_STUDENT
     teacher_live: bool = False       # the teacher is acting step by step
     teacher_stale: bool = False      # ...but something else acted since, so resync first
+    takeover_left: int = 0           # takeover label in progress: teacher steps still to record
+    takeover_t: int = 0              # the step whose label the takeover is
+    takeover_acts: list = field(default_factory=list)
 
     @property
     def t(self):
@@ -454,6 +466,9 @@ def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_
                 s.labels.append(np.asarray(p.label, dtype=np.float32))
             if p.actions is None:
                 s.teacher_live = True
+                if p.takeover:                 # the student was driving: resync, then record K real steps
+                    s.teacher_stale = True
+                    s.takeover_left, s.takeover_t, s.takeover_acts = p.takeover, s.t, []
             else:
                 s.queue.extend(np.asarray(p.actions, dtype=np.float32))
                 s.queue_actor = p.actor
@@ -514,6 +529,13 @@ def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_
                     s.rows[key].append(val)
                 s.hist.append(obs)
                 s.info = info
+                if s.takeover_left > 0 and step_actor[i] == ACTOR_TEACHER:
+                    s.takeover_acts.append(np.asarray(executed, dtype=np.float32))
+                    s.takeover_left -= 1
+                    if s.takeover_left == 0 or term or trunc:
+                        s.label_steps.append(s.takeover_t)
+                        s.labels.append(_pad_chunk(s.takeover_acts, controller.label_horizon))
+                        s.takeover_left, s.teacher_live = 0, False
                 if term or trunc:
                     done[order[i]] = _finish(s, obs, controller, meta_extra)
                     if on_done:
@@ -530,6 +552,16 @@ def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_
     if stats is not None:
         stats["wall_s"] = stats.get("wall_s", 0.0) + time.perf_counter() - t_start
     return [done[k] for k in range(len(seeds))]
+
+
+def _pad_chunk(actions, horizon):
+    """A chunk label from executed actions; an episode that ends inside it is padded as ScriptedTeacher.label_chunk
+    pads: joints still, gripper commands kept."""
+    chunk = np.zeros((horizon, len(actions[0])), dtype=np.float32)
+    chunk[:len(actions)] = actions
+    if len(actions) < horizon:
+        chunk[len(actions):, [5, 11]] = actions[-1][[5, 11]]
+    return chunk
 
 
 def _finish(s: _Slot, final_obs, controller, meta_extra) -> Episode:

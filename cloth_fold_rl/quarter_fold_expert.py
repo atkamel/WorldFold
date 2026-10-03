@@ -39,8 +39,12 @@ SETTLE_WAIT = 15   # steps to wait in "done" before judging placement -- the
 
 
 class QuarterFoldExpert:
-    def __init__(self, env, seed=0):
-        from cloth_fold_rl.expert import FoldExpert
+    def __init__(self, env, seed=0, expert_cls=None, overshoot=None):
+        # expert_cls: the per-arm phase machine (default the MuJoCo FoldExpert; isaac.fold_expert.IsaacArmExpert on
+        # Isaac); overshoot: per (stage, arm) placement offset, MuJoCo's measured spring-back by default
+        if expert_cls is None:
+            from cloth_fold_rl.expert import FoldExpert as expert_cls
+        self.overshoot = OVERSHOOT if overshoot is None else overshoot
         self.env = env
         self.base = env.unwrapped
         self.experts = {}
@@ -49,8 +53,8 @@ class QuarterFoldExpert:
         for s, stage in enumerate(env.stages):
             for k, move in enumerate(stage.moves):
                 self.moves[(s, move.prefix)] = move
-                goal = lambda m=move, s=s: env.goal(m) + OVERSHOOT[(s, m.prefix)] + self.correction[(s, m.prefix)]
-                self.experts[(s, move.prefix)] = FoldExpert(env, seed=seed + 10 * s + k, prefix=move.prefix,
+                goal = lambda m=move, s=s: env.goal(m) + self.overshoot[(s, m.prefix)] + self.correction[(s, m.prefix)]
+                self.experts[(s, move.prefix)] = expert_cls(env, seed=seed + 10 * s + k, prefix=move.prefix,
                                                             corner=list(move.corners), goal=goal, release=True,
                                                             raw_vertex=True)
         self.reset()
@@ -96,11 +100,10 @@ class QuarterFoldExpert:
         return self.phases()
 
     def _update_release_gate(self):
-        from cloth_fold_rl.expert import FoldExpert
         # release once every arm has reached hold. An arm already past hold (a
         # learner released it) counts too, or the other arm would hold forever.
         arms = self._arms()
-        if all(e.PHASES[e.phase] in ("hold",) + FoldExpert.RELEASE_PHASES for e in arms.values()):
+        if all(e.PHASES[e.phase] in ("hold",) + e.RELEASE_PHASES for e in arms.values()):
             for e in arms.values():
                 e.release_allowed = True
 
