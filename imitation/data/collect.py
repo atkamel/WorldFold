@@ -14,11 +14,14 @@ Episodes are written as they finish, so a killed run keeps everything completed.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import time
+from pathlib import Path
 
 import numpy as np
 
 from imitation.data.schema import DatasetWriter
+from imitation.evaluate import resolve_workers
 from imitation.rollout import EnvPool, ExpertController, Perturbation, rollout
 from imitation.seeds import TRAIN_SEED_BASE
 from imitation.spec import ACTION_DIM, OBS_DIM
@@ -42,20 +45,48 @@ def printer(t0):
     return progress
 
 
-def main():
+ISAAC_STACK = {"isaacsim": "5.1.0", "lehome_challenge": "a805ad2f7ab52a4583066fc4ee5180459a7f9d15",
+               "isaaclab_fork": "69f6fa548c3a3520e3cb26ed24bb8abe60baeef3"}
+
+
+def parse_cameras(spec):
+    """'main=128,left_wrist_cam=64' -> {'main': 128, 'left_wrist_cam': 64}; None/'' -> None."""
+    if not spec:
+        return None
+    return {k: int(v) for k, v in (p.split("=") for p in spec.split(","))}
+
+
+def build_config(args):
+    """Dataset config: the CLI args, task, teacher, and (isaac) the pinned stack + knobs hash."""
+    config = {k: v for k, v in vars(args).items() if k != "resume"} | {
+        "task": "half_fold", "teacher": "QuarterFoldExpert(stage 0)"}
+    if args.backend == "isaac":
+        knobs = Path(__file__).resolve().parents[2] / "isaac" / "isaac_env.py"
+        config["teacher"] = "QuarterFoldExpert(stage 0) [isaac backend]"
+        config["isaac_stack"] = dict(ISAAC_STACK, knobs_sha256=hashlib.sha256(knobs.read_bytes()).hexdigest())
+    return config
+
+
+def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--episodes", type=int, default=400)
-    ap.add_argument("--workers", type=int, default=14)
+    ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
+    ap.add_argument("--backend", choices=("mujoco", "isaac"), default="mujoco")
+    ap.add_argument("--render", action="store_true", help="record camera images at collection")
+    ap.add_argument("--cameras", default=None, help="e.g. main=128,left_wrist_cam=64,right_wrist_cam=64")
     ap.add_argument("--version", default="v1")
     ap.add_argument("--root", default=DEFAULT_ROOT)
     ap.add_argument("--seed-base", type=int, default=TRAIN_SEED_BASE)
     ap.add_argument("--recovery-fraction", type=float, default=0.3)
     ap.add_argument("--mixed", action="store_true", help="keep failures in the demo version")
     ap.add_argument("--resume", action="store_true", help="continue an unfrozen version")
-    args = ap.parse_args()
+    return ap
 
-    config = {k: v for k, v in vars(args).items() if k != "resume"} | {
-        "task": "half_fold", "teacher": "QuarterFoldExpert(stage 0)"}
+
+def main():
+    args = build_parser().parse_args()
+    args.workers = resolve_workers(args.backend, args.workers)
+    config = build_config(args)
     writer = DatasetWriter(args.root, args.version, config=config, resume=args.resume)
     fail_writer = writer if args.mixed else DatasetWriter(
         args.root, f"{args.version}_failures", config=config | {"demos": args.version}, resume=args.resume)
@@ -68,7 +99,13 @@ def main():
         (writer if ep.meta["success"] else fail_writer).add(ep, obs_dim=OBS_DIM, action_dim=ACTION_DIM)
 
     t0 = time.time()
-    with EnvPool(args.workers) as pool:
+    kw = {}
+    if args.backend != "mujoco":
+        kw["backend"] = args.backend
+    if args.render:
+        kw["render"] = True
+        kw["cameras"] = parse_cameras(args.cameras)
+    with EnvPool(args.workers, kw or None) as pool:
         rollout(pool, seeds, ExpertController(), perturb_fn=recovery_perturbation(args.recovery_fraction),
                 progress=printer(t0), on_done=save)
     for w in dict.fromkeys((writer, fail_writer)):

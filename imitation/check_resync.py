@@ -9,6 +9,7 @@ from the sim and finishes the episode.
 from __future__ import annotations
 
 import argparse
+import json
 import multiprocessing as mp
 from collections import Counter, defaultdict
 
@@ -45,25 +46,39 @@ def _run(job):
             "reason": info["termination_reason"] or "truncated", "phases": phase_at_resync}
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--episodes", type=int, default=24)
     ap.add_argument("--k", type=int, default=10)
     ap.add_argument("--workers", type=int, default=8)
-    args = ap.parse_args()
+    ap.add_argument("--backend", choices=("mujoco", "isaac"), default="mujoco")
+    ap.add_argument("--out", default=None, help="optional JSON summary (counts per mode)")
+    return ap
+
+
+def main():
+    args = build_parser().parse_args()
+    if args.backend == "isaac":
+        raise SystemExit("isaac backend: run via the I2.1 expert milestone (EnvPool-based); not yet supported")
     jobs = [(s, m, args.k) for m in MODES for s in range(args.episodes)]
     with mp.get_context("spawn").Pool(args.workers) as pool:
         rows = pool.map(_run, jobs)
     by_mode = defaultdict(list)
     for r in rows:
         by_mode[r["mode"]].append(r)
+    summary = {}
     for m in MODES:
         rs = by_mode[m]
+        summary[m] = {"n": len(rs), "success": sum(r["success"] for r in rs),
+                      "reasons": dict(Counter(r["reason"] for r in rs))}
         print(f"{m:12s} success {sum(r['success'] for r in rs)}/{len(rs)}  "
               f"reasons {dict(Counter(r['reason'] for r in rs))}")
         for r in rs:
             if not r["success"]:
                 print(f"    fail seed {r['seed']} t_switch {r['t_switch']} phases {r['phases']} {r['reason']}")
+    if args.out:
+        with open(args.out, "w") as f:
+            json.dump({"episodes": args.episodes, "k": args.k, "modes": summary}, f, indent=1)
 
 
 if __name__ == "__main__":

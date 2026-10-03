@@ -166,7 +166,7 @@ Added 2026-10-02.
 | I0.2 | Install review: pinned sources, hashed lock, source review of the LeHome repos, asset audit | `isaac/INSTALL_REVIEW.md`; user OK on artifact list + EULA | ✅ 2026-10-02: SAFE; user OK + EULA |
 | I0.3 | **Gate:** scoped install in `.venv-isaac` + `isaac/smoke_test.py` state and hybrid on Windows | `SMOKE OK` ×2, CUDA torch, nothing written outside documented paths. Fails → stop and report | ✅ 2026-10-03: SMOKE OK ×2, 3.4 / 4.97 steps/s |
 | I0.4 | Verifier `python -m imitation.verify` | its tests green | ✅ 2026-10-03 |
-| I1.1 | Backend switch (`make_env(backend=)`, EnvPool, CLIs, lazy MuJoCo imports, Isaac worker lifecycle) | tests green in both venvs; MuJoCo unchanged | ☐ |
+| I1.1 | Backend switch (`make_env(backend=)`, EnvPool, CLIs, lazy MuJoCo imports, Isaac worker lifecycle) | tests green in both venvs; MuJoCo unchanged | ✅ 2026-10-03: hash-identical MuJoCo, Isaac pool green |
 | I1.2 | Isaac seed sets (id_easy / id_hard ring / scaled recovery) | disjoint; id_hard reachable 200/200 | ☐ |
 | I1.3 | Isaac camera rig: main 128² + wrists 64² | shapes; wrist pose within 1 mm / 0.5° | ☐ |
 | I2.1 | Isaac expert (grasp as built) as the scripted teacher | runs; pilot rates recorded (no threshold) | ☐ |

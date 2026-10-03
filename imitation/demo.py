@@ -103,7 +103,10 @@ def main():
     ap.add_argument("--width", type=int, default=960)
     ap.add_argument("--height", type=int, default=544)
     ap.add_argument("--fps", type=int, default=20)   # control_dt = 0.05 s -> real time
+    ap.add_argument("--backend", choices=("mujoco", "isaac"), default="mujoco")
     args = ap.parse_args()
+    if args.backend == "isaac":
+        raise SystemExit("isaac backend: the Isaac demo lands in I3.2 (this demo uses a MuJoCo renderer)")
 
     env = HalfFoldEnv()
     base = env.unwrapped

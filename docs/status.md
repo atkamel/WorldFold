@@ -41,7 +41,7 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**Phase I, I1.1: backend switch** (core in, CLI `--backend` flags and Isaac tests to finish). I0.3 is done; the next items below were the I0.3 plan. I0.2 is done (`isaac/INSTALL_REVIEW.md`); the user approved the install and accepted the EULA. Earlier I0.2 plan, for reference:
+**Phase I, I1.2: Isaac seed sets**, then I1.3 (camera rig). I1.1 is done; the items below are history. I0.2 is done (`isaac/INSTALL_REVIEW.md`); the user approved the install and accepted the EULA. Earlier I0.2 plan, for reference:
 - Fetch lehome-challenge @a805ad2 and the LeHome IsaacLab fork @69f6fa5 (source only) into
   the gitignored `.venv-isaac/src`. Review them, and build a hashed lock.
 - Then ask the user to OK the artifact list and the NVIDIA EULA before I0.3 installs.
@@ -135,6 +135,14 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-03 · **I1.1 ✅ backend switch.** `make_env(backend="mujoco"|"isaac")` and `--backend` on collect/evaluate/dagger (check_resync, benchmark_expert and demo refuse isaac until I2.1/I3.2). The rollout worker:
+  - builds its teacher lazily on Isaac only
+  - ticks Kit while idle and starts Isaac workers serially (ready handshake)
+  - has a NaN guard and `os._exit` on close/EOF
+  - the parent now closes the child's pipe end, so a dead worker raises instead of hanging (Sonnet review finding)
+
+  MuJoCo collection hash is identical before and after (`26d4f1fe9f06`); 2 Isaac `EnvPool` workers give 139-D finite obs. `tests/` is now a regular package: draccus ships a stray top-level `tests` in the Isaac venv. 148 fast + 12 slow pass; 3 Isaac backend + 83 sim-free pass in `.venv-isaac` · (this commit)
 
 - 2026-10-03 · **I0.3 ✅ (gate passed): Isaac Sim runs locally on Windows.** `isaac/smoke_test.py` passes in state and hybrid modes. 3.4 steps/s for one process; two processes give 4.97 aggregate at 9.1 GB VRAM peak, so `N_ISAAC = 2`. Not bit-deterministic for cloth (as expected).
   - Fixes on the way, each isolated and logged in `isaac/INSTALL_REVIEW.md`:

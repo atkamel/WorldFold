@@ -115,7 +115,9 @@ def _worker(pipe, env_kwargs):
                 obs, info = env.reset(seed=seed, options=options)
                 obs, images = _split(obs)
                 last_obs = obs
-                if shadow or teacher_ckpt:
+                # MuJoCo builds the teacher at the first episode start, exactly as before Phase I; Isaac defers
+                # it until it is needed (policy rollouts never need the scripted expert)
+                if shadow or teacher_ckpt or not isaac:
                     lazy.get()
                 if lazy.built:
                     lazy.get().reset()
@@ -182,6 +184,7 @@ class EnvPool:
                 a, b = ctx.Pipe()
                 p = ctx.Process(target=_worker, args=(b, env_kwargs or {}), daemon=True)
                 p.start()
+                b.close()       # the child owns its end; a worker that dies now gives EOF instead of a hang
                 self.pipes.append(a)
                 self.procs.append(p)
                 if serial:

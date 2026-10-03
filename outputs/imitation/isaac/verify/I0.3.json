@@ -1,0 +1,12 @@
+{
+ "milestone": "I0.3",
+ "status": "PASS",
+ "evidence": [
+  "20261003-013243/state.log SMOKE OK=True tracked=True",
+  "20261003-013243/hybrid.log SMOKE OK=True tracked=True",
+  "throughput 1 proc: 3.32 steps/s (6367 MiB), 2 proc: 4.97 steps/s (9119 MiB)",
+  "install scripts tracked; INSTALL_REVIEW documents the footprint outside .venv-isaac=True"
+ ],
+ "commit": "56320d50312f89f1468d2d27132fd11f4248ece8",
+ "time": "2026-10-03T03:01:08-0400"
+}

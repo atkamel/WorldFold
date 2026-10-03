@@ -24,6 +24,16 @@ from imitation.seeds import eval_set
 
 SUCCESS_DIST = 0.05
 
+
+def resolve_workers(backend, workers):
+    """Explicit --workers wins; else 14 for MuJoCo, N_ISAAC for Isaac (one env per process)."""
+    if workers is not None:
+        return workers
+    if backend == "isaac":
+        from imitation.isaac_runtime import N_ISAAC
+        return N_ISAAC
+    return 14
+
 FAILURE_CODES = {
     "G1": "missed or unstable grasp (an arm never grasped, or dropped its unplaced corner)",
     "M1": "motion error: anchor corner dragged or sim unstable",
@@ -101,7 +111,8 @@ class _TimedPolicy:
         return out
 
 
-def evaluate(ckpt, sets=("id_easy",), n=48, workers=14, replan_every=8, pool=None, log=print, save_dir=None):
+def evaluate(ckpt, sets=("id_easy",), n=48, workers=None, replan_every=8, pool=None, log=print, save_dir=None,
+             backend="mujoco"):
     from imitation.policies.common import load_policy
 
     policy = None if ckpt == "expert" else load_policy(ckpt)
@@ -110,7 +121,10 @@ def evaluate(ckpt, sets=("id_easy",), n=48, workers=14, replan_every=8, pool=Non
     if pool is not None and needs_images and (not pool.render or dict(pool.cameras or {}) != cams):
         raise ValueError(f"an image policy needs a pool made with EnvPool(n, {{'render': True, 'cameras': {cams}}})")
     own = pool is None
-    pool = pool or EnvPool(workers, {"render": needs_images, "cameras": cams})
+    kw = {"render": needs_images, "cameras": cams}
+    if backend != "mujoco":
+        kw["backend"] = backend
+    pool = pool or EnvPool(resolve_workers(backend, workers), kw)
     results = {}
     try:
         if policy is None:
@@ -146,17 +160,23 @@ def evaluate(ckpt, sets=("id_easy",), n=48, workers=14, replan_every=8, pool=Non
     return results
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True, help="policy checkpoint, or 'expert' for the scripted teacher")
     ap.add_argument("--sets", nargs="+", default=["id_easy", "id_hard", "recovery"])
     ap.add_argument("--n", type=int, default=48)
-    ap.add_argument("--workers", type=int, default=14)
+    ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
+    ap.add_argument("--backend", choices=("mujoco", "isaac"), default="mujoco")
     ap.add_argument("--replan-every", type=int, default=8)
     ap.add_argument("--out", default=None, help="JSON report path (default: next to the checkpoint)")
     ap.add_argument("--save-episodes", default=None, help="directory to write the rollouts to")
-    args = ap.parse_args()
-    results = evaluate(args.ckpt, args.sets, args.n, args.workers, args.replan_every, save_dir=args.save_episodes)
+    return ap
+
+
+def main():
+    args = build_parser().parse_args()
+    results = evaluate(args.ckpt, args.sets, args.n, resolve_workers(args.backend, args.workers), args.replan_every,
+                       save_dir=args.save_episodes, backend=args.backend)
     out = args.out or (Path(args.ckpt).with_name(f"eval_r{args.replan_every}.json") if args.ckpt != "expert"
                        else Path("outputs/imitation/eval_expert.json"))
     with open(out, "w") as f:

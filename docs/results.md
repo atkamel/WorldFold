@@ -719,3 +719,12 @@ crashes, see `isaac/INSTALL_REVIEW.md`).
 
 Artifacts: `outputs/isaac/smoke/20261003-013243/{state,hybrid}.log`, `hybrid_rgb.png`,
 `outputs/isaac/runtime.json`.
+### Backend switch regression (Phase I, I1.1, 2026-10-03)
+
+MuJoCo, `imitation.data.collect --episodes 8 --workers 8`. The same command at `3861f08` (before
+the backend switch) and with the new rollout worker (lazy teacher, ready handshake, NaN guard)
+gives content hash **`26d4f1fe9f06` both times**: 8/8 success, 738 steps, including 1 recovery
+episode (perturbation → resync path). The `-m slow` suite gives 12 passed. On Isaac,
+`tests/imitation/test_isaac_backend.py` gives 3 passed: 2 `EnvPool` Isaac workers reset and
+step with finite 139-D obs, the 400-step cap and ±1 cm offsets, then close cleanly. The
+sim-free pipeline tests pass under the Isaac venv: 83 passed (numpy 1.26, torch 2.7+cu128).

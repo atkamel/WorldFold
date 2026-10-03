@@ -207,8 +207,30 @@ def _i04() -> Result:
     return Result("I0.4", "PASS" if r.returncode == 0 else "FAIL", [f"pytest exit {r.returncode}: {tail}"])
 
 
+def _pytest(*args: str) -> tuple[int, str]:
+    r = subprocess.run([sys.executable, "-m", "pytest", *args, "-q", "-p", "no:cacheprovider"],
+                       cwd=ROOT, capture_output=True, text=True)
+    return r.returncode, (r.stdout.strip().splitlines() or ["(no output)"])[-1]
+
+
+@check("I1.1", "backend switch: MuJoCo unchanged (collection hash), pipeline imports without mujoco, Isaac obs 139-D")
+def _i11() -> Result:
+    ev, ok = [], True
+    code, tail = _pytest("tests/imitation/test_backend.py")
+    ev.append(f"test_backend.py exit {code}: {tail}")
+    ok &= code == 0
+    ok &= results_md_has("I1.1")
+    ev.append(f"results.md mentions I1.1={results_md_has('I1.1')} (MuJoCo collection-hash regression row)")
+    if isaac_available():
+        code, tail = _pytest("-m", "isaac", "tests/imitation/test_isaac_backend.py")
+        ev.append(f"test_isaac_backend.py exit {code}: {tail}")
+        ok &= code == 0
+        return Result("I1.1", "PASS" if ok else "FAIL", ev)
+    ev.append("Isaac half: SKIP here (run from .venv-isaac)")
+    return Result("I1.1", "PASS" if ok else "FAIL", ev)
+
+
 for _mid, _desc in [
-    ("I1.1", "backend switch: MuJoCo unchanged, Isaac obs 139-D finite, imports without mujoco"),
     ("I1.2", "Isaac seed sets disjoint; id_hard ring reachable"),
     ("I1.3", "camera rig: 3 cameras, right shapes, wrist pose within tolerance"),
     ("I2.1", "Isaac expert (grasp as built): runs clean, rates recorded"),

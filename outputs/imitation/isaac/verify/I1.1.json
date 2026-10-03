@@ -1,0 +1,11 @@
+{
+ "milestone": "I1.1",
+ "status": "PASS",
+ "evidence": [
+  "test_backend.py exit 0: 20 passed in 11.43s",
+  "results.md mentions I1.1=True (MuJoCo collection-hash regression row)",
+  "Isaac half: SKIP here (run from .venv-isaac)"
+ ],
+ "commit": "56320d50312f89f1468d2d27132fd11f4248ece8",
+ "time": "2026-10-03T03:01:25-0400"
+}

@@ -6,6 +6,8 @@ tedious, well-scoped work; the lead agent re-verifies results before a milestone
 
 | date | milestone | model | task | outcome | lead re-verified |
 |---|---|---|---|---|---|
+| 2026-10-03 | I1.1 | sonnet | read-only review of the I1.1 diff (rollout worker protocol, lazy teacher, CLIs) | 1 bug (parent kept the child pipe end, so a dead worker meant a hang), 4 risks, 3 nits | yes: fixed bug + lazy-teacher semantics (MuJoCo builds at reset again) + evaluate() default workers + indent; resume doesn't compare configs (no change); added start-failure test |
+| 2026-10-03 | I1.1 | sonnet | CLI `--backend` plumbing (collect/evaluate/dagger/check_resync/benchmark_expert/demo), `resolve_workers`, collect `isaac_stack` config, `--render/--cameras`, parser tests | done; 147 fast pass | yes: fast suite re-run 147 passed; spotted that mujoco configs now record `backend` (config isn't in the content hash, so datasets reproduce) |
 | 2026-10-03 | I1.1 | haiku | mechanical: move `import mujoco` inside functions in `sim_state.py`, `vision/render.py`; lazy `FoldExpert` import in `quarter_fold_expert.py` | done | yes: its "58 passed" was a partial run; full fast suite re-run by lead: 138 passed, 3 skipped |
 | 2026-10-03 | I0.4 | sonnet | build `imitation/verify.py` + tests (registry, Wilson, eval/bench readers, I0.1/I0.2/I0.4 checks, SKIP stubs) | done; 12 tests, 3 PASS | yes: re-ran tests (12 passed) and verify (PASS ×3) |
 | 2026-10-02 | I0.2 | sonnet | security review of lehome-challenge @a805ad2 (install code, import path, risky-pattern grep, ASSETS_ROOT, HF assets, uv.lock) | SAFE with caveats (CPU torch on Windows, cwd-based ASSETS_ROOT, `.cn` mirror URLs) | yes: read constant.py; checked 2 isaacsim wheel hashes against pypi.nvidia.com (identical) |

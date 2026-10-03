@@ -115,10 +115,10 @@ def test_list_has_all_ids(capsys):
 
 def test_stubs_skip_and_main_writes_json(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(verify, "ROOT", tmp_path)
-    assert verify.main(["I1.1"]) == 0
-    assert "SKIP I1.1" in capsys.readouterr().out
-    rec = json.loads((tmp_path / "outputs/imitation/isaac/verify/I1.1.json").read_text())
-    assert rec["milestone"] == "I1.1" and rec["status"] == "SKIP" and "evidence" in rec and "time" in rec
+    assert verify.main(["I3.3"]) == 0
+    assert "SKIP I3.3" in capsys.readouterr().out
+    rec = json.loads((tmp_path / "outputs/imitation/isaac/verify/I3.3.json").read_text())
+    assert rec["milestone"] == "I3.3" and rec["status"] == "SKIP" and "evidence" in rec and "time" in rec
 
 
 def test_main_exit_code_on_fail(tmp_path, monkeypatch):

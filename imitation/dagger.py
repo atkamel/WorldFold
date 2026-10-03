@@ -37,7 +37,7 @@ from pathlib import Path
 from imitation.data.collect import DEFAULT_ROOT, recovery_perturbation
 from imitation.data.dataset import clamp_fraction  # noqa: F401 (re-exported)
 from imitation.data.schema import DatasetWriter, load_manifest
-from imitation.evaluate import evaluate
+from imitation.evaluate import evaluate, resolve_workers
 from imitation.policies.common import load_policy
 from imitation.rollout import EnvPool, PolicyController, rollout
 from imitation.seeds import DAGGER_SEED_BASE, SHIFT_SEED_BASE, shifted_pose
@@ -81,7 +81,7 @@ def resume_state(out):
     return Path(kept["checkpoint"]), kept["eval"], history[-1]["dataset"], history[-1]["round"] + 1, history
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--init", required=True, help="imitation-baseline checkpoint to start from")
     ap.add_argument("--dataset", default="v1", help="frozen version the baseline was trained on")
@@ -99,14 +99,20 @@ def main():
     ap.add_argument("--eval-sets", nargs="+", default=["id_easy", "id_hard", "recovery"])
     ap.add_argument("--min-gain-se", type=float, default=1.0, help="stop when a round gains less (in SE)")
     ap.add_argument("--resume", action="store_true", help="continue from <out>/history.json")
-    ap.add_argument("--workers", type=int, default=14)
+    ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
+    ap.add_argument("--backend", choices=("mujoco", "isaac"), default="mujoco")
     ap.add_argument("--teacher", default="expert", help="'expert' or a privileged state-policy checkpoint")
     ap.add_argument("--relabel", action="store_true",
                     help="policy teacher: retrain on every visited step relabelled by it")
     ap.add_argument("--shift-fraction", type=float, default=0.0, help="share of rollouts from shifted poses")
     ap.add_argument("--score-sets", nargs="+", default=list(SCORE_SETS))
     ap.add_argument("--allow-failures", action="store_true", help="also train on failed expert demos")
-    args = ap.parse_args()
+    return ap
+
+
+def main():
+    args = build_parser().parse_args()
+    args.workers = resolve_workers(args.backend, args.workers)
     sets = tuple(args.score_sets)
     teacher_ckpt = None if args.teacher == "expert" else args.teacher
     if args.relabel and not teacher_ckpt:
@@ -128,6 +134,8 @@ def main():
     # the workers only simulate
     teacher_policy = load_policy(teacher_ckpt) if teacher_ckpt else None
     pool_kwargs = {}
+    if args.backend != "mujoco":
+        pool_kwargs["backend"] = args.backend
     if student.needs_images:
         pool_kwargs.update(render=True, cameras=dict(student.cameras))
     log(f"== teacher: {args.teacher} | student: {student.kind} | score sets {sets} | "
@@ -139,7 +147,8 @@ def main():
         else:
             best_ckpt, dataset, first = Path(args.init), args.dataset, 1
             log(f"== round 0: evaluating {best_ckpt}")
-            best = evaluate(best_ckpt, args.eval_sets, args.eval_n, pool=pool, replan_every=args.replan_every, log=log)
+            best = evaluate(best_ckpt, args.eval_sets, args.eval_n, pool=pool, replan_every=args.replan_every, log=log,
+                            backend=args.backend)
             history = [{"round": 0, "checkpoint": str(best_ckpt), "dataset": dataset, "eval": best, "kept": True}]
             with open(history_path, "w") as f:
                 json.dump(history, f, indent=1)
@@ -176,7 +185,8 @@ def main():
                             init_from=best_ckpt, dagger_weight=args.dagger_weight,
                             teacher=teacher_ckpt if args.relabel else None,
                             allow_failures=args.allow_failures or bool(args.relabel), log=log)
-            res = evaluate(ckpt, args.eval_sets, args.eval_n, pool=pool, replan_every=args.replan_every, log=log)
+            res = evaluate(ckpt, args.eval_sets, args.eval_n, pool=pool, replan_every=args.replan_every, log=log,
+                           backend=args.backend)
             gain, gain_se = score(res, sets) - score(best, sets), gain_in_se(res, best, sets)
             kept = gain > 0
             history.append({"round": r, "checkpoint": str(ckpt), "dataset": version, "beta": beta,
