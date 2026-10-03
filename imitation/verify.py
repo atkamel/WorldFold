@@ -369,10 +369,28 @@ def _i32() -> Result:
     return Result("I3.2", "PASS" if ok else "FAIL", ev)
 
 
-for _mid, _desc in [
-    ("I3.3", "close-out: verify --all PASS in both venvs"),
-]:
-    CHECKS[_mid] = (_desc, (lambda m=_mid: Result(m, "SKIP", ["not implemented yet"])))
+@check("I3.3", "close-out: every other Phase I check passes here, roadmap Phase I rows closed, docs updated")
+def _i33() -> Result:
+    ev, ok = [], True
+    for mid, (_, fn) in CHECKS.items():
+        if mid == "I3.3":
+            continue
+        try:
+            r = fn()
+        except Exception as exc:  # noqa: BLE001 -- a crashing check is a failing check
+            r = Result(mid, "FAIL", [f"check raised {exc!r}"])
+        ev.append(f"{mid}: {r.status}")
+        ok &= r.status == "PASS"
+    roadmap = (ROOT / "docs" / "roadmap.md").read_text(encoding="utf-8")
+    open_rows = [ln.split("|")[1].strip() for ln in roadmap.splitlines()
+                 if ln.startswith("| I") and ln.rstrip().endswith("☐ |") and not ln.startswith("| I3.3 ")]   # this row closes on PASS
+    ev.append(f"open Phase I roadmap rows: {open_rows or 'none'}")
+    ok &= not open_rows
+    spec = "Simulator backends" in (ROOT / "docs" / "imitation.md").read_text(encoding="utf-8")
+    nxt = "IG.1" in (ROOT / "docs" / "status.md").read_text(encoding="utf-8").split("## Next action")[1][:600]
+    ev.append(f"imitation.md backend section={spec}; status next action is IG.1={nxt}")
+    ok &= spec and nxt
+    return Result("I3.3", "PASS" if ok else "FAIL", ev)
 
 
 # ---------------------------------------------------------------- CLI

@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-02 · **Branch:** `feature/imitation` (merged main) → `feature/isaac-imitation` · **Phase:** I (Isaac Sim viability pass), before 6
+**Updated:** 2026-10-02 · **Branch:** `feature/imitation` (merged main) → `feature/isaac-imitation` · **Phase:** I closed (Isaac viability pass) → IG next, then IS / Phase 6
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,14 +41,15 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**Phase I, I1.2: Isaac seed sets**, then I1.3 (camera rig). I1.1 is done; the items below are history. I0.2 is done (`isaac/INSTALL_REVIEW.md`); the user approved the install and accepted the EULA. Earlier I0.2 plan, for reference:
-- Fetch lehome-challenge @a805ad2 and the LeHome IsaacLab fork @69f6fa5 (source only) into
-  the gitignored `.venv-isaac/src`. Review them, and build a hashed lock.
-- Then ask the user to OK the artifact list and the NVIDIA EULA before I0.3 installs.
-- Plan: `docs/superpowers/plans/2026-10-02-isaac-viability.md`.
-- Delegate well-scoped work to cheap subagents and log it in `docs/subagents.md`.
-- Phase 6 (M6.1) follows Phase I.
-
+**IG.1: grasp bench on Isaac** (roadmap, "Later milestones").
+- Phase I is closed. Every stage of the imitation pipeline runs on Isaac Sim, locally on Windows,
+  through the real CLIs, and `python -m imitation.verify --all` passes in both venvs.
+- The bottleneck is the friction grasp as built. The scripted expert succeeds 2/20 on id_easy
+  (2/80 during collection), so BC gets 2 demos and every student scores 0.
+- IG.1–IG.3 make the grasp reliable (bars written in the roadmap). The IS retrain at n = 200
+  follows.
+- Run Isaac jobs from `.venv-isaac` (`. .\isaac\env_windows.ps1`, ≤ 2 workers). Long chains go
+  through resumable scripts like `scripts/isaac_pilot.ps1`, because background tasks stop at 2 h.
 ## Pre-VLA milestone tracker
 
 Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA starts
@@ -77,6 +78,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 |---|---|
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
+| Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
 | tests | 116 fast + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
@@ -135,6 +137,14 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-03 · **Phase I closed (viability pass).** The whole pipeline runs on Isaac through the real CLIs:
+  - I2.1: the Isaac expert, with the friction grasp as built, runs as the teacher. Pilot: 2/20 id_easy, 0/10 recovery.
+  - I2.2: DAgger takeover labels, 204/208 full chunks (98.1%).
+  - I3.1: e2e micro chain, 6/6.
+  - I3.2: the pilot run. 80-episode collection (2 successes), chunk-MLP / diffusion / vision BC, closed-loop evals (all 0%: 2 demos), a DAgger round, a detector (79/80, majority 97.5%) and 3 demo videos.
+  - I3.3: `docs/imitation.md` §10 backends, `docs/pipeline.md` §12.
+  - `verify --all` PASS in both venvs; 153 fast + 12 slow (+10 Isaac-only slow, skipped in .venv) in `.venv` · (this commit)
 
 - 2026-10-03 · **I1.1 ✅ backend switch.** `make_env(backend="mujoco"|"isaac")` and `--backend` on collect/evaluate/dagger (check_resync, benchmark_expert and demo refuse isaac until I2.1/I3.2). The rollout worker:
   - builds its teacher lazily on Isaac only

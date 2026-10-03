@@ -173,7 +173,7 @@ Added 2026-10-02.
 | I2.2 | DAgger labels on Isaac: executed-expert takeover labels (user-approved 2026-10-02) | pilot sanity bar | ✅ 2026-10-03: 204/208 takeovers full chunks (98.1%) |
 | I3.1 | End-to-end micro chain test (Isaac M1.6) | green | ✅ 2026-10-03: 6/6 in 32 min |
 | I3.2 | Pilot run: collect 80, BC ×2, vision, DAgger 1 round, detector, demos | all artifacts valid; pilot rows in results.md | ✅ 2026-10-03: every stage ran; pilot numbers in results.md |
-| I3.3 | Close-out | `verify --all` green in both venvs | ☐ |
+| I3.3 | Close-out | `verify --all` green in both venvs | ✅ 2026-10-03: verify --all PASS in both venvs |
 
 **Later milestones (not in the viability pass)**
 

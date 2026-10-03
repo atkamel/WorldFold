@@ -113,12 +113,14 @@ def test_list_has_all_ids(capsys):
         assert i in verify.CHECKS
 
 
-def test_stubs_skip_and_main_writes_json(tmp_path, monkeypatch, capsys):
+def test_skip_counts_as_not_failing_and_main_writes_json(tmp_path, monkeypatch, capsys):
+    # every Phase I check is real now, so register a throwaway one that SKIPs
     monkeypatch.setattr(verify, "ROOT", tmp_path)
-    assert verify.main(["I3.3"]) == 0
-    assert "SKIP I3.3" in capsys.readouterr().out
-    rec = json.loads((tmp_path / "outputs/imitation/isaac/verify/I3.3.json").read_text())
-    assert rec["milestone"] == "I3.3" and rec["status"] == "SKIP" and "evidence" in rec and "time" in rec
+    monkeypatch.setitem(verify.CHECKS, "T0.0", ("test stub", lambda: verify.Result("T0.0", "SKIP", ["stub"])))
+    assert verify.main(["T0.0"]) == 0
+    assert "SKIP T0.0" in capsys.readouterr().out
+    rec = json.loads((tmp_path / "outputs/imitation/isaac/verify/T0.0.json").read_text())
+    assert rec["milestone"] == "T0.0" and rec["status"] == "SKIP" and "evidence" in rec and "time" in rec
 
 
 def test_main_exit_code_on_fail(tmp_path, monkeypatch):
