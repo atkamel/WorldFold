@@ -116,6 +116,8 @@ def rig_camera_cfg(name, size):
     """The imitation pipeline's camera rig (imitation.vision.render.CAMERAS): main + one camera per wrist."""
     if name == "main":
         return _camera((size, size), prim_path="/World/rig_main", data_types=("rgb",))
+    if name == "demo":           # the main view at video resolution, for imitation.demo (not a policy input)
+        return _camera((size, size), prim_path="/World/rig_demo", data_types=("rgb",))
     if name in ("left_wrist_cam", "right_wrist_cam"):
         return _wrist_camera("/World/Robot/Left_Robot" if name.startswith("left") else "/World/Robot/Right_Robot", size)
     raise ValueError(f"unknown rig camera {name!r}")

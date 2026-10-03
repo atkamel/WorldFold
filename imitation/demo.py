@@ -17,7 +17,6 @@ from collections import deque
 from pathlib import Path
 
 import imageio.v2 as imageio
-import mujoco
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -104,10 +103,12 @@ def main():
     ap.add_argument("--height", type=int, default=544)
     ap.add_argument("--fps", type=int, default=20)   # control_dt = 0.05 s -> real time
     ap.add_argument("--backend", choices=("mujoco", "isaac"), default="mujoco")
+    ap.add_argument("--demo-size", type=int, default=512, help="isaac: square size of the demo camera")
     args = ap.parse_args()
     if args.backend == "isaac":
-        raise SystemExit("isaac backend: the Isaac demo lands in I3.2 (this demo uses a MuJoCo renderer)")
+        return isaac_main(args)
 
+    import mujoco                    # MuJoCo demo only; the Isaac venv has no mujoco
     env = HalfFoldEnv()
     base = env.unwrapped
     if args.ckpt == "expert":
@@ -132,6 +133,66 @@ def main():
     imageio.mimwrite(out, frames, fps=args.fps, quality=8, macro_block_size=16)
     out.with_suffix(".json").write_text(json.dumps({"ckpt": args.ckpt, "episodes": rows}, indent=1))
     print(f"wrote {out} ({len(frames)} frames), success {sum(r['success'] for r in rows)}/{len(rows)}")
+
+
+def isaac_main(args):
+    """The same demo on Isaac Sim (Phase I). The frames come from a `demo` camera in the scene (the main view at
+    --demo-size); a vision checkpoint gets its own rig cameras from the same dict observation, as in evaluation.
+    One Isaac env per process, and Kit hangs at interpreter shutdown, so this exits through os._exit."""
+    import os
+    from imitation.tasks import make_env
+    from imitation.teachers.scripted import ScriptedTeacher
+    policy = None
+    cams = {"demo": args.demo_size}
+    if args.ckpt != "expert":
+        from imitation.policies.common import load_policy
+        policy = load_policy(args.ckpt)
+        if policy.needs_images:
+            cams.update(dict(policy.cameras))
+    env = make_env(backend="isaac", obs_mode="dict", cameras=cams)
+    teacher = ScriptedTeacher(env) if policy is None else None
+    label = ("scripted expert" if policy is None else
+             f"{'vision' if policy.needs_images else 'state'} policy {Path(args.ckpt).parent.name}") + "  [Isaac Sim]"
+
+    def frame(obs):
+        return np.ascontiguousarray(np.transpose(obs["demo"], (1, 2, 0)))
+
+    frames, rows = [], []
+    for seed in args.seeds:
+        obs, info = env.reset(seed=seed)
+        if teacher:
+            teacher.reset()
+        hist, queue = deque([obs["state"]] * (policy.obs_horizon if policy else 1), maxlen=policy.obs_horizon
+                            if policy else 1), deque()
+        for t in range(env.unwrapped.max_episode_steps):
+            if teacher:
+                action = teacher.act()
+            else:
+                if not queue:
+                    from imitation.rollout import padded_predict
+                    images = [{c: obs[c] for c in dict(policy.cameras)}] if policy.needs_images else None
+                    chunk = padded_predict(policy, np.stack(hist)[None].astype(np.float32), images)[0]
+                    queue.extend(chunk[:args.replan_every])
+                action = queue.popleft()
+            obs, _, term, trunc, info = env.step(action)
+            hist.append(obs["state"])
+            frames.append(_overlay(frame(obs), [
+                label, f"seed {seed}  step {t + 1}", f"fold score {info['fold_score']:.2f}",
+                f"grasped L {int(info['grasped']['left_'])} R {int(info['grasped']['right_'])}"]))
+            if term or trunc:
+                break
+        verdict = "SUCCESS" if info["success"] else f"FAIL ({info['termination_reason'] or 'truncated'})"
+        frames.extend([_overlay(frames[-1], [verdict])] * 20)
+        rows.append({"seed": seed, "steps": t + 1, "success": bool(info["success"]),
+                     "fold_score": float(info["fold_score"]), "termination_reason": info["termination_reason"]})
+        print(rows[-1], flush=True)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    imageio.mimwrite(out, frames, fps=args.fps, quality=8, macro_block_size=16)
+    out.with_suffix(".json").write_text(json.dumps({"ckpt": args.ckpt, "backend": "isaac", "episodes": rows},
+                                                   indent=1))
+    print(f"wrote {out} ({len(frames)} frames), success {sum(r['success'] for r in rows)}/{len(rows)}", flush=True)
+    os._exit(0)
 
 
 if __name__ == "__main__":
