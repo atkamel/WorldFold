@@ -1,0 +1,14 @@
+{
+ "milestone": "I1.3",
+ "status": "PASS",
+ "evidence": [
+  "main: [3, 128, 128] uint8 std 38.8 ok=True",
+  "left_wrist_cam: [3, 64, 64] uint8 std 32.8 ok=True",
+  "right_wrist_cam: [3, 64, 64] uint8 std 25.5 ok=True",
+  "left_wrist_cam pose error 0.014 mm / 0.00 deg ok=True",
+  "right_wrist_cam pose error 0.014 mm / 0.00 deg ok=True",
+  "dict-mode 2.84 steps/s; rig.json tracked=True"
+ ],
+ "commit": "bf8cd140bc1306f7d308b170b0758d61a48549eb",
+ "time": "2026-10-03T13:42:50-0400"
+}

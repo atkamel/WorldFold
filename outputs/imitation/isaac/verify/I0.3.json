@@ -7,6 +7,6 @@
   "throughput 1 proc: 3.32 steps/s (6367 MiB), 2 proc: 4.97 steps/s (9119 MiB)",
   "install scripts tracked; INSTALL_REVIEW documents the footprint outside .venv-isaac=True"
  ],
- "commit": "56320d50312f89f1468d2d27132fd11f4248ece8",
- "time": "2026-10-03T03:01:08-0400"
+ "commit": "bf8cd140bc1306f7d308b170b0758d61a48549eb",
+ "time": "2026-10-03T13:41:01-0400"
 }

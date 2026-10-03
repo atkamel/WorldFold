@@ -2,10 +2,10 @@
  "milestone": "I1.1",
  "status": "PASS",
  "evidence": [
-  "test_backend.py exit 0: 20 passed in 11.43s",
+  "test_backend.py exit 0: 22 passed in 15.08s",
   "results.md mentions I1.1=True (MuJoCo collection-hash regression row)",
-  "Isaac half: SKIP here (run from .venv-isaac)"
+  "test_isaac_backend.py exit 0: 3 passed in 80.48s (0:01:20)"
  ],
- "commit": "56320d50312f89f1468d2d27132fd11f4248ece8",
- "time": "2026-10-03T03:01:25-0400"
+ "commit": "bf8cd140bc1306f7d308b170b0758d61a48549eb",
+ "time": "2026-10-03T13:42:50-0400"
 }
