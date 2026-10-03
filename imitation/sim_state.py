@@ -17,10 +17,9 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 
-import mujoco
 import numpy as np
 
-_SPEC = mujoco.mjtState.mjSTATE_INTEGRATION
+# mujoco is imported inside the functions so this module loads in the Isaac venv (no mujoco there)
 _BASE_FIELDS = ("_gripper_closed", "_step_count", "_success_steps", "_action_clipped", "weld_mask",
                 "_goal_corners", "_goal_scale")
 _WRAPPER_FIELDS = ("stage", "_settle_steps", "_stage_start", "_start", "_prev_potential")
@@ -41,9 +40,11 @@ def _wrapper_chain(env):
 
 
 def snapshot(env) -> SimSnapshot:
+    import mujoco
+    spec = mujoco.mjtState.mjSTATE_INTEGRATION
     base = env.unwrapped
-    physics = np.empty(mujoco.mj_stateSize(base.model, _SPEC))
-    mujoco.mj_getState(base.model, base.data, physics, _SPEC)
+    physics = np.empty(mujoco.mj_stateSize(base.model, spec))
+    mujoco.mj_getState(base.model, base.data, physics, spec)
     wrapper = {}
     for i, w in enumerate(_wrapper_chain(env)):
         for f in _WRAPPER_FIELDS:
@@ -54,8 +55,10 @@ def snapshot(env) -> SimSnapshot:
 
 
 def restore(env, snap: SimSnapshot) -> None:
+    import mujoco
+    spec = mujoco.mjtState.mjSTATE_INTEGRATION
     base = env.unwrapped
-    mujoco.mj_setState(base.model, base.data, snap.physics, _SPEC)
+    mujoco.mj_setState(base.model, base.data, snap.physics, spec)
     base.model.eq_data[:] = snap.eq_data
     for f, v in snap.base.items():
         setattr(base, f, copy.deepcopy(v))

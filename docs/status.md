@@ -41,7 +41,7 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**Phase I, I0.3: scoped install + smoke test (gate).** I0.2 is done (`isaac/INSTALL_REVIEW.md`); the user approved the install and accepted the EULA. Earlier I0.2 plan, for reference:
+**Phase I, I1.1: backend switch** (core in, CLI `--backend` flags and Isaac tests to finish). I0.3 is done; the next items below were the I0.3 plan. I0.2 is done (`isaac/INSTALL_REVIEW.md`); the user approved the install and accepted the EULA. Earlier I0.2 plan, for reference:
 - Fetch lehome-challenge @a805ad2 and the LeHome IsaacLab fork @69f6fa5 (source only) into
   the gitignored `.venv-isaac/src`. Review them, and build a hashed lock.
 - Then ask the user to OK the artifact list and the NVIDIA EULA before I0.3 installs.
@@ -117,6 +117,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
+| 13 | `cloth_fold_rl/fold_env.py` puts `mujuco/` first on `sys.path`; `mujuco/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
 | 12 | `imitation.cpu_slot` isn't fair: a lane that releases and re-takes it between eval sets starves a lane polling every 2 s (lane A waited 37 min) | parallel queues | — |
 | 11 | `v1_dagger_v1_r1`/`_r2` frozen with bad teacher labels — never train on them | DAgger | — |
 | 10 | `cloth_angles/tasks.py::QUARTER` diverged from `quarter_fold_env.STAGES` (3 ways) | world-model work only (parked) | M7.3 |
@@ -134,6 +135,17 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-03 · **I0.3 ✅ (gate passed): Isaac Sim runs locally on Windows.** `isaac/smoke_test.py` passes in state and hybrid modes. 3.4 steps/s for one process; two processes give 4.97 aggregate at 9.1 GB VRAM peak, so `N_ISAAC = 2`. Not bit-deterministic for cloth (as expected).
+  - Fixes on the way, each isolated and logged in `isaac/INSTALL_REVIEW.md`:
+    - Kit's Vulkan path crashes in `omni.hydra.rtx.plugin` on driver 616.56, so it now uses D3D12 (`--/app/vulkan=false`).
+    - LeHome's lock was re-resolved for Windows.
+    - `h5py` pinned to 3.14.0, to match Kit's HDF5 1.14.6 DLL.
+    - `isaaclab_tasks`/`isaaclab_assets` editables and `omegaconf` added.
+    - The pipe deadlock in the throughput benchmark was fixed.
+  - Footprint outside `.venv-isaac`: Kit logs and caches in `~\.nvidia-omniverse` and `%LOCALAPPDATA%\ov` (~560 MB), documented with uninstall steps.
+  - I1.1 in progress: `make_env(backend=)`, `imitation/isaac_runtime.py`, and an Isaac-aware rollout worker (lazy teacher, Kit keep-alive, serial start, NaN guard, `os._exit`). MuJoCo imports are lazy.
+  - 138 fast pass, 3 Isaac-only skipped · (this commit)
 
 - 2026-10-03 · **I0.4 ✅** verifier `python -m imitation.verify` (Sonnet subagent, re-verified: 12 tests, I0.1/I0.2/I0.4 PASS). I0.3 lock fixes: LeHome's lock was never resolved for Windows (`isaacsim` pins `pywin32==306`, `networkx==3.3`, `filelock 3.13.1`, `fsspec 2024.6.1`), so `isaac/requirements-lehome-windows.lock` is re-resolved from LeHome's pyproject, seeded with its lock (4 versions changed + 15 Windows-only packages, all hashed). Hashed locks install with `--no-deps`. Install running · (this commit)
 

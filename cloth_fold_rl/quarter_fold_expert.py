@@ -21,7 +21,6 @@ import argparse
 
 import numpy as np
 
-from cloth_fold_rl.expert import FoldExpert
 from cloth_fold_rl.quarter_fold_env import HalfFoldEnv, QuarterFoldEnv
 
 # per (stage, arm): metres past the goal to place the corner at (the mean
@@ -41,6 +40,7 @@ SETTLE_WAIT = 15   # steps to wait in "done" before judging placement -- the
 
 class QuarterFoldExpert:
     def __init__(self, env, seed=0):
+        from cloth_fold_rl.expert import FoldExpert
         self.env = env
         self.base = env.unwrapped
         self.experts = {}
@@ -96,6 +96,7 @@ class QuarterFoldExpert:
         return self.phases()
 
     def _update_release_gate(self):
+        from cloth_fold_rl.expert import FoldExpert
         # release once every arm has reached hold. An arm already past hold (a
         # learner released it) counts too, or the other arm would hold forever.
         arms = self._arms()

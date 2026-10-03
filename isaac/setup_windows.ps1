@@ -36,13 +36,12 @@ Step "torch cu128" { & $uv pip install --python $py --require-hashes --no-deps -
     --index-url https://download.pytorch.org/whl/cu128 -r (Join-Path $PSScriptRoot "requirements-torch-cu128-windows.lock") }
 # 4. the two reviewed packages, editable, no dependency resolution
 Step "editables" { & $uv pip install --python $py --no-deps `
-    -e (Join-Path $venv "src\IsaacLab\source\isaaclab") -e (Join-Path $venv "src\lehome-challenge\source\lehome") }
+    -e (Join-Path $venv "src\IsaacLab\source\isaaclab") -e (Join-Path $venv "src\IsaacLab\source\isaaclab_assets") `
+    -e (Join-Path $venv "src\IsaacLab\source\isaaclab_tasks") -e (Join-Path $venv "src\lehome-challenge\source\lehome") }
 # 5. the two robot asset files, at a pinned dataset revision, checked against the reviewed sha256
 $env:HF_HUB_OFFLINE = "0"
 $assets = Join-Path $venv "assets"
-Step "assets" { & (Join-Path $venv "Scripts\hf.exe") download lehome/asset_challenge --repo-type dataset `
-    --revision bea65fd960ad5a1bb3bd3fa77164b28001c08ef9 --local-dir $assets `
-    robots/lerobot/so101_follower_good.usd robots/so101_new_calib.urdf }
+Step "assets" { & $py -c "from huggingface_hub import hf_hub_download as d; [d('lehome/asset_challenge', f, repo_type='dataset', revision='bea65fd960ad5a1bb3bd3fa77164b28001c08ef9', local_dir=r'$assets') for f in ('robots/lerobot/so101_follower_good.usd', 'robots/so101_new_calib.urdf')]" }
 $env:HF_HUB_OFFLINE = "1"
 $usd = Join-Path $assets "robots\lerobot\so101_follower_good.usd"
 $sha = (Get-FileHash $usd -Algorithm SHA256).Hash.ToLower()

@@ -26,3 +26,7 @@ MUJOCO_LOG.TXT
 .venv-warp/
 .venv-isaac/
 /Assets
+# Phase I local-only diagnostics: user-folder listings (personal file names) and crash logs
+outputs/isaac/scope_*.txt
+outputs/isaac/debug/
+outputs/isaac/bench/

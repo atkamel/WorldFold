@@ -68,5 +68,24 @@ class HalfFoldEnv(QuarterFoldEnv):
         return super().step(action)
 
 
-def make_env(**kwargs):
-    return HalfFoldEnv(**kwargs)
+BACKENDS = ("mujoco", "isaac")
+
+
+def make_env(backend="mujoco", **kwargs):
+    """The half-fold env on either simulator; the only place an env should be built (Phase I).
+
+    backend="mujoco": the MuJoCo ClothFoldEnv the pipeline was built on (default, unchanged).
+    backend="isaac":  isaac.isaac_env.IsaacClothFoldEnv (Isaac Sim 5.1, friction grasp) with the Isaac
+                      episode cap and jitter; needs the .venv-isaac environment and one env per process.
+    """
+    if backend == "mujoco":
+        return HalfFoldEnv(**kwargs)
+    if backend == "isaac":
+        from imitation.isaac_runtime import ISAAC_CLOTH_JITTER, ISAAC_MAX_STEPS, make_isaac_base
+        if kwargs.get("obs_mode", "state") != "state":
+            raise NotImplementedError("Isaac camera rig lands in Phase I milestone I1.3")
+        kwargs.setdefault("max_episode_steps", ISAAC_MAX_STEPS)
+        kwargs.setdefault("cloth_jitter", ISAAC_CLOTH_JITTER)
+        kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"])
+        return HalfFoldEnv(**kwargs)
+    raise ValueError(f"backend must be one of {BACKENDS}, got {backend!r}")

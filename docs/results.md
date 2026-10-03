@@ -701,3 +701,21 @@ batch composition depends on worker timing. Fixed by padding every policy batch 
 fixed size (`rollout.padded_predict`); evaluations after this commit are deterministic
 per seed. **M2.1-M2.3 numbers above predate the fix**: they're valid samples, but a
 re-run will not reproduce them exactly.
+
+---
+
+## Isaac Sim runtime, Windows (Phase I, I0.3, 2026-10-03) — new baseline, not comparable to MuJoCo rows
+
+The local stack: `.venv-isaac`, Isaac Sim 5.1.0, LeHome a805ad2 + IsaacLab fork 69f6fa5, torch
+2.7.0+cu128, an RTX 5080 Laptop GPU on driver 616.56, and Kit rendering through D3D12 (Vulkan
+crashes, see `isaac/INSTALL_REVIEW.md`).
+
+| check | result |
+|---|---|
+| `isaac/smoke_test.py --mode state` | `SMOKE OK`: contract ok, scripted friction half fold ran (fold score 0.397, mean vertex error 4.9 cm, HalfFoldEnv success no), both wrappers run; **3.4 control steps/s**; 216 s wall incl. Kit start-up |
+| `isaac/smoke_test.py --mode hybrid` | `SMOKE OK`: 84² RGB + depth, 6355/7056 depth px valid (0.37–1.47 m); **2.9 control steps/s** |
+| `isaac/bench_parallel.py` (60 zero-action steps) | 1 process: 3.32 steps/s, peak 6.4 GB VRAM. 2 processes: 2.32 + 2.65 = **4.97 steps/s aggregate** (1.5×), peak 9.1 GB → `N_ISAAC = 2` |
+| determinism | not bit-reproducible. Same seed 0, two runs of the scripted fold: fold score 0.469 vs 0.397 (error max 7.7 vs 12.0 cm). Expected: PhysX doesn't guarantee determinism for cloth, so Isaac gates stay statistical and images are captured at collection |
+
+Artifacts: `outputs/isaac/smoke/20261003-013243/{state,hybrid}.log`, `hybrid_rgb.png`,
+`outputs/isaac/runtime.json`.

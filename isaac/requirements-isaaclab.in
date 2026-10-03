@@ -24,3 +24,10 @@ imageio
 imageio-ffmpeg
 tensorboard
 GitPython
+# isaaclab_tasks (LeHome imports isaaclab_tasks.utils; the kit file loads it as an extension) and lehome itself
+numba
+protobuf>=4.25.8,!=5.26.0
+# Kit loads isaacsim.sensors.rtx's hdf5.dll (HDF5 1.14.6) first, and Windows reuses a loaded DLL by name; h5py
+# must bundle the same HDF5 (3.16 bundles 2.0.0 and fails with 0xc0000139 on import)
+h5py==3.14.0
+omegaconf

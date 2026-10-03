@@ -421,6 +421,14 @@ class IsaacClothFoldEnv(gym.Env):
             self._kit_ticked = time.time()
         self._refresh_cloth()
 
+    def keep_alive(self):
+        """Tick Kit without stepping physics, for a process that sits idle (e.g. a rollout worker waiting while
+        the parent trains): Kit's hang detector aborts the app after 120 s without a tick."""
+        self.lab.sim.set_setting("/app/player/playSimulations", False)
+        _app.update()
+        self.lab.sim.set_setting("/app/player/playSimulations", True)
+        self._kit_ticked = time.time()
+
     # ---- gym API ----
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)

@@ -44,34 +44,89 @@ def _split(obs):
     return obs, None
 
 
+def _finite_or(obs, last):
+    """An Isaac `unstable` ending (non-finite particles) can return a NaN observation, which the dataset
+    validator rejects; keep the last finite one instead (the episode is still stored as unstable)."""
+    state = obs["state"] if isinstance(obs, dict) else obs
+    if last is None or np.all(np.isfinite(state)):
+        return obs
+    return last
+
+
+class _LazyTeacher:
+    """Builds the labelling teacher on first use: a policy rollout never needs the scripted expert,
+    and on Isaac the expert is a separate milestone (I2.1)."""
+
+    def __init__(self, env, teacher_ckpt):
+        self._env, self._ckpt, self._t = env, teacher_ckpt, None
+
+    @property
+    def built(self):
+        return self._t is not None
+
+    def get(self):
+        # built while the env sits at an episode start (reset, or the step that starts acting) and reset
+        # at once, so a lazily built teacher starts exactly like the eagerly built one used to
+        if self._t is None:
+            if self._ckpt:
+                from imitation.teachers.policy import PolicyTeacher
+                self._t = PolicyTeacher(self._env, self._ckpt)
+            else:
+                from imitation.teachers.scripted import ScriptedTeacher
+                self._t = ScriptedTeacher(self._env)
+            self._t.reset()
+        return self._t
+
+
 def _worker(pipe, env_kwargs):
-    from imitation.tasks import HalfFoldEnv
-    from imitation.teachers import PolicyTeacher, ScriptedTeacher
+    from imitation.tasks import make_env
 
     env_kwargs = dict(env_kwargs)
+    backend = env_kwargs.pop("backend", "mujoco")
     render = env_kwargs.pop("render", False)
     cameras = env_kwargs.pop("cameras", None)
     teacher_ckpt = env_kwargs.pop("teacher", None)
     if render:                     # Phase 4: the env returns {"state", cameras...} (M4.1)
         env_kwargs.update(obs_mode="dict", cameras=dict(cameras) if cameras else None)
-    env = HalfFoldEnv(**env_kwargs)
-    teacher = PolicyTeacher(env, teacher_ckpt) if teacher_ckpt else ScriptedTeacher(env)
-    shadow = False
+    isaac = backend == "isaac"
+    try:
+        env = make_env(backend=backend, **env_kwargs)
+    except Exception:
+        pipe.send(("error", traceback.format_exc()))
+        os._exit(1) if isaac else None
+        return
+    pipe.send(("ready", None))
+    lazy = _LazyTeacher(env, teacher_ckpt)
+    shadow, last_obs = False, None
     while True:
-        cmd, arg = pipe.recv()
+        try:
+            if isaac:              # tick Kit while idle (e.g. the parent is training) or its hang detector aborts
+                from imitation.isaac_runtime import KIT_TICK_S
+                while not pipe.poll(KIT_TICK_S):
+                    env.unwrapped.keep_alive()
+            cmd, arg = pipe.recv()
+        except (EOFError, OSError):  # the parent is gone: don't leave a Kit app holding GPU memory
+            if isaac:
+                os._exit(0)
+            return
         try:
             if cmd == "reset":
                 seed, options, shadow = arg
                 obs, info = env.reset(seed=seed, options=options)
                 obs, images = _split(obs)
-                teacher.reset()
-                teacher.see(obs)
+                last_obs = obs
+                if shadow or teacher_ckpt:
+                    lazy.get()
+                if lazy.built:
+                    lazy.get().reset()
+                    lazy.get().see(obs)
                 meta = {"domain_params": dict(env.unwrapped._domain_params),
                         "start_corners": env._start[[0, 10, 110, 120]].round(5).tolist(),
                         "max_steps": env.unwrapped.max_episode_steps}
                 pipe.send(("ok", (obs, _info_small(info, images), meta)))
             elif cmd == "step":        # arg None -> the teacher acts
                 t0 = time.perf_counter()
+                teacher = lazy.get() if (arg is None or shadow or lazy.built) else None
                 if arg is not None and shadow:     # someone else acts: the labelling teacher shadows
                     teacher.observe()
                 action = teacher.act() if arg is None else np.asarray(arg, dtype=np.float32)
@@ -79,18 +134,24 @@ def _worker(pipe, env_kwargs):
                 obs, r, term, trunc, info = env.step(action)
                 t2 = time.perf_counter()
                 obs, images = _split(obs)
-                teacher.see(obs)
+                obs = last_obs = _finite_or(obs, last_obs)
+                if teacher is not None:
+                    teacher.see(obs)
                 info = dict(info, _timing=(t1 - t0, t2 - t1 - env.last_render_s, env.last_render_s))
                 pipe.send(("ok", (obs, float(r), bool(term), bool(trunc), _info_small(info, images),
                                   np.asarray(action, dtype=np.float32))))
             elif cmd == "label":       # (labels, seconds): the expert's look-ahead is real simulation (M5c.1)
                 t0 = time.perf_counter()
-                labels = teacher.label_chunk(env, horizon=int(arg))
+                labels = lazy.get().label_chunk(env, horizon=int(arg))
                 pipe.send(("ok", (labels, time.perf_counter() - t0)))
             elif cmd == "resync":
+                teacher = lazy.get()
                 pipe.send(("ok", teacher.expert.resync() if hasattr(teacher, "expert") else {}))
             elif cmd == "close":
                 pipe.send(("ok", None))
+                if isaac:          # leaving the interpreter with Kit up hangs at shutdown (isaac/README.md)
+                    pipe.close()
+                    os._exit(0)
                 break
             else:
                 raise ValueError(cmd)
@@ -114,17 +175,34 @@ class EnvPool:
         saved = {k: os.environ.get(k) for k in _WORKER_THREAD_ENV}
         os.environ.update(_WORKER_THREAD_ENV)
         self.pipes, self.procs = [], []
-        for _ in range(n):
-            a, b = ctx.Pipe()
-            p = ctx.Process(target=_worker, args=(b, env_kwargs or {}), daemon=True)
-            p.start()
-            self.pipes.append(a)
-            self.procs.append(p)
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+        # Isaac workers start one at a time: several Kit apps compiling shaders at once can hang
+        serial = (env_kwargs or {}).get("backend") == "isaac"
+        try:
+            for _ in range(n):
+                a, b = ctx.Pipe()
+                p = ctx.Process(target=_worker, args=(b, env_kwargs or {}), daemon=True)
+                p.start()
+                self.pipes.append(a)
+                self.procs.append(p)
+                if serial:
+                    self._ready(len(self.pipes) - 1)
+            if not serial:
+                for i in range(n):
+                    self._ready(i)
+        except Exception:
+            self.close()
+            raise
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+    def _ready(self, i):
+        status, payload = self.pipes[i].recv()
+        if status != "ready":
+            raise RuntimeError(f"env worker {i} failed to start:\n{payload}")
 
     def __len__(self):
         return len(self.pipes)
@@ -150,6 +228,9 @@ class EnvPool:
                 pass
         for p in self.procs:
             p.join(timeout=5)
+            if p.is_alive():      # a hung worker (e.g. Kit at shutdown) must not outlive the pool
+                p.terminate()
+                p.join(timeout=5)
 
     def __enter__(self):
         return self

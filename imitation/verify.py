@@ -164,9 +164,36 @@ def _i02() -> Result:
     return Result("I0.2", "PASS" if ok else "FAIL", ev)
 
 
-@check("I0.3", "Isaac env installs and imports (setup/env scripts)")
+@check("I0.3", "Isaac smoke test passes in state and hybrid mode; throughput measured; install scripts and footprint tracked")
 def _i03() -> Result:
-    return Result("I0.3", "SKIP", ["not implemented yet"])
+    ev, ok = [], True
+    smoke = sorted((ROOT / "outputs" / "isaac" / "smoke").glob("*/"))
+    runs = [d for d in smoke if (d / "state.log").exists() and (d / "hybrid.log").exists()]
+    if not runs:
+        return Result("I0.3", "FAIL", [f"missing artifact: {ROOT / 'outputs/isaac/smoke/<stamp>/{state,hybrid}.log'}"])
+    run = runs[-1]
+    for mode in ("state", "hybrid"):
+        log = (run / f"{mode}.log").read_text(encoding="utf-8", errors="replace")
+        passed = "SMOKE OK" in log and "throughput" in log
+        tracked = git_tracked(run / f"{mode}.log")
+        ev.append(f"{run.name}/{mode}.log SMOKE OK={passed} tracked={tracked}")
+        ok &= passed and tracked
+    runtime = ROOT / "outputs" / "isaac" / "runtime.json"
+    if runtime.exists():
+        rows = json.loads(runtime.read_text())["rows"]
+        ev.append("throughput " + ", ".join(f"{r['procs']} proc: {r['aggregate']} steps/s ({r['peak_vram_mib']} MiB)"
+                                            for r in rows))
+        ok &= all(r["completed"] == r["procs"] for r in rows) and git_tracked(runtime)
+    else:
+        ev.append(f"missing artifact: {runtime}")
+        ok = False
+    for f in ("isaac/setup_windows.ps1", "isaac/env_windows.ps1", "isaac/INSTALL_REVIEW.md"):
+        ok &= git_tracked(ROOT / f)
+    review = (ROOT / "isaac" / "INSTALL_REVIEW.md").read_text(encoding="utf-8")
+    has_scope = "Measured footprint outside" in review
+    ev.append(f"install scripts tracked; INSTALL_REVIEW documents the footprint outside .venv-isaac={has_scope}")
+    ok &= has_scope and results_md_has("I0.3")
+    return Result("I0.3", "PASS" if ok else "FAIL", ev)
 
 
 @check("I0.4", "verifier: tests/imitation/test_verify.py exists and passes; --list shows every ID")

@@ -89,6 +89,52 @@ pre-cached `extscache` extensions load.
 - Uninstall: delete `.venv-isaac/` and the `Assets` junction, plus any leftovers that I0.3
   documents.
 
+## Changes found while installing (I0.3, 2026-10-03)
+
+- **LeHome's `uv.lock` was never resolved for Windows.** `isaacsim-core` 5.1.0.0 on Windows pins
+  `pywin32==306`, `networkx==3.3`, `filelock==3.13.1` and `fsspec==2024.6.1`.
+  - `isaac/requirements-lehome-windows.lock` is therefore re-resolved from LeHome's
+    `pyproject.toml` dependencies (`isaac/requirements-lehome.in`, with its `numpy==1.26.0` and
+    `packaging==23.0` overrides), seeded with LeHome's own lock.
+  - Exactly those 4 versions changed, and 15 Windows-only packages were added (`ipython`,
+    `ipywidgets` and their dependencies, pulled in by open3d on Windows).
+  - Everything is still sha256-pinned and installed with `--require-hashes --no-deps`.
+- **`isaaclab_tasks` and `isaaclab_assets`** (same fork checkout) are installed editable too.
+  LeHome's `lehome.tasks` imports `isaaclab_tasks.utils`, and the kit file loads `isaaclab_tasks`
+  as an extension.
+  - Neither was touched by the fork; its only changes are the 3 files in `source/isaaclab`.
+  - Their `setup.py` files have no install hooks. `isaaclab_tasks` adds `numba` and `protobuf`.
+  - Their deps, plus `omegaconf` (used by lehome) and `h5py`, are in the hashed
+    `isaac/requirements-isaaclab-windows.lock`.
+- **`h5py==3.14.0`, not 3.16.** Kit loads `isaacsim.sensors.rtx`'s `hdf5.dll` (HDF5 1.14.6) at
+  startup, and Windows reuses an already-loaded DLL by name. h5py 3.16 bundles HDF5 2.0.0 and
+  dies on import with `0xc0000139` (entry point not found). 3.14.0 bundles 1.14.6.
+- **D3D12 instead of Vulkan** (`--/app/vulkan=false` in `isaac/env_windows.ps1`). With driver
+  616.56, Kit's Vulkan path access-violates in `omni.hydra.rtx.plugin.dll` at renderer start-up,
+  even for a plain `SimulationApp` with no stage. D3D12 starts clean.
+  - This was isolated step by step: with and without our Kit args, with and without
+    IsaacLab, and with and without stage creation. Logs are in `outputs/isaac/debug/`.
+
+## Measured footprint outside `.venv-isaac` (I0.3 scope check, 2026-10-03)
+
+This compares `outputs/isaac/scope_before.txt` and `scope_after.txt`, top-level listings of
+`%USERPROFILE%`, `%LOCALAPPDATA%`, `%APPDATA%` and `%TEMP%`. Kit honours `--portable-root` for
+most of its data (`.venv-isaac\kit\{cache,data,logs}`), but not all of it.
+
+| location | what | size | written by |
+|---|---|---|---|
+| `%USERPROFILE%\.nvidia-omniverse\{logs,pycache}` | Kit logs | 1.3 MB | every Kit start |
+| `%LOCALAPPDATA%\ov\{cache,data}` | Kit texture/shader cache | ~560 MB | Kit start-up; partly the isolation runs without our Kit args |
+| `%APPDATA%\uv\credentials` | empty uv credentials stub | 0 | uv |
+| `%TEMP%\isaaclab\logs`, `%TEMP%\mat-debug-*.log`, `%TEMP%\x*.0`, `swx*` | IsaacLab/Kit temp and MDL logs | small | Kit |
+
+These are all per-user caches and logs. There are no system, registry, PATH or driver
+changes, and nothing in Program Files.
+
+**Uninstall:**
+1. Delete `.venv-isaac\` and the `Assets` junction (the junction only, not its target).
+2. Delete the four locations above.
+
 ## Open risks
 
 - Driver 616.56 is newer than Isaac Sim 5.1's validated Windows driver (580.88). TiledCamera

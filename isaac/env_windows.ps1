@@ -16,7 +16,9 @@ $env:HF_HUB_OFFLINE = "1"                # runtime is offline; setup_windows.ps1
 $env:LEHOME_DISABLE_KEYBOARD = "1"       # lehome's pynput keyboard device is never used
 $env:OMNI_KIT_ACCEPT_EULA = "YES"        # accepted by the user on 2026-10-02 (docs/status.md pass log)
 # Kit settings read by isaac.isaac_env.start_app: portable root (Kit's data, logs and shader cache stay in
-# .venv-isaac\kit), anonymous telemetry off, and no online extension registry (only the pre-cached extscache).
+# .venv-isaac\kit), anonymous telemetry off, no online extension registry (only the pre-cached extscache), and
+# D3D12 instead of Vulkan: on this laptop (RTX 5080 Laptop, driver 616.56) Vulkan faults in omni.hydra.rtx.plugin
+# at renderer start-up, even with no stage; D3D12 starts clean (outputs/isaac/debug/, 2026-10-03).
 $kit = Join-Path $venv "kit"
-$env:WORLDFOLD_KIT_ARGS = "--portable-root $kit --/telemetry/enableAnonymousData=false " +
+$env:WORLDFOLD_KIT_ARGS = "--/app/vulkan=false --portable-root $kit --/telemetry/enableAnonymousData=false " +
     "--/telemetry/enableAnonymousAppName=false --/exts/omni.kit.registry.nucleus/registryEnabled=false"
