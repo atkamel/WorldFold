@@ -55,10 +55,11 @@ def _finite_or(obs, last):
 
 class _LazyTeacher:
     """Builds the labelling teacher on first use: a policy rollout never needs the scripted expert,
-    and on Isaac the expert is a separate milestone (I2.1)."""
+    and on Isaac the expert is a separate milestone (I2.1). `factory(env)` replaces the default teachers
+    (tests)."""
 
-    def __init__(self, env, teacher_ckpt):
-        self._env, self._ckpt, self._t = env, teacher_ckpt, None
+    def __init__(self, env, teacher_ckpt, factory=None):
+        self._env, self._ckpt, self._t, self._factory = env, teacher_ckpt, None, factory
 
     @property
     def built(self):
@@ -68,7 +69,9 @@ class _LazyTeacher:
         # built while the env sits at an episode start (reset, or the step that starts acting) and reset
         # at once, so a lazily built teacher starts exactly like the eagerly built one used to
         if self._t is None:
-            if self._ckpt:
+            if self._factory is not None:
+                self._t = self._factory(self._env)
+            elif self._ckpt:
                 from imitation.teachers.policy import PolicyTeacher
                 self._t = PolicyTeacher(self._env, self._ckpt)
             else:
@@ -78,9 +81,63 @@ class _LazyTeacher:
         return self._t
 
 
-def _worker(pipe, env_kwargs):
-    from imitation.tasks import make_env
+class _SlotServer:
+    """One env's side of the driver protocol (reset / step / label / resync); `close` is the worker's."""
 
+    def __init__(self, env, teacher_ckpt=None, isaac=False, teacher_factory=None):
+        self.env, self.teacher_ckpt, self.isaac = env, teacher_ckpt, isaac
+        self.lazy = _LazyTeacher(env, teacher_ckpt, teacher_factory)
+        self.shadow, self.last_obs = False, None
+
+    def handle(self, cmd, arg):
+        """-> (status, payload, episode_over): episode_over is True after a terminal or truncated step."""
+        env, lazy = self.env, self.lazy
+        try:
+            if cmd == "reset":
+                seed, options, self.shadow = arg
+                obs, info = env.reset(seed=seed, options=options)
+                obs, images = _split(obs)
+                self.last_obs = obs
+                # MuJoCo builds the teacher at the first episode start, exactly as before Phase I; Isaac defers
+                # it until it is needed (policy rollouts never need the scripted expert)
+                if self.shadow or self.teacher_ckpt or not self.isaac:
+                    lazy.get()
+                if lazy.built:
+                    lazy.get().reset()
+                    lazy.get().see(obs)
+                meta = {"domain_params": dict(env.unwrapped._domain_params),
+                        "start_corners": env._start[[0, 10, 110, 120]].round(5).tolist(),
+                        "max_steps": env.unwrapped.max_episode_steps}
+                return "ok", (obs, _info_small(info, images), meta), False
+            if cmd == "step":          # arg None -> the teacher acts
+                t0 = time.perf_counter()
+                teacher = lazy.get() if (arg is None or self.shadow or lazy.built) else None
+                if arg is not None and self.shadow:    # someone else acts: the labelling teacher shadows
+                    teacher.observe()
+                action = teacher.act() if arg is None else np.asarray(arg, dtype=np.float32)
+                t1 = time.perf_counter()
+                obs, r, term, trunc, info = env.step(action)
+                t2 = time.perf_counter()
+                obs, images = _split(obs)
+                obs = self.last_obs = _finite_or(obs, self.last_obs)
+                if teacher is not None:
+                    teacher.see(obs)
+                info = dict(info, _timing=(t1 - t0, t2 - t1 - env.last_render_s, env.last_render_s))
+                return "ok", (obs, float(r), bool(term), bool(trunc), _info_small(info, images),
+                              np.asarray(action, dtype=np.float32)), bool(term or trunc)
+            if cmd == "label":         # (labels, seconds): the expert's look-ahead is real simulation (M5c.1)
+                t0 = time.perf_counter()
+                labels = lazy.get().label_chunk(env, horizon=int(arg))
+                return "ok", (labels, time.perf_counter() - t0), False
+            if cmd == "resync":
+                teacher = lazy.get()
+                return "ok", (teacher.expert.resync() if hasattr(teacher, "expert") else {}), False
+            raise ValueError(cmd)
+        except Exception:
+            return "error", traceback.format_exc(), False
+
+
+def _env_setup(env_kwargs):
     env_kwargs = dict(env_kwargs)
     backend = env_kwargs.pop("backend", "mujoco")
     render = env_kwargs.pop("render", False)
@@ -88,6 +145,13 @@ def _worker(pipe, env_kwargs):
     teacher_ckpt = env_kwargs.pop("teacher", None)
     if render:                     # Phase 4: the env returns {"state", cameras...} (M4.1)
         env_kwargs.update(obs_mode="dict", cameras=dict(cameras) if cameras else None)
+    return backend, teacher_ckpt, env_kwargs
+
+
+def _worker(pipe, env_kwargs):
+    from imitation.tasks import make_env
+
+    backend, teacher_ckpt, env_kwargs = _env_setup(env_kwargs)
     from imitation.tasks.half_fold import is_isaac
     isaac = is_isaac(backend)
     try:
@@ -97,8 +161,7 @@ def _worker(pipe, env_kwargs):
         os._exit(1) if isaac else None
         return
     pipe.send(("ready", None))
-    lazy = _LazyTeacher(env, teacher_ckpt)
-    shadow, last_obs = False, None
+    server = _SlotServer(env, teacher_ckpt, isaac)
     while True:
         try:
             if isaac:              # tick Kit while idle (e.g. the parent is training) or its hang detector aborts
@@ -110,56 +173,110 @@ def _worker(pipe, env_kwargs):
             if isaac:
                 os._exit(0)
             return
+        if cmd == "close":
+            pipe.send(("ok", None))
+            if isaac:              # leaving the interpreter with Kit up hangs at shutdown (isaac/README.md)
+                pipe.close()
+                os._exit(0)
+            break
+        status, payload, _ = server.handle(cmd, arg)
+        pipe.send((status, payload))
+
+
+def _slot_loop(lockstep, i, pipe, server, closed):
+    """Slot thread of a multi-env worker: today's command loop, with the scene touched only under the baton
+    and the slot marked active while its episode is in flight (imitation/lockstep.py)."""
+    while True:
         try:
-            if cmd == "reset":
-                seed, options, shadow = arg
-                obs, info = env.reset(seed=seed, options=options)
-                obs, images = _split(obs)
-                last_obs = obs
-                # MuJoCo builds the teacher at the first episode start, exactly as before Phase I; Isaac defers
-                # it until it is needed (policy rollouts never need the scripted expert)
-                if shadow or teacher_ckpt or not isaac:
-                    lazy.get()
-                if lazy.built:
-                    lazy.get().reset()
-                    lazy.get().see(obs)
-                meta = {"domain_params": dict(env.unwrapped._domain_params),
-                        "start_corners": env._start[[0, 10, 110, 120]].round(5).tolist(),
-                        "max_steps": env.unwrapped.max_episode_steps}
-                pipe.send(("ok", (obs, _info_small(info, images), meta)))
-            elif cmd == "step":        # arg None -> the teacher acts
-                t0 = time.perf_counter()
-                teacher = lazy.get() if (arg is None or shadow or lazy.built) else None
-                if arg is not None and shadow:     # someone else acts: the labelling teacher shadows
-                    teacher.observe()
-                action = teacher.act() if arg is None else np.asarray(arg, dtype=np.float32)
-                t1 = time.perf_counter()
-                obs, r, term, trunc, info = env.step(action)
-                t2 = time.perf_counter()
-                obs, images = _split(obs)
-                obs = last_obs = _finite_or(obs, last_obs)
-                if teacher is not None:
-                    teacher.see(obs)
-                info = dict(info, _timing=(t1 - t0, t2 - t1 - env.last_render_s, env.last_render_s))
-                pipe.send(("ok", (obs, float(r), bool(term), bool(trunc), _info_small(info, images),
-                                  np.asarray(action, dtype=np.float32))))
-            elif cmd == "label":       # (labels, seconds): the expert's look-ahead is real simulation (M5c.1)
-                t0 = time.perf_counter()
-                labels = lazy.get().label_chunk(env, horizon=int(arg))
-                pipe.send(("ok", (labels, time.perf_counter() - t0)))
-            elif cmd == "resync":
-                teacher = lazy.get()
-                pipe.send(("ok", teacher.expert.resync() if hasattr(teacher, "expert") else {}))
-            elif cmd == "close":
-                pipe.send(("ok", None))
-                if isaac:          # leaving the interpreter with Kit up hangs at shutdown (isaac/README.md)
-                    pipe.close()
-                    os._exit(0)
-                break
+            cmd, arg = pipe.recv()
+        except (EOFError, OSError):
+            cmd, arg = "close", None
+        with lockstep.baton:
+            if cmd == "close":
+                lockstep.set_active(i, False)
+                status, payload, over = "ok", None, True
             else:
-                raise ValueError(cmd)
-        except Exception:
+                if cmd == "reset":
+                    lockstep.set_active(i, True)
+                status, payload, over = server.handle(cmd, arg)
+                base = server.env.unwrapped
+                if over and hasattr(base, "park") and base._failed():
+                    base.park()        # an exploded cloth must not drift while the other copies step
+                if over or status == "error":
+                    lockstep.set_active(i, False)
+        try:                       # outside the baton: a large reply may block until the driver reads it
+            pipe.send((status, payload))
+        except (EOFError, OSError):
+            cmd = "close"
+        if cmd == "close":
+            with lockstep.baton:
+                closed.add(i)
+                if len(closed) == closed.total:
+                    lockstep.close()
+            return
+
+
+class _Closed(set):
+    def __init__(self, total):
+        super().__init__()
+        self.total = total
+
+
+def _serve_slots(pipes, batch, envs, teacher_ckpt=None, isaac=False, teacher_factory=None, tick_s=None):
+    """Serve len(envs) slots of one batch, one pipe each, on slot threads; runs the lockstep scheduler on the
+    calling thread until every slot is closed. Sends `ready` on every pipe first."""
+    import threading
+
+    from imitation.lockstep import Lockstep
+    if tick_s is None:
+        from imitation.isaac_runtime import KIT_TICK_S
+        tick_s = KIT_TICK_S
+    lockstep = Lockstep(batch.advance, keep_alive=batch.keep_alive, tick_s=tick_s)
+    batch.scheduler = lockstep
+    closed = _Closed(len(envs))
+    threads = [threading.Thread(target=_slot_loop, daemon=True,
+                                args=(lockstep, i, pipe, _SlotServer(env, teacher_ckpt, isaac, teacher_factory),
+                                      closed))
+               for i, (pipe, env) in enumerate(zip(pipes, envs))]
+    for pipe in pipes:
+        pipe.send(("ready", None))
+    for t in threads:
+        t.start()
+    lockstep.run()
+    for t in threads:
+        t.join(timeout=5)
+    return lockstep
+
+
+def _worker_multi(pipes, env_kwargs, n_envs):
+    """A worker hosting n_envs sub-envs of one Isaac batch (milestone V), one pipe per sub-env."""
+    from imitation.tasks import make_env_batch
+
+    backend, teacher_ckpt, env_kwargs = _env_setup(env_kwargs)
+    try:
+        batch, envs = make_env_batch(backend=backend, n=n_envs, **env_kwargs)
+    except Exception:
+        for pipe in pipes:
             pipe.send(("error", traceback.format_exc()))
+        os._exit(1)
+    try:
+        _serve_slots(pipes, batch, envs, teacher_ckpt, isaac=True)
+    finally:
+        os._exit(0)        # leaving the interpreter with Kit up hangs at shutdown (isaac/README.md)
+
+
+def envs_per_proc(backend) -> int:
+    """Sub-envs per worker process: WORLDFOLD_ISAAC_ENVS_PER_PROC for the Isaac weld profile (milestone V),
+    1 otherwise."""
+    from imitation.tasks.half_fold import is_isaac
+    if not backend or not is_isaac(backend):
+        return 1
+    b = int(os.environ.get("WORLDFOLD_ISAAC_ENVS_PER_PROC", "1"))
+    if b < 1:
+        raise ValueError(f"WORLDFOLD_ISAAC_ENVS_PER_PROC must be >= 1, got {b}")
+    if b > 1 and backend != "isaac_weld":
+        raise ValueError(f"WORLDFOLD_ISAAC_ENVS_PER_PROC > 1 needs the GPU weld profile (isaac_weld), not {backend}")
+    return b
 
 
 # Workers are single-threaded physics; letting each one's BLAS grab every core
@@ -169,7 +286,9 @@ _WORKER_THREAD_ENV = {k: "1" for k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS"
 
 class EnvPool:
     def __init__(self, n, env_kwargs=None):
-        """env_kwargs: HalfFoldEnv kwargs plus `render` (cameras on; images reach image
+        """n worker processes; len(pool) = n * envs_per_proc(backend) logical slots, each with its own pipe.
+
+        env_kwargs: HalfFoldEnv kwargs plus `render` (cameras on; images reach image
         controllers), `cameras` ({name: size}) and `teacher` (a state-policy checkpoint
         that replaces the scripted expert as the labelling teacher)."""
         self.render = bool((env_kwargs or {}).get("render"))
@@ -180,19 +299,27 @@ class EnvPool:
         self.pipes, self.procs = [], []
         # Isaac workers start one at a time: several Kit apps compiling shaders at once can hang
         from imitation.tasks.half_fold import is_isaac
-        serial = (env_kwargs or {}).get("backend") and is_isaac(env_kwargs["backend"])
+        backend = (env_kwargs or {}).get("backend")
+        serial = backend and is_isaac(backend)
+        self.envs_per_proc = B = envs_per_proc(backend)
         try:
             for _ in range(n):
-                a, b = ctx.Pipe()
-                p = ctx.Process(target=_worker, args=(b, env_kwargs or {}), daemon=True)
+                ends = [ctx.Pipe() for _ in range(B)]
+                if B == 1:
+                    p = ctx.Process(target=_worker, args=(ends[0][1], env_kwargs or {}), daemon=True)
+                else:
+                    p = ctx.Process(target=_worker_multi, args=([b for _, b in ends], env_kwargs or {}, B),
+                                    daemon=True)
                 p.start()
-                b.close()       # the child owns its end; a worker that dies now gives EOF instead of a hang
-                self.pipes.append(a)
+                for a, b in ends:
+                    b.close()   # the child owns its end; a worker that dies now gives EOF instead of a hang
+                    self.pipes.append(a)
                 self.procs.append(p)
                 if serial:
-                    self._ready(len(self.pipes) - 1)
+                    for k in range(len(self.pipes) - B, len(self.pipes)):
+                        self._ready(k)
             if not serial:
-                for i in range(n):
+                for i in range(len(self.pipes)):
                     self._ready(i)
         except Exception:
             self.close()
@@ -213,7 +340,12 @@ class EnvPool:
         return len(self.pipes)
 
     def call(self, idx, cmd, args):
-        """Send cmd to every env in idx (args aligned), then gather -- the envs run in parallel."""
+        """Send cmd to every env in idx (args aligned), then gather -- the envs run in parallel.
+        Not for physics commands with several envs per process (milestone V): a lockstep slot that finishes first
+        sits idle mid-episode and holds its neighbours' remaining steps, so waiting in slot order can block forever.
+        Drive those through rollout(), which always sends an idle slot its next command."""
+        if getattr(self, "envs_per_proc", 1) > 1 and cmd in ("reset", "step", "label"):
+            raise NotImplementedError("EnvPool.call can't drive physics with several envs per process; use rollout()")
         for i, a in zip(idx, args):
             self.pipes[i].send((cmd, a))
         out = []
@@ -224,11 +356,20 @@ class EnvPool:
             out.append(payload)
         return out
 
-    def close(self):
+    def close(self, timeout=60.0):
+        # every slot is told first: in a multi-env worker a slot still in a physics step only finishes once its
+        # neighbours have stopped (closed slots never block), so a send/recv per pipe in turn could wait forever
         for pipe in self.pipes:
             try:
                 pipe.send(("close", None))
-                pipe.recv()
+            except Exception:
+                pass
+        deadline = time.monotonic() + timeout
+        for pipe in self.pipes:
+            try:
+                while pipe.poll(max(0.0, deadline - time.monotonic())):
+                    if pipe.recv() == ("ok", None):     # the close ack (an in-flight reply may come first)
+                        break
             except Exception:
                 pass
         for p in self.procs:

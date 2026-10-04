@@ -204,7 +204,7 @@ Added 2026-10-03.
 | W4 | Pilot on the weld baseline (as I3.2) | artifacts valid; diffusion id_easy Wilson LB > 0 | ✅ 2026-10-04: collect 76/80; diffusion 20/20 easy, 8/10 hard, 1/10 recovery; vision 10/10; DAgger + detector run |
 | W3b | Expert recovery on the weld profile (Isaac expert only; cap 250 and eval sets unchanged) | recovery ≥ 90 at n = 100 (≥ 85 if two attempts in a row gain < 2 pp); id_easy/id_hard not regressed | ☐ |
 | Z1 | Zero-shot MuJoCo-trained checkpoints on `isaac_weld` (diffusion DAgger r4, best BC, vision r2) | n = 20 × 3 sets recorded; W5 fine-tunes if id_easy ≥ 50 | ☐ |
-| V | Vectorised Isaac env: B cloth envs per process (GPU weld profile, 101×101), sub-env views, worker step barrier | expert parity B=4 vs B=1 (id_easy n = 40, Wilson); DR deterministic per seed; ≥ 3× episodes/h (kept if > 1.5×) | ☐ |
+| V | Vectorised Isaac env: B cloth envs per process (GPU weld profile, 101×101), sub-env views, worker step barrier | expert parity B=4 vs B=1 (id_easy n = 40, Wilson); DR deterministic per seed; ≥ 3× episodes/h (kept if > 1.5×) | ☐ artifacts in (`feature/isaac-vec`): parity 40/40 vs 40/40, DR per seed ✓, 2.15× at B = 8 (kept, 3× not met); awaiting lead re-verification |
 | W5 | Slimmed weld retrain (`isaac_v1_weld` 400 ep on the W3b expert + vectorised env; diffusion ×2 seeds (fine-tuned from MuJoCo weights if Z1 says so), vision ×1, DAgger ×2, detector, demos, report; chunk-MLP dropped; cloth stays 101×101) | n = 200 × 3, Wilson, SE rules; MuJoCo-vs-Isaac side-by-side | ☐ |
 ## Phase 6 — Language-conditioned folds and the VLA  *(ref. milestone 3, reframed)*
 

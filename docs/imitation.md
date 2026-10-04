@@ -363,7 +363,7 @@ is unchanged: collection hashes are identical before and after the switch.
 | expert | `FoldExpert` (MuJoCo IK) | `isaac.fold_expert.IsaacArmExpert` (URDF PinchIK; half_fold_demo's pinch / arc) |
 | DAgger labels | look-ahead from a `mj_getState` snapshot | **takeover**: the expert executes K steps and that chunk is the label (no snapshot exists) |
 | images | MuJoCo renderer, rendered or replayed | TiledCameras in the scene, rendered at collection (Isaac isn't deterministic, so no replay) |
-| processes | one env per worker, 10–14 workers | one Kit app per worker, `N_ISAAC = 2`, started serially, kept alive while idle |
+| processes | one env per worker, 10–14 workers | one Kit app per worker, `N_ISAAC = 2`, started serially, kept alive while idle; `isaac_weld` only: `WORLDFOLD_ISAAC_ENVS_PER_PROC = B` (default 1) hosts B envs per Kit app as copies of the scene stepped in lockstep, `len(pool) = workers × B` (milestone V, `docs/superpowers/specs/2026-10-04-isaac-vec-design.md`) |
 
 **Observation semantics on Isaac.** The 139-D layout is unchanged (`imitation/spec.py`), but some
 fields mean slightly different things:

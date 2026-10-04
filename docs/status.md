@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-04 · **Branch:** `feature/isaac-imitation` · **Phase:** W (weld baseline on Isaac, revised 2026-10-04): W1–W4 ✅ → W3b / Z1 → V → W5 (slim); track G in parallel
+**Updated:** 2026-10-04 · **Branch:** `feature/isaac-imitation` (V on `feature/isaac-vec`) · **Phase:** W (weld baseline on Isaac, revised 2026-10-04): W1–W4 ✅ → W3b / Z1 → V (done, awaiting lead verification) → W5 (slim); track G in parallel
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -49,8 +49,8 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
   - Expert parity at B = 4 vs B = 1: 40/40 vs 40/40.
   - Throughput 2.15× at B = 8.
   - **Lead-verified on the branch:** fast suite 183 passed (MuJoCo included), slow suite 12 passed.
-  - **Merge into `feature/isaac-imitation` is blocked:** the permission classifier denied the merge, and it waits
-    for the user.
+  - **Merged into `feature/isaac-imitation`** (user allowed the merge, 2026-10-04). Opt-in with
+    `WORLDFOLD_ISAAC_ENVS_PER_PROC`, `isaac_weld` only.
 - **W3b (expert recovery) in progress.** Pooled 81.7% (147/180).
   - Attempts A–C and a 300-step cap did not help; n = 40 noise is about ±10 pp.
   - The user chose to keep working. Next: n = 80 paired attempts with per-retry logging, run on the vectorised env.
@@ -134,6 +134,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
+| 14 | Windows Application Control blocks MuJoCo's `_enums.pyd` in `.venv` (seen 2026-10-04 from the V worktree): `import mujoco` fails, so the full fast suite can't collect `mujuco/tests` | running the fast suite | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujuco/` first on `sys.path`; `mujuco/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
 | 12 | `imitation.cpu_slot` isn't fair: a lane that releases and re-takes it between eval sets starves a lane polling every 2 s (lane A waited 37 min) | parallel queues | — |
 | 11 | `v1_dagger_v1_r1`/`_r2` frozen with bad teacher labels — never train on them | DAgger | — |
@@ -159,6 +160,15 @@ Newest first. One line per work pass: date · what changed · commit.
   - Z1: no transfer. V0 go; V implemented by an agent (pending merge).
   - Track G: IG.2 "released" redefinition approved by the user; now on Sonnet.
   - (this commit)
+- 2026-10-04 · **V vectorised Isaac env** (`feature/isaac-vec`, background agent). B scene copies run in one Kit
+  process, with `IsaacClothFoldBatch`/`IsaacSubEnv` and a lockstep multi-env worker (`imitation/lockstep.py`).
+  - Parity: B=4 40/40 vs B=1 40/40 (Wilson 91.2–100 each).
+  - Throughput: 1.25/1.66/2.15× episodes/h at B = 2/4/8, so kept; GPU memory flat.
+  - `vec_check` passes; 16 fast lockstep tests pass.
+  - Isaac tests (`-m isaac`, .venv-isaac): test_isaac_vec + test_isaac_weld + test_isaac_profile, 24 passed. The
+    B = 1 worker path was also exercised by the B = 1 parity run.
+  - Fast tests: lockstep + backend, 38 passed. The full fast suite is blocked by defect 14.
+  - Commits b46a6d8 … this pass's final commit on `feature/isaac-vec`.
 
 - 2026-10-04 · **W4 ✅ weld-baseline pilot.**
   - Collect 76/80; diffusion id_easy 20/20 (Wilson 83.9–100); DAgger round runs; detector 80/80 (in-sample).

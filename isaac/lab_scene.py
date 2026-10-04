@@ -48,6 +48,39 @@ PARTICLE_CFG = Path(lehome.__file__).parent / "tasks" / "bedroom" / "config_file
 JOINTS = ARM_JOINTS + [GRIPPER_JOINT]
 HOME = {name: 0.0 for name in ARM_JOINTS} | {GRIPPER_JOINT: GRIPPER_OPEN}
 
+# Milestone V (vectorised env): copy 0 is the scene as it always was; copies 1.. sit on a 3x3 grid COPY_SPACING apart
+# so all share the one 8x8 m floor (its grid texture scales with its size, so enlarging it would change copy 0's
+# pixels). The main camera sees x in [-0.80, 0.33], y in [-0.6, 0.6] m of floor around its copy: no copy sees another.
+COPY_SPACING = 2.5
+COPY_OFFSETS = [np.array([dx, dy, 0.0]) * COPY_SPACING
+                for dx, dy in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1))]
+MAX_COPIES = len(COPY_OFFSETS)
+
+
+def copy_root(c):
+    """Prim root of copy c: copy 0 keeps the original absolute paths."""
+    return "/World" if c == 0 else f"/World/Copy{c}"
+
+
+class _Copy:
+    """Everything per copy of the scene (milestone V). Positions here are world-frame."""
+
+    def __init__(self, c):
+        self.index = c
+        self.offset = COPY_OFFSETS[c]
+        self.arms = {}
+        self.joint_ids = {}
+        self.gripper_body = {}
+        self.cloth = None
+        self.cloth_pose = None
+        self.cloth_rest = None
+        self.pin_floor = None
+        self.pins = {}           # weld grasp, see SceneEnv._drive_pins
+        self.mass_scale = 1.0    # dynamics DR (set_dynamics); folded into set_pinned_masses
+        self.rest_masses = None
+        self.rest_material = None
+        self.rig_cameras = {}
+
 
 # LeHome's capsule finger pads (so101_follower_good.usd), in the gripper and jaw link frames: radius 1 cm, 5 cm
 # spine along the capsule's local z; the lining sits on the side facing the other finger (local +x on the fixed
@@ -118,14 +151,17 @@ def _wrist_camera(robot_path, size):
         data_types=["rgb"], spawn=_pinhole(size, size, WRIST_CAM_FOVY_DEG), width=size, height=size)
 
 
-def rig_camera_cfg(name, size):
-    """The imitation pipeline's camera rig (imitation.vision.render.CAMERAS): main + one camera per wrist."""
-    if name == "main":
-        return _camera((size, size), prim_path="/World/rig_main", data_types=("rgb",))
-    if name == "demo":           # the main view at video resolution, for imitation.demo (not a policy input)
-        return _camera((size, size), prim_path="/World/rig_demo", data_types=("rgb",))
+def rig_camera_cfg(name, size, c=0):
+    """The imitation pipeline's camera rig (imitation.vision.render.CAMERAS): main + one camera per wrist, of copy c."""
+    root = copy_root(c)
+    if name in ("main", "demo"):  # demo: the main view at video resolution, for imitation.demo (not a policy input)
+        cfg = _camera((size, size), prim_path=f"{root}/rig_{name}", data_types=("rgb",))
+        if c:
+            cfg.offset = cfg.offset.replace(pos=tuple(float(v) for v in np.asarray(CAMERA_POS) + COPY_OFFSETS[c]))
+        return cfg
     if name in ("left_wrist_cam", "right_wrist_cam"):
-        return _wrist_camera("/World/Robot/Left_Robot" if name.startswith("left") else "/World/Robot/Right_Robot", size)
+        return _wrist_camera(f"{root}/Robot/Left_Robot" if name.startswith("left") else f"{root}/Robot/Right_Robot",
+                             size)
     raise ValueError(f"unknown rig camera {name!r}")
 
 
@@ -142,10 +178,19 @@ class SceneCfg(DirectRLEnvCfg):
     right_robot = _robot("/World/Robot/Right_Robot", ARM_BASE_RIGHT)
     camera: TiledCameraCfg | None = None
     rig: dict | None = None         # {camera name: square size}, the imitation camera rig (opt-in)
+    n_copies: int = 1               # milestone V: independent copies of arms + table + cloth (GPU pipeline)
 
 
-def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", arm_drive=None):
+def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", arm_drive=None, n_copies=1):
+    if not 1 <= n_copies <= MAX_COPIES:
+        raise ValueError(f"n_copies must be in 1..{MAX_COPIES}, got {n_copies}")
+    if n_copies > 1 and device == "cpu":
+        raise ValueError("several scene copies need the GPU pipeline (per-cloth particle views)")
+    if n_copies > 1 and image_size is not None:
+        raise NotImplementedError("the observation-mode camera is copy 0's only; use the rig (cameras=) with copies")
     cfg = SceneCfg()
+    cfg.n_copies = n_copies
+    cfg.action_space = 12 * n_copies
     if arm_drive:
         cfg.left_robot = _robot("/World/Robot/Left_Robot", ARM_BASE_LEFT, arm_drive)
         cfg.right_robot = _robot("/World/Robot/Right_Robot", ARM_BASE_RIGHT, arm_drive)
@@ -167,40 +212,81 @@ class SceneEnv(DirectRLEnv):
 
     def __init__(self, cfg, cloth_center):
         self.cloth_center = np.asarray(cloth_center, dtype=float)
-        self.pins = {}          # weld grasp, see _drive_pins
-        self.mass_scale = 1.0   # dynamics DR (set_dynamics); folded into set_pinned_masses
+        self.copies = [_Copy(c) for c in range(cfg.n_copies)]
         self.weld_tau = None    # None: rigid weld (zero-mass pins); seconds: soft weld, see _drive_pins
         self.weld_mass = 1.0    # soft weld: pinned particles' mass multiple (the solver moves heavier ones less)
         super().__init__(cfg)
-        self.joint_ids = {p: arm.find_joints(JOINTS, preserve_order=True)[0] for p, arm in self.arms.items()}
-        self.gripper_body = {p: arm.find_bodies("gripper")[0][0] for p, arm in self.arms.items()}
-        self.targets = torch.zeros((1, 12), device=self.device)
-        self.cloth.initialize()
+        for cp in self.copies:
+            cp.joint_ids = {p: arm.find_joints(JOINTS, preserve_order=True)[0] for p, arm in cp.arms.items()}
+            cp.gripper_body = {p: arm.find_bodies("gripper")[0][0] for p, arm in cp.arms.items()}
+        self.targets = torch.zeros((1, 12 * len(self.copies)), device=self.device)
+        for cp in self.copies:
+            cp.cloth.initialize()
+
+    # copy 0's state under its pre-V names (probes and checks read these)
+    arms = property(lambda self: self.copies[0].arms)
+    joint_ids = property(lambda self: self.copies[0].joint_ids)
+    gripper_body = property(lambda self: self.copies[0].gripper_body)
+    cloth = property(lambda self: self.copies[0].cloth)
+    cloth_rest = property(lambda self: self.copies[0].cloth_rest)
+    cloth_pose = property(lambda self: self.copies[0].cloth_pose)
+    pin_floor = property(lambda self: self.copies[0].pin_floor)
+    rig_cameras = property(lambda self: self.copies[0].rig_cameras)
+    _rest_masses = property(lambda self: self.copies[0].rest_masses)
+    _rest_material = property(lambda self: self.copies[0].rest_material)
+
+    @property
+    def pins(self):
+        return self.copies[0].pins
+
+    @pins.setter
+    def pins(self, value):
+        self.copies[0].pins = value
+
+    @property
+    def mass_scale(self):
+        return self.copies[0].mass_scale
+
+    @mass_scale.setter
+    def mass_scale(self, value):
+        self.copies[0].mass_scale = value
 
     def _setup_scene(self):
-        self.arms = {"left_": Articulation(self.cfg.left_robot), "right_": Articulation(self.cfg.right_robot)}
-        self.scene.articulations["left_arm"] = self.arms["left_"]
-        self.scene.articulations["right_arm"] = self.arms["right_"]
         lining = sim_utils.RigidBodyMaterialCfg(static_friction=PAD_LINING_FRICTION,
                                                 dynamic_friction=PAD_LINING_FRICTION)
-        lining.func("/World/Looks/pad_lining", lining)
-        for arm in (self.cfg.left_robot, self.cfg.right_robot):
-            self._add_linings(arm.prim_path)
         floor = sim_utils.GroundPlaneCfg(size=(2 * FLOOR_SIZE, 2 * FLOOR_SIZE), color=FLOOR_COLOR)
-        floor.func("/World/floor", floor)
         table = sim_utils.CuboidCfg(size=(TABLE_SIZE, TABLE_SIZE, TABLE_TOP_Z),
                                     collision_props=sim_utils.CollisionPropertiesCfg(),
                                     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.4, 0.25)))
-        table.func("/World/table", table, translation=(0.0, 0.0, TABLE_TOP_Z / 2.0))
-        self.cloth, self.cloth_rest = self._spawn_cloth()
-        self.camera = None
-        if self.cfg.camera is not None:
-            self.camera = TiledCamera(self.cfg.camera)
-            self.scene.sensors["main"] = self.camera
-        self.rig_cameras = {}
-        for name, size in (self.cfg.rig or {}).items():
-            self.rig_cameras[name] = TiledCamera(rig_camera_cfg(name, size))
-            self.scene.sensors[f"rig_{name}"] = self.rig_cameras[name]
+        for cp in self.copies:
+            c, root, dx = cp.index, copy_root(cp.index), cp.offset
+            robots = {"left_": self.cfg.left_robot, "right_": self.cfg.right_robot}
+            if c:
+                robots = {p: r.replace(prim_path=r.prim_path.replace("/World", root, 1),
+                                       init_state=r.init_state.replace(
+                                           pos=tuple(float(v) for v in np.asarray(r.init_state.pos) + dx)))
+                          for p, r in robots.items()}
+            cp.arms = {p: Articulation(r) for p, r in robots.items()}
+            suffix = "" if c == 0 else f"_{c}"
+            self.scene.articulations[f"left_arm{suffix}"] = cp.arms["left_"]
+            self.scene.articulations[f"right_arm{suffix}"] = cp.arms["right_"]
+            if c == 0:
+                lining.func("/World/Looks/pad_lining", lining)
+            for r in robots.values():
+                self._add_linings(r.prim_path)
+            if c == 0:
+                floor.func("/World/floor", floor)
+            table.func(f"{root}/table", table, translation=(float(dx[0]), float(dx[1]), TABLE_TOP_Z / 2.0))
+            cp.cloth, cp.cloth_rest = self._spawn_cloth(cp)
+            if c == 0:
+                self.camera = None
+                if self.cfg.camera is not None:
+                    self.camera = TiledCamera(self.cfg.camera)
+                    self.scene.sensors["main"] = self.camera
+            cp.rig_cameras = {}
+            for name, size in (self.cfg.rig or {}).items():
+                cp.rig_cameras[name] = TiledCamera(rig_camera_cfg(name, size, c))
+                self.scene.sensors[f"rig_{name}{suffix}"] = cp.rig_cameras[name]
         if self.camera is not None or self.rig_cameras:
             self._spawn_lights()
 
@@ -219,7 +305,7 @@ class SceneEnv(DirectRLEnv):
             UsdPhysics.CollisionAPI.Apply(box.GetPrim())
             sim_utils.bind_physics_material(box.GetPath().pathString, "/World/Looks/pad_lining")
 
-    def _spawn_cloth(self):
+    def _spawn_cloth(self, cp):
         # WorldFold's square cloth packaged the way LeHome packages a garment: a USD whose default prim holds a
         # "mesh", plus a garment config. GarmentObject applies LeHome's particle system, material and cloth settings.
         points, faces = cloth_grid_mesh(CLOTH_SUBDIV)
@@ -241,9 +327,11 @@ class SceneEnv(DirectRLEnv):
         particle_cfg.objects.particle_material.gravity_scale = CLOTH_GRAVITY_SCALE
         particle_cfg.objects.particle_material.adhesion = CLOTH_ADHESION
         z = TABLE_TOP_Z + particle_cfg.objects.particle_system.rest_offset + 0.001
-        self.cloth_pose = np.array([self.cloth_center[0], self.cloth_center[1], z])
-        self.pin_floor = z - 0.001          # a particle resting on the table top (weld pins never go lower)
-        pose = [float(v) for v in self.cloth_pose]
+        cp.cloth_pose = np.array([self.cloth_center[0], self.cloth_center[1], z])
+        if cp.index:
+            cp.cloth_pose = cp.cloth_pose + cp.offset
+        cp.pin_floor = z - 0.001            # a particle resting on the table top (weld pins never go lower)
+        pose = [float(v) for v in cp.cloth_pose]
         garment_cfg = OmegaConf.create({
             # GarmentObject joins a leading-slash asset_path onto the working directory
             "asset_path": "/" + os.path.relpath(usd, os.getcwd()),
@@ -252,26 +340,50 @@ class SceneEnv(DirectRLEnv):
             "initial_pos_range": pose + pose, "initial_rot_range": [0.0] * 6,
             "soft_reset_pos_range": pose + pose, "soft_reset_rot_range": [0.0] * 6,
         })
-        cloth = GarmentObject("/World/Object/cloth", particle_cfg, garment_cfg, rng=np.random.RandomState(0))
-        return cloth, np.asarray(points) + self.cloth_pose
+        cloth = GarmentObject(f"{copy_root(cp.index)}/Object/cloth", particle_cfg, garment_cfg,
+                              rng=np.random.RandomState(0))
+        return cloth, np.asarray(points) + cp.cloth_pose
 
     # On the CPU device there is no particle-cloth tensor view: PhysX writes the particles back to the mesh's USD
     # points (use_fabric=False), and GarmentObject reads and resets them there.
-    def particle_positions(self):
+    def particle_positions(self, c=0):
+        """Copy c's particles in its own frame (world minus the copy's offset; copy 0's frame is the world)."""
         if self.device != "cpu":           # GPU pipeline: the particle-cloth tensor view (world frame)
-            return self.cloth._cloth_prim_view.get_world_positions()[0].detach().cpu().numpy().astype(np.float64)
+            cp = self.copies[c]
+            pos = cp.cloth._cloth_prim_view.get_world_positions()[0].detach().cpu().numpy().astype(np.float64)
+            return pos - cp.offset if c else pos
         # GarmentObject.get_current_mesh_points without its open3d point cloud
         pos, ori = self.cloth.get_world_pose()
         local = self.cloth._get_points_pose().detach().cpu().numpy()
         return self.cloth.transform_points(local, pos.detach().cpu().numpy(), ori.detach().cpu().numpy(),
                                            self.cloth.get_world_scale().detach().cpu().numpy()).astype(np.float64)
 
-    def reset_cloth(self, offset_xy, height, rpy_deg):
+    def reset_cloth(self, offset_xy, height, rpy_deg, c=0):
         # LeHome's soft reset puts the initial particles back at the configured pose; then move the cloth up by
         # height, along by offset_xy and tilt it, so it drops onto the table the way LeHome drops its garments
-        self.cloth.reset()
-        pose = self.cloth_pose + np.array([offset_xy[0], offset_xy[1], height])
-        self.cloth.set_world_pose(position=pose, orientation=euler_angles_to_quat(np.asarray(rpy_deg), degrees=True))
+        cp = self.copies[c]
+        cp.cloth.reset()
+        pose = cp.cloth_pose + np.array([offset_xy[0], offset_xy[1], height])
+        cp.cloth.set_world_pose(position=pose, orientation=euler_angles_to_quat(np.asarray(rpy_deg), degrees=True))
+
+    def reset_copy(self, c):
+        """Copy c's arms back to their spawn pose and HOME joints at rest, its pins cleared and its rig cameras
+        reset, without touching the other copies and without a physics step (milestone V's per-env reset; the
+        cloth is reset_cloth's). lab.reset() still resets every copy at once."""
+        cp = self.copies[c]
+        cp.pins = {}
+        for arm in cp.arms.values():
+            arm.reset()
+            arm.write_root_pose_to_sim(arm.data.default_root_state[:, :7])
+            arm.write_joint_state_to_sim(arm.data.default_joint_pos, arm.data.default_joint_vel)
+            arm.write_data_to_sim()
+        for cam in cp.rig_cameras.values():
+            cam.reset()
+        self.sim.forward()
+
+    def set_copy_targets(self, c, targets):
+        """Copy c's 12 joint targets (left 6, right 6) for the next lab.step."""
+        self.targets[:, 12 * c:12 * c + 12] = targets
 
     def _spawn_lights(self):
         dome = sim_utils.DomeLightCfg(intensity=LIGHT_INTENSITY * HEADLIGHT_AMBIENT)
@@ -285,10 +397,13 @@ class SceneEnv(DirectRLEnv):
         self.targets = actions.clone()
 
     def _apply_action(self):
-        self.arms["left_"].set_joint_position_target(self.targets[:, :6], joint_ids=self.joint_ids["left_"])
-        self.arms["right_"].set_joint_position_target(self.targets[:, 6:], joint_ids=self.joint_ids["right_"])
-        if self.pins:
-            self._drive_pins()
+        for cp in self.copies:
+            k = 12 * cp.index
+            cp.arms["left_"].set_joint_position_target(self.targets[:, k:k + 6], joint_ids=cp.joint_ids["left_"])
+            cp.arms["right_"].set_joint_position_target(self.targets[:, k + 6:k + 12],
+                                                        joint_ids=cp.joint_ids["right_"])
+            if cp.pins:
+                self._drive_pins(cp.index)
 
     # ---- weld grasp (IsaacClothFoldEnv grasp_mode="weld", Phase W) ----
     # pins: {prefix: (particle indices, offsets (k, 3) from the gripperframe site, world axes)}. GPU pipeline only: a
@@ -296,62 +411,65 @@ class SceneEnv(DirectRLEnv):
     # pin_floor) and velocity (the site's) are written through the particle-cloth tensor view. On the
     # CPU device the only write path is the mesh's USD points, which PhysX ignores mid-simulation (W1: 14-36 mm drift
     # per substep), so IsaacClothFoldEnv refuses grasp_mode="weld" there.
-    def site_pose(self, prefix):
+    def site_pose(self, prefix, c=0):
         """World pose (pos, R) of the gripperframe site: the gripper link composed with the MJCF site offset."""
-        arm = self.arms[prefix]
-        b = self.gripper_body[prefix]
+        arm = self.copies[c].arms[prefix]
+        b = self.copies[c].gripper_body[prefix]
         link_pos = arm.data.body_link_pos_w[0, b].cpu().numpy().astype(np.float64)
         link_R = _matrix_from_quat(arm.data.body_link_quat_w[0, b].cpu().numpy().astype(np.float64))
         return link_pos + link_R @ GRIPPERFRAME_POS, link_R @ _matrix_from_quat(GRIPPERFRAME_QUAT), link_pos, link_R
 
-    def set_pinned_masses(self):
+    def set_pinned_masses(self, c=0):
         """GPU pipeline: pinned particles get zero mass (held exactly where written); everything else its rest mass.
         ClothPrim.set_particle_masses calls a get_masses it doesn't have, so this uses the physics view directly."""
         if self.device == "cpu":
             return
-        pv = self.cloth._cloth_prim_view._physics_view
-        if not hasattr(self, "_rest_masses"):
-            self._rest_masses = pv.get_masses().clone()
-        masses = self._rest_masses * self.mass_scale
-        for idx, _ in self.pins.values():
+        cp = self.copies[c]
+        pv = cp.cloth._cloth_prim_view._physics_view
+        if cp.rest_masses is None:
+            cp.rest_masses = pv.get_masses().clone()
+        masses = cp.rest_masses * cp.mass_scale
+        for idx, _ in cp.pins.values():
             ti = torch.as_tensor(idx, device=masses.device)
             flat = masses.view(masses.shape[0], -1)
             flat[0, ti] = 0.0 if self.weld_tau is None else flat[0, ti] * self.weld_mass
         pv.set_masses(masses, torch.arange(masses.shape[0], device=masses.device))
 
-    def set_dynamics(self, mass_scale=1.0, friction_scale=1.0, damping_scale=1.0):
+    def set_dynamics(self, mass_scale=1.0, friction_scale=1.0, damping_scale=1.0, c=0):
         """MuJoCo's dynamics DR (sim_main.reset), GPU pipeline: scales the particle masses, the particle material's
         friction (MuJoCo scales the table's; here it is the cloth's against every rigid, the table included) and its
         global velocity damping (MuJoCo: the cloth joints' damping), from their spawned values."""
         if self.device == "cpu":
             raise ValueError("dynamics DR needs the GPU pipeline (per-particle masses)")
-        mat = self.cloth.particle_material
-        if not hasattr(self, "_rest_material"):
-            self._rest_material = (float(mat.get_friction()), float(mat.get_damping()))
-        self.mass_scale = float(mass_scale)
-        mat.set_friction(self._rest_material[0] * float(friction_scale))
-        mat.set_damping(self._rest_material[1] * float(damping_scale))
-        self.set_pinned_masses()
+        cp = self.copies[c]
+        mat = cp.cloth.particle_material
+        if cp.rest_material is None:
+            cp.rest_material = (float(mat.get_friction()), float(mat.get_damping()))
+        cp.mass_scale = float(mass_scale)
+        mat.set_friction(cp.rest_material[0] * float(friction_scale))
+        mat.set_damping(cp.rest_material[1] * float(damping_scale))
+        self.set_pinned_masses(c)
 
-    def _drive_pins(self):
+    def _drive_pins(self, c=0):
         # the cloth view's set_positions/set_velocities index whole cloths, not particles, so the full buffer is
         # written back; unpinned rows carry the values just read
-        view = self.cloth._cloth_prim_view
+        cp = self.copies[c]
+        view = cp.cloth._cloth_prim_view
         pos = view.get_world_positions(clone=False)
         vel = view.get_velocities(clone=False)
-        for prefix, (idx, offsets) in self.pins.items():
+        for prefix, (idx, offsets) in cp.pins.items():
             if len(idx) == 0:
                 continue
-            site, _, link_pos, _ = self.site_pose(prefix)
+            site, _, link_pos, _ = self.site_pose(prefix, c)
             world = site + offsets
-            arm, b = self.arms[prefix], self.gripper_body[prefix]
+            arm, b = cp.arms[prefix], cp.gripper_body[prefix]
             lin = arm.data.body_link_lin_vel_w[0, b].cpu().numpy()
             ang = arm.data.body_link_ang_vel_w[0, b].cpu().numpy()
             v = np.broadcast_to(lin + np.cross(ang, site - link_pos), world.shape).copy()
             # the table holds a pinned particle up, as MuJoCo's contact does against its soft weld: a kinematic pin
             # would otherwise be pushed through it (W3 trace: 2.7 cm below the top as the gripper closed descending)
-            low = world[:, 2] < self.pin_floor
-            world[low, 2] = self.pin_floor
+            low = world[:, 2] < cp.pin_floor
+            world[low, 2] = cp.pin_floor
             v[low, 2] = np.maximum(v[low, 2], 0.0)
             ti = torch.as_tensor(idx, device=pos.device)
             if self.weld_tau is None:
@@ -380,7 +498,7 @@ class SceneEnv(DirectRLEnv):
 
     def _reset_idx(self, env_ids):
         super()._reset_idx(env_ids)
-        for arm in self.arms.values():
+        for arm in (a for cp in self.copies for a in cp.arms.values()):
             arm.write_root_pose_to_sim(arm.data.default_root_state[env_ids, :7], env_ids)
             arm.write_joint_state_to_sim(arm.data.default_joint_pos[env_ids], arm.data.default_joint_vel[env_ids],
                                          env_ids=env_ids)
