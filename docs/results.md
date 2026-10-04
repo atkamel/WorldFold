@@ -1099,3 +1099,11 @@ now a frozen reference: no new MuJoCo runs (user decision).
   which is what DAgger is for.
 - The DAgger round and the detector were cut off by the 2 h job limit and are pending.
 
+- **W4 tail (2026-10-04):**
+  - **DAgger round 1** (takeover p = 0.3): 16 student rollouts (15/16 succeeded), 56 teacher labels. It froze
+    `isaac_weld_pilot_isaac_weld_pilot_dagger_r1` (92 episodes), retrained diffusion for 5k steps, then scored
+    id_easy 20/20. The gain was +0.0 because id_easy was already at its ceiling, so this round checks plumbing, not
+    recovery.
+  - **Detector:** 80/80 agreement (Wilson 95.4–100%: 76 true positives, 0 false positives, 0 false negatives). This
+    is in-sample, on the same versions it was trained on, as in I3.2; W5's bar uses held-out episodes.
+  - W4's exit is met: every artifact is valid, and diffusion id_easy has Wilson lower bound 83.9 > 0.

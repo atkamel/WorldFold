@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-04 · **Branch:** `feature/isaac-imitation` · **Phase:** W (weld baseline on Isaac, revised 2026-10-04): W1–W3 ✅, W4 pilot tail → W3b / Z1 → V → W5 (slim); track G in parallel
+**Updated:** 2026-10-04 · **Branch:** `feature/isaac-imitation` · **Phase:** W (weld baseline on Isaac, revised 2026-10-04): W1–W4 ✅ → W3b / Z1 → V → W5 (slim); track G in parallel
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -42,8 +42,8 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 ## Next action
 
 **Phase W revision (2026-10-04, plan `docs/superpowers/plans/2026-10-04-isaac-weld-revision.md`):**
-1. W4 pilot tail: DAgger + detector (relaunched). The pilot already shows learning: diffusion 20/20, vision 10/10
-   on id_easy.
+1. W4 ✅: the pilot learns (diffusion 20/20, vision 10/10 on id_easy; recovery weak, as BC was on MuJoCo); DAgger
+   and the detector run end to end.
 2. W3b: expert recovery ≥ 90 (85 if it plateaus), while Z1 zero-shots the MuJoCo-trained checkpoints on
    `isaac_weld`.
 3. V: vectorised Isaac env (go/no-go probe first).
@@ -142,6 +142,11 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-04 · **W4 ✅ weld-baseline pilot.**
+  - Collect 76/80; diffusion id_easy 20/20 (Wilson 83.9–100); DAgger round runs; detector 80/80 (in-sample).
+  - W4 verifier check added (shares I3.2's pilot checks); `isaac/recovery_replay.py` and `w3_gate.ps1 -Sets` added for W3b.
+  - `verify W4` and I3.2 PASS · (this commit)
 
 - 2026-10-04 · **Phase W revised and the profile renamed `mujoco` → `weld`.**
   - New roadmap rows W3b, Z1 and V; W5 slimmed. W4 pilot results are in results.md.

@@ -317,9 +317,9 @@ def _i22() -> Result:
     return Result("I2.2", "PASS" if ok else "FAIL", ev)
 
 
-@check("I3.2", "pilot run through the real CLIs: every stage's artifact present and valid (viability, not performance)")
-def _i32() -> Result:
-    pilot = ROOT / "outputs" / "imitation" / "isaac" / "pilot"
+def _pilot_artifacts(backend: str, tag: str) -> tuple[bool, list[str]]:
+    """scripts/isaac_pilot.ps1 -Backend <backend>: every stage's artifact present, tracked and valid."""
+    pilot = ROOT / "outputs" / "imitation" / backend / "pilot"
     runs = ROOT / "outputs" / "imitation" / "runs"
     ev, ok = [], True
     want = {"eval_mlp_id_easy": 20, "eval_mlp_recovery": 10, "eval_diff_id_easy": 20, "eval_diff_id_hard": 10,
@@ -334,7 +334,7 @@ def _i32() -> Result:
         good = all(nn == n for _, nn in counts.values()) and git_tracked(path)
         ev.append(f"{name}: " + ", ".join(f"{s} {k}/{nn}" for s, (k, nn) in counts.items()) + f" ok={good}")
         ok &= good
-    for run in ("isaac_pilot_mlp", "isaac_pilot_diff", "isaac_pilot_vision"):
+    for run in (f"{tag}_mlp", f"{tag}_diff", f"{tag}_vision"):
         rj = runs / run / "run.json"
         if not rj.exists():
             ev.append(f"missing artifact: {rj}")
@@ -344,7 +344,7 @@ def _i32() -> Result:
         fit = hist[-1]["train_loss"] <= 0.5 * hist[0]["train_loss"]
         ev.append(f"{run}: train loss {hist[0]['train_loss']:.4f} -> {hist[-1]['train_loss']:.4f} fits={fit}")
         ok &= fit and git_tracked(rj)
-    dag = runs / "isaac_pilot_dagger" / "history.json"
+    dag = runs / f"{tag}_dagger" / "history.json"
     if dag.exists():
         rounds = json.loads(dag.read_text())
         rounds = rounds if isinstance(rounds, list) else rounds.get("rounds", [])
@@ -353,7 +353,7 @@ def _i32() -> Result:
     else:
         ev.append(f"missing artifact: {dag}")
         ok = False
-    agree = runs / "isaac_pilot_detector" / "agreement.json"
+    agree = runs / f"{tag}_detector" / "agreement.json"
     if agree.exists():
         a = json.loads(agree.read_text())
         ev.append(f"detector agreement {a['agree']}/{a['n']} = {a['rate']:.1%}")
@@ -361,12 +361,31 @@ def _i32() -> Result:
     else:
         ev.append(f"missing artifact: {agree}")
         ok = False
+    return ok, ev
+
+
+@check("I3.2", "pilot run through the real CLIs: every stage's artifact present and valid (viability, not performance)")
+def _i32() -> Result:
+    ok, ev = _pilot_artifacts("isaac", "isaac_pilot")
     for name in ("expert", "diffusion", "vision"):
         mp4 = ROOT / "docs" / "reports" / "media" / f"isaac_pilot_{name}.mp4"
         ok &= mp4.exists() and git_tracked(mp4)
         ev.append(f"demo {mp4.name}: exists={mp4.exists()} tracked={git_tracked(mp4)}")
     ok &= results_md_has("I3.2")
     return Result("I3.2", "PASS" if ok else "FAIL", ev)
+
+
+@check("W4", "weld-baseline pilot (isaac_weld): every stage's artifact valid; diffusion id_easy Wilson lower bound > 0")
+def _w4() -> Result:
+    ok, ev = _pilot_artifacts("isaac_weld", "isaac_weld_pilot")
+    path = ROOT / "outputs" / "imitation" / "isaac_weld" / "pilot" / "eval_diff_id_easy.json"
+    if path.exists():
+        k, n = eval_counts(path)["id_easy"]
+        lo, hi = wilson(k, n)
+        ev.append(f"diffusion id_easy {k}/{n} [{lo:.1f}, {hi:.1f}] (bar: lower bound > 0)")
+        ok &= lo > 0
+    ok &= results_md_has("W4")
+    return Result("W4", "PASS" if ok else "FAIL", ev)
 
 
 @check("W1", "weld grasp on Isaac (GPU pipeline): engages, tracks like MuJoCo's weld lifted/carried, holds on neutral, releases, honours mask")
