@@ -1,4 +1,4 @@
-"""Per-arm friction-grasp metrics from a per-step trace (track G, roadmap IG.1-IG.2). Numpy only, so the bench's
+﻿"""Per-arm friction-grasp metrics from a per-step trace (track G, roadmap IG.1-IG.2). Numpy only, so the bench's
 summaries can be recomputed and tested outside the Isaac venv.
 
 A trace is what isaac/grasp_bench.py records for one arm over one episode, one row per control step (read before
@@ -11,9 +11,12 @@ and the arm's anchor vertex (the corner that must not be dragged). From it:
   placed    after the release, the corner lies within SUCCESS_DIST of its goal (the env's own placement test),
             read at the end of the episode (the env's own success, or SETTLE_WAIT steps after both arms retreated):
             a released corner keeps sliding for 20+ steps, so an earlier read disagreed with the env's success test
-  released  the jaw let go cleanly: the corner was held, the expert opened the jaw, and by the end of its retreat the corner had moved less than
-            RELEASE_MOVE horizontally from where it was when the jaw opened and lies within RELEASE_Z of its rest
-            height (not carried up, flung or dragged by the opening jaw or the retreat; falling straight down is fine)
+  released  the corner was held, and by the end of the expert's retreat it is back on the cloth: within RELEASE_Z of
+            its rest height, so not carried up by the gripper. Where it lands is scored by "placed". (Definition
+            approved by the user 2026-10-04; see released_strict for the one used through IG.2 attempt 9.)
+  released_strict  released, and the corner also moved less than RELEASE_MOVE horizontally between the jaw opening
+            and the end of the retreat. With an overshoot placement that move is by design (the spring-back carries
+            the corner onto the goal), so this is a record, not a bar.
   anchor drift  the largest distance of the arm's anchor vertex from its start over the episode
 
 Each rate is unconditional (out of every episode), so a corner that was never acquired counts against held, placed
@@ -35,6 +38,7 @@ SETTLE_WAIT = 15         # = cloth_fold_rl.quarter_fold_expert.SETTLE_WAIT
 RELEASE_MOVE = 0.03      # m the corner may move between the jaw opening and the end of the retreat
 RELEASE_Z = 0.025        # m above its rest height the released corner may lie (it lies on the near half)
 METRICS = ("acquired", "held", "placed", "released")
+RECORDED = METRICS + ("released_strict",)      # summaries report these; only METRICS carry bars
 
 
 def _first(phases, name, start=0):
@@ -68,7 +72,7 @@ def arm_metrics(trace: dict, goal, rest_z: float) -> dict:
             out["drop_t"] = int(t_carry + np.argmax(dist[t_carry:t_rel] >= HOLD_DIST))
     elif acquired:
         out["carry_max_dist"] = float(np.max(dist[t_carry:]))
-    placed = released = False
+    placed = released = released_strict = False
     if t_rel is not None:
         t_read = len(phases) - 1          # the episode end: the env's success, or both arms retreated + SETTLE_WAIT
         out["place_err"] = float(np.linalg.norm(corner[t_read] - goal))
@@ -79,8 +83,10 @@ def arm_metrics(trace: dict, goal, rest_z: float) -> dict:
         out["release_move"] = float(np.linalg.norm(corner[t_end, :2] - corner[t_rel, :2]))
         out["release_z"] = float(corner[t_end, 2] - rest_z)
         # a corner dropped before the jaw opened was never released by it
-        released = held and out["release_move"] < RELEASE_MOVE and out["release_z"] < RELEASE_Z
-    out.update(acquired=bool(acquired), held=bool(held), placed=bool(placed), released=bool(released))
+        released = held and out["release_z"] < RELEASE_Z
+        released_strict = released and out["release_move"] < RELEASE_MOVE
+    out.update(acquired=bool(acquired), held=bool(held), placed=bool(placed), released=bool(released),
+               released_strict=bool(released_strict))
     out["failed_at"] = next((m for m in METRICS if not out[m]), None)
     return out
 
@@ -104,8 +110,8 @@ def summarize(rows: list[dict]) -> dict:
     for p in prefixes:
         arm = [r["arms"][p] for r in rows]
         stats = {}
-        for m in METRICS:
-            k = sum(bool(a[m]) for a in arm)
+        for m in RECORDED:
+            k = sum(bool(a.get(m, False)) for a in arm)
             lo, hi = wilson(k, len(arm))
             stats[m] = {"k": k, "n": len(arm), "rate": round(100.0 * k / max(len(arm), 1), 1),
                         "wilson": [round(lo, 1), round(hi, 1)]}

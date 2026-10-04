@@ -52,6 +52,15 @@
     ]
    },
    "released": {
+    "k": 17,
+    "n": 20,
+    "rate": 85.0,
+    "wilson": [
+     64.0,
+     94.8
+    ]
+   },
+   "released_strict": {
     "k": 12,
     "n": 20,
     "rate": 60.0,
@@ -66,8 +75,8 @@
    },
    "first_failure": {
     "held": 2,
-    "released": 6,
-    "placed": 1
+    "placed": 1,
+    "released": 1
    }
   },
   "right_": {
@@ -99,6 +108,15 @@
     ]
    },
    "released": {
+    "k": 1,
+    "n": 20,
+    "rate": 5.0,
+    "wilson": [
+     0.9,
+     23.6
+    ]
+   },
+   "released_strict": {
     "k": 0,
     "n": 20,
     "rate": 0.0,

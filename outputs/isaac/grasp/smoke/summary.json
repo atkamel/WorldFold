@@ -25,15 +25,24 @@
     ]
    },
    "placed": {
-    "k": 1,
+    "k": 2,
     "n": 2,
-    "rate": 50.0,
+    "rate": 100.0,
     "wilson": [
-     9.5,
-     90.5
+     34.2,
+     100.0
     ]
    },
    "released": {
+    "k": 2,
+    "n": 2,
+    "rate": 100.0,
+    "wilson": [
+     34.2,
+     100.0
+    ]
+   },
+   "released_strict": {
     "k": 2,
     "n": 2,
     "rate": 100.0,
@@ -46,9 +55,7 @@
     "mean": 0.0409,
     "max": 0.041
    },
-   "first_failure": {
-    "placed": 1
-   }
+   "first_failure": {}
   },
   "right_": {
    "acquired": {
@@ -79,12 +86,21 @@
     ]
    },
    "released": {
-    "k": 2,
+    "k": 0,
     "n": 2,
-    "rate": 100.0,
+    "rate": 0.0,
     "wilson": [
-     34.2,
-     100.0
+     0.0,
+     65.8
+    ]
+   },
+   "released_strict": {
+    "k": 0,
+    "n": 2,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     65.8
     ]
    },
    "anchor_drift_m": {

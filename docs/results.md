@@ -1,4 +1,4 @@
-# Results
+﻿# Results
 
 > Summary with demo videos, dated 2026-09-24: [reports/2026-09-24-phase1-5.md](reports/2026-09-24-phase1-5.md).
 
@@ -1207,6 +1207,33 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
   seeds (n = 20, point estimates 95–100%). Strict "released" (< 3 cm horizontal move after the jaw opens) can't be met
   together with an overshoot placement, since that placement relies on the move. A decision on the release metric is
   needed before the n = 100 blocks (see status.md).
+
+- **Definition change: "released" (approved by the user 2026-10-04).**
+  - New "released": the corner was held, and by the end of the expert's retreat it is back on the cloth (within
+    2.5 cm of its rest height, so not carried up by the gripper). Where it lands is scored by "placed". The old
+    test is kept as `released_strict` (also needs a horizontal move < 3 cm from the jaw opening to the end of the
+    retreat).
+  - Why: with an overshoot placement the move is by design (the spring-back carries the corner onto the goal), so
+    strict "released" could not be met together with the placement bar. The flags are recomputed from the stored
+    traces (`--summarize --rescore`); no run was repeated. n = 20, seeds 600000-600019 (baseline and #3 onward; the
+    earlier attempts' rows are as logged above), Wilson 95%.
+
+  | # | released, new (left / right) | released_strict = old definition (left / right) |
+  |---|---|---|
+  | 0 baseline | 17 / 1 | 12 / 0 |
+  | 1 particle friction 1.5 | 1 / 0 | 1 / 0 |
+  | 2 inset 15 mm | 1 / 0 | 0 / 0 |
+  | 3 closed +0.05 | 20 / 14 | 2 / 1 |
+  | 4 place low | 19 / 14 | 5 / 2 |
+  | 5 closed +0.08 | 0 / 0 | 0 / 0 |
+  | 6 closed +0.02 | 19 / 17 | 4 / 2 |
+  | 7 jaw rate 0.1 | 20 / 14 | 2 / 0 |
+  | 8 overshoot | 20 / 12 | 10 / 3 |
+  | 9 pinch 0.5 cm | **20 / 19** [83.9, 100] / [76.4, 99.1] | 6 / 4 [14.5, 51.9] / [8.1, 41.6] |
+
+  Under the new definition released equals held in every attempt except the baseline left arm (held 18, released
+  17: one held corner was carried up by the retreat) and #1 left (held 2, released 1): a held corner is, in practice,
+  always let go.
 
 Artifacts: `outputs/isaac/grasp/t{1..4}_*/{rows.jsonl,summary.json,bench.log}`.
 

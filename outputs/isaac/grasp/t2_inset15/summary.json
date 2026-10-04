@@ -52,6 +52,15 @@
     ]
    },
    "released": {
+    "k": 1,
+    "n": 20,
+    "rate": 5.0,
+    "wilson": [
+     0.9,
+     23.6
+    ]
+   },
+   "released_strict": {
     "k": 0,
     "n": 20,
     "rate": 0.0,
@@ -99,6 +108,15 @@
     ]
    },
    "released": {
+    "k": 0,
+    "n": 20,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     16.1
+    ]
+   },
+   "released_strict": {
     "k": 0,
     "n": 20,
     "rate": 0.0,

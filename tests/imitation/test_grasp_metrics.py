@@ -1,4 +1,4 @@
-"""Friction-grasp bench metrics (track G, IG.1): sim-free, on synthetic traces."""
+﻿"""Friction-grasp bench metrics (track G, IG.1): sim-free, on synthetic traces."""
 
 import numpy as np
 
@@ -43,6 +43,17 @@ def test_clean_grasp_passes_all():
     assert m["failed_at"] is None and m["anchor_drift"] == 0.0
 
 
+def test_spring_back_is_released_but_not_strict():
+    """The corner slides 5 cm after the jaw opens and lies on the cloth: released (the 2026-10-04 definition), not
+    released_strict (the < 3 cm move test through IG.2 #9); where it lands is "placed"."""
+    tr = _trace()
+    t_rel = tr["phase"].index("release")
+    tr["corner"][t_rel + 1:, 0] += 0.05
+    m = arm_metrics(tr, GOAL, REST)
+    assert m["released"] and not m["released_strict"] and m["release_move"] > 0.03 and not m["placed"]
+    assert arm_metrics(_trace(), GOAL, REST)["released_strict"]
+
+
 def test_no_lift_is_not_acquired():
     m = arm_metrics(_trace(lift=0.0), GOAL, REST)
     assert not m["acquired"] and m["failed_at"] == "acquired"
@@ -56,7 +67,7 @@ def test_drop_mid_carry_fails_held():
 def test_misplaced_and_stuck():
     assert arm_metrics(_trace(place_off=0.08), GOAL, REST)["failed_at"] == "placed"
     m = arm_metrics(_trace(stuck=True), GOAL, REST)      # carried up by the retreating jaw: neither placed nor released
-    assert m["held"] and not m["placed"] and not m["released"] and m["release_z"] > 0.025
+    assert m["held"] and not m["placed"] and not m["released"] and not m["released_strict"] and m["release_z"] > 0.025
 
 
 def test_summary_and_bar():
@@ -66,6 +77,7 @@ def test_summary_and_bar():
     s = summarize([good] * 49 + [bad])
     assert s["arms"]["left_"]["held"]["k"] == 49 and s["arms"]["right_"]["held"]["k"] == 50
     assert s["arms"]["left_"]["first_failure"] == {"held": 1}
+    assert s["arms"]["left_"]["released_strict"]["k"] == 49
     assert meets_ig2(s) and not meets_ig2(summarize([good] * 10 + [bad]))
     lo, hi = wilson(49, 50)
     assert 88 < lo < 90 and hi > 99

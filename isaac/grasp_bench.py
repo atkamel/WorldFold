@@ -1,4 +1,4 @@
-"""Friction-grasp bench (track G, roadmap IG.1-IG.2): the friction expert's first attempt on each arm, scored per arm
+﻿"""Friction-grasp bench (track G, roadmap IG.1-IG.2): the friction expert's first attempt on each arm, scored per arm
 as acquired / held / placed / released plus anchor drift (definitions in isaac/grasp_metrics.py).
 
 Each episode is the Isaac half fold on the "lehome" profile (friction grasp, CPU device) driven by the pipeline's
@@ -55,7 +55,7 @@ def print_summary(s):
     print(f"n = {s['n']}  reasons {s['reasons']}")
     for p, st in s["arms"].items():
         cells = "  ".join(f"{m} {st[m]['k']}/{st[m]['n']} [{st[m]['wilson'][0]}, {st[m]['wilson'][1]}]"
-                          for m in ("acquired", "held", "placed", "released"))
+                          for m in ("acquired", "held", "placed", "released", "released_strict"))
         print(f"  {p:7s} {cells}  drift mean {st['anchor_drift_m']['mean']} max {st['anchor_drift_m']['max']}"
               f"  first failure {st['first_failure']}")
 

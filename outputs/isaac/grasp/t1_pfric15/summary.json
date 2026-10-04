@@ -60,6 +60,15 @@
      23.6
     ]
    },
+   "released_strict": {
+    "k": 1,
+    "n": 20,
+    "rate": 5.0,
+    "wilson": [
+     0.9,
+     23.6
+    ]
+   },
    "anchor_drift_m": {
     "mean": 0.0081,
     "max": 0.0175
@@ -98,6 +107,15 @@
     ]
    },
    "released": {
+    "k": 0,
+    "n": 20,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     16.1
+    ]
+   },
+   "released_strict": {
     "k": 0,
     "n": 20,
     "rate": 0.0,

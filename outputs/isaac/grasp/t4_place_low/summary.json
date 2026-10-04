@@ -52,6 +52,15 @@
     ]
    },
    "released": {
+    "k": 19,
+    "n": 20,
+    "rate": 95.0,
+    "wilson": [
+     76.4,
+     99.1
+    ]
+   },
+   "released_strict": {
     "k": 5,
     "n": 20,
     "rate": 25.0,
@@ -65,7 +74,6 @@
     "max": 0.0508
    },
    "first_failure": {
-    "released": 4,
     "placed": 10,
     "held": 1
    }
@@ -99,6 +107,15 @@
     ]
    },
    "released": {
+    "k": 14,
+    "n": 20,
+    "rate": 70.0,
+    "wilson": [
+     48.1,
+     85.5
+    ]
+   },
+   "released_strict": {
     "k": 2,
     "n": 20,
     "rate": 10.0,
@@ -113,7 +130,6 @@
    },
    "first_failure": {
     "placed": 10,
-    "released": 2,
     "held": 6
    }
   }
