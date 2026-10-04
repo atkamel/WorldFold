@@ -80,10 +80,14 @@ def run(args):
     from imitation.tasks.half_fold import HalfFoldEnv
     from imitation.isaac_runtime import ISAAC_CLOTH_JITTER
     from isaac.isaac_env import IsaacClothFoldEnv
-    from isaac.fold_expert import IsaacArmExpert
+    from isaac.fold_expert import OVERSHOOT_FRICTION, IsaacArmExpert
     from imitation.teachers.scripted import ScriptedTeacher
 
     qfe.MAX_RETRIES = 0
+    if args.overshoot:                       # stage-0 placement offsets, a candidate (fold_expert.OVERSHOOT_FRICTION)
+        lx, ly, rx, ry = (float(v) for v in args.overshoot.split(","))
+        OVERSHOOT_FRICTION[(0, "left_")][:] = (lx, ly, 0.0)
+        OVERSHOOT_FRICTION[(0, "right_")][:] = (rx, ry, 0.0)
     knobs = parse_kv(args.knobs)
     expert_over = parse_kv(args.expert)
     for k, v in expert_over.items():
@@ -99,6 +103,7 @@ def run(args):
     config = {"knobs": base.grasp_knobs, "expert": {k: getattr(IsaacArmExpert, k) for k in
                                                     ("PINCH_HEIGHT", "PINCH_INSET", "PLACE_HEIGHT", "ARC_HEIGHT",
                                                      "CLOSE_DWELL", "OPEN_DWELL")},
+              "overshoot": {f"{s}{p}": np.round(v, 4).tolist() for (s, p), v in OVERSHOOT_FRICTION.items() if s == 0},
               "code": str(Path(__file__).resolve())}
     print("CONFIG", json.dumps(config), flush=True)
 
@@ -159,6 +164,7 @@ def main():
     ap.add_argument("--out", help="output directory (absolute when cwd is another checkout)")
     ap.add_argument("--knobs", default=None, help="k=v,..., isaac_env.FRICTION_GRASP overrides (gripper_drive.stiffness=50)")
     ap.add_argument("--expert", default=None, help="k=v,..., IsaacArmExpert class-attribute overrides")
+    ap.add_argument("--overshoot", default=None, help="stage-0 'lx,ly,rx,ry' (m) placement offsets")
     ap.add_argument("--summarize", default=None, help="only summarize this output directory (no Isaac)")
     ap.add_argument("--rescore", action="store_true", help="with --summarize: recompute flags from the traces")
     args = ap.parse_args()

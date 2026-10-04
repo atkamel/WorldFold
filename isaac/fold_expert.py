@@ -26,6 +26,10 @@ OPEN_DWELL = 6               # ("arc", 1.0, 6)
 LIFT_WAYPOINTS = 3           # the first arc waypoints count as "lift" (phase groups for the teacher)
 ABOVE = 0.04                 # pre-pinch height above the pinch point
 RETREAT = 0.05
+# per (stage, arm): metres past the goal to place at, the friction grasp's measured spring-back (cf.
+# cloth_fold_rl.quarter_fold_expert.OVERSHOOT on MuJoCo, isaac.weld_expert.OVERSHOOT_ISAAC on the weld profile).
+# Zero until calibrated (track G, IG.2).
+OVERSHOOT_FRICTION = {key: np.zeros(3) for key in ((0, "left_"), (0, "right_"), (1, "left_"), (1, "right_"))}
 
 
 class IsaacArmExpert:

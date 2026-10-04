@@ -82,8 +82,9 @@ PROFILES = {
 # cloth against every rigid body (table and jaws alike; LeHome 0.5). pad_friction / pad_thickness: the finger lining
 # (PAD_LINING_*). gripper_drive: {ImplicitActuatorCfg field: value} for the gripper actuator only (LeHome kp 17.8,
 # kd 0.6, 10 N m). gripper_closed: the closed jaw target (rad, GRIPPER_CLOSED; the joint's limit is -0.1745).
+# jaw_open_rate: opening moves the jaw target at most this many rad per control step (None: straight to GRIPPER_OPEN)
 FRICTION_GRASP          = {"particle_friction": None, "pad_friction": None, "pad_thickness": None,
-                           "gripper_drive": None, "gripper_closed": None}
+                           "gripper_drive": None, "gripper_closed": None, "jaw_open_rate": None}
 PROFILES["lehome"]["friction_grasp"] = FRICTION_GRASP
 DR_RANGE                = (0.7, 1.3)          # mujuco/sim_main.py reset
 CLOTH_SPEED_LIMIT       = 20.0                # m/s; replaces MuJoCo's qacc explosion check
@@ -477,7 +478,11 @@ class IsaacClothFoldEnv(gym.Env):
             self._gripper_closed[prefix] = True
         elif command > 0.3:
             self._gripper_closed[prefix] = False
-        self._joint_targets[prefix][5] = self._closed_q if self._gripper_closed[prefix] else GRIPPER_OPEN
+        target = self._closed_q if self._gripper_closed[prefix] else GRIPPER_OPEN
+        rate = self.grasp_knobs.get("jaw_open_rate")
+        if rate and self.grasp_mode == "friction" and not self._gripper_closed[prefix]:
+            target = min(target, self._joint_targets[prefix][5] + float(rate))     # open gradually (track G)
+        self._joint_targets[prefix][5] = target
         if self.grasp_mode == "weld":
             if self._gripper_closed[prefix]:
                 self._try_weld(prefix)

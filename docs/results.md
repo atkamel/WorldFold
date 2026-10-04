@@ -1124,6 +1124,7 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
 | 2 | pinch inset 5 → 15 mm (expert) | 17 / 7 | **1 / 0** | 0 / 0 | 0 / 0 | 23.5 / 6.2 cm | rejected |
 | 3 | closed jaw target −0.1 → +0.05 rad | 20 / 20 | **20 / 14** | 9 / 8 | 2 / 1 | 4.3 / 5.1 cm | **kept** (new parent) |
 | 4 | #3 + place height 1.1 → −1.0 cm (expert) | 20 / 20 | 19 / 14 | 9 / 5 | 5 / 2 | 5.1 / 28.0 cm | not kept |
+| 5 | closed jaw target +0.05 → +0.08 rad | 20 / 19 | **0 / 0** | 0 / 0 | 0 / 0 | 5.4 / 11.9 cm | rejected |
 
 - **#1:** the higher friction fixes the right arm's pinch (acquired 20/20 [83.9, 100] vs 11/20 [34.2, 74.2]), and the
   cloth barely slides on the table (anchor drift mean 0.8 / 1.4 cm). But it loses the carry on both arms: held
@@ -1144,6 +1145,9 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
 - **#4:** the place target 2.1 cm lower didn't move the site down meaningfully, and releases stayed within noise:
   5/20 [11.2, 46.9] and 2/20 [2.8, 30.1]. Right-arm placement fell to 5/20 [11.2, 46.9], and one episode dragged the
   cloth (right anchor 28 cm). Not kept.
+- **#5 (sweep around #3):** +0.08 rad lifts every corner (acquired 20/20, 19/20), but no corner is held through the
+  carry: held 0/20 [0, 16.1] on both arms. The working window of the closed target is narrow. −0.1 squeezes the
+  cloth out, +0.08 pinches too lightly, and +0.05 holds.
 
 Artifacts: `outputs/isaac/grasp/t{1..4}_*/{rows.jsonl,summary.json,bench.log}`.
 

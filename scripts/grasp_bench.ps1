@@ -7,6 +7,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Out,
     [string]$Knobs = "",
     [string]$Expert = "",
+    [string]$Overshoot = "",
     [string]$Main = "C:\Users\ethan\Documents\Projects\watai\WorldFold"
 )
 $ErrorActionPreference = "Stop"
@@ -23,6 +24,7 @@ $script = Join-Path $code "isaac\grasp_bench.py"
 $cmd = "`"$py`" -u `"$script`" --seeds $Seeds --out `"$outAbs`""
 if ($Knobs) { $cmd += " --knobs $Knobs" }        # k=v,... (no spaces, no quotes)
 if ($Expert) { $cmd += " --expert $Expert" }
+if ($Overshoot) { $cmd += " --overshoot=$Overshoot" }   # lx,ly,rx,ry; "=" so a leading minus is not an option
 Add-Content -Encoding utf8 $log "== $(Get-Date -Format s) $cmd"
 Push-Location $Main
 try {
