@@ -1070,3 +1070,6 @@ Artifacts: `outputs/isaac/overshoot/*.json`, `outputs/isaac/weld_mass_{10,100}/`
 - W3 is **not met** on recovery. It stays open, pending a decision (status.md).
 
 Artifacts: `outputs/imitation/isaac_weld/w3/eval_expert_{id_easy,id_hard,recovery}.json` and their logs.
+
+**W3 decision (2026-10-03, user):** recovery 81/100 is accepted as the Isaac expert's recovery ceiling, and W4 runs
+on this expert. `verify W3` records the bar as 80, with the planned 90 noted. id_easy and id_hard meet their bars.

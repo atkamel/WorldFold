@@ -200,7 +200,7 @@ Added 2026-10-03.
 |---|---|---|---|
 | W1 | Weld grasp in Isaac (`grasp_mode="weld"`): MuJoCo semantics, particle patch pinned each substep | weld_check: tracking < 3 mm while lifted/carried, release drops, mask and hysteresis honoured | ✅ 2026-10-03: GPU pipeline (zero-mass pins); lift 1.92 mm, carry 2.42 mm |
 | W2 | MuJoCo profile: cloth (0,0) ±2.5 cm, no tilt, arm drives kp ≈ 998 / kv ≈ 2.73, dynamics DR ×U(0.7,1.3), cap 250, MuJoCo eval sets | FoldExpert waypoints on MuJoCo poses (n = 200 per set) reachable at parity with MuJoCo's own arm (≤ 5 pp gap; id_easy 200/200); arm reaches ≥ 90% of a 0.05 rad step in one control step; DR deterministic per seed and read back from the solver | ✅ 2026-10-03: reach 200/200 and 122/200 vs MuJoCo 200/130 (gap 4.0 pp); profile 9/9 |
-| W3 | MuJoCo FoldExpert on Isaac (backend split, MuJoCo byte-identical), overshoot re-measured | expert gate n = 100: id_easy ≥ 95, id_hard ≥ 90, recovery ≥ 90 | ☐ |
+| W3 | MuJoCo FoldExpert on Isaac (backend split, MuJoCo byte-identical), overshoot re-measured | expert gate n = 100: id_easy ≥ 95, id_hard ≥ 90, recovery ≥ 90 | ✅ 2026-10-03 with an accepted exception: 100 / 100 / **81** (recovery below 90, accepted by decision as the Isaac ceiling) |
 | W4 | Pilot on the weld baseline (as I3.2) | artifacts valid; diffusion id_easy Wilson LB > 0 | ☐ |
 | W5 | Full keepers retrain at MuJoCo scale (`isaac_v1_weld`, BC ×2 seeds, sweep, DAgger, vision, detector, demos, report) | n = 200 × 3, Wilson, SE rules; MuJoCo-vs-Isaac side-by-side | ☐ |
 ## Phase 6 — Language-conditioned folds and the VLA  *(ref. milestone 3, reframed)*

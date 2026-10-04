@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-03 · **Branch:** `feature/isaac-imitation` · **Phase:** W (weld baseline on Isaac): W1 ✅ W2 ✅ W3 gate 100/100/81 (recovery below 90) → track G (friction grasp) in a separate session
+**Updated:** 2026-10-03 · **Branch:** `feature/isaac-imitation` · **Phase:** W (weld baseline on Isaac): W1 ✅ W2 ✅ W3 ✅* (recovery 81 accepted) → W4 running; track G (friction grasp) in a separate session
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,18 +41,10 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**Phase W, W3: the expert gate is met on id_easy and id_hard, not on recovery. Decision needed.**
-- MuJoCo's FoldExpert runs on Isaac (`isaac.weld_expert.IsaacFoldExpert`), and MuJoCo stays byte-identical.
-- The weld was calibrated to MuJoCo's: soft, mass ×10, world-axis offsets, jaws held open. Measured overshoot is
-  < 5 mm.
-- Gate at n = 100: id_easy 100, id_hard 100, recovery **81** (bar 90; MuJoCo 96).
-- Recovery failures are knocks that release the weld mid-carry. The re-grasp and up to 2 retries then run out the
-  250-step cap.
-- Options:
-  1. Keep iterating on recovery. Candidates: a longer episode cap for isaac_weld, retry tuning, the re-grasp
-     offset.
-  2. Accept 81% as the Isaac expert's recovery ceiling and run the W4 pilot (`scripts/isaac_pilot.ps1 -Backend
-     isaac_weld`, ready).
+**Phase W, W4: pilot on the weld baseline** (`scripts/isaac_pilot.ps1 -Backend isaac_weld`, running).
+- W3 ✅ with an accepted exception: the expert gate is 100 / 100 / 81. Recovery 81 is accepted as the Isaac ceiling
+  (user decision 2026-10-03; planned bar 90, MuJoCo 96).
+- W4's exit: every artifact valid, and diffusion id_easy with Wilson lower bound > 0.
 - **Track G:** friction-grasp work (IG.1–IG.3) runs in parallel in a separate session on
   `feature/isaac-grasp`, with `WORLDFOLD_N_ISAAC=1`.
 - **Compute:** at most 3 Isaac processes at once (W 2 + G 1).
@@ -143,6 +135,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-03 · **W3 closed with an accepted exception.** Recovery 81 accepted by the user; the W3 verifier bar is set to 80 with the decision recorded; W4 pilot launched · (this commit)
 
 - 2026-10-03 · **W3 gate run: 100 / 100 / 81 (recovery below its 90 bar).**
   - The weld is calibrated to MuJoCo's on the same script: soft (τ 0.02 s, mass ×10), world-axis offsets, table

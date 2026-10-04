@@ -417,10 +417,12 @@ def _w2() -> Result:
     return Result("W2", "PASS" if ok else "FAIL", ev)
 
 
-W3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "recovery": 90.0}    # MuJoCo's M1.7 ceilings were 100 / 97 / 96
+# MuJoCo's M1.7 ceilings were 100 / 97 / 96. Recovery was planned at 90; the Isaac expert reached 81 and the user
+# accepted it as the Isaac recovery ceiling on 2026-10-03 (docs/results.md W3), so the bar recorded here is 80.
+W3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "recovery": 80.0}
 
 
-@check("W3", "MuJoCo's expert on Isaac (isaac_weld): gate n >= 100 id_easy >= 95, id_hard >= 90, recovery >= 90; MuJoCo expert byte-identical")
+@check("W3", "MuJoCo's expert on Isaac (isaac_weld): gate n >= 100 id_easy >= 95, id_hard >= 90, recovery >= 80 (accepted, planned 90); MuJoCo expert byte-identical")
 def _w3() -> Result:
     ev, ok = [], True
     for s, bar in W3_GATE.items():
