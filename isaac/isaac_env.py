@@ -13,6 +13,8 @@ import time
 import numpy as np
 import gymnasium as gym
 
+from imitation.lockstep import BatchBase
+
 from mujuco.cloth_params import (
     CLOTH_COUNT, CLOTH_SPACING, CLOTH_MASS, ARM_JOINTS, GRIPPER_OPEN, GRIPPER_CLOSED, JOINT_DELTA_SCALE,
     GRASP_CORNERS, GRASP_RADIUS, HOLD_STEPS, SETTLE_STEPS, ARM_TIMESTEP, WORKSPACE_XY, SUCCESS_FOLD_SCORE,
@@ -189,6 +191,34 @@ class IsaacClothFoldEnv(gym.Env):
     def __init__(self, control_dt=0.05, max_episode_steps=200, observation_mode="state", image_size=(84, 84),
                  camera_names=None, n_cloth_samples=9, n_tasks=4, grasp_corners=None, grasp_radius=GRASP_RADIUS,
                  headless=True, cameras=None, grasp_mode=None, device=None, profile="lehome"):
+        self._configure(control_dt, max_episode_steps, observation_mode, image_size, camera_names, n_cloth_samples,
+                        n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile)
+        self._attach(self._build_scene(1), 0)
+
+    def _build_scene(self, n_copies):
+        from isaac.lab_scene import SceneEnv, make_cfg
+        cfg = make_cfg(PHYSICS_DT, self.n_substeps, self.image_size if self._use_image else None, rig=self.rig,
+                       device=self.sim_device, arm_drive=self._prof["arm_drive"], n_copies=n_copies)
+        lab = SceneEnv(cfg, self._prof["cloth_center"])
+        lab.weld_tau = self._prof["weld_tau"]
+        lab.weld_mass = WELD_MASS
+        return lab
+
+    def _attach(self, lab, c):
+        """Bind this env to copy c of the scene (milestone V; a standalone env is copy 0 of its own scene)."""
+        self.lab = lab
+        self._copy = c
+        self._cp = lab.copies[c]
+        self._origin = self._cp.offset if c else None    # copy frame -> world (None: they coincide)
+        self.arms = self._cp.arms
+        left = self.arms["left_"]
+        self._dof_limits = _npy(left.data.soft_joint_pos_limits[0, self._cp.joint_ids["left_"]])   # (6, 2), both arms
+        self._particles = self._cp.cloth_rest.copy() if not c else self._cp.cloth_rest - self._origin
+        self._kit_ticked = time.time()
+        self._particle_vel = np.zeros_like(self._particles)
+
+    def _configure(self, control_dt, max_episode_steps, observation_mode, image_size, camera_names, n_cloth_samples,
+                   n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile):
         # profile: a PROFILES key; grasp_mode and device default to the profile's
         # device: "cpu" (LeHome's choice: on the CUDA device the grippers pass through the cloth) or "cuda:0", whose
         # particle tensor view the weld grasp needs to pin particles exactly (zero mass + set positions, Phase W)
@@ -220,7 +250,6 @@ class IsaacClothFoldEnv(gym.Env):
         self.sim_device = device
         start_app(headless, cameras=self._use_image or bool(self.rig), device=device)
         import torch
-        from isaac.lab_scene import SceneEnv, make_cfg
         self._torch = torch
 
         self.control_dt = control_dt
@@ -259,18 +288,6 @@ class IsaacClothFoldEnv(gym.Env):
         self._grid = grid_particles(CLOTH_SUBDIV)
         self.weld_mask = {p: None for p in self.prefixes}
 
-        cfg = make_cfg(PHYSICS_DT, self.n_substeps, image_size if self._use_image else None, rig=self.rig, device=device,
-                       arm_drive=self._prof["arm_drive"])
-        self.lab = SceneEnv(cfg, self._prof["cloth_center"])
-        self.lab.weld_tau = self._prof["weld_tau"]
-        self.lab.weld_mass = WELD_MASS
-        self.arms = self.lab.arms
-        left = self.arms["left_"]
-        self._dof_limits = _npy(left.data.soft_joint_pos_limits[0, self.lab.joint_ids["left_"]])   # (6, 2), both arms
-        self._particles = self.lab.cloth_rest.copy()
-        self._kit_ticked = time.time()
-        self._particle_vel = np.zeros_like(self._particles)
-
         self._joint_targets = {p: self._home() for p in self.prefixes}
         self._gripper_closed = {p: False for p in self.prefixes}
         self._step_count = 0
@@ -290,7 +307,7 @@ class IsaacClothFoldEnv(gym.Env):
     # ---- state readers ----
     def _refresh_cloth(self):
         # particle velocities as the mean over the last control step (the CPU device has no particle velocity view)
-        positions = self.lab.particle_positions()
+        positions = self.lab.particle_positions(self._copy)
         self._particle_vel = (positions - self._particles) / self.control_dt
         self._particles = positions
 
@@ -309,8 +326,11 @@ class IsaacClothFoldEnv(gym.Env):
 
     def _gripper_link(self, prefix):
         data = self.arms[prefix].data
-        b = self.lab.gripper_body[prefix]
-        return data, b, _npy(data.body_link_pos_w[0, b]), _matrix_from_quat(_npy(data.body_link_quat_w[0, b]))
+        b = self._cp.gripper_body[prefix]
+        link_pos = _npy(data.body_link_pos_w[0, b])
+        if self._origin is not None:        # copy frame (milestone V); copy 0's is the world
+            link_pos = link_pos - self._origin
+        return data, b, link_pos, _matrix_from_quat(_npy(data.body_link_quat_w[0, b]))
 
     def gripper_pose(self, prefix):
         # gripperframe site = gripper link pose composed with the site offset. The quaternion goes through a
@@ -331,10 +351,10 @@ class IsaacClothFoldEnv(gym.Env):
         return self.gripper_pose(prefix)[0]
 
     def joint_positions(self, prefix):
-        return _npy(self.arms[prefix].data.joint_pos[0, self.lab.joint_ids[prefix]])
+        return _npy(self.arms[prefix].data.joint_pos[0, self._cp.joint_ids[prefix]])
 
     def joint_velocities(self, prefix):
-        return _npy(self.arms[prefix].data.joint_vel[0, self.lab.joint_ids[prefix]])
+        return _npy(self.arms[prefix].data.joint_vel[0, self._cp.joint_ids[prefix]])
 
     def grasp_active(self, prefix):
         if self.grasp_mode == "weld":
@@ -491,13 +511,18 @@ class IsaacClothFoldEnv(gym.Env):
             self._push_pins()
 
     def _push_pins(self):
-        self.lab.pins = {p: (np.concatenate([v[0] for v in pins.values()]).astype(np.int64),
+        self._cp.pins = {p: (np.concatenate([v[0] for v in pins.values()]).astype(np.int64),
                              np.concatenate([v[1] for v in pins.values()]))
                          for p, pins in self._pinned.items() if pins}
-        self.lab.set_pinned_masses()
+        self.lab.set_pinned_masses(self._copy)
 
     def _advance(self):
         # one control step: the scene holds both arms' joint targets for n_substeps physics steps
+        self._submit_targets()
+        self._physics()
+        self._refresh_cloth()
+
+    def _targets(self):
         targets = np.concatenate([self._joint_targets["left_"], self._joint_targets["right_"]])[None, :]
         if self.grasp_mode == "weld":
             # the weld holds the cloth, not the jaws, so they stay open (the observation keeps the commanded target).
@@ -505,7 +530,21 @@ class IsaacClothFoldEnv(gym.Env):
             # 9 cm (W3 trace, worse with the friction DR high); MuJoCo's 3 cm flex grid seldom catches a jaw, the
             # 3 mm particle cloth always does
             targets[0, [5, 11]] = GRIPPER_OPEN
-        self.lab.step(self._torch.as_tensor(targets, dtype=self._torch.float32, device=self.lab.device))
+        return self._torch.as_tensor(targets, dtype=self._torch.float32, device=self.lab.device)
+
+    # The hooks a batched sub-env (IsaacSubEnv) overrides: where targets go (_submit_targets), who steps physics
+    # (_physics), how the scene is reset (_reset_scene) and which thread runs USD-writing scene calls (_scene_call).
+    def _submit_targets(self):
+        self._pending_targets = self._targets()
+
+    def _scene_call(self, fn, *args):
+        return fn(*args)
+
+    def _reset_scene(self):
+        self.lab.reset()
+
+    def _physics(self):
+        self.lab.step(self._pending_targets)
         if not self._use_image and time.time() - self._kit_ticked > KIT_TICK_PERIOD_S:
             # state mode only steps physics, which never ticks Kit's main loop, and Kit's hang detector aborts the app
             # after 120 s without a tick. Tick it the way IsaacLab's SimulationContext.render does when it renders
@@ -514,12 +553,11 @@ class IsaacClothFoldEnv(gym.Env):
             _app.update()
             self.lab.sim.set_setting("/app/player/playSimulations", True)
             self._kit_ticked = time.time()
-        self._refresh_cloth()
 
     def render_rig(self):
         """The camera rig's latest frames, {name: uint8 [3, H, W]} (rendered once per control step)."""
         return {name: np.ascontiguousarray(np.transpose(_npy(cam.data.output["rgb"][0])[:, :, :3], (2, 0, 1)))
-                .astype(np.uint8) for name, cam in self.lab.rig_cameras.items()}
+                .astype(np.uint8) for name, cam in self._cp.rig_cameras.items()}
 
     def keep_alive(self):
         """Tick Kit without stepping physics, for a process that sits idle (e.g. a rollout worker waiting while
@@ -534,11 +572,11 @@ class IsaacClothFoldEnv(gym.Env):
         super().reset(seed=seed)
         opts = options or {}
         self._domain_params = {}
-        self.lab.reset()
+        self._reset_scene()
         self._pinned = {p: {} for p in self.prefixes}
-        self.lab.pins = {}
+        self._cp.pins = {}
         if self.grasp_mode == "weld":
-            self.lab.set_pinned_masses()
+            self.lab.set_pinned_masses(self._copy)
         for prefix in self.prefixes:
             self._gripper_closed[prefix] = False
             self._joint_targets[prefix] = self._home()
@@ -557,15 +595,16 @@ class IsaacClothFoldEnv(gym.Env):
             offset = pose[:2]
         tilt_deg = self._prof["drop_tilt_deg"]
         tilt = self.np_random.uniform(-tilt_deg, tilt_deg, size=2) if tilt_deg else np.zeros(2)
-        self.lab.reset_cloth(offset, self._prof["drop_height"], (tilt[0], tilt[1], 0.0))
-        self._particles = self.lab.particle_positions()
+        self._scene_call(self.lab.reset_cloth, offset, self._prof["drop_height"], (tilt[0], tilt[1], 0.0),
+                         self._copy)
+        self._particles = self.lab.particle_positions(self._copy)
         self._particle_vel = np.zeros_like(self._particles)
 
         for k in range(self.settle_steps):
             self._advance()
             if k == 0 and scales is not None:
                 # after the first step: the soft reset's USD writes are parsed there and restore the spawned masses
-                self.lab.set_dynamics(*scales.values())
+                self._scene_call(self.lab.set_dynamics, *scales.values(), self._copy)
 
         self._task_id = int(opts.get("task", self.np_random.integers(self.n_tasks)))
         corners0 = self.corner_positions().copy()
@@ -588,6 +627,12 @@ class IsaacClothFoldEnv(gym.Env):
         return self._get_obs(), info
 
     def step(self, action):
+        self.step_submit(action)
+        self._physics()
+        return self.step_collect()
+
+    def step_submit(self, action):
+        """step() up to the physics: the action becomes this env's joint targets (and weld changes)."""
         raw = np.asarray(action, dtype=np.float32).reshape(14)
         clipped = np.clip(raw, -1.0, 1.0)
         self._action_clipped = bool(np.any(raw != clipped))
@@ -596,8 +641,11 @@ class IsaacClothFoldEnv(gym.Env):
         self.set_gripper("right_", float(clipped[13]))
         self.apply_joint_delta("left_", clipped[0:5])
         self.apply_joint_delta("right_", clipped[7:12])
-        self._advance()
+        self._submit_targets()
 
+    def step_collect(self):
+        """step() after the physics: read the cloth, score, terminate, observe."""
+        self._refresh_cloth()
         self._step_count += 1
         reward, terms = self._reward()
         self._success_steps = self._success_steps + 1 if self._fold_score() >= SUCCESS_FOLD_SCORE else 0
@@ -609,6 +657,93 @@ class IsaacClothFoldEnv(gym.Env):
         terminated = reason is not None
         truncated = (not terminated) and self._step_count >= self.max_episode_steps
         return self._get_obs(), reward, terminated, truncated, self._step_info(terms, reason)
+
+    def close(self):
+        self.lab.close()
+        if _app is not None:
+            _app.close()
+
+
+# ---- milestone V: several envs in one scene ----
+
+class IsaacSubEnv(IsaacClothFoldEnv):
+    """Env i of an IsaacClothFoldBatch: an IsaacClothFoldEnv (same API, attributes and per-env state) bound to copy i
+    of the batch's scene, reading everything in that copy's frame. Physics advances only through the batch:
+    each control step it needs is `batch.sync(i)`; its reset touches only its own copy."""
+
+    def __init__(self, batch, index, **kwargs):
+        self._batch = batch
+        self._configure_kwargs(**kwargs)
+        self._attach(batch.lab, index)
+
+    def _configure_kwargs(self, control_dt=0.05, max_episode_steps=200, observation_mode="state", image_size=(84, 84),
+                          camera_names=None, n_cloth_samples=9, n_tasks=4, grasp_corners=None,
+                          grasp_radius=GRASP_RADIUS, headless=True, cameras=None, grasp_mode=None, device=None,
+                          profile="lehome"):
+        self._configure(control_dt, max_episode_steps, observation_mode, image_size, camera_names, n_cloth_samples,
+                        n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile)
+
+    def _submit_targets(self):
+        self.lab.set_copy_targets(self._copy, self._targets())
+
+    def _physics(self):
+        self._batch.sync(self._copy)
+
+    def _scene_call(self, fn, *args):
+        return self._batch.on_main(fn, *args)
+
+    def _reset_scene(self):
+        self._batch.on_main(self.lab.reset_copy, self._copy)
+
+    def park(self):
+        """Put this copy's cloth back flat on its table and its arms at HOME, without stepping: an episode that
+        ended with the cloth blown up must not leave it drifting while the other copies keep stepping."""
+        self._pinned = {p: {} for p in self.prefixes}
+        self._joint_targets = {p: self._home() for p in self.prefixes}
+        self._gripper_closed = {p: False for p in self.prefixes}
+        self._batch.on_main(self.lab.reset_copy, self._copy)
+        self._batch.on_main(self.lab.reset_cloth, np.zeros(2), self._prof["drop_height"], (0.0, 0.0, 0.0), self._copy)
+        self.lab.set_pinned_masses(self._copy)
+        self._submit_targets()
+
+    def keep_alive(self):
+        self._batch.on_main(self._batch.keep_alive)
+
+    def close(self):
+        """The scene is the batch's: closing one view closes nothing."""
+
+
+class IsaacClothFoldBatch(BatchBase):
+    """n IsaacClothFoldEnvs in ONE Isaac scene (milestone V; GPU weld profile): `envs[i]` is an IsaacSubEnv on copy i
+    of a SceneEnv(n_copies=n). `advance()` is one control step of every copy, each holding the joint targets its
+    sub-env last submitted. Without a scheduler every `sync(i)` advances at once; a rollout worker attaches an
+    imitation.lockstep.Lockstep, which advances once every sub-env with an episode in flight is waiting.
+    Kwargs are IsaacClothFoldEnv's. Design: docs/superpowers/specs/2026-10-04-isaac-vec-design.md."""
+
+    def __init__(self, n, **kwargs):
+        proto = IsaacClothFoldEnv.__new__(IsaacClothFoldEnv)
+        IsaacSubEnv._configure_kwargs(proto, **kwargs)
+        if n > 1 and proto.sim_device == "cpu":
+            raise ValueError("several envs per scene need the GPU pipeline (device='cuda:0')")
+        self.n = n
+        self.lab = proto._build_scene(n)
+        self._use_image = proto._use_image
+        self._kit_ticked = time.time()
+        self.steps = 0
+        self.envs = [IsaacSubEnv(self, i, **kwargs) for i in range(n)]
+
+    def advance(self):
+        """One control step for every copy (n_substeps physics steps), then Kit's tick in state mode."""
+        self.lab.step(self.lab.targets.clone())
+        self.steps += 1
+        if not self._use_image and time.time() - self._kit_ticked > KIT_TICK_PERIOD_S:
+            self.keep_alive()
+
+    def keep_alive(self):
+        self.lab.sim.set_setting("/app/player/playSimulations", False)
+        _app.update()
+        self.lab.sim.set_setting("/app/player/playSimulations", True)
+        self._kit_ticked = time.time()
 
     def close(self):
         self.lab.close()

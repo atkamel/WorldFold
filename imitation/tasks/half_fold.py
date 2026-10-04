@@ -114,3 +114,23 @@ def make_env(backend="mujoco", **kwargs):
                                              profile=ISAAC_PROFILES[backend])
         return HalfFoldEnv(**kwargs)
     raise ValueError(f"backend must be one of {BACKENDS}, got {backend!r}")
+
+
+def make_env_batch(backend="isaac_weld", n=1, **kwargs):
+    """n half-fold envs sharing one Isaac scene (milestone V): -> (batch, [HalfFoldEnv over sub-env i]).
+
+    Each env is built exactly as make_env(backend, **kwargs) builds one, except that its base env is
+    sub-env i of an isaac.isaac_env.IsaacClothFoldBatch; physics advances only through the batch (see
+    imitation/lockstep.py). Only the GPU weld profile (isaac_weld) is vectorised."""
+    if backend != "isaac_weld":
+        raise ValueError(f"only isaac_weld runs several envs per process, got {backend!r}")
+    from cloth_fold_rl.fold_env import CLOTH_JITTER
+    from imitation.isaac_runtime import ISAAC_PROFILES, make_isaac_batch
+    kwargs.setdefault("max_episode_steps", HALF_FOLD_MAX_STEPS)
+    kwargs.setdefault("cloth_jitter", CLOTH_JITTER)
+    cameras = None
+    if kwargs.get("obs_mode", "state") == "dict":
+        from imitation.vision.render import CAMERAS
+        cameras = kwargs.get("cameras") or CAMERAS
+    batch = make_isaac_batch(n, kwargs["max_episode_steps"], cameras=cameras, profile=ISAAC_PROFILES[backend])
+    return batch, [HalfFoldEnv(**dict(kwargs, base_env=sub)) for sub in batch.envs]
