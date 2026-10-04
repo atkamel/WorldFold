@@ -1,0 +1,142 @@
+{
+ "n": 20,
+ "seeds": [
+  600000,
+  600001,
+  600002,
+  600003,
+  600004,
+  600005,
+  600006,
+  600007,
+  600008,
+  600009,
+  600010,
+  600011,
+  600012,
+  600013,
+  600014,
+  600015,
+  600016,
+  600017,
+  600018,
+  600019
+ ],
+ "arms": {
+  "left_": {
+   "acquired": {
+    "k": 20,
+    "n": 20,
+    "rate": 100.0,
+    "wilson": [
+     83.9,
+     100.0
+    ]
+   },
+   "held": {
+    "k": 20,
+    "n": 20,
+    "rate": 100.0,
+    "wilson": [
+     83.9,
+     100.0
+    ]
+   },
+   "placed": {
+    "k": 9,
+    "n": 20,
+    "rate": 45.0,
+    "wilson": [
+     25.8,
+     65.8
+    ]
+   },
+   "released": {
+    "k": 2,
+    "n": 20,
+    "rate": 10.0,
+    "wilson": [
+     2.8,
+     30.1
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.0347,
+    "max": 0.0432
+   },
+   "first_failure": {
+    "released": 7,
+    "placed": 11
+   }
+  },
+  "right_": {
+   "acquired": {
+    "k": 20,
+    "n": 20,
+    "rate": 100.0,
+    "wilson": [
+     83.9,
+     100.0
+    ]
+   },
+   "held": {
+    "k": 14,
+    "n": 20,
+    "rate": 70.0,
+    "wilson": [
+     48.1,
+     85.5
+    ]
+   },
+   "placed": {
+    "k": 8,
+    "n": 20,
+    "rate": 40.0,
+    "wilson": [
+     21.9,
+     61.3
+    ]
+   },
+   "released": {
+    "k": 1,
+    "n": 20,
+    "rate": 5.0,
+    "wilson": [
+     0.9,
+     23.6
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.0386,
+    "max": 0.0509
+   },
+   "first_failure": {
+    "released": 4,
+    "held": 6,
+    "placed": 9
+   }
+  }
+ },
+ "config": {
+  "knobs": {
+   "particle_friction": null,
+   "pad_friction": null,
+   "pad_thickness": null,
+   "gripper_drive": null,
+   "gripper_closed": 0.05
+  },
+  "expert": {
+   "PINCH_HEIGHT": 0.01,
+   "PINCH_INSET": 0.005,
+   "PLACE_HEIGHT": 0.011,
+   "ARC_HEIGHT": 0.12,
+   "CLOSE_DWELL": 8,
+   "OPEN_DWELL": 6
+  },
+  "code": "C:\\Users\\ethan\\Documents\\Projects\\watai\\WorldFold\\.claude\\worktrees\\agent-a55d8fa30a92a92f8\\isaac\\grasp_bench.py"
+ },
+ "reasons": {
+  "success": 3,
+  "bench_stop": 17
+ }
+}

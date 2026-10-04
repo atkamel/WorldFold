@@ -136,6 +136,13 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-04 · **track G · IG.2 in progress (4 attempts, n = 20 each on tune 600000–19).**
+  - Kept: the closed jaw target −0.1 → +0.05 rad, since at −0.1 the jaw overlaps the fixed pad and squeezes the
+    cloth out. Held left 20/20 [83.9, 100], right 14/20 [48.1, 85.5] (baseline 18 / 1).
+  - Rejected: particle friction 1.5 (held 2 / 0), pinch inset 15 mm (1 / 0), place height −1 cm (no gain).
+  - Open: release and placement (released 2/20 and 1/20). The corner is let go about 6 cm up and falls 3–5 cm outward.
+  - Weld regression: `test_isaac_weld` + `test_isaac_profile` 17/17 in .venv-isaac. Tests: 172 fast pass (4 skipped) · (this commit)
+
 - 2026-10-03 · **track G · IG.1 ✅ friction-grasp bench + baseline** (branch `feature/isaac-grasp`).
   - `isaac/grasp_bench.py` (resumable, per-step traces) + sim-free `isaac/grasp_metrics.py`; `scripts/grasp_bench.ps1`.
   - Opt-in friction knobs on the "lehome" profile only (`isaac_env.FRICTION_GRASP`, all None = as built); the

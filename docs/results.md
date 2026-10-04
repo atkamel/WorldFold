@@ -1111,3 +1111,41 @@ LeHome gripper drive, closed target −0.1 rad; pinch inset 5 mm, pinch height 1
   n = 20 trial takes about 50 min and an n = 100 block about 4 h.
 
 Artifacts: `outputs/isaac/grasp/ig1_baseline/{rows.jsonl,summary.json,bench.log}` (traces regenerate, not committed).
+
+### IG.2 reliability loop — attempt log (2026-10-03, one knob per attempt)
+
+Each attempt changes one knob from the best config so far and runs the bench on tune seeds 600000–600019 (n = 20,
+paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its parent. Rates as left / right.
+
+| # | change (from parent) | acquired | held | placed | released | anchor drift max | verdict |
+|---|---|---|---|---|---|---|---|
+| 0 | IG.1 baseline (as built) | 20 / 11 | 18 / 1 | 14 / 0 | 12 / 0 | 5.0 / 7.5 cm | parent |
+| 1 | particle friction 0.5 → 1.5 | 20 / 20 | **2 / 0** | 3 / 5 | 1 / 0 | 1.8 / 6.0 cm | rejected |
+| 2 | pinch inset 5 → 15 mm (expert) | 17 / 7 | **1 / 0** | 0 / 0 | 0 / 0 | 23.5 / 6.2 cm | rejected |
+| 3 | closed jaw target −0.1 → +0.05 rad | 20 / 20 | **20 / 14** | 9 / 8 | 2 / 1 | 4.3 / 5.1 cm | **kept** (new parent) |
+| 4 | #3 + place height 1.1 → −1.0 cm (expert) | 20 / 20 | 19 / 14 | 9 / 5 | 5 / 2 | 5.1 / 28.0 cm | not kept |
+
+- **#1:** the higher friction fixes the right arm's pinch (acquired 20/20 [83.9, 100] vs 11/20 [34.2, 74.2]), and the
+  cloth barely slides on the table (anchor drift mean 0.8 / 1.4 cm). But it loses the carry on both arms: held
+  2/20 [2.8, 30.1] and 0/20 [0, 16.1]. The corner slides down out of the fingers near the top of the arc (steps
+  97–144). The particle material's friction is also the cloth–table friction, so the table now holds the rest of
+  the sheet and the arc pulls the corner out.
+
+- **#2:** a deeper bite (the fixed finger 15 mm in from the corner instead of 5) is worse on every flag: left held 1/20 [0.9, 23.6], right acquired 7/20 [18.1, 56.7]. One episode dragged the cloth (an arc that ran along the table). The pinch works best right at the edge.
+- **#3 (kept):**
+  - Why: at −0.1 rad the jaw passes through the fixed pad (the articulation doesn't collide its own adjacent links),
+    so the pads overlap and squeeze the particles out. At +0.05 the jaw stops short of the pad and pinches the cloth.
+  - Held: left 20/20 [83.9, 100] (was 18/20 [69.9, 97.2]); right 14/20 [48.1, 85.5] (was 1/20 [0.9, 23.6]).
+    Acquired is 20/20 on both arms. 3/20 episodes succeed, with retries off.
+  - What fails now is release and placement: placed 9/20 [25.8, 65.8] and 8/20 [21.9, 61.3], released 2/20 [2.8, 30.1]
+    and 1/20 [0.9, 23.6].
+  - The held corner rides about 3.6 cm above the fingertip, and the site stops about 2.4 cm above the table at place.
+    So the corner is let go about 6 cm up, and as the jaw opens it falls 3–5 cm outward (−y, away from the fold line).
+- **#4:** the place target 2.1 cm lower didn't move the site down meaningfully, and releases stayed within noise:
+  5/20 [11.2, 46.9] and 2/20 [2.8, 30.1]. Right-arm placement fell to 5/20 [11.2, 46.9], and one episode dragged the
+  cloth (right anchor 28 cm). Not kept.
+
+Artifacts: `outputs/isaac/grasp/t{1..4}_*/{rows.jsonl,summary.json,bench.log}`.
+
+Weld path unchanged by the opt-in knobs: `tests/imitation/test_isaac_weld.py` + `test_isaac_profile.py` in
+`.venv-isaac` on this branch, 17 passed (`outputs/isaac/grasp/weld_regression.log`).
