@@ -390,7 +390,7 @@ def _w1() -> Result:
 W2_REACH_PARITY_PP = 5.0     # Isaac may reach at most this many points fewer than MuJoCo's own arm, per set
 
 
-@check("W2", "MuJoCo profile on Isaac: expert waypoints reachable on MuJoCo poses at parity with MuJoCo's arm, arm >= 90% of a step in one control step, DR deterministic and applied")
+@check("W2", "weld profile on Isaac (MuJoCo setup carried over): expert waypoints reachable on MuJoCo poses at parity with MuJoCo's arm, arm >= 90% of a step in one control step, DR deterministic and applied")
 def _w2() -> Result:
     reach = ROOT / "outputs" / "isaac" / "reach_mujoco.json"
     ref = ROOT / "outputs" / "isaac" / "reach_mujoco_ref.json"

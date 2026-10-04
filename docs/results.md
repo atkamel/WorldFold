@@ -1073,3 +1073,29 @@ Artifacts: `outputs/imitation/isaac_weld/w3/eval_expert_{id_easy,id_hard,recover
 
 **W3 decision (2026-10-03, user):** recovery 81/100 is accepted as the Isaac expert's recovery ceiling, and W4 runs
 on this expert. `verify W3` records the bar as 80, with the planned 90 noted. id_easy and id_hard meet their bars.
+
+**Naming (2026-10-04):** the Isaac profile `"mujoco"` is renamed `"weld"`. It runs entirely in Isaac and only
+carries over the MuJoCo setup's settings. Earlier entries and artifacts above keep the old name. MuJoCo itself is
+now a frozen reference: no new MuJoCo runs (user decision).
+
+### W4 pilot on the weld baseline (2026-10-03/04) — PILOT, artifacts in `outputs/imitation/isaac_weld/pilot/`
+
+- **Collection:** `isaac_weld_pilot`, 80 episodes on the W3 expert (recovery 81 version). 76 succeeded (6,681 steps;
+  hash `667f6215`), 4 failures went to `isaac_weld_pilot_failures`. The Phase I pilot had 2/80 with the friction
+  grasp.
+- **Training:** chunk-MLP 5k steps; diffusion 5k steps; vision 3k steps at 128² main plus 64² wrist cameras; all
+  seed 0.
+
+| policy | set | n | success | Wilson 95% |
+|---|---|---|---|---|
+| chunk-MLP | id_easy | 20 | 19 | 76.4–99.1% |
+| chunk-MLP | recovery | 10 | 0 | 0–27.8% |
+| diffusion | id_easy | 20 | **20** | 83.9–100% |
+| diffusion | id_hard | 10 | 8 | 49.0–94.3% |
+| diffusion | recovery | 10 | 1 | 1.8–40.4% |
+| vision (replan 2) | id_easy | 10 | 10 | 72.2–100% |
+
+- W4's bar (diffusion id_easy Wilson lower bound > 0) is met. Recovery is weak from BC at this scale, as on MuJoCo,
+  which is what DAgger is for.
+- The DAgger round and the detector were cut off by the 2 h job limit and are pending.
+

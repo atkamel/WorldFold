@@ -58,7 +58,7 @@ LININGS = {"gripper": ((-0.017042, 0.000205, -0.073359), (0.997564, 0.0, -0.0697
 
 
 def _robot(prim_path, base_pos, drive=None):
-    """drive: {ImplicitActuatorCfg field: value} applied to every actuator group (the MuJoCo profile's
+    """drive: {ImplicitActuatorCfg field: value} applied to every actuator group (the weld profile's
     MUJOCO_ARM_DRIVE); None keeps LeHome's SO101 drives."""
     pos, rot = usd_root_pose(base_pos, ARM_BASE_QUAT)
     init = SO101_FOLLOWER_CFG.init_state.replace(pos=tuple(float(v) for v in pos), rot=tuple(float(v) for v in rot),

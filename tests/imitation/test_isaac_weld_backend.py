@@ -65,7 +65,7 @@ def test_make_env_dispatch(monkeypatch):
     monkeypatch.setattr(rt, "make_isaac_base", fake_base)
     monkeypatch.setattr(half_fold, "HalfFoldEnv", FakeEnv)
     half_fold.make_env("isaac_weld")
-    assert calls[-1] == {"max_episode_steps": 250, "cameras": None, "profile": "mujoco", "cloth_jitter": 0.025}
+    assert calls[-1] == {"max_episode_steps": 250, "cameras": None, "profile": "weld", "cloth_jitter": 0.025}
     half_fold.make_env("isaac")
     assert calls[-1] == {"max_episode_steps": 400, "cameras": None, "profile": "lehome", "cloth_jitter": 0.01}
 
