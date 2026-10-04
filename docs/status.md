@@ -136,6 +136,14 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-03 · **track G · IG.1 ✅ friction-grasp bench + baseline** (branch `feature/isaac-grasp`).
+  - `isaac/grasp_bench.py` (resumable, per-step traces) + sim-free `isaac/grasp_metrics.py`; `scripts/grasp_bench.ps1`.
+  - Opt-in friction knobs on the "lehome" profile only (`isaac_env.FRICTION_GRASP`, all None = as built); the
+    `IsaacArmExpert` pinch geometry is now class attributes. The weld path and `PROFILES["mujoco"]` are untouched.
+  - Baseline n = 20 (tune 600000–19): left acquired / held / placed / released 20 / 18 / 14 / 12, right 11 / 1 / 0 / 0.
+    The right jaw pushes its corner sideways out of the pinch.
+  - `verify IG.1` and `I3.3` PASS (I3.3 now skips the IG checks); IG.2 / IG.3 checks added. Tests: 172 fast pass (4 skipped); weld-path Isaac tests pending the next free Isaac slot · (this commit)
+
 - 2026-10-03 · **W3 closed with an accepted exception.** Recovery 81 accepted by the user; the W3 verifier bar is set to 80 with the decision recorded; W4 pilot launched · (this commit)
 
 - 2026-10-03 · **W3 gate run: 100 / 100 / 81 (recovery below its 90 bar).**

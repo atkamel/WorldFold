@@ -1073,3 +1073,41 @@ Artifacts: `outputs/imitation/isaac_weld/w3/eval_expert_{id_easy,id_hard,recover
 
 **W3 decision (2026-10-03, user):** recovery 81/100 is accepted as the Isaac expert's recovery ceiling, and W4 runs
 on this expert. `verify W3` records the bar as 80, with the planned 90 noted. id_easy and id_hard meet their bars.
+
+## Track G — friction grasp on Isaac (LeHome profile)
+
+### IG.1 grasp bench, baseline as built (2026-10-03)
+
+`isaac/grasp_bench.py` runs the friction expert (`IsaacArmExpert` in `QuarterFoldExpert`, the pipeline's
+ScriptedTeacher) on `IsaacClothFoldEnv(profile="lehome")`, CPU device, with **retries off**, so each arm's first
+attempt is scored. Per-step traces (phase, gripperframe site, corner, jaw angle, anchor) are kept per seed and the
+flags are computed from them by `isaac/grasp_metrics.py`:
+- **acquired:** when the expert enters carry, the corner is ≥ 2 cm above its rest height and within 5 cm of the site.
+- **held:** acquired, and the corner stays within 5 cm of the site until the jaw opens. A held corner rides 2.5–3.8 cm
+  from the site (the fixed fingertip), up between the pads; a dropped one jumps to ≥ 6 cm.
+- **placed:** 15 steps after the jaw opens, the corner is within 5 cm of its goal (the env's test).
+- **released:** held, and from the jaw opening to the end of the retreat the corner moves < 3 cm horizontally and ends
+  < 2.5 cm above its rest height.
+- **anchor drift:** the largest displacement of the arm's anchor corner (cloth_0 / cloth_110) over the episode.
+
+Rates are unconditional (out of all episodes). Knobs all as built (particle friction 0.5, pad lining 1.5 / 3 mm,
+LeHome gripper drive, closed target −0.1 rad; pinch inset 5 mm, pinch height 1 cm). Tune seeds 600000–600019, n = 20
+(seeds 600000–1 come from the bench's smoke run, same code and config). Wilson 95%.
+
+| arm | acquired | held | placed | released | anchor drift mean / max |
+|---|---|---|---|---|---|
+| left | 20/20 [83.9, 100] | 18/20 [69.9, 97.2] | 14/20 [48.1, 85.5] | 12/20 [38.7, 78.1] | 4.0 / 5.0 cm |
+| right | 11/20 [34.2, 74.2] | 1/20 [0.9, 23.6] | 0/20 [0, 16.1] | 0/20 [0, 16.1] | 5.1 / 7.5 cm |
+
+- **The right arm is the problem.** Its corner gets pushed out of the pinch as the jaw closes: in the gripper frame the
+  corner is displaced up to 3.4 cm sideways (vs < 1 cm on the left) and lifts into the pads. 9/20 corners never
+  rise; 10 of the 11 acquired fall out during the carry (steps 82–127, mostly while the arm descends toward the goal).
+- **Left:** it holds 18/20, but 6 placements miss by 5.5–8.4 cm and 8 releases move the corner 3–6 cm: the corner is
+  let go about 5 cm above the table (it rides 2.5 cm above the site, and the site stops ~2.4 cm above the table at
+  place), and it falls outward.
+- **Anchor drift** is 3–7.5 cm, well under the 20 cm drag limit; most of it happens at close, when the pinch pulls the
+  cloth toward the arms.
+- **Speed:** 115–350 s per episode (0.7–2 control steps/s) with the W4 pilot's 2 Isaac workers sharing the GPU, so an
+  n = 20 trial takes about 50 min and an n = 100 block about 4 h.
+
+Artifacts: `outputs/isaac/grasp/ig1_baseline/{rows.jsonl,summary.json,bench.log}` (traces regenerate, not committed).
