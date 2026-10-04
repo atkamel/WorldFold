@@ -1129,6 +1129,8 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
 | 7 | #3 + jaw opens at 0.1 rad / step (`jaw_open_rate`, ~11 steps instead of ~3) | 20 / 20 | 20 / 14 | 10 / 9 | 2 / 0 | 6.7 / 12.5 cm | not kept (no release gain) |
 | 8 | #3 + placement overshoot from #3's settled miss: left (−0.1, +5.2) cm, right (+1.3, +5.0) cm (`OVERSHOOT_FRICTION`) | 20 / 20 | 20 / 12 | **18 / 11*** | 10 / 3 | 5.9 / 5.2 cm | **kept** (new parent); 11/20 episodes succeed with retries off |
 
+| 9 | #8 + pinch height 1.0 → 0.5 cm (expert) | 20 / 20 | **20 / 19** | **19 / 18*** | 6 / 4 | 7.7 / 5.1 cm | **kept** (new parent); 17/20 episodes succeed with retries off |
+
 \* Placement is read at the episode end from #8 on; see the metric note below.
 
 - **#1:** the higher friction fixes the right arm's pinch (acquired 20/20 [83.9, 100] vs 11/20 [34.2, 74.2]), and the
@@ -1188,6 +1190,23 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
   - Placed under the new read, left / right: baseline 18 / 0 (was 14 / 0), #1 4 / 5, #2 0 / 0, #3 9 / 8, #4 9 / 5,
     #5 0 / 0, #6 6 / 6, #7 10 / 8, #8 18 / 11. The other flags are unchanged. The rows above keep the earlier
     read, except #8's.
+- **#9 (kept):** the fingertip goes 5 mm lower at the pinch, so the pads bite the cloth closer to the table.
+  - Left / right, Wilson 95%:
+    - acquired 20/20 [83.9, 100] on both arms
+    - held 20/20 [83.9, 100] and 19/20 [76.4, 99.1] (the right arm's was 12/20 in #8)
+    - placed 19/20 [76.4, 99.1] and 18/20 [69.9, 97.2]
+  - 17/20 episodes end in the env's success with retries off. The seeds that dropped before (600001, 013, 014, 018)
+    now hold; 600010 still drops.
+  - Settled miss with #8's overshoot: left (+1.1, +0.1) cm, sd (2.1, 2.1); right (−1.6, 0.0) cm, sd (1.2, 2.2).
+    The overshoot is centred.
+  - Strict "released" is 6/20 [14.5, 51.9] and 4/20 [8.1, 41.6]. Every held corner is let go (back on the cloth after
+    the retreat: 20/20 and 19/20).
+  - The release move (median 5.1 / 5.3 cm) is now by design. The overshoot releases each corner about 4 cm inside its
+    goal, and the spring-back carries it onto the goal.
+- **IG.2 status at #9: plateau on the bar as defined.** Acquired, held and placed are at or near their bars on the tune
+  seeds (n = 20, point estimates 95–100%). Strict "released" (< 3 cm horizontal move after the jaw opens) can't be met
+  together with an overshoot placement, since that placement relies on the move. A decision on the release metric is
+  needed before the n = 100 blocks (see status.md).
 
 Artifacts: `outputs/isaac/grasp/t{1..4}_*/{rows.jsonl,summary.json,bench.log}`.
 

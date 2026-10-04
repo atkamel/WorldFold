@@ -143,6 +143,19 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-04 · **track G · IG.2 attempts 5–9; plateau, decision needed on the "released" metric.**
+  - Best config (#9): closed jaw target +0.05 rad, `OVERSHOOT_FRICTION` left (−0.1, +5.2) cm / right (+1.3, +5.0) cm,
+    pinch height 0.5 cm.
+  - n = 20, tune 600000–19, left / right: acquired 20/20 / 20/20; held 20/20 [83.9, 100] / 19/20 [76.4, 99.1];
+    placed 19/20 [76.4, 99.1] / 18/20 [69.9, 97.2]; strict released 6/20 / 4/20. 17/20 env successes with retries off.
+  - Strict "released" (< 3 cm move after opening) measures the spring-back the overshoot relies on. Under a let-go
+    definition (the held corner is back on the cloth after the retreat) it is 20/20 / 19/20.
+  - Rejected: closed +0.08 (held 0 / 0), +0.02 (no gain), slow jaw opening (no gain).
+  - Metric fix: placement is read at the episode end (the env's own success time); all runs rescored.
+  - Next, pending the decision: n = 100 blocks A 600000–099, B 600100–199, fresh 600200–299, then ship #9 as the
+    lehome defaults.
+  - Tests: 172 fast pass (4 skipped) · (this commit)
+
 - 2026-10-04 · **track G · IG.2 in progress (4 attempts, n = 20 each on tune 600000–19).**
   - Kept: the closed jaw target −0.1 → +0.05 rad, since at −0.1 the jaw overlaps the fixed pad and squeezes the
     cloth out. Held left 20/20 [83.9, 100], right 14/20 [48.1, 85.5] (baseline 18 / 1).
