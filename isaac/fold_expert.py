@@ -1,4 +1,4 @@
-"""Scripted half-fold expert for the Isaac env, with the friction grasp as built (Phase I, I2.1).
+﻿"""Scripted half-fold expert for the Isaac env, with the friction grasp as built (Phase I, I2.1).
 
 A drop-in for cloth_fold_rl.expert.FoldExpert inside QuarterFoldExpert (same constructor, phase machine fields,
 act / reset / infer_phase), so the imitation pipeline's ScriptedTeacher, release gate, retry-on-measured-miss and
@@ -28,8 +28,10 @@ ABOVE = 0.04                 # pre-pinch height above the pinch point
 RETREAT = 0.05
 # per (stage, arm): metres past the goal to place at, the friction grasp's measured spring-back (cf.
 # cloth_fold_rl.quarter_fold_expert.OVERSHOOT on MuJoCo, isaac.weld_expert.OVERSHOOT_ISAAC on the weld profile).
-# Zero until calibrated (track G, IG.2).
+# Stage 0 is calibrated (track G, IG.2 attempt 8: minus the settled miss of attempt 3); stage 1 stays zero.
 OVERSHOOT_FRICTION = {key: np.zeros(3) for key in ((0, "left_"), (0, "right_"), (1, "left_"), (1, "right_"))}
+OVERSHOOT_FRICTION[(0, "left_")][:] = (-0.001, 0.052, 0.0)
+OVERSHOOT_FRICTION[(0, "right_")][:] = (0.013, 0.050, 0.0)
 
 
 class IsaacArmExpert:
@@ -41,7 +43,7 @@ class IsaacArmExpert:
                     "budget")
 
     # the pinch / place geometry and dwells, as class attributes so the grasp bench can try candidates (track G)
-    PINCH_HEIGHT = PINCH_HEIGHT      # fingertip above the table at the pinch
+    PINCH_HEIGHT = 0.005             # fingertip above the table at the pinch (IG.2 #9; half_fold_demo / weld: 0.010)
     PINCH_INSET = 0.005              # pinch point this far in from the corner, toward the cloth centre
     PLACE_HEIGHT = PLACE_HEIGHT
     ARC_HEIGHT = ARC_HEIGHT

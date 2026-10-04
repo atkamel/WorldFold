@@ -1,4 +1,4 @@
-"""WorldFold's cloth-fold env on LeHome's Isaac stack: a drop-in for mujuco.sim_main.ClothFoldEnv in joint_delta mode.
+﻿"""WorldFold's cloth-fold env on LeHome's Isaac stack: a drop-in for mujuco.sim_main.ClothFoldEnv in joint_delta mode.
 
 Same 14-dim action and observation dict as ClothFoldEnv, so cloth_fold_rl's wrappers (SingleCornerFoldEnv,
 HalfFoldEnv) run on it unchanged. The scene (isaac/lab_scene.py) is IsaacLab with LeHome's SO101 arms, particle

@@ -1235,6 +1235,8 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
   17: one held corner was carried up by the retreat) and #1 left (held 2, released 1): a held corner is, in practice,
   always let go.
 
+- **Defaults (2026-10-04):** #9's knobs are now the lehome-profile defaults: `FRICTION_GRASP["gripper_closed"] = 0.05`, `IsaacArmExpert.PINCH_HEIGHT = 0.005`, stage-0 `OVERSHOOT_FRICTION` left (-0.1, +5.2) cm / right (+1.3, +5.0) cm. Friction mode only: weld regression `test_isaac_weld.py` + `test_isaac_profile.py` in `.venv-isaac` 17 passed (`weld_regression.log`); fast suite `pytest -m "not slow"` 173 passed, 4 skipped (`import mujoco` works here).
+
 Artifacts: `outputs/isaac/grasp/t{1..4}_*/{rows.jsonl,summary.json,bench.log}`.
 
 Weld path unchanged by the opt-in knobs: `tests/imitation/test_isaac_weld.py` + `test_isaac_profile.py` in
