@@ -1,0 +1,91 @@
+{
+ "git_commit": "68666e4321e4f038b9384fbfbd3f23c04b88b485-dirty",
+ "dataset": {
+  "root": "outputs/imitation/datasets",
+  "version": "v1_dagger_diff_r1",
+  "content_hash": "51dad5a14683cfce636e0f245d54ea8a3588e0e5c85b6752a61790b79c21d8d4",
+  "n_episodes": 512,
+  "n_train_samples": 34503,
+  "n_dagger_labels": 1475,
+  "clamped_fraction": 0.00010298250708729029,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "diffusion",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "cond_dim": 256,
+   "channels": [
+    128,
+    256
+   ],
+   "train_steps": 100,
+   "infer_steps": 10
+  },
+  "n_params": 7348748
+ },
+ "train": {
+  "steps": 15000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 4.0,
+  "obs_subset": null,
+  "init_from": "outputs\\imitation\\runs\\diff_v1_s0\\final.pt",
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 838.9
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\dagger_diff\\round_1\\final.pt",
+  "sha256": "dfbeba07413f8fe3c67ec10095416dd1a7cb754180775c672c0c4afb1f8f82ea"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.010413455415982754,
+   "val_loss": 0.048017099254527955
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.008131070586387068,
+   "val_loss": 0.042530367808106616
+  },
+  {
+   "step": 6000,
+   "train_loss": 0.00682161848526448,
+   "val_loss": 0.046864965089496356
+  },
+  {
+   "step": 8000,
+   "train_loss": 0.005110295925987884,
+   "val_loss": 0.054684893331972295
+  },
+  {
+   "step": 10000,
+   "train_loss": 0.0036750767554622143,
+   "val_loss": 0.06569131187263746
+  },
+  {
+   "step": 12000,
+   "train_loss": 0.0023018380772555245,
+   "val_loss": 0.08099873274074394
+  },
+  {
+   "step": 14000,
+   "train_loss": 0.001556086729397066,
+   "val_loss": 0.09401057717787065
+  },
+  {
+   "step": 15000,
+   "train_loss": 0.0006650694354902953,
+   "val_loss": 0.09493302299183073
+  }
+ ]
+}

@@ -1,0 +1,30 @@
+== teacher: expert | student: diffusion | score sets ('id_easy', 'id_hard', 'recovery') | shift fraction 0.0 | relabel False
+== resuming at round 1 from outputs\imitation\runs\dagger_diff\round_1\final.pt on v1_dagger_diff_r1
+== round 1: beta 0.300, 64 student rollouts from outputs\imitation\runs\dagger_diff\round_1\final.pt
+   rollouts: student success 59/64, 1725 teacher labels, froze v1_dagger_diff_r1_dagger_r4_r1 (576 episodes), 2908s
+normalizer clamp: 0.0144% of train obs entries at +-10
+device cuda | 501 train / 75 val episodes | 35955 samples (2927 DAgger labels) | diffusion 7.35M params
+  step   2000  train 0.0080  val(ema) 0.0548  121s
+  step   4000  train 0.0069  val(ema) 0.0527  238s
+  step   6000  train 0.0060  val(ema) 0.0547  353s
+  step   8000  train 0.0045  val(ema) 0.0672  463s
+== teacher: expert | student: diffusion | score sets ('id_easy', 'id_hard', 'recovery') | shift fraction 0.0 | relabel False
+== resuming at round 1 from outputs\imitation\runs\dagger_diff\round_1\final.pt on v1_dagger_diff_r1
+== round 1: beta 0.300, 64 student rollouts from outputs\imitation\runs\dagger_diff\round_1\final.pt
+   reusing frozen v1_dagger_diff_r1_dagger_r4_r1 (576 episodes)
+   rollouts: student success 59/64, 1725 teacher labels, froze v1_dagger_diff_r1_dagger_r4_r1 (576 episodes), 1s
+normalizer clamp: 0.0144% of train obs entries at +-10
+device cuda | 501 train / 75 val episodes | 35955 samples (2927 DAgger labels) | diffusion 7.35M params
+  step   2000  train 0.0080  val(ema) 0.0550  104s
+  step   4000  train 0.0070  val(ema) 0.0524  201s
+  step   6000  train 0.0060  val(ema) 0.0549  297s
+  step   8000  train 0.0045  val(ema) 0.0674  397s
+  step  10000  train 0.0031  val(ema) 0.0835  503s
+  step  12000  train 0.0021  val(ema) 0.0959  603s
+  step  14000  train 0.0014  val(ema) 0.1063  701s
+  step  15000  train 0.0006  val(ema) 0.1053  750s
+  id_easy   success 99% (198/200)  fold 0.910  grasp 100%  failures {'F1': 1, 'S1': 1}  490s
+  id_hard   success 76% (152/200)  fold 0.809  grasp 98%  failures {'S1': 32, 'G1': 6, 'F1': 10}  714s
+  recovery  success 76% (152/200)  fold 0.850  grasp 100%  failures {'S1': 20, 'G1': 12, 'F1': 16}  1002s
+   round 1: score 2.510 (gain -0.050 = -0.8 SE) -> best outputs\imitation\runs\dagger_diff\round_1\final.pt
+best checkpoint: outputs\imitation\runs\dagger_diff\round_1\final.pt

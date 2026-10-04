@@ -1,0 +1,5 @@
+{'seed': 100000, 'steps': 142, 'success': True, 'fold_score': 0.903445348943635, 'termination_reason': 'success'}
+{'seed': 100001, 'steps': 95, 'success': True, 'fold_score': 0.9388409491776748, 'termination_reason': 'success'}
+{'seed': 100002, 'steps': 96, 'success': True, 'fold_score': 0.9095723397576276, 'termination_reason': 'success'}
+{'seed': 100003, 'steps': 86, 'success': True, 'fold_score': 0.906719483268616, 'termination_reason': 'success'}
+wrote docs\reports\media\half_fold_privileged.mp4 (499 frames), success 4/4

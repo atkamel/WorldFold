@@ -1,0 +1,4 @@
+  id_easy   success 92% (184/200)  fold 0.919  grasp 100%  failures {'F1': 14, 'S1': 2}  388s
+  id_hard   success 48% (97/200)  fold 0.656  grasp 68%  failures {'F1': 39, 'G1': 63, 'S1': 1}  677s
+  recovery  success 26% (52/200)  fold 0.644  grasp 98%  failures {'F1': 49, 'G1': 99}  777s
+wrote outputs\imitation\runs\abl_proprio_s0\eval_r8.json
