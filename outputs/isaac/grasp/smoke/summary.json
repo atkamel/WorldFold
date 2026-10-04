@@ -1,123 +1,104 @@
 {
- "n": 20,
+ "n": 2,
  "seeds": [
   600000,
-  600001,
-  600002,
-  600003,
-  600004,
-  600005,
-  600006,
-  600007,
-  600008,
-  600009,
-  600010,
-  600011,
-  600012,
-  600013,
-  600014,
-  600015,
-  600016,
-  600017,
-  600018,
-  600019
+  600001
  ],
  "arms": {
   "left_": {
    "acquired": {
-    "k": 20,
-    "n": 20,
+    "k": 2,
+    "n": 2,
     "rate": 100.0,
     "wilson": [
-     83.9,
+     34.2,
      100.0
     ]
    },
    "held": {
     "k": 2,
-    "n": 20,
-    "rate": 10.0,
+    "n": 2,
+    "rate": 100.0,
     "wilson": [
-     2.8,
-     30.1
+     34.2,
+     100.0
     ]
    },
    "placed": {
-    "k": 4,
-    "n": 20,
-    "rate": 20.0,
+    "k": 1,
+    "n": 2,
+    "rate": 50.0,
     "wilson": [
-     8.1,
-     41.6
+     9.5,
+     90.5
     ]
    },
    "released": {
-    "k": 1,
-    "n": 20,
-    "rate": 5.0,
+    "k": 2,
+    "n": 2,
+    "rate": 100.0,
     "wilson": [
-     0.9,
-     23.6
+     34.2,
+     100.0
     ]
    },
    "anchor_drift_m": {
-    "mean": 0.0081,
-    "max": 0.0175
+    "mean": 0.0409,
+    "max": 0.041
    },
    "first_failure": {
-    "held": 18,
     "placed": 1
    }
   },
   "right_": {
    "acquired": {
-    "k": 20,
-    "n": 20,
+    "k": 2,
+    "n": 2,
     "rate": 100.0,
     "wilson": [
-     83.9,
+     34.2,
      100.0
     ]
    },
    "held": {
     "k": 0,
-    "n": 20,
+    "n": 2,
     "rate": 0.0,
     "wilson": [
      0.0,
-     16.1
+     65.8
     ]
    },
    "placed": {
-    "k": 5,
-    "n": 20,
-    "rate": 25.0,
-    "wilson": [
-     11.2,
-     46.9
-    ]
-   },
-   "released": {
     "k": 0,
-    "n": 20,
+    "n": 2,
     "rate": 0.0,
     "wilson": [
      0.0,
-     16.1
+     65.8
+    ]
+   },
+   "released": {
+    "k": 2,
+    "n": 2,
+    "rate": 100.0,
+    "wilson": [
+     34.2,
+     100.0
     ]
    },
    "anchor_drift_m": {
-    "mean": 0.0138,
-    "max": 0.0595
+    "mean": 0.047,
+    "max": 0.0518
    },
    "first_failure": {
-    "held": 20
+    "held": 2
    }
   }
  },
  "config": {
   "knobs": {
-   "particle_friction": 1.5,
+   "particle_friction": null,
    "pad_friction": null,
    "pad_thickness": null,
    "gripper_drive": null,
@@ -134,7 +115,6 @@
   "code": "C:\\Users\\ethan\\Documents\\Projects\\watai\\WorldFold\\.claude\\worktrees\\agent-a55d8fa30a92a92f8\\isaac\\grasp_bench.py"
  },
  "reasons": {
-  "bench_stop": 19,
-  "success": 1
+  "bench_stop": 2
  }
 }

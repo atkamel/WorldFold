@@ -43,12 +43,12 @@
     ]
    },
    "placed": {
-    "k": 14,
+    "k": 18,
     "n": 20,
-    "rate": 70.0,
+    "rate": 90.0,
     "wilson": [
-     48.1,
-     85.5
+     69.9,
+     97.2
     ]
    },
    "released": {
@@ -65,9 +65,9 @@
     "max": 0.0501
    },
    "first_failure": {
-    "placed": 5,
     "held": 2,
-    "released": 3
+    "released": 6,
+    "placed": 1
    }
   },
   "right_": {

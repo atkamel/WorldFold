@@ -1127,6 +1127,9 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
 | 5 | closed jaw target +0.05 → +0.08 rad | 20 / 19 | **0 / 0** | 0 / 0 | 0 / 0 | 5.4 / 11.9 cm | rejected |
 | 6 | closed jaw target +0.05 → +0.02 rad | 20 / 20 | 19 / 17 | 5 / 1 | 4 / 2 | 7.2 / 13.3 cm | not kept (held within noise of #3, placement worse) |
 | 7 | #3 + jaw opens at 0.1 rad / step (`jaw_open_rate`, ~11 steps instead of ~3) | 20 / 20 | 20 / 14 | 10 / 9 | 2 / 0 | 6.7 / 12.5 cm | not kept (no release gain) |
+| 8 | #3 + placement overshoot from #3's settled miss: left (−0.1, +5.2) cm, right (+1.3, +5.0) cm (`OVERSHOOT_FRICTION`) | 20 / 20 | 20 / 12 | **18 / 11*** | 10 / 3 | 5.9 / 5.2 cm | **kept** (new parent); 11/20 episodes succeed with retries off |
+
+\* Placement is read at the episode end from #8 on; see the metric note below.
 
 - **#1:** the higher friction fixes the right arm's pinch (acquired 20/20 [83.9, 100] vs 11/20 [34.2, 74.2]), and the
   cloth barely slides on the table (anchor drift mean 0.8 / 1.4 cm). But it loses the carry on both arms: held
@@ -1168,6 +1171,23 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
   - So with the current hold height, the strict "released" flag is a spring-back test, not a test of the jaw letting
     go. It moves only if the corner is held lower (it rides 3.6 cm above the fingertip, up between the pads). A wider
     or slower opening doesn't change it. Placement can be corrected with an overshoot (#8).
+- **#8 (kept):** the overshoot is minus #3's mean settled miss, as W3 did for the weld.
+  - Placed: left 18/20 [69.9, 97.2], right 11/20 [34.2, 74.2].
+  - Released: 10/20 [29.9, 70.1] and 3/20 [5.2, 36.0]. Releasing nearer the fold line also shortens the outward slide.
+  - 11/20 bench episodes end in the env's own success, with retries off. The I2.1 expert had 2/20 with retries.
+  - The open problem is now the right arm's hold: 12/20 [38.7, 78.1] here, 14/20 in #3. Its drops repeat on the same
+    seeds (600001, 010, 013, 014, 018), late in the carry (steps 127–169, while the arm descends to the goal), and
+    often after a weak lift (corner rise 3 cm against 7 cm).
+- **Metric note (2026-10-04), placement read time.**
+  - "placed" was read 15 steps after the jaw opened. A released corner keeps sliding for 20+ steps, so that read
+    disagreed with the env's own success test: #8 seed 600017 scored not placed at that read, yet ended in env
+    success.
+  - From #8 on, placement is read at the episode end: the env's success, or SETTLE_WAIT steps after both arms
+    retreated. That is the env's own judging time. `isaac/grasp_metrics.py` changed, and every run was rescored from
+    its traces (`--summarize --rescore`).
+  - Placed under the new read, left / right: baseline 18 / 0 (was 14 / 0), #1 4 / 5, #2 0 / 0, #3 9 / 8, #4 9 / 5,
+    #5 0 / 0, #6 6 / 6, #7 10 / 8, #8 18 / 11. The other flags are unchanged. The rows above keep the earlier
+    read, except #8's.
 
 Artifacts: `outputs/isaac/grasp/t{1..4}_*/{rows.jsonl,summary.json,bench.log}`.
 

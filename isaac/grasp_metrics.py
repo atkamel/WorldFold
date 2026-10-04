@@ -9,7 +9,8 @@ and the arm's anchor vertex (the corner that must not be dragged). From it:
             corner is at least LIFT_MIN above where it rested and within HOLD_DIST of the site
   held      acquired, and the corner stayed within HOLD_DIST of the site from then until the expert opened the jaw
   placed    after the release, the corner lies within SUCCESS_DIST of its goal (the env's own placement test),
-            read SETTLE_WAIT steps after the jaw opened, or at the last recorded step if the episode ended sooner
+            read at the end of the episode (the env's own success, or SETTLE_WAIT steps after both arms retreated):
+            a released corner keeps sliding for 20+ steps, so an earlier read disagreed with the env's success test
   released  the jaw let go cleanly: the corner was held, the expert opened the jaw, and by the end of its retreat the corner had moved less than
             RELEASE_MOVE horizontally from where it was when the jaw opened and lies within RELEASE_Z of its rest
             height (not carried up, flung or dragged by the opening jaw or the retreat; falling straight down is fine)
@@ -69,7 +70,7 @@ def arm_metrics(trace: dict, goal, rest_z: float) -> dict:
         out["carry_max_dist"] = float(np.max(dist[t_carry:]))
     placed = released = False
     if t_rel is not None:
-        t_read = min(t_rel + SETTLE_WAIT, len(phases) - 1)
+        t_read = len(phases) - 1          # the episode end: the env's success, or both arms retreated + SETTLE_WAIT
         out["place_err"] = float(np.linalg.norm(corner[t_read] - goal))
         placed = out["place_err"] < SUCCESS_DIST
         t_done = _first(phases, "done", t_rel)
