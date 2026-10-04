@@ -341,8 +341,11 @@ class EnvPool:
 
     def call(self, idx, cmd, args):
         """Send cmd to every env in idx (args aligned), then gather -- the envs run in parallel.
-        With several envs per process (milestone V) a physics command waits until every slot of that process
-        with an episode in flight has one too, so idx must cover those slots."""
+        Not for physics commands with several envs per process (milestone V): a lockstep slot that finishes first
+        sits idle mid-episode and holds its neighbours' remaining steps, so waiting in slot order can block forever.
+        Drive those through rollout(), which always sends an idle slot its next command."""
+        if getattr(self, "envs_per_proc", 1) > 1 and cmd in ("reset", "step", "label"):
+            raise NotImplementedError("EnvPool.call can't drive physics with several envs per process; use rollout()")
         for i, a in zip(idx, args):
             self.pipes[i].send((cmd, a))
         out = []

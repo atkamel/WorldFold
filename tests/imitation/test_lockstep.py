@@ -4,8 +4,11 @@ an episode's trajectory depends only on its seed exactly when the barrier is rig
 
 from __future__ import annotations
 
+import importlib.util
 import multiprocessing as mp
+import multiprocessing.connection  # noqa: F401 (mp.connection.wait)
 import threading
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -13,7 +16,12 @@ import pytest
 from imitation.lockstep import Lockstep
 from imitation.rollout import (ExpertController, Perturbation, PolicyController, _rollout, _serve_slots,
                                envs_per_proc)
-from tests.imitation.fake_batch import FakeBatch, FakePolicy, FakeTeacher
+
+# loaded by path: `tests` can resolve to mujuco/tests during a full collection (status.md defect 13)
+_spec = importlib.util.spec_from_file_location("worldfold_fake_batch", Path(__file__).with_name("fake_batch.py"))
+_fake = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_fake)
+FakeBatch, FakePolicy, FakeTeacher = _fake.FakeBatch, _fake.FakePolicy, _fake.FakeTeacher
 
 TIMEOUT = 60
 
@@ -207,15 +215,34 @@ def test_unfinished_episode_blocks_until_its_next_command():
     """Strict barrier: a slot with an episode in flight holds the global step until its next command arrives."""
     pool = ThreadPool(1, 2)
     a, b = pool.pipes
+    zero = np.zeros(12, np.float32)
     a.send(("reset", (1, None, False)))
+    assert a.poll(5)                       # b has no episode: a resets alone
+    a.recv()
     b.send(("reset", (2, None, False)))
-    a.recv(), b.recv()
-    a.send(("step", np.zeros(12, np.float32)))
-    assert not a.poll(0.3), "slot 0 stepped while slot 1's episode waited"
-    b.send(("step", np.zeros(12, np.float32)))
+    assert not b.poll(0.3), "b's settle steps ran while a's episode waited for its next command"
+    for k in range(3):                     # each of a's steps is one of b's SETTLE = 3 settle steps
+        a.send(("step", zero))
+        assert a.poll(5)
+        a.recv()
+        assert b.poll(5 if k == 2 else 0.3) == (k == 2)
+    b.recv()
+    b.send(("step", zero))
+    assert not b.poll(0.3), "b stepped while a's episode waited"
+    a.send(("step", zero))
     assert a.poll(5) and b.poll(5)
     a.recv(), b.recv()
     pool.close()
+
+
+def test_pool_call_refuses_physics_with_several_envs_per_process():
+    """EnvPool.call sends one command per slot and then waits in slot order; with lockstep slots out of phase that
+    can wait forever (a slot done first sits idle mid-episode), so it refuses physics commands there."""
+    from imitation.rollout import EnvPool
+    pool = EnvPool.__new__(EnvPool)
+    pool.envs_per_proc, pool.pipes = 2, []
+    with pytest.raises(NotImplementedError):
+        pool.call([0, 1], "reset", [None, None])
 
 
 def test_advance_failure_reaches_every_parked_slot():

@@ -129,10 +129,13 @@ Take an active slot s of the worker that is not parked. Either
    any other slot. So within max_wait plus one `plan` call s is sent a command and goes to case 1.
 
 No slot's next command waits on a reply from another slot of the same worker, so no cycle exists. The same holds
-for any driver with that property. `EnvPool.call(idx, ...)` sends all of idx before receiving, so it is safe when
-idx covers every active slot of a worker (e.g. resetting or stepping all slots); calling it on a strict subset while
-other slots of the same worker have episodes in flight would block (documented on `call`; no pipeline code does
-that).
+for any driver with that property.
+
+`EnvPool.call(idx, cmd)` does **not** have it: it sends one command per slot and then receives in slot order. Slots
+drift out of phase (a slot that resets while its neighbour has no episode gets a head start), so the slot that
+finishes first sits idle mid-episode and holds the others' remaining steps while `call` waits on one of them — a
+deadlock (the first version of the fake-batch test hit exactly this, 1 run in 6). `call` therefore refuses
+`reset`/`step`/`label` when B > 1 (no pipeline code uses it; only the B = 1 Isaac backend test does).
 
 Fast tests (`tests/imitation/test_lockstep.py`) drive a pure-numpy fake batch through the real worker code and
 `_rollout`: mixed `step`/`resync`/`reset`/takeover sequences, episodes of different lengths, B = 1 vs B = 3 with
