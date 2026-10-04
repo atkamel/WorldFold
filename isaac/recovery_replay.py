@@ -25,6 +25,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", default=f"{RECOVERY_TUNE_BASE}:{RECOVERY_TUNE_BASE + 20}")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--max-steps", type=int, default=None, help="episode cap (default: isaac_weld's, 250)")
     ap.add_argument("--set", action="append", default=[], metavar="ATTR=VALUE",
                     help="override an IsaacFoldExpert class attribute for this run, e.g. REGRASP_OFFSET=none")
     args = ap.parse_args()
@@ -45,7 +46,7 @@ def main():
         val = None if v.lower() == "none" else (tuple(v.split("+")) if not v.replace(".", "").isdigit() else float(v))
         setattr(IsaacFoldExpert, k, val)
     _, _, knock = eval_set("recovery", 1, "isaac_weld")
-    env = make_env("isaac_weld")
+    env = make_env("isaac_weld", **({"max_episode_steps": args.max_steps} if args.max_steps else {}))
     expert = ScriptedTeacher(env, seed=0).expert
     base = env.unwrapped
     for seed in range(a, b):
@@ -76,7 +77,7 @@ def main():
         row = {"seed": seed, "knock": [p.t, p.k], "success": bool(info["success"]), "steps": t + 1,
                "reason": info["termination_reason"] or "truncated", "retries": sum(expert.retries.values()),
                "d": [round(float(x), 4) for x in info["move_distance"]], "domain": dict(base._domain_params),
-               "knobs": args.set,
+               "knobs": args.set, "max_steps": base.max_episode_steps,
                "timeline": timeline}
         with out.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")

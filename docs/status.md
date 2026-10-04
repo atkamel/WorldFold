@@ -41,17 +41,23 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**Phase W revision (2026-10-04, plan `docs/superpowers/plans/2026-10-04-isaac-weld-revision.md`):**
-1. W4 ✅: the pilot learns (diffusion 20/20, vision 10/10 on id_easy; recovery weak, as BC was on MuJoCo); DAgger
-   and the detector run end to end.
-2. W3b: expert recovery ≥ 90 (85 if it plateaus), while Z1 zero-shots the MuJoCo-trained checkpoints on
-   `isaac_weld`.
-3. V: vectorised Isaac env (go/no-go probe first).
-4. W5 slimmed.
-- MuJoCo is a frozen reference: no new MuJoCo runs.
-- The Isaac profile `mujoco` is renamed `weld`.
-- The cloth stays 101×101.
-- **Track G:** running as a background agent on `feature/isaac-grasp` (worktree `.claude/worktrees/agent-a55d8fa30a92a92f8`): IG.1 ✅ (38b45d9), IG.2 in progress.
+**Phase W revision (2026-10-04, plan `docs/superpowers/plans/2026-10-04-isaac-weld-revision.md`): in flight**
+- **W4 ✅.** The pilot learns: diffusion 20/20 and vision 10/10 on id_easy.
+- **Z1 done for diffusion: no transfer.** The MuJoCo-trained diffusion checkpoints score 0–1/20 on every set, so
+  W5 trains from scratch. The vision zero-shot run was cut off by the 2 h job limit.
+- **V0 go; V1/V2 implemented** on `feature/isaac-vec` by an Opus agent (worktree `.claude/worktrees/agent-a92cce19dd29dae77`).
+  - Expert parity at B = 4 vs B = 1: 40/40 vs 40/40.
+  - Throughput 2.15× at B = 8.
+  - **Pending:** lead re-verification and merge.
+- **W3b (expert recovery) in progress.** Pooled 81.7% (147/180).
+  - Attempts A–C and a 300-step cap did not help; n = 40 noise is about ±10 pp.
+  - The user chose to keep working. Next: n = 80 paired attempts with per-retry logging, run on the vectorised env.
+- **Defect 14 (reported by the V agent):** Windows Application Control blocked MuJoCo's `_enums.pyd` in its
+  run. Lead to check.
+- **Track G:** on `feature/isaac-grasp` (worktree `.claude/worktrees/agent-a55d8fa30a92a92f8`), now continued by a Sonnet agent.
+  - IG.1 ✅ (38b45d9).
+  - IG.2: best config #9 (bf73afd). The user approved redefining "released" as "the corner ends back on the cloth, not carried up".
+  - Next: rescore, n = 100 × 3 gate blocks, then IG.3.
 - **Track G (original note):** friction-grasp work (IG.1–IG.3) runs in parallel in a separate session on
   `feature/isaac-grasp`, with `WORLDFOLD_N_ISAAC=1`.
 - **Compute:** at most 3 Isaac processes at once (W 2 + G 1).
@@ -142,6 +148,13 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-04 · **W3b recovery plateau and parallel tracks.**
+  - W3b attempts A–C: 30, 34, 31 of 40 against a 35/40 baseline. A 300-step cap: 31/40. Pooled 81.7%; the user
+    chose to keep working.
+  - Z1: no transfer. V0 go; V implemented by an agent (pending merge).
+  - Track G: IG.2 "released" redefinition approved by the user; now on Sonnet.
+  - (this commit)
 
 - 2026-10-04 · **W4 ✅ weld-baseline pilot.**
   - Collect 76/80; diffusion id_easy 20/20 (Wilson 83.9–100); DAgger round runs; detector 80/80 (in-sample).

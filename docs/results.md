@@ -1158,3 +1158,17 @@ wrapper can be copied per env; no cloth rewrite is needed.
   82.9% (Wilson 75.8–88.2%).
 - That is below the 85 floor, so W3b is recorded as plateaued and the decision goes to the user.
 
+
+**W3b: longer step limit and run-to-run noise (2026-10-04)**
+- **Setup:** baseline expert with the episode cap at 300 instead of 250; tune seeds 610000–610039.
+- **Result: 31/40** (Wilson 62.5–87.7%). Paired against the 250 baseline: 4 seeds succeed only at 250, 0 only
+  at 300.
+- No success needed more than 250 steps.
+- The extra time went into more retries (up to 4). Those retries dragged unplaced corners further off: final
+  misses reached 0.14–0.34 m. A longer cap does not help; retries can make a bad placement worse.
+- **Noise:** this is the same expert as the baseline (the cap was never used), yet it scored 31 against 35.
+  n = 40 runs on identical code vary by about ±4 successes, so attempts A–C are within noise of the baseline.
+- **Pooled estimate** for the W3 expert on recovery, combining the eval gate (81/100) with all tune replays at
+  250 / 300 (35 + 31 = 66/80): **147/180 = 81.7%** (Wilson 75.4–86.6%).
+- **Decision (user, 2026-10-04):** keep working on recovery. Next attempts use n = 80 paired runs with per-retry
+  logging, so any gain is distinguishable from noise.
