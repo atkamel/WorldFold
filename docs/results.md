@@ -987,3 +987,86 @@ exactly, and the cloth rests flat at z 0.424.
 The two distributions can't be told apart. **Correction to the W1 close-out note above:** the matching 0.407 values
 were coincidence, not evidence of determinism. The phase step counts are identical in every run (above 52, pinch 14,
 arc 118); only the cloth outcome varies.
+
+### W3 MuJoCo's expert on Isaac (2026-10-03)
+
+**Setup.**
+- `isaac.weld_expert.IsaacFoldExpert` runs MuJoCo's `FoldExpert` phase machine unchanged on the `isaac_weld` env,
+  driven by `QuarterFoldExpert` with its retries and release gate.
+- Only the sim reads are overridden: `_site`, `_q_now`, `_corner`, `_ik`. The IK is `PinchIK.solve_position`, which
+  is `solve_ik` on LeHome's kinematics.
+- **MuJoCo stays byte-identical** after splitting FoldExpert's sim reads into methods: `benchmark_expert` at 50
+  episodes gives rows equal to M1.5, 48/50 (`outputs/imitation/expert_benchmark_w3.json`).
+
+**How the weld was made to match MuJoCo's.** Each step below was diagnosed with a per-step trace, on tune-block
+seeds 600000–600019 (n = 20) unless stated.
+
+1. **Rigid pin, offsets in the gripper frame (W1 as built): 0/3.**
+   - The free wrist pitched during lift and swung the held corner 4 cm sideways.
+   - FoldExpert's "lift to above the corner" target never converged: each phase ran out its 45-step patience, and
+     the corners were released 8–10 cm off goal.
+   - In MuJoCo the same corner stays within 2 cm of vertical under the gripper (trace, seeds 100001–2).
+   - The fix was to hold offsets in world axes and clamp pinned targets at the table, since the rigid pin had
+     pushed the corner 2.7 cm into the table.
+2. **World-axis rigid pin: 2/3, but 14/40 corners collapsed after release.** Two separate causes:
+   - **The jaw opening.** A ~1.2 rad sweep through the flap hanging under it flung corners up to 9 cm. This
+     correlates with the DR friction scale, which also scales cloth-against-jaw friction.
+   - **Fix:** in weld mode the jaws stay open physically (the weld holds the cloth). Collapses fell to 8/40.
+   - **The fold's stored tension.** A corner held even 1 cm outward stretches the folded 30 cm edge. The
+     zero-mass pin holds any tension, so release snapped the corner 9 cm inward (left +x, right −x in every case).
+3. **The soft weld.**
+   - MuJoCo's weld is an equality constraint at the default solref (0.02 s, damping ratio 1). `sim_main` sets
+     none, so the default applies.
+   - The Isaac weld now steers the patch at the gripper's velocity plus error / τ, and the patch keeps its mass, so
+     the cloth solver can pull it.
+   - Stiffness is set by the patch's mass multiple, not by τ: at ×1 the lag was 52 mm for both τ = 0.01 and 0.005.
+
+| `weld_check` (same script on both) | lift lag | carry lag | hold lag | corner rise for a 10 cm lift |
+|---|---|---|---|---|
+| **MuJoCo weld** (`isaac/weld_check_mujoco.py`) | 23.0 mm | 27.2 mm | 6.7 mm | 9.0 cm |
+| Isaac, rigid pin | 1.9 mm | 2.4 mm | 0 | 8.8 cm |
+| Isaac, soft τ 0.02, mass ×1 | 64 mm | 65 mm | 63 mm | 5.5 cm |
+| **Isaac, soft τ 0.02, mass ×10 (shipped)** | 27 mm | 27 mm | 21 mm | 8.8 cm |
+| Isaac, soft τ 0.02, mass ×100 | 8 mm | 8 mm | 6 mm | 9.1 cm |
+
+4. **Overshoot, re-measured on the calibrated weld.**
+   - Method: zero overshoot, no retries; each corner's miss read 15 steps after release, or at termination.
+   - Result, n = 20 per arm: left mean (0.000, −0.004) m, sd (0.002, 0.011); right (−0.002, −0.002), sd (0.007,
+     0.011). One outlier in 40.
+   - `OVERSHOOT_ISAAC` stage 0 is set to minus these: left (0.000, +0.004), right (+0.002, +0.002).
+   - Unlike MuJoCo's flexcomp (−0.04, −0.03) / (+0.02, −0.03), the Isaac cloth hardly springs back.
+   - Earlier estimates came from the uncalibrated welds and are superseded: rigid world-axis about (0, −0.027) m
+     with collapses; soft ×1 (±0.019, −0.047).
+   - A soft ×1 weld with its own overshoot went 20/20 on the tune seeds with 0 retries. The calibrated weld is
+     shipped because it matches MuJoCo's weld, not because it scores higher.
+5. **The W1 tracking bar changes.** It is now within 1.5× MuJoCo's 27.2 mm on the same script (it was < 3 mm,
+   which only a rigid pin meets). A rigid pin remains available with `weld_tau = None`.
+
+Artifacts: `outputs/isaac/overshoot/*.json`, `outputs/isaac/weld_mass_{10,100}/`, `outputs/isaac/weld_tau_*/`,
+`outputs/isaac/weld_mujoco_ref.json`.
+
+**W3 expert gate** (`scripts/w3_gate.ps1`):
+- Setup: `imitation.evaluate --backend isaac_weld --ckpt expert`, n = 100 per set on MuJoCo's eval sets (seeds
+  100000+, 200000+, 300000+), 2 Isaac workers, calibrated soft weld, `OVERSHOOT_ISAAC` as above.
+
+| set | Isaac (MuJoCo profile) | Wilson 95% | bar | MuJoCo expert (M1.7) |
+|---|---|---|---|---|
+| id_easy | **100/100** | 96.3–100% | ≥ 95 ✅ | 100% |
+| id_hard (2.5–4 cm) | **100/100** | 96.3–100% | ≥ 90 ✅ | 97% |
+| recovery (knock t 15–60, 8–16 steps) | **81/100** | 72.2–87.5% | ≥ 90 ❌ | 96% |
+
+- id_hard reaches 100% even though W2's static reach was 122/200. The expert passes waypoints the IK misses on its
+  45-step patience, and the 6 cm weld radius catches the corner.
+- **Recovery failures** (19, all truncated at 250 steps): S1 stalled 9, G1 dropped / not re-grasped 6, F1 placed
+  off target 4. Every episode grasped at least once.
+- **Diagnosis** from a replay of recovery seeds 300000–300019 with the same knocks: 17/20.
+  - The knock's random gripper commands release the weld mid-carry.
+  - The re-grasp, from the side, leaves the corner's horizontal offset frozen, so lift and place run out their
+    45-step patience.
+  - After a disturbed fold, corners settle 4.5–8 cm from goal (success radius 5 cm). Each retry costs about 50
+    steps, and two retries don't converge before the cap.
+- **Tried and reverted:** aiming the gripper so the held corner, not the gripper, reaches FoldExpert's targets
+  (subtracting the held offset): 16/20 on the same seeds, no gain.
+- W3 is **not met** on recovery. It stays open, pending a decision (status.md).
+
+Artifacts: `outputs/imitation/isaac_weld/w3/eval_expert_{id_easy,id_hard,recovery}.json` and their logs.

@@ -45,7 +45,10 @@ def _group(name):
 class ScriptedTeacher(Teacher):
     def __init__(self, env, seed=0):
         self.env = env
-        if hasattr(env.unwrapped, "lab"):       # Isaac (Phase I): the friction-pinch expert, no MuJoCo overshoot
+        if getattr(env.unwrapped, "profile", None) == "mujoco":   # Isaac, MuJoCo profile (Phase W): MuJoCo's expert
+            from isaac.weld_expert import OVERSHOOT_ISAAC, IsaacFoldExpert
+            self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=IsaacFoldExpert, overshoot=OVERSHOOT_ISAAC)
+        elif hasattr(env.unwrapped, "lab"):     # Isaac (Phase I): the friction-pinch expert, no MuJoCo overshoot
             import numpy as np
             from isaac.fold_expert import IsaacArmExpert
             zero = {key: np.zeros(3) for key in ((0, "left_"), (0, "right_"), (1, "left_"), (1, "right_"))}

@@ -56,6 +56,11 @@ GRIPPERFRAME_QUAT       = np.array([0.0, 0.0, 1.0, 0.0])
 # weld grasp (grasp_mode="weld", Phase W): particles within this distance of a welded grid vertex are pinned with it.
 # MuJoCo's grid vertex is one body standing for a 3 cm cell; one 3 mm particle alone would tear out of the sheet.
 WELD_PATCH              = 0.012
+# MuJoCo's weld is an equality constraint at the default solref (0.02 s, damping ratio 1): soft. The Isaac weld steers
+# the patch with that time constant (lab_scene._drive_pins); a rigid zero-mass pin (None) stored the fold's tension and
+# snapped the corner back up to 12 cm on release (W3).
+WELD_TAU                = 0.02
+WELD_MASS               = 10.0                # soft weld: the pinned patch's mass multiple, calibrated so weld_check matches MuJoCo's weld (lag 27 vs 23-27 mm, rise 8.8 vs 9.0 cm)
 # The so101_new_calib MJCF's sts3215 class, which MuJoCo used for every joint: position actuator kp 998.22, kv 2.731,
 # plus joint damping 0.60 (both damp joint velocity, so they add), armature 0.028, forcerange 3.35 on each
 # actuator. LeHome's SO101 drives are kp 17.8 / kd 0.60 / 10 N m, about 56x softer, so the arm lags its targets.
@@ -67,9 +72,10 @@ MUJOCO_ARM_DRIVE        = {"stiffness": 998.22, "damping": 2.731 + 0.60, "effort
 # cloth mass, cloth-table friction and cloth damping while domain_randomization is on).
 PROFILES = {
     "lehome": {"cloth_center": CLOTH_CENTER, "drop_height": DROP_HEIGHT, "drop_tilt_deg": DROP_TILT_DEG,
-               "arm_drive": None, "dynamics_dr": False, "grasp_mode": "friction", "device": "cpu"},
+               "arm_drive": None, "dynamics_dr": False, "grasp_mode": "friction", "device": "cpu", "weld_tau": None},
     "mujoco": {"cloth_center": (0.0, 0.0), "drop_height": 0.005, "drop_tilt_deg": 0.0,
-               "arm_drive": MUJOCO_ARM_DRIVE, "dynamics_dr": True, "grasp_mode": "weld", "device": "cuda:0"},
+               "arm_drive": MUJOCO_ARM_DRIVE, "dynamics_dr": True, "grasp_mode": "weld", "device": "cuda:0",
+               "weld_tau": WELD_TAU},
 }
 DR_RANGE                = (0.7, 1.3)          # mujuco/sim_main.py reset
 CLOTH_SPEED_LIMIT       = 20.0                # m/s; replaces MuJoCo's qacc explosion check
@@ -256,6 +262,8 @@ class IsaacClothFoldEnv(gym.Env):
         cfg = make_cfg(PHYSICS_DT, self.n_substeps, image_size if self._use_image else None, rig=self.rig, device=device,
                        arm_drive=self._prof["arm_drive"])
         self.lab = SceneEnv(cfg, self._prof["cloth_center"])
+        self.lab.weld_tau = self._prof["weld_tau"]
+        self.lab.weld_mass = WELD_MASS
         self.arms = self.lab.arms
         left = self.arms["left_"]
         self._dof_limits = _npy(left.data.soft_joint_pos_limits[0, self.lab.joint_ids["left_"]])   # (6, 2), both arms
@@ -462,8 +470,11 @@ class IsaacClothFoldEnv(gym.Env):
         # MuJoCo's set_gripper: while closed, every allowed grasp corner not yet welded that is within grasp_radius of
         # the gripperframe attaches with its current offset (a corner can join later while already holding another).
         # A grid vertex stands for a WELD_PATCH-radius patch of the denser particle mesh, each with its own offset.
-        site, quat = self.gripper_pose(prefix)
-        R = _matrix_from_quat(quat)
+        # Offsets are held in world axes: the patch translates with the gripperframe but doesn't turn with the wrist.
+        # MuJoCo's weld is soft and lets the held corner hang under the gripper (W3 trace: its offset stays within
+        # 2 cm of vertical through lift and carry); a zero-mass pin turning with the free wrist swung the corner 4 cm
+        # sideways, out from under the gripper, and FoldExpert's lift-above-the-corner target was never reached.
+        site, _ = self.gripper_pose(prefix)
         grid = self.cloth_positions()
         allowed = self.weld_mask.get(prefix)
         added = False
@@ -474,7 +485,7 @@ class IsaacClothFoldEnv(gym.Env):
                 continue
             near = np.flatnonzero(np.linalg.norm(self._particles - self._particles[self._grid[vtx]], axis=1)
                                   < WELD_PATCH)
-            self._pinned[prefix][vtx] = (near, (self._particles[near] - site) @ R)
+            self._pinned[prefix][vtx] = (near, self._particles[near] - site)
             added = True
         if added:
             self._push_pins()
@@ -488,6 +499,12 @@ class IsaacClothFoldEnv(gym.Env):
     def _advance(self):
         # one control step: the scene holds both arms' joint targets for n_substeps physics steps
         targets = np.concatenate([self._joint_targets["left_"], self._joint_targets["right_"]])[None, :]
+        if self.grasp_mode == "weld":
+            # the weld holds the cloth, not the jaws, so they stay open (the observation keeps the commanded target).
+            # A jaw opening at release swings ~1.2 rad through the flap hanging under it and flung the corner up to
+            # 9 cm (W3 trace, worse with the friction DR high); MuJoCo's 3 cm flex grid seldom catches a jaw, the
+            # 3 mm particle cloth always does
+            targets[0, [5, 11]] = GRIPPER_OPEN
         self.lab.step(self._torch.as_tensor(targets, dtype=self._torch.float32, device=self.lab.device))
         if not self._use_image and time.time() - self._kit_ticked > KIT_TICK_PERIOD_S:
             # state mode only steps physics, which never ticks Kit's main loop, and Kit's hang detector aborts the app

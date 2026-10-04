@@ -369,7 +369,7 @@ def _i32() -> Result:
     return Result("I3.2", "PASS" if ok else "FAIL", ev)
 
 
-@check("W1", "weld grasp on Isaac (GPU pipeline): engages, tracks < 3 mm lifted/carried, holds on neutral, releases, honours mask")
+@check("W1", "weld grasp on Isaac (GPU pipeline): engages, tracks like MuJoCo's weld lifted/carried, holds on neutral, releases, honours mask")
 def _w1() -> Result:
     f = ROOT / "outputs" / "isaac" / "weld_cuda" / "weld.json"
     if not f.exists():
@@ -415,6 +415,31 @@ def _w2() -> Result:
         ev.append(f"test_isaac_profile.py exit {code}: {tail}")
         ok &= code == 0
     return Result("W2", "PASS" if ok else "FAIL", ev)
+
+
+W3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "recovery": 90.0}    # MuJoCo's M1.7 ceilings were 100 / 97 / 96
+
+
+@check("W3", "MuJoCo's expert on Isaac (isaac_weld): gate n >= 100 id_easy >= 95, id_hard >= 90, recovery >= 90; MuJoCo expert byte-identical")
+def _w3() -> Result:
+    ev, ok = [], True
+    for s, bar in W3_GATE.items():
+        path = ROOT / "outputs" / "imitation" / "isaac_weld" / "w3" / f"eval_expert_{s}.json"
+        if not path.exists():
+            ev.append(f"missing artifact: {path}")
+            ok = False
+            continue
+        k, n = eval_counts(path)[s]
+        lo, hi = wilson(k, n)
+        rate = 100.0 * k / n
+        ev.append(f"{s}: {k}/{n} = {rate:.1f}% [{lo:.1f}, {hi:.1f}] (bar {bar:.0f})")
+        ok &= n >= 100 and rate >= bar and git_tracked(path)
+    a = ROOT / "outputs" / "imitation" / "expert_benchmark_w3.json"
+    b = ROOT / "outputs" / "imitation" / "expert_benchmark_m1_5.json"
+    same = a.exists() and json.loads(a.read_text(encoding="utf-8")) == json.loads(b.read_text(encoding="utf-8"))
+    ev.append(f"MuJoCo expert benchmark after the FoldExpert split {'==' if same else '!='} M1.5")
+    ok &= same and git_tracked(a) and results_md_has("W3")
+    return Result("W3", "PASS" if ok else "FAIL", ev)
 
 
 @check("I3.3", "close-out: every other Phase I check passes here, roadmap Phase I rows closed, docs updated")

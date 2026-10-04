@@ -169,6 +169,8 @@ class SceneEnv(DirectRLEnv):
         self.cloth_center = np.asarray(cloth_center, dtype=float)
         self.pins = {}          # weld grasp, see _drive_pins
         self.mass_scale = 1.0   # dynamics DR (set_dynamics); folded into set_pinned_masses
+        self.weld_tau = None    # None: rigid weld (zero-mass pins); seconds: soft weld, see _drive_pins
+        self.weld_mass = 1.0    # soft weld: pinned particles' mass multiple (the solver moves heavier ones less)
         super().__init__(cfg)
         self.joint_ids = {p: arm.find_joints(JOINTS, preserve_order=True)[0] for p, arm in self.arms.items()}
         self.gripper_body = {p: arm.find_bodies("gripper")[0][0] for p, arm in self.arms.items()}
@@ -240,6 +242,7 @@ class SceneEnv(DirectRLEnv):
         particle_cfg.objects.particle_material.adhesion = CLOTH_ADHESION
         z = TABLE_TOP_Z + particle_cfg.objects.particle_system.rest_offset + 0.001
         self.cloth_pose = np.array([self.cloth_center[0], self.cloth_center[1], z])
+        self.pin_floor = z - 0.001          # a particle resting on the table top (weld pins never go lower)
         pose = [float(v) for v in self.cloth_pose]
         garment_cfg = OmegaConf.create({
             # GarmentObject joins a leading-slash asset_path onto the working directory
@@ -288,9 +291,9 @@ class SceneEnv(DirectRLEnv):
             self._drive_pins()
 
     # ---- weld grasp (IsaacClothFoldEnv grasp_mode="weld", Phase W) ----
-    # pins: {prefix: (particle indices, offsets (k, 3) in the gripperframe site frame)}. GPU pipeline only: a welded
-    # particle gets zero mass and, before every physics substep, its position (gripper pose composed with its
-    # captured offset) and velocity (the gripper point's) are written through the particle-cloth tensor view. On the
+    # pins: {prefix: (particle indices, offsets (k, 3) from the gripperframe site, world axes)}. GPU pipeline only: a
+    # welded particle gets zero mass and, before every physics substep, its position (site + offset, never below
+    # pin_floor) and velocity (the site's) are written through the particle-cloth tensor view. On the
     # CPU device the only write path is the mesh's USD points, which PhysX ignores mid-simulation (W1: 14-36 mm drift
     # per substep), so IsaacClothFoldEnv refuses grasp_mode="weld" there.
     def site_pose(self, prefix):
@@ -311,7 +314,9 @@ class SceneEnv(DirectRLEnv):
             self._rest_masses = pv.get_masses().clone()
         masses = self._rest_masses * self.mass_scale
         for idx, _ in self.pins.values():
-            masses.view(masses.shape[0], -1)[0, torch.as_tensor(idx, device=masses.device)] = 0.0
+            ti = torch.as_tensor(idx, device=masses.device)
+            flat = masses.view(masses.shape[0], -1)
+            flat[0, ti] = 0.0 if self.weld_tau is None else flat[0, ti] * self.weld_mass
         pv.set_masses(masses, torch.arange(masses.shape[0], device=masses.device))
 
     def set_dynamics(self, mass_scale=1.0, friction_scale=1.0, damping_scale=1.0):
@@ -337,16 +342,30 @@ class SceneEnv(DirectRLEnv):
         for prefix, (idx, offsets) in self.pins.items():
             if len(idx) == 0:
                 continue
-            site, R, link_pos, _ = self.site_pose(prefix)
-            world = site + offsets @ R.T
+            site, _, link_pos, _ = self.site_pose(prefix)
+            world = site + offsets
             arm, b = self.arms[prefix], self.gripper_body[prefix]
             lin = arm.data.body_link_lin_vel_w[0, b].cpu().numpy()
             ang = arm.data.body_link_ang_vel_w[0, b].cpu().numpy()
+            v = np.broadcast_to(lin + np.cross(ang, site - link_pos), world.shape).copy()
+            # the table holds a pinned particle up, as MuJoCo's contact does against its soft weld: a kinematic pin
+            # would otherwise be pushed through it (W3 trace: 2.7 cm below the top as the gripper closed descending)
+            low = world[:, 2] < self.pin_floor
+            world[low, 2] = self.pin_floor
+            v[low, 2] = np.maximum(v[low, 2], 0.0)
             ti = torch.as_tensor(idx, device=pos.device)
-            pos[0, ti] = torch.as_tensor(world, dtype=pos.dtype, device=pos.device)
-            vel[0, ti] = torch.as_tensor(lin + np.cross(ang, world - link_pos), dtype=vel.dtype, device=vel.device)
+            if self.weld_tau is None:
+                pos[0, ti] = torch.as_tensor(world, dtype=pos.dtype, device=pos.device)
+            else:
+                # soft weld, MuJoCo's equality with solref (weld_tau, 1): the pinned particles keep their mass and are
+                # steered toward the target at the gripper's velocity plus error / weld_tau; the cloth solver can
+                # still pull them, so the held corner gives under tension and hangs under gravity as in MuJoCo
+                here = pos[0, ti].detach().cpu().numpy().astype(np.float64)
+                v = v + (world - here) / self.weld_tau
+            vel[0, ti] = torch.as_tensor(v, dtype=vel.dtype, device=vel.device)
         all_idx = torch.arange(pos.shape[0], device=pos.device)
-        view._physics_view.set_positions(pos, all_idx)
+        if self.weld_tau is None:
+            view._physics_view.set_positions(pos, all_idx)
         view._physics_view.set_velocities(vel, all_idx)
 
     def _get_observations(self):

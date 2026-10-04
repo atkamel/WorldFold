@@ -1,0 +1,26 @@
+{
+ "checkpoint": "expert",
+ "replan_every": 8,
+ "results": {
+  "id_hard": {
+   "n": 100,
+   "success_rate": 1.0,
+   "mean_fold_score": 0.9606935080991069,
+   "grasp_success": 1.0,
+   "mean_steps_success": 106.03,
+   "termination": {
+    "success": 100
+   },
+   "failure_codes": {},
+   "perturbed_failures": 0,
+   "perturbed_steps": 0,
+   "policy_infer_ms": null
+  }
+ },
+ "failure_codes": {
+  "G1": "missed or unstable grasp (an arm never grasped, or dropped its unplaced corner)",
+  "M1": "motion error: anchor corner dragged or sim unstable",
+  "F1": "fold placed with poor alignment (released off target)",
+  "S1": "stalled: timed out still holding / hovering"
+ }
+}

@@ -3,7 +3,7 @@
   "approach": {
    "ik_err_mm": 0.0,
    "steps": 40,
-   "s_per_step": 0.14,
+   "s_per_step": 0.139,
    "max_track_mm": null,
    "corner_z_start": 0.424,
    "corner_z_end": 0.424,
@@ -12,7 +12,7 @@
   "descend": {
    "ik_err_mm": 0.0,
    "steps": 30,
-   "s_per_step": 0.136,
+   "s_per_step": 0.133,
    "max_track_mm": null,
    "corner_z_start": 0.424,
    "corner_z_end": 0.4239,
@@ -21,7 +21,7 @@
   "close": {
    "ik_err_mm": 0.0,
    "steps": 5,
-   "s_per_step": 0.154,
+   "s_per_step": 0.146,
    "max_track_mm": 1.67,
    "corner_z_start": 0.4239,
    "corner_z_end": 0.4239,
@@ -30,7 +30,7 @@
   "lift": {
    "ik_err_mm": 0.0,
    "steps": 40,
-   "s_per_step": 0.151,
+   "s_per_step": 0.147,
    "max_track_mm": 27.131,
    "corner_z_start": 0.424,
    "corner_z_end": 0.5123,
@@ -39,7 +39,7 @@
   "carry": {
    "ik_err_mm": 0.01,
    "steps": 40,
-   "s_per_step": 0.152,
+   "s_per_step": 0.149,
    "max_track_mm": 26.613,
    "corner_z_start": 0.5158,
    "corner_z_end": 0.5185,
@@ -48,7 +48,7 @@
   "hold_neutral": {
    "ik_err_mm": 0.01,
    "steps": 10,
-   "s_per_step": 0.15,
+   "s_per_step": 0.153,
    "max_track_mm": 20.853,
    "corner_z_start": 0.5186,
    "corner_z_end": 0.5185,
@@ -57,7 +57,7 @@
   "release": {
    "ik_err_mm": 0.01,
    "steps": 30,
-   "s_per_step": 0.141,
+   "s_per_step": 0.145,
    "max_track_mm": null,
    "corner_z_start": 0.497,
    "corner_z_end": 0.4338,
@@ -66,7 +66,7 @@
   "mask_approach": {
    "ik_err_mm": 0.0,
    "steps": 40,
-   "s_per_step": 0.136,
+   "s_per_step": 0.226,
    "max_track_mm": null,
    "corner_z_start": 0.424,
    "corner_z_end": 0.424,
@@ -75,7 +75,7 @@
   "mask_descend": {
    "ik_err_mm": 0.0,
    "steps": 30,
-   "s_per_step": 0.135,
+   "s_per_step": 0.273,
    "max_track_mm": null,
    "corner_z_start": 0.424,
    "corner_z_end": 0.4239,
@@ -84,7 +84,7 @@
   "mask_close": {
    "ik_err_mm": 0.0,
    "steps": 5,
-   "s_per_step": 0.138,
+   "s_per_step": 0.276,
    "max_track_mm": null,
    "corner_z_start": 0.4239,
    "corner_z_end": 0.4239,
@@ -105,12 +105,12 @@
  "masked_engaged": false,
  "checks": {
   "engaged": true,
-  "tracking_like_mujoco": true,
+  "tracking_under_3mm": false,
   "corner_rose_8cm": true,
   "held_on_neutral": true,
   "released_and_fell": true,
   "mask_respected": true,
   "cloth_rests_on_table": true
  },
- "passed": true
+ "passed": false
 }

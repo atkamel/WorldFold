@@ -1,0 +1,54 @@
+{
+ "phases": {
+  "approach": {
+   "ik_err_mm": 4.9,
+   "max_track_mm": null,
+   "corner_z_start": 0.4298,
+   "corner_z_end": 0.4297,
+   "grasp_active": false
+  },
+  "descend": {
+   "ik_err_mm": 8.5,
+   "max_track_mm": null,
+   "corner_z_start": 0.4297,
+   "corner_z_end": 0.43,
+   "grasp_active": false
+  },
+  "close": {
+   "ik_err_mm": 8.5,
+   "max_track_mm": 0.2,
+   "corner_z_start": 0.43,
+   "corner_z_end": 0.43,
+   "grasp_active": true
+  },
+  "lift": {
+   "ik_err_mm": 5.4,
+   "max_track_mm": 23.0,
+   "corner_z_start": 0.4421,
+   "corner_z_end": 0.5326,
+   "grasp_active": true
+  },
+  "carry": {
+   "ik_err_mm": 8.5,
+   "max_track_mm": 27.2,
+   "corner_z_start": 0.5271,
+   "corner_z_end": 0.526,
+   "grasp_active": true
+  },
+  "hold_neutral": {
+   "ik_err_mm": 8.5,
+   "max_track_mm": 6.7,
+   "corner_z_start": 0.5261,
+   "corner_z_end": 0.5265,
+   "grasp_active": true
+  },
+  "release": {
+   "ik_err_mm": 8.5,
+   "max_track_mm": null,
+   "corner_z_start": 0.5233,
+   "corner_z_end": 0.5042,
+   "grasp_active": false
+  }
+ },
+ "max_track_mm": 27.2
+}

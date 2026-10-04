@@ -15,7 +15,6 @@ MjData and executed through joint_delta actions.
 from __future__ import annotations
 
 import numpy as np
-import mujoco
 
 from cloth_fold_rl.fold_env import (
     MOVING_CORNER, LIFT_TARGET_Z, SUCCESS_DIST,
@@ -34,6 +33,7 @@ def solve_ik(model, data, site_id, qpos_adr, dof_adr, joint_range, target,
     the kinematics, and it is reseeded every restart). Returns (q, err) for the best
     configuration found.
     """
+    import mujoco
     rng = rng or np.random.default_rng(0)
     scratch = scratch if scratch is not None else mujoco.MjData(model)
     lo = np.array([r[0] for r in joint_range])
@@ -91,31 +91,43 @@ class FoldExpert:
     RELEASE_PHASES = ("release", "retreat", "done")
     OPEN_PHASES = ("approach", "release", "retreat", "done")
     RETREAT_HEIGHT = 0.05
+    PLACE_HEIGHT = 0.02          # the place waypoint's height above the goal
 
     def __init__(self, env, seed=0, prefix="left_", corner=MOVING_CORNER, goal=None, release=False,
                  raw_vertex=False):
         self.env = env
         self.base = env.unwrapped
         self.seed = seed
-        self._scratch = mujoco.MjData(env.unwrapped.model)
         self.rng = np.random.default_rng(seed)
         self.prefix = prefix
         self.corners = tuple(np.atleast_1d(corner))
-        # corner indexes into _corner_ids (the 4 true corners) by default; set
-        # raw_vertex=True to index into _cloth_body_ids instead, for tasks that
-        # grasp a non-corner vertex (e.g. an edge midpoint).
-        self._corner_lookup = self.base._cloth_body_ids if raw_vertex else self.base._corner_ids
         self.goal = goal if goal is not None else (lambda: self.env._goal)
         if release:
             self.PHASES = self.PHASES + self.RELEASE_PHASES
         self.release_allowed = True
+        self._init_sim(raw_vertex)
+        self.reset()
+
+    # ---- the sim reads, overridden by isaac.weld_expert.IsaacFoldExpert ----
+    def _init_sim(self, raw_vertex):
+        import mujoco
+        self._scratch = mujoco.MjData(self.base.model)
+        # corner indexes into _corner_ids (the 4 true corners) by default; set
+        # raw_vertex=True to index into _cloth_body_ids instead, for tasks that
+        # grasp a non-corner vertex (e.g. an edge midpoint).
+        self._corner_lookup = self.base._cloth_body_ids if raw_vertex else self.base._corner_ids
         self.site_id = self.base._site_id[self.prefix]
         self.qpos_adr = self.base._arm_qpos_adr[self.prefix]
         self.dof_adr = self.base._arm_dof_adr[self.prefix]
         self.joint_range = [self.base.model.joint(f"{self.prefix}{n}").range
                             for n in ["shoulder_pan", "shoulder_lift", "elbow_flex",
                                       "wrist_flex", "wrist_roll"]]
-        self.reset()
+
+    def _site(self):
+        return self.base.data.site_xpos[self.site_id]
+
+    def _q_now(self):
+        return np.array([self.base.data.qpos[a] for a in self.qpos_adr])
 
     def reset(self):
         self.phase = 0
@@ -145,10 +157,10 @@ class FoldExpert:
         if name == "carry":
             return np.array([goal[0], goal[1], LIFT_TARGET_Z])
         if name == "place":
-            return goal + np.array([0.0, 0.0, 0.02])
+            return goal + np.array([0.0, 0.0, self.PLACE_HEIGHT])
         if name == "retreat":
             if self.retreat_target is None:
-                self.retreat_target = self.base.data.site_xpos[self.site_id] + np.array([0.0, 0.0, self.RETREAT_HEIGHT])
+                self.retreat_target = self._site() + np.array([0.0, 0.0, self.RETREAT_HEIGHT])
             return self.retreat_target
         return None      # hold, release, done: stop moving
 
@@ -163,8 +175,7 @@ class FoldExpert:
         if target is not None:
             if self.q_target is None:
                 self.q_target, _ = self._ik(target)
-            q_now = np.array([self.base.data.qpos[a] for a in self.qpos_adr])
-            dq = self.q_target - q_now
+            dq = self.q_target - self._q_now()
             action[0:5] = np.clip(dq / JOINT_DELTA_SCALE, -1.0, 1.0)
 
         self.phase_steps += 1
@@ -179,7 +190,7 @@ class FoldExpert:
         on the task's true goal (the coordinator knows it; our goal() includes the
         overshoot); defaults to within SUCCESS_DIST of goal().
         """
-        site = self.base.data.site_xpos[self.site_id]
+        site = self._site()
         corner = self._corner()
         goal = np.asarray(self.goal(), dtype=float)
         if placed is None:
@@ -214,7 +225,7 @@ class FoldExpert:
         name = self.PHASES[self.phase]
         if name == "done" or (name == "hold" and not (self.release_allowed and "release" in self.PHASES)):
             return
-        site = self.base.data.site_xpos[self.site_id]
+        site = self._site()
         corner = self._corner()
         reached = target is not None and float(np.linalg.norm(site - target)) < 0.02
 
