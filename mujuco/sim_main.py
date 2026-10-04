@@ -172,6 +172,9 @@ class ClothFoldEnv(gym.Env):
     def corner_positions(self):
         return np.array(self.data.xpos[self._corner_ids])   # (4, 3) cloth_0, cloth_10, cloth_110, cloth_120
 
+    def joint_positions(self, prefix):
+        return np.array(self.data.qpos[self._arm_qpos_adr[prefix]])   # (5,) in ARM_JOINTS order
+
     def gripper_position(self, prefix):
         return np.array(self.data.site_xpos[self._site_id[prefix]])
 
