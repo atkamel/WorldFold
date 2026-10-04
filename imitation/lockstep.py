@@ -50,6 +50,7 @@ class Lockstep:
         self.parked: set[int] = set()
         self.gen = 0
         self.steps = 0
+        self.advance_s = 0.0          # time inside advance() (the shared physics step), for profiling
         self._failed: dict[int, BaseException] = {}     # generation -> the exception its advance raised
         self._calls: deque = deque()
         self._closed = False
@@ -105,10 +106,12 @@ class Lockstep:
                     self.baton.notify_all()
                     continue
                 if self.ready():
+                    t0 = time.perf_counter()
                     try:
                         self._advance()
                     except BaseException as e:      # noqa: BLE001 -- re-raised in every parked slot
                         self._failed[self.gen] = e
+                    self.advance_s += time.perf_counter() - t0
                     self.parked.clear()
                     self.gen += 1
                     self.steps += 1

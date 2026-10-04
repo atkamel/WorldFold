@@ -98,6 +98,8 @@ def main():
     lockstep = _serve_slots([b for _, b in ends], batch, envs, isaac=True)
     t.join()
     result["global_steps"] = lockstep.steps
+    result["physics_s_per_global_step"] = round(lockstep.advance_s / max(lockstep.steps, 1), 4)
+    result["physics_share"] = round(lockstep.advance_s / result["wall_s"], 3)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "a", encoding="utf8") as f:
         f.write(json.dumps(result) + "\n")

@@ -150,6 +150,9 @@ def main():
         < 1e-5 for c in twins)
 
     # ---- weld per copy: pinned masses change on that copy only ----
+    # baseline first: the victim's soft reset above re-parsed its cloth (spawned masses) while its mass_scale kept the
+    # last DR draw, which set_pinned_masses re-applies
+    lab.set_pinned_masses(victim)
     mb = {c: masses(c) for c in range(B)}
     lab.copies[victim].pins = {"left_": (np.arange(10), np.zeros((10, 3)))}
     lab.set_pinned_masses(victim)
