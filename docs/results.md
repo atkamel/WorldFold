@@ -1126,6 +1126,7 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
 | 4 | #3 + place height 1.1 → −1.0 cm (expert) | 20 / 20 | 19 / 14 | 9 / 5 | 5 / 2 | 5.1 / 28.0 cm | not kept |
 | 5 | closed jaw target +0.05 → +0.08 rad | 20 / 19 | **0 / 0** | 0 / 0 | 0 / 0 | 5.4 / 11.9 cm | rejected |
 | 6 | closed jaw target +0.05 → +0.02 rad | 20 / 20 | 19 / 17 | 5 / 1 | 4 / 2 | 7.2 / 13.3 cm | not kept (held within noise of #3, placement worse) |
+| 7 | #3 + jaw opens at 0.1 rad / step (`jaw_open_rate`, ~11 steps instead of ~3) | 20 / 20 | 20 / 14 | 10 / 9 | 2 / 0 | 6.7 / 12.5 cm | not kept (no release gain) |
 
 - **#1:** the higher friction fixes the right arm's pinch (acquired 20/20 [83.9, 100] vs 11/20 [34.2, 74.2]), and the
   cloth barely slides on the table (anchor drift mean 0.8 / 1.4 cm). But it loses the carry on both arms: held
@@ -1155,6 +1156,18 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
   - Settled miss (corner − goal, 15 steps after release, held episodes): left (+4.1, −4.4) cm, sd (1.9, 1.9);
     right (−4.5, −5.9) cm, sd (1.9, 1.8). With #3: left (+0.1, −5.2), sd (1.3, 1.2); right (−1.3, −5.0), sd (1.0, 2.0).
   - #3 stays the parent: it holds as well, and its spring-back is tighter, which is what an overshoot can correct.
+- **#7:** opening the jaw over about 11 steps changes nothing that matters (released 2/20 [2.8, 30.1] and 0/20
+  [0, 16.1]; placed 10/20 and 9/20, within noise of #3). The trace confirms the jaw ramps at 0.1 rad per step.
+- **What "released" is measuring (analysis on attempts 0, 3, 6, 7).**
+  - Every held corner is let go: by the end of the retreat it lies back on the cloth (< 2.5 cm above rest).
+    - #3: 20/20 left, 14/14 held on the right.
+    - #7: 20/20 and 14/14 (13 of 13 were scored when this was written).
+  - What fails the strict 3 cm test is the horizontal move after opening: median 4.2 / 4.6 cm in #3, 3.8 / 4.8 cm in
+    #7, max 7.4 cm. The corner is let go about 5 cm above the table and the fold's flap springs outward; on MuJoCo the
+    same spring-back is 3–4 cm and is absorbed by `OVERSHOOT`.
+  - So with the current hold height, the strict "released" flag is a spring-back test, not a test of the jaw letting
+    go. It moves only if the corner is held lower (it rides 3.6 cm above the fingertip, up between the pads). A wider
+    or slower opening doesn't change it. Placement can be corrected with an overshoot (#8).
 
 Artifacts: `outputs/isaac/grasp/t{1..4}_*/{rows.jsonl,summary.json,bench.log}`.
 
