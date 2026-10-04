@@ -49,6 +49,43 @@ class IsaacFoldExpert(FoldExpert):
         cloth = self.base.cloth_positions()
         return np.mean([cloth[c] for c in self.corners], axis=0)
 
+    # W3b knobs (None = FoldExpert's behaviour). Tuned on recovery replays of tune seeds 610000+ (docs/results.md W3b).
+    # REGRASP_OFFSET: above this sideways offset of a held corner, aim the gripper so the corner reaches the target.
+    #   Attempt A (0.02, lift/carry/place): 30/40 vs 35/40 baseline, rejected.
+    # RETRY_LIFT / RETRY_APPROACH: a retry (QuarterFoldExpert resets the expert mid-episode to nudge a placed corner)
+    #   repeats FoldExpert's full motion -- approach 6 cm above, lift to table + 12 cm -- for a corner that is already
+    #   near its goal; these lower the retry's lift (above the table) and approach (above the corner), in metres.
+    #   Attempt B (0.05 / 0.03): 34/40, more but cheaper retries, rejected.
+    REGRASP_OFFSET = None
+    REGRASP_PHASES = ("lift", "carry", "place")   # where REGRASP_OFFSET applies; attempt C: lift only
+    RETRY_LIFT = None
+    RETRY_APPROACH = None
+
+    def reset(self):
+        super().reset()
+        # a reset after the episode's first step is QuarterFoldExpert's retry, not a new episode
+        self.retrying = int(getattr(self.base, "_step_count", 0)) > 0
+
+    def _plan(self):
+        from mujuco.cloth_params import TABLE_TOP_Z
+        target = super()._plan()
+        if target is None:
+            return None
+        name = self.PHASES[self.phase]
+        if getattr(self, "retrying", False):
+            if name == "approach" and self.RETRY_APPROACH is not None:
+                target = self._corner() + np.array([0.0, 0.0, self.RETRY_APPROACH])
+            elif name in ("lift", "carry") and self.RETRY_LIFT is not None:
+                target = np.array(target, dtype=float)
+                target[2] = TABLE_TOP_Z + self.RETRY_LIFT
+        if (self.REGRASP_OFFSET is not None and name in self.REGRASP_PHASES
+                and self.base.grasp_active(self.prefix)):
+            off = (self._corner() - self._site())[:2]
+            if float(np.linalg.norm(off)) > self.REGRASP_OFFSET:
+                target = np.array(target, dtype=float)
+                target[:2] -= off
+        return target
+
     def _ik(self, target):
         # solve_ik seeds its first try from the live arm pose, then restarts at random
         return self._pinch.solve_position(self.prefix, target, self._q_now(), rng=self.rng)

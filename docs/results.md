@@ -1131,3 +1131,30 @@ Independence checks, all true:
 
 **Decision:** go (≥ 1.5× keep threshold). The ≥ 3× target is to be re-measured in V on a quiet GPU. LeHome's
 wrapper can be copied per env; no cloth rewrite is needed.
+
+### W3b expert recovery tuning (2026-10-04) — tune seeds 610000–610039, n = 40 per attempt, paired
+
+- **Method:** `isaac/recovery_replay.py` replays the recovery eval's knock: k random actions at t, drawn from
+  rng([seed, 7919]), on tune seeds rather than eval seeds. Same 40 seeds every attempt, so attempts compare
+  paired. Each row has a phase timeline. Artifacts: `outputs/isaac/recovery/*.jsonl`.
+- **Note:** this replay has more retries per episode than the eval gate. The eval gate on seeds 300000+ was
+  81/100 for the baseline expert.
+
+| attempt | change (Isaac expert only) | success | Wilson 95% | paired vs baseline: only-base / only-new | verdict |
+|---|---|---|---|---|---|
+| baseline | W3 expert | 35/40 | 73.9–94.5% | — | — |
+| A | aim the held corner (subtract its sideways offset > 2 cm) in lift / carry / place | 30/40 | 59.8–85.8% | 6 / 1 | rejected: placements after re-grasp miss more |
+| B | cheaper retries: lift to table + 5 cm, approach corner + 3 cm | 34/40 | 70.2–92.9% | 2 / 1 | rejected: 15 retries vs 10, no gain |
+| C | aim the held corner in lift only | 31/40 | 62.5–87.7% | 5 / 1 | rejected: 28 retries vs 10 |
+
+**Baseline failure anatomy (5/40):**
+- Lift stalls for the full 45-step patience after a sideways re-grasp, while the other arm holds for up to 116
+  steps.
+- Retry loops: first placements 5–9 cm off, each retry about 50 steps.
+- One descend that never engaged: the knock dragged the corner out of reach.
+
+**Plateau after A, B and C.** Three consecutive attempts each fell below the baseline.
+- Current estimate of the W3 expert's recovery rate, pooling the eval gate and the tune replay: (81 + 35) / 140 =
+  82.9% (Wilson 75.8–88.2%).
+- That is below the 85 floor, so W3b is recorded as plateaued and the decision goes to the user.
+

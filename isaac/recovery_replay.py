@@ -25,6 +25,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", default=f"{RECOVERY_TUNE_BASE}:{RECOVERY_TUNE_BASE + 20}")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--set", action="append", default=[], metavar="ATTR=VALUE",
+                    help="override an IsaacFoldExpert class attribute for this run, e.g. REGRASP_OFFSET=none")
     args = ap.parse_args()
     a, b = (int(v) for v in args.seeds.split(":"))
     out = Path(args.out)
@@ -37,6 +39,11 @@ def main():
     from imitation.spec import ACTION_DIM
     from imitation.tasks import make_env
     from imitation.teachers.scripted import ScriptedTeacher
+    from isaac.weld_expert import IsaacFoldExpert
+    for kv in args.set:                       # experiment knobs, recorded in every row
+        k, v = kv.split("=", 1)
+        val = None if v.lower() == "none" else (tuple(v.split("+")) if not v.replace(".", "").isdigit() else float(v))
+        setattr(IsaacFoldExpert, k, val)
     _, _, knock = eval_set("recovery", 1, "isaac_weld")
     env = make_env("isaac_weld")
     expert = ScriptedTeacher(env, seed=0).expert
@@ -69,6 +76,7 @@ def main():
         row = {"seed": seed, "knock": [p.t, p.k], "success": bool(info["success"]), "steps": t + 1,
                "reason": info["termination_reason"] or "truncated", "retries": sum(expert.retries.values()),
                "d": [round(float(x), 4) for x in info["move_distance"]], "domain": dict(base._domain_params),
+               "knobs": args.set,
                "timeline": timeline}
         with out.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
