@@ -26,6 +26,7 @@ def main():
     ap.add_argument("--seeds", default=f"{RECOVERY_TUNE_BASE}:{RECOVERY_TUNE_BASE + 20}")
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-steps", type=int, default=None, help="episode cap (default: isaac_weld's, 250)")
+    ap.add_argument("--retries", type=int, default=None, help="QuarterFoldExpert.MAX_RETRIES override (default 2)")
     ap.add_argument("--set", action="append", default=[], metavar="ATTR=VALUE",
                     help="override an IsaacFoldExpert class attribute for this run, e.g. REGRASP_OFFSET=none")
     args = ap.parse_args()
@@ -45,6 +46,20 @@ def main():
         k, v = kv.split("=", 1)
         val = None if v.lower() == "none" else (tuple(v.split("+")) if not v.replace(".", "").isdigit() else float(v))
         setattr(IsaacFoldExpert, k, val)
+    import cloth_fold_rl.quarter_fold_expert as qfe
+    if args.retries is not None:
+        qfe.MAX_RETRIES = args.retries
+    # log every retry: when it fires, the arm, and the measured miss it corrects (retry analysis, W3b)
+    retry_log = []
+    orig_retry = qfe.QuarterFoldExpert._maybe_retry
+
+    def logged_retry(self, key, expert):
+        before = self.retries[key]
+        orig_retry(self, key, expert)
+        if self.retries[key] > before:
+            retry_log.append({"t": int(self.base._step_count), "arm": key[1], "n": self.retries[key],
+                              "miss": [round(float(v), 4) for v in self.correction[key]]})
+    qfe.QuarterFoldExpert._maybe_retry = logged_retry
     _, _, knock = eval_set("recovery", 1, "isaac_weld")
     env = make_env("isaac_weld", **({"max_episode_steps": args.max_steps} if args.max_steps else {}))
     expert = ScriptedTeacher(env, seed=0).expert
@@ -57,6 +72,7 @@ def main():
         env.reset(seed=seed)
         expert.reset()
         stale, timeline, prev = False, [], None
+        retry_log.clear()
         for t in range(base.max_episode_steps):
             if p.active(t):
                 act, tag, stale = rng.uniform(-1, 1, ACTION_DIM).astype(np.float32), "K", True
@@ -77,7 +93,8 @@ def main():
         row = {"seed": seed, "knock": [p.t, p.k], "success": bool(info["success"]), "steps": t + 1,
                "reason": info["termination_reason"] or "truncated", "retries": sum(expert.retries.values()),
                "d": [round(float(x), 4) for x in info["move_distance"]], "domain": dict(base._domain_params),
-               "knobs": args.set, "max_steps": base.max_episode_steps,
+               "knobs": args.set, "max_steps": base.max_episode_steps, "max_retries": qfe.MAX_RETRIES,
+               "retry_log": list(retry_log),
                "timeline": timeline}
         with out.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")

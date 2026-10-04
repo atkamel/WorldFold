@@ -48,12 +48,16 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 - **V0 go; V1/V2 implemented** on `feature/isaac-vec` by an Opus agent (worktree `.claude/worktrees/agent-a92cce19dd29dae77`).
   - Expert parity at B = 4 vs B = 1: 40/40 vs 40/40.
   - Throughput 2.15× at B = 8.
-  - **Pending:** lead re-verification and merge.
+  - **Lead-verified on the branch:** fast suite 183 passed (MuJoCo included), slow suite 12 passed.
+  - **Merge into `feature/isaac-imitation` is blocked:** the permission classifier denied the merge, and it waits
+    for the user.
 - **W3b (expert recovery) in progress.** Pooled 81.7% (147/180).
   - Attempts A–C and a 300-step cap did not help; n = 40 noise is about ±10 pp.
   - The user chose to keep working. Next: n = 80 paired attempts with per-retry logging, run on the vectorised env.
-- **Defect 14 (reported by the V agent):** Windows Application Control blocked MuJoCo's `_enums.pyd` in its
-  run. Lead to check.
+- **Defect 14 (reported by the V agent): not reproduced.** `import mujoco` works from the main `.venv`, and the full
+  fast suite passed in the V worktree. It was transient or specific to that agent's run.
+- **W3b attempt D running:** retries off, n = 80 paired (seeds 610000–610079), with per-retry logging in
+  `isaac/recovery_replay.py`.
 - **Track G:** on `feature/isaac-grasp` (worktree `.claude/worktrees/agent-a55d8fa30a92a92f8`), now continued by a Sonnet agent.
   - IG.1 ✅ (38b45d9).
   - IG.2: best config #9 (bf73afd). The user approved redefining "released" as "the corner ends back on the cloth, not carried up".
