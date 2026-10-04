@@ -1125,6 +1125,7 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
 | 3 | closed jaw target −0.1 → +0.05 rad | 20 / 20 | **20 / 14** | 9 / 8 | 2 / 1 | 4.3 / 5.1 cm | **kept** (new parent) |
 | 4 | #3 + place height 1.1 → −1.0 cm (expert) | 20 / 20 | 19 / 14 | 9 / 5 | 5 / 2 | 5.1 / 28.0 cm | not kept |
 | 5 | closed jaw target +0.05 → +0.08 rad | 20 / 19 | **0 / 0** | 0 / 0 | 0 / 0 | 5.4 / 11.9 cm | rejected |
+| 6 | closed jaw target +0.05 → +0.02 rad | 20 / 20 | 19 / 17 | 5 / 1 | 4 / 2 | 7.2 / 13.3 cm | not kept (held within noise of #3, placement worse) |
 
 - **#1:** the higher friction fixes the right arm's pinch (acquired 20/20 [83.9, 100] vs 11/20 [34.2, 74.2]), and the
   cloth barely slides on the table (anchor drift mean 0.8 / 1.4 cm). But it loses the carry on both arms: held
@@ -1148,6 +1149,12 @@ paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its 
 - **#5 (sweep around #3):** +0.08 rad lifts every corner (acquired 20/20, 19/20), but no corner is held through the
   carry: held 0/20 [0, 16.1] on both arms. The working window of the closed target is narrow. −0.1 squeezes the
   cloth out, +0.08 pinches too lightly, and +0.05 holds.
+- **#6:**
+  - Held: 19/20 [76.4, 99.1] and 17/20 [64.0, 94.8], against #3's 20/20 and 14/20 (34 vs 36 of 40 arms).
+  - Placements are worse: 5/20 [11.2, 46.9] and 1/20 [0.9, 23.6].
+  - Settled miss (corner − goal, 15 steps after release, held episodes): left (+4.1, −4.4) cm, sd (1.9, 1.9);
+    right (−4.5, −5.9) cm, sd (1.9, 1.8). With #3: left (+0.1, −5.2), sd (1.3, 1.2); right (−1.3, −5.0), sd (1.0, 2.0).
+  - #3 stays the parent: it holds as well, and its spring-back is tighter, which is what an overshoot can correct.
 
 Artifacts: `outputs/isaac/grasp/t{1..4}_*/{rows.jsonl,summary.json,bench.log}`.
 
