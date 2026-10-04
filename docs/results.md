@@ -1107,3 +1107,27 @@ now a frozen reference: no new MuJoCo runs (user decision).
   - **Detector:** 80/80 agreement (Wilson 95.4–100%: 76 true positives, 0 false positives, 0 false negatives). This
     is in-sample, on the same versions it was trained on, as in I3.2; W5's bar uses held-out episodes.
   - W4's exit is met: every artifact is valid, and diffusion id_easy has Wilson lower bound 83.9 > 0.
+
+### V0 vectorisation probe (2026-10-04) — go
+
+`isaac/probes/vec_probe.py`, GPU weld profile, 101×101 cloth:
+- B independent copies in one Isaac process, each a LeHome `GarmentObject` with its own particle system and
+  material, plus an arm pair and a table, laid out 1.5 m apart.
+- Zero actions, 40 control steps after 5 warm-up steps.
+- Measured while 2–3 other Isaac processes shared the GPU (the W3b replay and track G), so absolute times are
+  inflated and noisy.
+
+| B | s / control step | per env-step | vs B = 1 | total GPU memory, all processes |
+|---|---|---|---|---|
+| 1 | 0.278 | 0.278 | 1× | 13.1 GB |
+| 2 | 2.387 (outlier), rerun 0.238 | 0.119 | ~2.3× | 13.9 / 15.6 GB |
+| 4 | 0.499; rerun 0.715 | 0.125–0.179 | 1.6–2.2× | 15.4 / 15.6 GB |
+| 8 | 0.989 | 0.124 | ~2.3× | 15.6 GB |
+
+Independence checks, all true:
+- each copy's cloth view reads its own particles
+- a mass write to the last copy leaves copy 0 unchanged
+- each copy has its own particle material, so per-env DR is possible
+
+**Decision:** go (≥ 1.5× keep threshold). The ≥ 3× target is to be re-measured in V on a quiet GPU. LeHome's
+wrapper can be copied per env; no cloth rewrite is needed.
