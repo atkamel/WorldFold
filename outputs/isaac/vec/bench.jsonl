@@ -1,0 +1,4 @@
+{"B": 2, "episodes": 4, "successes": 4, "wall_s": 165.6, "episodes_per_hour": 86.9, "env_steps": 353, "env_steps_per_s": 2.131, "gpu_mem_mb_max": 11635, "other_isaac_procs": 1, "global_steps": 232}
+{"B": 1, "episodes": 3, "successes": 3, "wall_s": 155.8, "episodes_per_hour": 69.3, "env_steps": 260, "env_steps_per_s": 1.669, "gpu_mem_mb_max": 11986, "other_isaac_procs": 1, "global_steps": 320}
+{"B": 4, "episodes": 8, "successes": 8, "wall_s": 249.9, "episodes_per_hour": 115.2, "env_steps": 715, "env_steps_per_s": 2.861, "gpu_mem_mb_max": 12090, "other_isaac_procs": 1, "global_steps": 234}
+{"B": 8, "episodes": 16, "successes": 16, "wall_s": 386.2, "episodes_per_hour": 149.1, "env_steps": 1383, "env_steps_per_s": 3.581, "gpu_mem_mb_max": 12458, "other_isaac_procs": 1, "global_steps": 230}

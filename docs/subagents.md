@@ -6,6 +6,7 @@ tedious, well-scoped work; the lead agent re-verifies results before a milestone
 
 | date | milestone | model | task | outcome | lead re-verified |
 |---|---|---|---|---|---|
+| 2026-10-04 | V | opus (background agent, worktree `agent-a92cce19dd29dae77`, branch `feature/isaac-vec`) | vectorised Isaac env: design doc, scene copies, `IsaacClothFoldBatch`/`IsaacSubEnv`, lockstep multi-env worker, fake-batch tests, vec_check, bench, parity | done: parity 40/40 (B=4) vs 40/40 (B=1); 2.15× eps/h at B=8 (kept, < 3×); 16 fast lockstep tests | pending: lead re-runs parity and reads the diff |
 | 2026-10-04 | plan | sonnet (Explore) ×2 | read-only: Isaac vectorisation feasibility; MuJoCo checkpoint transfer to isaac_weld | done; findings folded into the revised plan | spot-checked key file refs |
 | 2026-10-03 | IG.1–IG.3 (track G) | opus | friction-grasp track in its own worktree (`feature/isaac-grasp`), 1 Isaac process | IG.1 done (38b45d9, verify PASS); IG.2: 4 attempts, the closed-jaw target +0.05 rad fixed holding (L 20/20, R 14/20); placed 5–9/20, released 1–5/20; continuing | pending: lead re-verifies at each milestone |
 | 2026-10-03 | W2 | sonnet | `isaac_weld` backend plumbing: `make_env`, `is_isaac`, `make_isaac_base(profile=)`, MuJoCo eval sets and recovery timing for isaac_weld, `--backend` choices on every CLI, 14 fast tests | done; 167 fast pass; every site decision listed (lazy `is_isaac` imports keep `cloth_fold_rl` off the Isaac worker path) | yes: read the diff, re-ran the fast suite (167 passed) |

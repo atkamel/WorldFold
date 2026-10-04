@@ -1131,3 +1131,46 @@ Independence checks, all true:
 
 **Decision:** go (≥ 1.5× keep threshold). The ≥ 3× target is to be re-measured in V on a quiet GPU. LeHome's
 wrapper can be copied per env; no cloth rewrite is needed.
+
+### V vectorised Isaac env (2026-10-04) — kept at 2.1× (3× target not met)
+
+Branch `feature/isaac-vec`, design `docs/superpowers/specs/2026-10-04-isaac-vec-design.md`. B envs are copies of the
+weld-profile scene (cloth 101×101) in one Isaac process, stepped in lockstep by the rollout worker
+(`WORLDFOLD_ISAAC_ENVS_PER_PROC=B`). Every run below shared the GPU with 1 other Isaac process (track G or W3b).
+
+**Expert parity** (`imitation.evaluate --backend isaac_weld --ckpt expert --sets id_easy --n 40 --workers 1`, the
+id_easy eval seeds, code at e3e1ef4; reports `outputs/isaac/vec/parity_B{1,4}.json`):
+
+| B per process | success | Wilson 95% | mean fold score | mean steps (success) | wall incl. Kit start |
+|---|---|---|---|---|---|
+| 1 | 40/40 | 91.2–100 | 0.9736 | 84.5 | 33.2 min |
+| 4 | 40/40 | 91.2–100 | 0.9724 | 84.4 | 17.6 min |
+
+The CIs overlap (they're identical), so parity is met.
+
+**Throughput** (`isaac/bench_vec.py`; expert collection through the real worker and `_rollout`; one process; seeds
+700000+; 2 waves of B episodes, 3 episodes at B = 1; wall from the first reset, Kit start-up excluded;
+`outputs/isaac/vec/bench.jsonl`):
+
+| B | episodes (success) | episodes/h | env-steps/s | vs B = 1 (eps/h, steps/s) | global steps | GPU memory, all procs |
+|---|---|---|---|---|---|---|
+| 1 | 3 (3) | 69.3 | 1.67 | 1× | 320 | 12.0 GB |
+| 2 | 4 (4) | 86.9 | 2.13 | 1.25×, 1.28× | 232 | 11.6 GB |
+| 4 | 8 (8) | 115.2 | 2.86 | 1.66×, 1.71× | 234 | 12.1 GB |
+| 8 | 16 (16) | 149.1 | 3.58 | 2.15×, 2.15× | 230 | 12.5 GB |
+
+- Memory is flat in B: the copies add < 0.5 GB, while each extra Kit process costs 3–6 GB.
+- n per row is small (one run each, episodes ~85 steps), so read the ratios as ±10 %.
+- The gain is below V0's physics-only ~2.3× per env. In collection, each env's Python (expert IK, observation
+  readers) runs serialised between global steps and grows with B, while physics is shared. At B = 8 a global step
+  takes ~1.7 s (~0.21 s per env-step), vs 0.49 s at B = 1.
+- **Decision:** below the ≥ 3× target but above the 1.5× keep line, so it is kept (opt-in, default 1). Use B = 8 for
+  collection.
+
+**Copy independence** (`isaac/vec_check.py --n 3`, `outputs/isaac/vec/vec.json`):
+- the copies sit at their offsets
+- sub-envs reset with the same seed read the same corners, gripper and joints in their own frames (≤ 1.3e-7 m)
+- per-copy DR reads back exactly per copy (the mass, friction and damping ratios equal each episode's draws, all
+  different), and the same seed on another copy draws the same DR
+- a reset of copy 1 mid-run leaves twin copies 0 and 2 unchanged at that moment, and moves copy 0's trajectory by
+  7.0e-11 (run-to-run noise 3.9e-11; the copy moved 0.45 m)
