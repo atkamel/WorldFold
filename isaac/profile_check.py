@@ -1,8 +1,8 @@
-"""Physical check of the MuJoCo profile on Isaac (Phase W, W2). Run in the Isaac venv from the repo root:
+"""Physical check of the weld profile on Isaac (Phase W, W2; settings carried over from the MuJoCo setup). Run in the Isaac venv from the repo root:
 
     python -u isaac/profile_check.py --out outputs/isaac/profile
 
-One IsaacClothFoldEnv(profile="mujoco") process. Writes profile.json:
+One IsaacClothFoldEnv(profile="weld") process. Writes profile.json:
 - arm tracking: from home, each arm joint gets a one-step 0.05 rad command (action 1.0); the fraction of it reached
   after one control step (MuJoCo's drives reach it in one step; LeHome's ~0.78)
 - cloth placement: centred at (0, 0) on a zero offset, and offset by exactly the requested cloth_pose
@@ -37,9 +37,9 @@ def main():
     from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS
     from isaac.isaac_env import DR_RANGE, MUJOCO_ARM_DRIVE, IsaacClothFoldEnv
     env = IsaacClothFoldEnv(observation_mode="state", max_episode_steps=1000, grasp_corners=GRASP_CORNERS,
-                            grasp_radius=GRASP_RADIUS, profile="mujoco")
+                            grasp_radius=GRASP_RADIUS, profile="weld")
     lab = env.lab
-    report = {"profile": "mujoco", "device": env.sim_device, "grasp_mode": env.grasp_mode,
+    report = {"profile": "weld", "device": env.sim_device, "grasp_mode": env.grasp_mode,
               "arm_drive": MUJOCO_ARM_DRIVE}
 
     # ---- arm tracking ----

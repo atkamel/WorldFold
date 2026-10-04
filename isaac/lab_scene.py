@@ -58,7 +58,7 @@ LININGS = {"gripper": ((-0.017042, 0.000205, -0.073359), (0.997564, 0.0, -0.0697
 
 
 def _robot(prim_path, base_pos, drive=None, gripper_drive=None):
-    """drive: {ImplicitActuatorCfg field: value} applied to every actuator group (the MuJoCo profile's
+    """drive: {ImplicitActuatorCfg field: value} applied to every actuator group (the weld profile's
     MUJOCO_ARM_DRIVE); None keeps LeHome's SO101 drives. gripper_drive: the same for the gripper actuator only,
     applied after drive (a friction-grasp knob, isaac_env.FRICTION_GRASP)."""
     pos, rot = usd_root_pose(base_pos, ARM_BASE_QUAT)

@@ -1,4 +1,4 @@
-"""The MuJoCo profile on Isaac (Phase W, W2), via isaac/profile_check.py in its own process, and the position-only IK
+"""The weld profile on Isaac (Phase W, W2), via isaac/profile_check.py in its own process, and the position-only IK
 the MuJoCo expert needs on the Isaac kinematics. Isaac venv only."""
 
 import importlib.util

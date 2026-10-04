@@ -1,0 +1,12 @@
+{
+ "milestone": "W3",
+ "status": "PASS",
+ "evidence": [
+  "id_easy: 100/100 = 100.0% [96.3, 100.0] (bar 95)",
+  "id_hard: 100/100 = 100.0% [96.3, 100.0] (bar 90)",
+  "recovery: 81/100 = 81.0% [72.2, 87.5] (bar 80)",
+  "MuJoCo expert benchmark after the FoldExpert split == M1.5"
+ ],
+ "commit": "311386a925b74d348c9a2578baf40711ad48efd1",
+ "time": "2026-10-04T01:10:08-0400"
+}

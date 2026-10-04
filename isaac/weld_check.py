@@ -32,7 +32,7 @@ def main():
     ap.add_argument("--out", default="outputs/isaac/weld")
     ap.add_argument("--device", default="cuda:0", help="the weld needs the GPU pipeline's particle tensor view")
     ap.add_argument("--weld-tau", type=float, default=None,
-                    help="soft weld time constant (s); default the MuJoCo profile's WELD_TAU, 0 = rigid pin")
+                    help="soft weld time constant (s); default the weld profile's WELD_TAU, 0 = rigid pin")
     ap.add_argument("--weld-mass", type=float, default=None, help="soft weld pinned-mass multiple; default WELD_MASS")
     args = ap.parse_args()
     out = Path(args.out)

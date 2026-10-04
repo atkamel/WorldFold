@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-03 · **Branch:** `feature/isaac-imitation` · **Phase:** W (weld baseline on Isaac): W1 ✅ W2 ✅ W3 ✅* (recovery 81 accepted) → W4 running; track G (friction grasp) in a separate session
+**Updated:** 2026-10-04 · **Branch:** `feature/isaac-imitation` · **Phase:** W (weld baseline on Isaac, revised 2026-10-04): W1–W3 ✅, W4 pilot tail → W3b / Z1 → V → W5 (slim); track G in parallel
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,11 +41,18 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**Phase W, W4: pilot on the weld baseline** (`scripts/isaac_pilot.ps1 -Backend isaac_weld`, running).
-- W3 ✅ with an accepted exception: the expert gate is 100 / 100 / 81. Recovery 81 is accepted as the Isaac ceiling
-  (user decision 2026-10-03; planned bar 90, MuJoCo 96).
-- W4's exit: every artifact valid, and diffusion id_easy with Wilson lower bound > 0.
-- **Track G:** friction-grasp work (IG.1–IG.3) runs in parallel in a separate session on
+**Phase W revision (2026-10-04, plan `docs/superpowers/plans/2026-10-04-isaac-weld-revision.md`):**
+1. W4 pilot tail: DAgger + detector (relaunched). The pilot already shows learning: diffusion 20/20, vision 10/10
+   on id_easy.
+2. W3b: expert recovery ≥ 90 (85 if it plateaus), while Z1 zero-shots the MuJoCo-trained checkpoints on
+   `isaac_weld`.
+3. V: vectorised Isaac env (go/no-go probe first).
+4. W5 slimmed.
+- MuJoCo is a frozen reference: no new MuJoCo runs.
+- The Isaac profile `mujoco` is renamed `weld`.
+- The cloth stays 101×101.
+- **Track G:** running as a background agent on `feature/isaac-grasp` (worktree `.claude/worktrees/agent-a55d8fa30a92a92f8`): IG.1 ✅ (38b45d9), IG.2 in progress.
+- **Track G (original note):** friction-grasp work (IG.1–IG.3) runs in parallel in a separate session on
   `feature/isaac-grasp`, with `WORLDFOLD_N_ISAAC=1`.
 - **Compute:** at most 3 Isaac processes at once (W 2 + G 1).
 ## Pre-VLA milestone tracker
@@ -150,6 +157,10 @@ Newest first. One line per work pass: date · what changed · commit.
   - Baseline n = 20 (tune 600000–19): left acquired / held / placed / released 20 / 18 / 14 / 12, right 11 / 1 / 0 / 0.
     The right jaw pushes its corner sideways out of the pinch.
   - `verify IG.1` and `I3.3` PASS (I3.3 now skips the IG checks); IG.2 / IG.3 checks added. Tests: 172 fast pass (4 skipped); weld-path Isaac tests pending the next free Isaac slot · (this commit)
+
+- 2026-10-04 · **Phase W revised and the profile renamed `mujoco` → `weld`.**
+  - New roadmap rows W3b, Z1 and V; W5 slimmed. W4 pilot results are in results.md.
+  - Tests: 167 fast pass; Isaac weld + profile 17/17; `verify W1–W3` PASS · (this commit)
 
 - 2026-10-03 · **W3 closed with an accepted exception.** Recovery 81 accepted by the user; the W3 verifier bar is set to 80 with the decision recorded; W4 pilot launched · (this commit)
 

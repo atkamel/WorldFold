@@ -112,7 +112,7 @@ def sweep(n=200, seed=0, radii_cm=RADII_CM, workers=6):
             "tol_grasp_mm": round(1000 * tol_grasp, 3), "tol_place_mm": round(1000 * tol_place, 3)}
 
 
-# ---- profile "mujoco" (Phase W, W2): MuJoCo's FoldExpert waypoints with position-only IK ----
+# ---- profile "weld" (Phase W, W2): MuJoCo's FoldExpert waypoints with position-only IK ----
 # The far corners sit ~45 cm from the arm bases, at the SO101's reach limit: MuJoCo's own solve_ik misses the descend
 # waypoint by 8 mm (nominal) to 30 mm (+2 cm offset) on the same targets (docs/results.md, W2), and the expert still
 # folds 100 / 97 % because the weld catches any corner within GRASP_RADIUS and a phase advances within 2 cm. Those
@@ -135,7 +135,7 @@ def mujoco_errors(ik, offset, seed):
     way the expert does: chained from the home pose, 12 restarts."""
     from cloth_fold_rl.quarter_fold_expert import OVERSHOOT
     pts = np.array(cloth_grid_mesh(1)[0], float)
-    pts[:, :2] += np.asarray(offset)               # MuJoCo profile: cloth centred at (0, 0)
+    pts[:, :2] += np.asarray(offset)               # weld profile: cloth centred at (0, 0)
     pts[:, 2] = TABLE_TOP_Z + CLOTH_REST_DZ
     rng, worst = np.random.default_rng(seed), np.zeros(len(WAYPOINTS))
     for p, carried, goal_v in MOVES:
@@ -201,7 +201,7 @@ def sweep_mujoco(n=200, seed=0, workers=6, sim="isaac"):
     tol[WAYPOINTS.index("descend")] = GRASP_RADIUS
     pool = mp.Pool(workers) if workers > 1 else None
     work = _work_mujoco if sim == "isaac" else _work_mujoco_sim
-    res = {"profile": "mujoco", "sim": sim, "tol_mm": dict(zip(WAYPOINTS, (1000 * tol).round(1).tolist())), "sets": {}}
+    res = {"profile": "weld", "sim": sim, "tol_mm": dict(zip(WAYPOINTS, (1000 * tol).round(1).tolist())), "sets": {}}
     for name, offsets in sets.items():
         args = [(o, i) for i, o in enumerate(offsets)]
         errs = np.array(pool.map(work, args, chunksize=4) if pool else [work(a) for a in args])
@@ -221,12 +221,12 @@ def main():
     ap.add_argument("--n", type=int, default=200)
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--profile", choices=("lehome", "mujoco"), default="lehome")
+    ap.add_argument("--profile", choices=("lehome", "weld"), default="lehome")
     ap.add_argument("--sim", choices=("isaac", "mujoco"), default="isaac",
-                    help="profile mujoco only: whose arm solves the waypoints (mujoco = the parity reference, .venv)")
+                    help="profile weld only: whose arm solves the waypoints (mujoco = the parity reference, .venv)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
-    if args.profile == "mujoco":
+    if args.profile == "weld":
         res = sweep_mujoco(args.n, args.seed, workers=args.workers, sim=args.sim)
         out = Path(args.out or f"outputs/isaac/reach_mujoco{'' if args.sim == 'isaac' else '_ref'}.json")
         out.parent.mkdir(parents=True, exist_ok=True)

@@ -67,13 +67,13 @@ WELD_MASS               = 10.0                # soft weld: the pinned patch's ma
 # The MJCF's frictionloss (0.052 N m) has no equivalent: PhysX joint friction is a coefficient, not a torque.
 MUJOCO_ARM_DRIVE        = {"stiffness": 998.22, "damping": 2.731 + 0.60, "effort_limit_sim": 3.35, "armature": 0.028}
 # Scene profiles. "lehome" is this env as ported from LeHome (friction grasp on the CPU device, cloth toward the arms,
-# tilted drop). "mujoco" transfers the MuJoCo setup the imitation pipeline was built on (Phase W): the weld grasp
+# tilted drop). "weld" carries over the MuJoCo setup the imitation pipeline was built on (Phase W): the weld grasp
 # (GPU pipeline), the cloth centred, a flat drop, MuJoCo's arm drives and its dynamics DR (reset, ×U(0.7, 1.3) on
 # cloth mass, cloth-table friction and cloth damping while domain_randomization is on).
 PROFILES = {
     "lehome": {"cloth_center": CLOTH_CENTER, "drop_height": DROP_HEIGHT, "drop_tilt_deg": DROP_TILT_DEG,
                "arm_drive": None, "dynamics_dr": False, "grasp_mode": "friction", "device": "cpu", "weld_tau": None},
-    "mujoco": {"cloth_center": (0.0, 0.0), "drop_height": 0.005, "drop_tilt_deg": 0.0,
+    "weld": {"cloth_center": (0.0, 0.0), "drop_height": 0.005, "drop_tilt_deg": 0.0,
                "arm_drive": MUJOCO_ARM_DRIVE, "dynamics_dr": True, "grasp_mode": "weld", "device": "cuda:0",
                "weld_tau": WELD_TAU},
 }
@@ -208,7 +208,7 @@ class IsaacClothFoldEnv(gym.Env):
         device = device or self._prof["device"]
         if self._prof["dynamics_dr"] and device == "cpu":
             raise ValueError("the dynamics DR needs the GPU pipeline (device='cuda:0')")
-        # MuJoCo's switch (ClothFoldEnv.domain_randomization; HalfFoldEnv sets it): only the "mujoco" profile has DR
+        # MuJoCo's switch (ClothFoldEnv.domain_randomization; HalfFoldEnv sets it): only the "weld" profile has DR
         self.domain_randomization = False
         if grasp_mode not in ("friction", "weld"):
             raise ValueError(grasp_mode)

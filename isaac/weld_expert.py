@@ -1,11 +1,11 @@
-"""MuJoCo's scripted expert on the Isaac env's MuJoCo profile (Phase W, W3).
+"""The FoldExpert (written for MuJoCo) on the Isaac env's weld profile (Phase W, W3).
 
 cloth_fold_rl.expert.FoldExpert's phase machine unchanged -- approach (corner + 6 cm), descend (+ 0.5 cm, wait for the
 weld), lift to table + 12 cm, carry, place (goal + 2 cm), hold, release, retreat; a phase advances within 2 cm or
 after 45 steps -- with its sim reads taken from IsaacClothFoldEnv's accessors and its position-only IK solved by
 isaac.pinch.PinchIK.solve_position (the same damped least squares, 0.1 rad step cap, 12 restarts and 6 mm tolerance,
 on LeHome's SO101 kinematics, which match the MJCF's to 0.3 mm). QuarterFoldExpert(expert_cls=IsaacFoldExpert)
-supplies the overshoot, retries and release gate, as on MuJoCo. Needs grasp_mode="weld" (profile "mujoco").
+supplies the overshoot, retries and release gate, as on MuJoCo. Needs grasp_mode="weld" (profile "weld").
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import numpy as np
 from cloth_fold_rl.expert import FoldExpert
 
 # per (stage, arm) placement offset past the goal: minus the mean miss of a corner placed exactly on its goal, measured
-# on the Isaac MuJoCo profile with the MuJoCo-calibrated weld as MuJoCo's OVERSHOOT was on the stock cloth: 20
+# on the Isaac weld profile with the MuJoCo-calibrated weld as MuJoCo's OVERSHOOT was on the stock cloth: 20
 # tune-block seeds (600000-600019), sd ~1 cm (isaac/overshoot_measure.py, docs/results.md W3). Under 5 mm: the Isaac
 # cloth barely springs back, unlike MuJoCo's flexcomp ((-0.04, -0.03) / (0.02, -0.03)). Stage 1 (quarter fold, not run
 # on Isaac) keeps MuJoCo's.
@@ -34,7 +34,7 @@ class IsaacFoldExpert(FoldExpert):
         if not raw_vertex:
             raise ValueError("IsaacFoldExpert indexes cloth_positions() by grid vertex (raw_vertex=True)")
         if getattr(self.base, "grasp_mode", None) != "weld":
-            raise ValueError("IsaacFoldExpert needs the weld grasp (IsaacClothFoldEnv profile 'mujoco')")
+            raise ValueError("IsaacFoldExpert needs the weld grasp (IsaacClothFoldEnv profile 'weld')")
         if IsaacFoldExpert._pinch is None:
             from isaac.pinch import PinchIK
             IsaacFoldExpert._pinch = PinchIK()

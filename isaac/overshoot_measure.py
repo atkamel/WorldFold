@@ -1,4 +1,4 @@
-"""Spring-back of a placed corner on the Isaac MuJoCo profile (Phase W, W3), to set isaac.weld_expert.OVERSHOOT_ISAAC
+"""Spring-back of a placed corner on the Isaac weld profile (Phase W, W3), to set isaac.weld_expert.OVERSHOOT_ISAAC
 the way cloth_fold_rl.quarter_fold_expert.OVERSHOOT was set on MuJoCo: place every corner exactly on its goal (zero
 overshoot, no retries), wait SETTLE_WAIT steps after release, and record where it settled relative to the goal.
 The overshoot is minus the mean miss. Run in the Isaac venv from the repo root (one Isaac process per call):

@@ -86,7 +86,7 @@ def make_env(backend="mujoco", **kwargs):
     backend="mujoco": the MuJoCo ClothFoldEnv the pipeline was built on (default, unchanged).
     backend="isaac":  isaac.isaac_env.IsaacClothFoldEnv (Isaac Sim 5.1, friction grasp) with the Isaac
                       episode cap and jitter; needs the .venv-isaac environment and one env per process.
-    backend="isaac_weld": the same Isaac env built with profile="mujoco" (weld grasp, MuJoCo arm drives); episode
+    backend="isaac_weld": the same Isaac env built with profile="weld" (weld grasp, MuJoCo arm drives); episode
                       cap (HALF_FOLD_MAX_STEPS) and cloth jitter (MuJoCo CLOTH_JITTER) are MuJoCo's.
     """
     if backend == "mujoco":

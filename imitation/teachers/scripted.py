@@ -45,7 +45,7 @@ def _group(name):
 class ScriptedTeacher(Teacher):
     def __init__(self, env, seed=0):
         self.env = env
-        if getattr(env.unwrapped, "profile", None) == "mujoco":   # Isaac, MuJoCo profile (Phase W): MuJoCo's expert
+        if getattr(env.unwrapped, "profile", None) == "weld":     # Isaac weld profile (Phase W): the FoldExpert
             from isaac.weld_expert import OVERSHOOT_ISAAC, IsaacFoldExpert
             self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=IsaacFoldExpert, overshoot=OVERSHOOT_ISAAC)
         elif hasattr(env.unwrapped, "lab"):     # Isaac (Phase I): the friction-pinch expert, no MuJoCo overshoot

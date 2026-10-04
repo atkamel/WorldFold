@@ -17,7 +17,7 @@ ISAAC_MAX_STEPS = 400
 ISAAC_CLOTH_JITTER = 0.01   # = isaac.isaac_env.CLOTH_JITTER (kept literal so this module stays Isaac-free)
 # backend name -> IsaacClothFoldEnv profile. "isaac" = LeHome friction grasp (400-step cap, 1 cm jitter);
 # "isaac_weld" = MuJoCo-transfer profile (weld grasp, MuJoCo caps/jitter/DR; episodes and eval sets match MuJoCo).
-ISAAC_PROFILES = {"isaac": "lehome", "isaac_weld": "mujoco"}
+ISAAC_PROFILES = {"isaac": "lehome", "isaac_weld": "weld"}
 KIT_TICK_S = 30.0           # idle workers tick Kit this often; its hang detector allows 120 s
 
 
