@@ -1648,6 +1648,64 @@ def isaac_live(garment: str = "Top_Long_Seen_0", tag: str = "live", friction: fl
 
 
 # ---------------------------------------------------------------------------------------------
+# Two-mouse teleop of the LeHome scene (teacher/oracle/teleop/): a human folds in Isaac in real time.
+# Prints `TELEOP_ADDR <host> <port>`; on the laptop:  python mujoco_live/teleop_client.py <host> <port>
+# Stops when the client disconnects, after `idle_s` without mouse/key input, or at `max_s`.
+# The demo log is written on the volume (and the laptop client keeps its own copy).
+#   PYTHONUTF8=1 python -m modal run --detach teacher/modal_teacher.py::isaac_teleop --garment Top_Long_Seen_0
+# ---------------------------------------------------------------------------------------------
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3600, cpu=4, memory=16384)
+def isaac_teleop(garment: str = "Top_Long_Seen_0", tag: str = "teleop", friction: float = -1, adhesion: float = -1,
+                 cx: float = 0.0, cy: float = 0.0, drop_z: float = 0.63, pads: str = "flat", cloth: str = "real",
+                 idle_s: int = 300, max_s: int = 3000):
+    import glob, json, os, pathlib, re, subprocess, threading, time
+    cfg_p = f"{CH}/source/lehome/lehome/tasks/bedroom/config_file/particle_garment_cfg.yaml"
+    y = open(cfg_p).read()
+    for key, val in (("friction", friction), ("adhesion", adhesion)):
+        if val >= 0:
+            y, n = re.subn(r"(?m)^(\s+)" + key + r":\s*[0-9.eE+-]+", r"\g<1>" + f"{key}: {val}", y)
+            assert n == 1, f"{key}: expected 1 match, got {n}"
+    open(cfg_p, "w").write(y)
+    for jp in glob.glob(f"{CH}/Assets/objects/Challenge_Garment/Release/Top_*/*/*.json"):   # every top starts flat
+        c = json.load(open(jp))
+        c["initial_pos_range"] = c["soft_reset_pos_range"] = [cx, cy, drop_z, cx, cy, drop_z]
+        c["initial_rot_range"] = c["soft_reset_rot_range"] = [0, 0, 0, 0, 0, 0]
+        json.dump(c, open(jp, "w"), indent=4)
+    stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{tag}"
+    out = pathlib.Path(VOL_PATH, "isaac", f"teleop-{stamp}"); out.mkdir(parents=True, exist_ok=True)
+    gtype = "_".join(garment.split("_")[:2]).lower()
+    port = 7777
+    env = dict(os.environ, PYTHONPATH="/opt/teacher/oracle", ORACLE_DIR="/opt/teacher/oracle",
+               ORACLE_JOBS=json.dumps([{"garment": garment}]), ORACLE_OUT=str(out), ORACLE_TELEOP="1",
+               ORACLE_TELEOP_PORT=str(port), ORACLE_TELEOP_IDLE=str(idle_s), ORACLE_TELEOP_MAX=str(max_s),
+               ORACLE_PADS=pads, ORACLE_CLOTH=cloth, LEHOME_NO_DEPTH="1", LEHOME_DISABLE_KEYBOARD="1", PYTHONUNBUFFERED="1")
+    cmd = [f"{CH}/.venv/bin/python", "-u", "-m", "scripts.oracle_fold", "--garment_type", gtype, "--garment_name", garment,
+           "--headless", "--enable_cameras", "--device", "cpu", "--seed", "42"]
+    t0 = time.time()
+    with modal.forward(port, unencrypted=True) as tunnel:
+        host, tport = tunnel.tcp_socket
+        print(f"TELEOP_ADDR {host} {tport}", flush=True)
+        p = subprocess.Popen(cmd, cwd=CH, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        keys = re.compile(r"\[oracle\]|TELEOP|Traceback|Exception|Error:")
+
+        def drain():
+            with open(out / "run.log", "w") as f:
+                for line in p.stdout:
+                    f.write(line)
+                    if keys.search(line) and "carb.launcher" not in line:
+                        print(f"[{time.time() - t0:5.0f}s] " + line.rstrip()[:600], flush=True)
+        threading.Thread(target=drain, daemon=True).start()
+        try:
+            p.wait(timeout=max_s + 600)
+        except subprocess.TimeoutExpired:
+            p.kill()
+    vol.commit()
+    res = {"dir": str(out), "wall_s": round(time.time() - t0, 1), "exit": p.returncode}
+    print("TELEOP_DONE " + json.dumps(res), flush=True)
+    return res
+
+
+# ---------------------------------------------------------------------------------------------
 # Grip test (Run 1): automated, physics-only measurements. Two Isaac processes back to back in one container:
 # original capsule pads, then flat pads (teacher/oracle/pads.py). Each tests the cloth as-is and a realistic cloth
 # (~50 g, gravity x1) at 3 carry speeds, then the flat-pad process folds the shirt with its best setting (filmed).

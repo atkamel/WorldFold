@@ -47,7 +47,9 @@ def cloth_verts(env):
     try:
         pos, ori = o.get_world_pose()
         sc = o.get_world_scale()
-        pts = _np(o._get_points_pose())
+        # same USD attribute _get_points_pose reads, but via the buffer protocol: 0.003 ms instead of ~160 ms
+        # (Isaac Sim 5.1 builds a torch tensor element by element; audit 2026-10-05)
+        pts = np.array(o._prim.GetAttribute("points").Get(), dtype=np.float32)
         return np.asarray(o.transform_points(pts, _np(pos), _np(ori), _np(sc)), dtype=np.float64)
     except Exception as e:  # GPU path / API drift
         log("cloth_verts fallback:", repr(e))
@@ -452,6 +454,71 @@ def live(env, args):
     log("LIVE done, frames", len(all_frames))
 
 
+def teleop(env, args):
+    """Real-time two-mouse play (teleop/): a human on the laptop drives both arms through a Modal tunnel.
+    Same controller as the local MuJoCo game; grabs/releases use the tested grasp and release moves."""
+    import numpy as np
+    from scripts.utils.remote_loop import capture_physics_state, restore_physics_state
+    from teleop.isaac_world import IsaacWorld
+    from teleop.controller import Game
+    from teleop.server import TeleopServer
+    import torch
+    name = env.cfg.garment_name
+    # speed fixes (audit 2026-10-05); none of them changes the physics:
+    # 1. every cloth-point read (ours and LeHome's success checks) via the buffer protocol: same values, ~160 ms -> ~0 ms
+    try:
+        from isaacsim.core.prims import SingleClothPrim
+
+        def _fast_points(self):
+            return torch.from_numpy(np.array(self._prim.GetAttribute("points").Get(), dtype=np.float32))
+        SingleClothPrim._get_points_pose = _fast_points
+        log("TELEOP fast cloth read installed")
+    except Exception as e:
+        log("TELEOP fast cloth read NOT installed:", repr(e))
+    # 3. no reward computation during play (the laptop scores folds); the success-check interval is set by run_isaac.sh
+    env._get_rewards = lambda: torch.zeros(1, device=env.device)
+    # 4. fast IK: same algorithm compiled with numba (matches the original to 4e-11 rad)
+    try:
+        import fold_plans as fp
+        from so101_fastik import FastIK
+        FastIK(fp.K).install()
+        log("TELEOP fast IK installed")
+    except Exception as e:
+        log("TELEOP fast IK NOT installed (original IK in use):", repr(e))
+    if os.environ.get("ORACLE_CLOTH"):
+        set_cloth(env, name, os.environ["ORACLE_CLOTH"])
+    helpers = dict(cloth_verts=cloth_verts, cloth_faces=cloth_faces, between_pads=between_pads,
+                   capture=capture_physics_state, restore=lambda e, s: restore_physics_state(e, s, "exact", "oracle"),
+                   set_cloth=set_cloth_tuned)
+    w = IsaacWorld(env, helpers)
+    kin_check(env)
+    try:
+        start = cloth_now(env)          # live-tuning panel starts at the cloth's real values
+    except Exception as e:
+        log("TELEOP could not read the cloth values, panel shows defaults:", repr(e)); start = None
+    from teleop.tuning import MUJOCO_FEEL
+    g = Game(w, tune=dict(start or {}, **MUJOCO_FEEL))       # MuJoCo-game feel: hold = grab, let go = drop
+    state_view = os.environ.get("ORACLE_VIEW", "state") == "state"
+    if not state_view and os.environ.get("ORACLE_FPV", "1") != "0":
+        try:
+            w.set_fpv_camera()
+        except Exception as e:
+            log("TELEOP FPV camera NOT set (LeHome top camera in use):", repr(e))
+    im = w.render()
+    hello = dict(backend="isaac", garment=name, dt=w.dt, tris=(w.faces.tolist() if w.faces is not None else None),
+                 thickness=0.004, flat_cloth_cm=np.round(w.flat_local * 100, 2).tolist(), frame_size=[im.shape[1], im.shape[0]],
+                 cam=w.camera_info())     # lets the laptop draw the cursor itself (no network delay on the cursor)
+    if state_view:
+        hello.update(w.state_hello())
+    log(f"TELEOP ready: garment {name}, control dt {w.dt:.4f}s, frame {im.shape[1]}x{im.shape[0]}, "
+        f"table z {w.table_z:.3f}, {len(w.flat_local)} cloth points")
+    TeleopServer(g, w.render, hello, port=int(os.environ.get("ORACLE_TELEOP_PORT", "7777")), dt=w.dt, frame_every=1,
+                 log_path=os.path.join(OUT, "teleop_demo.jsonl"), idle_s=int(os.environ.get("ORACLE_TELEOP_IDLE", "300")),
+                 max_s=int(os.environ.get("ORACLE_TELEOP_MAX", "3000")), log=log,
+                 wall_speed=float(os.environ.get("ORACLE_WALL_SPEED", "8")),
+                 state=w.state_bytes if state_view else None).serve()
+
+
 # ---- grip assay: one standardised sleeve grasp -> lift -> hold -> carry, measured from cloth vertices -------------
 CLOTH_VARIANTS = {
     "asis": {},                                                     # the challenge's settings
@@ -463,13 +530,15 @@ CLOTH_VARIANTS = {
 
 
 def set_cloth(env, name, variant):
-    """Recreate the garment in place with particle-config overrides (no simulator restart)."""
+    """Recreate the garment in place with particle-config overrides (no simulator restart).
+    variant: a CLOTH_VARIANTS name, or a dict of overrides {"section.key": value} (live tuning)."""
     import copy
     if not hasattr(env, "_orig_particle_config"):
         env._orig_particle_config = copy.deepcopy(env.particle_config)
     pc = copy.deepcopy(env._orig_particle_config)
     npts = None
-    for k, v in CLOTH_VARIANTS[variant].items():
+    overrides = CLOTH_VARIANTS[variant] if isinstance(variant, str) else variant
+    for k, v in overrides.items():
         sec, key = k.split(".")
         if isinstance(v, str) and v.startswith("total:"):
             if npts is None:
@@ -478,7 +547,24 @@ def set_cloth(env, name, variant):
         pc.objects[sec][key] = v
     env.particle_config = pc
     env.switch_garment(name)
-    log(f"cloth variant {variant}: " + json.dumps({k: (float(pc.objects[k.split('.')[0]][k.split('.')[1]])) for k in CLOTH_VARIANTS[variant]}))
+    log(f"cloth variant {variant if isinstance(variant, str) else 'tuned'}: " +
+        json.dumps({k: (float(pc.objects[k.split('.')[0]][k.split('.')[1]])) for k in overrides}))
+
+
+def cloth_now(env):
+    """The garment's current cloth physics, in tuning.py terms (so the live-tuning panel starts truthful)."""
+    from teleop.tuning import CLOTH_KEYS
+    pc = env.particle_config.objects
+    out = {k: float(pc[p.split(".")[0]][p.split(".")[1]]) for k, p in CLOTH_KEYS.items()}
+    npts = len(env.object._prim.GetAttribute("points").Get())
+    out["mass_g"] = float(pc["garment_config"]["particle_mass"]) * npts * 1000
+    return out
+
+
+def set_cloth_tuned(env, tuning):
+    """Live tuning 'apply cloth': rebuild the current garment with the panel's cloth values."""
+    npts = len(env.object._prim.GetAttribute("points").Get())
+    set_cloth(env, env.cfg.garment_name, tuning.cloth_overrides(npts))
 
 
 class Stepper:
@@ -1105,8 +1191,28 @@ def run(args, simulation_app):
     env_cfg.particle_cfg_path = args.particle_cfg_path
     apply_camera_overrides(env_cfg, args)
     env_cfg.garment_name = jobs[0]["garment"]
-    if os.environ.get("ORACLE_LIVE_DIR"):
-        env_cfg.episode_length_s = 36000.0      # no automatic reset during a live session
+    if os.environ.get("ORACLE_LIVE_DIR") or os.environ.get("ORACLE_TELEOP"):
+        env_cfg.episode_length_s = 36000.0      # no automatic reset during a live / teleop session
+    if os.environ.get("ORACLE_TELEOP") and os.environ.get("ORACLE_TELEOP_FAST", "1") != "0":
+        # live play only (the recorded data comes from replays with the normal settings): fast render preset and
+        # tiny wrist cameras, so each step renders ~one camera's worth of pixels instead of three 640x480 'quality' ones
+        env_cfg.sim.render.rendering_mode = "performance"
+        for cam in (env_cfg.left_wrist, env_cfg.right_wrist):
+            cam.width, cam.height = 64, 48
+        if os.environ.get("ORACLE_FPV", "1") != "0":
+            import math
+            vw, vh = (int(x) for x in os.environ.get("ORACLE_VIEW_SIZE", "960x600").split("x"))
+            tc = env_cfg.top_camera
+            tc.width, tc.height = vw, vh
+            vap = tc.spawn.horizontal_aperture * vh / vw
+            tc.spawn.focal_length = (vap / 2) / math.tan(math.radians(65 / 2))   # MuJoCo game: fovy 65
+        k = int(os.environ.get("ORACLE_STEPS_PER_TICK", "1"))
+        state_view = os.environ.get("ORACLE_VIEW", "state") == "state"
+        # state view: the laptop draws, Isaac renders only every 48 steps (Kit aborted once after ~7k unrendered steps)
+        env_cfg.sim.render_interval = 48 if state_view else k
+        log(f"teleop: {k} physics steps per tick, Isaac renders every {env_cfg.sim.render_interval} steps"
+            f" ({'laptop draws from state' if state_view else 'JPEG stream'})")
+        log("teleop fast view: rendering_mode=performance, wrist cameras 64x48")
     env_cfg.garment_version = "Release"
     if os.environ.get("ORACLE_PADS") == "flat":
         import pads as padmod
@@ -1122,6 +1228,12 @@ def run(args, simulation_app):
     env = gym.make(args.task, cfg=env_cfg).unwrapped
     env.initialize_obs()
     log(f"env ready in {time.time() - t0:.1f}s; device={env.device} dt={env.cfg.sim.dt} max_ep_len={env.max_episode_length}")
+    if os.environ.get("ORACLE_TELEOP"):
+        try:
+            teleop(env, args)
+        finally:
+            env.close()
+        return
     if os.environ.get("ORACLE_LIVE_DIR"):
         try:
             live(env, args)
@@ -1194,7 +1306,7 @@ def main():
         if getattr(args, "headless", False):
             os.environ["LEHOME_DISABLE_KEYBOARD"] = "1"
         run(args, simulation_app)
-    except Exception as e:
+    except BaseException as e:      # BaseException: a sys.exit() deep in env creation otherwise closes the app silently
         log("FATAL", repr(e)); traceback.print_exc()
     finally:
         close_app(simulation_app)
