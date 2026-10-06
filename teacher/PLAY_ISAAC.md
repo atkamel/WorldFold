@@ -14,7 +14,7 @@ laptop: teacher/mujoco_live/teleop_client.py  <--TCP-->  GPU node: Isaac + teach
 
 ## 0. Laptop setup (once)
 Windows (raw two-mouse input uses the Win32 raw input API in `mujoco_live/rawmouse.py`). Mac/Linux: not yet,
-see task 8; you can still work on the code there.
+see tasks M5/L4; you can still work on the code there.
 ```bash
 git clone -b ROY-vla-teacher https://github.com/atkamel/WorldFold && cd WorldFold
 pip install -r teacher/mujoco_live/requirements.txt
@@ -90,21 +90,41 @@ Physics is ~9 ms/step on an L40S; most of the remaining server time is in LeHome
 6. The mouse wheel didn't turn the wrist in the Isaac session, though it does locally (cause unknown).
 7. Left-arm grabs near its own base stop 2-4 cm above the cloth (reach).
 
-## Open tasks
+## Open tasks, by size
+
+What we're aiming for (Roy, 2026-10-06): the grab strength is fine; a light pinch drags a whole real shirt. What's
+missing is **seeing where the gripper will land** (parallax) and **feeling when the fingertips reach the cloth**.
+Reference pictures in `docs/controls/`: the MuJoCo game views we want back (`mujoco_view_*.png`) and the target ray
+(`target_ray_sketch.png`, `target_ray_mockup.png`). Line numbers are as of commit `bbb0073`.
+
+Every small and medium task is tested on a laptop with the fake server (section 1); no GPU, no account.
+
+### Small: one file, a few lines, 1-3 hours, no AI needed
+| # | Task | Exactly where | Done when |
+|---|---|---|---|
+| S1 | **Table drawn at the right height** (now 2 mm low, so the cloth looks like it sinks into it) | `mujoco_live/teleop_client_ps.py` ~line 87: the table corners use `z = -0.002`; use `0.0` | the cloth lies on the table, not in it |
+| S2 | **Camera like the MuJoCo game**: over the robots' shoulders, ~45-50 deg down | `CAMERA` at the top of `mujoco_live/teleop_client_ps.py` = (look-at y m, distance m, degrees down, fov deg). Try values without editing code: `set SO101_CAM=0.20,0.60,50,60` (cmd) or `$env:SO101_CAM="0.20,0.60,50,60"` (PowerShell) before starting the client. The MuJoCo values are `VIEWS` in `mujoco_live/game.py`, but Isaac's arm bases sit wider (x = +-0.23 m) and 8 cm further back, so expect more distance | it looks like `docs/controls/mujoco_view_over_shoulder.png`, both grippers and the whole shirt visible |
+| S3 | **Freeze the aim point while a grab runs** (it kept moving during the ~1 s grab, so grabs closed 7-14 cm from the target) | `oracle/teleop/controller.py`, `_apply_mice` (~line 227, the `for a in ARMS:` loop that adds `moves[a]` to `self.cursor[a]`): skip arms whose `self.phase[a]` is `"down"`, `"closing"`, `"drop_after_close"` or `"opening"` | on the fake server, wiggling the mouse during a grab doesn't move the grab spot |
+| S4 | **Drop line**: a straight vertical line from each aim point down to the cloth/table | `mujoco_live/teleop_client_ps.py`: the aim points are drawn in `draw()` (~line 172-175, `self.cursor_pc`). Add a Polyscope curve network (`ps.register_curve_network`) with 2 points per arm: the aim point and the same x, y at the cloth top (highest cloth point within ~1.5 cm, else 0 = table) | matches `docs/controls/target_ray_sketch.png` |
+
+### Medium: 0.5-2 days, touches 2-3 files (AI helps a lot)
+| # | Task | Where to start |
+|---|---|---|
+| M1 | **Stream stalls when the game window isn't in front** (0.2 frames/s): acks only go out with the mouse input, from the drawing loop | `mujoco_live/teleop_client.py` `_reader` (~line 115): after decoding a `state`, send `dict(t="ack", got=self.dec.last)`. The socket is then written by two threads, so wrap `protocol.send` in a lock. The server needs no change: it reads `got` from any message (`server.py` ~line 188), and `merge_inputs` ignores a message with no mice/keys |
+| M2 | **Target ring on the cloth that turns green on touch** (the client half of pseudo-touch) | client only: ring at the bottom of the S4 line; green when the gripper tip (from the streamed joints, `RobotVis`) is within ~5 mm of the cloth top below it |
+| M3 | **Mouse wheel didn't turn the wrist in Isaac** (works locally) | `controller.py` `_apply_mice` (wheel -> `yaw_cmd`, ~line 218) and `_move_arms` (`roll_for_yaw`, ~line 324). Log the wheel value on the server in one session and see where it's lost |
+| M4 | **Left arm stops 2-4 cm high when grabbing near its own base** | `controller.py` `_move_arms` reach fallbacks + `oracle/teleop/isaac_world.py` `ik`; reproduce with the fake server first |
+| M5 | **Two mice on Linux** | see "Two mice on Mac / Linux" below |
+
+### Large: several days, needs Isaac on WATcloud (give to someone using AI)
 | # | Task | Notes |
 |---|---|---|
-| 1 | **Camera**: MuJoCo-style over-the-shoulder view, ~45 deg, shadows on | `CAMERA` / `SO101_CAM` in `mujoco_live/teleop_client_ps.py`; reference: the old MuJoCo game view |
-| 2 | **Aim on the cloth**: the cursor is the spot on the cloth (or table) under the mouse ray; a straight line drops from the gripper to it | client has every cloth point; send that point as the target |
-| 3 | **Pseudo-touch**: hold to lower until the fingertips reach the cloth, server sends a "touching" flag, the ring turns green (+ sound), then pinch | server knows the cloth height under the jaws (`IsaacWorld.surface_under`, C++ `cloth_top`) |
-| 4 | Freeze the cursor during a grab | `oracle/teleop/controller.py` |
-| 5 | **Crash**: disable IsaacLab's recursive `_abort_signal_handle_callback` to see the real error; try a cheap keepalive with rendering off | needs Isaac (WATcloud); `ORACLE_APP_PUMP_TICKS` sets the keepalive period |
-| 6 | Table height, stream stall in background, mouse speed, wheel | client-side; test on the fake server |
-| 7 | Replay demos in Isaac -> training data | demos only count after replay |
-| 8 | **Two mice on Mac / Linux** (today: Windows only) | see below |
+| L1 | **Hold-to-lower until touch** (pseudo-touch, full): holding the button lowers the gripper until it reaches the cloth, the server sends a "touching" flag, then the pinch | server knows the cloth height under the jaws (`IsaacWorld.surface_under`, C++ `cloth_top`); flag goes in the HUD; needs S3, S4, M2 first |
+| L2 | **Crash / freeze every ~30 s in no-camera mode** | step 1: disable IsaacLab's recursive `_abort_signal_handle_callback` to see the real error. Step 2: a cheap keepalive with rendering off (`ORACLE_APP_PUMP_TICKS` sets the period; each `app.update()` costs ~0.5 s now) |
+| L3 | **Replay demos in Isaac -> training data** | demos only count after a replay in Isaac reproduces them |
+| L4 | **Two mice on Mac** | see below; mostly macOS permissions |
 
-Tasks 1-4, 6, 8 can be done and tested on a laptop with the fake server (section 1).
-
-### Task 8: two mice on Mac / Linux
+### Two mice on Mac / Linux (M5, L4)
 Windows merges all mice into one cursor but its Raw Input API still says which device each move came from;
 `mujoco_live/rawmouse.py` uses that. Mac and Linux expose the same information another way:
 - **Linux**: each mouse is its own `/dev/input/event*` device; read them with `python-evdev`
@@ -123,4 +143,4 @@ What to build: a `MiceReader` with the same interface as the Windows one, chosen
 The clients also make a few Windows-only calls (`ctypes.windll`: DPI awareness, `ClipCursor`, `FindWindowW` in
 `teleop_client.py`, `teleop_client_ps.py`, `game.py`); guard those with `sys.platform == "win32"`.
 Done when `python rawmouse.py` prints separate moves/clicks for two mice and the fake-server session plays with both.
-Rough size: an afternoon for Linux, about a day for Mac (mostly permissions).
+Rough size: an afternoon for Linux (M5), about a day for Mac (L4, mostly permissions).
