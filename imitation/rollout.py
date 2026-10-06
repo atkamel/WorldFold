@@ -45,8 +45,8 @@ def _split(obs):
 
 
 def _worker(pipe, env_kwargs):
-    from imitation.tasks import HalfFoldEnv
-    from imitation.teachers import PolicyTeacher, ScriptedTeacher
+    from imitation.sim import SIM
+    from imitation.teachers import PolicyTeacher
 
     env_kwargs = dict(env_kwargs)
     render = env_kwargs.pop("render", False)
@@ -54,10 +54,25 @@ def _worker(pipe, env_kwargs):
     teacher_ckpt = env_kwargs.pop("teacher", None)
     if render:                     # Phase 4: the env returns {"state", cameras...} (M4.1)
         env_kwargs.update(obs_mode="dict", cameras=dict(cameras) if cameras else None)
-    env = HalfFoldEnv(**env_kwargs)
+    if SIM == "isaac":             # one Isaac Sim app per worker process (imitation.sim)
+        import fcntl
+        from imitation.tasks.isaac_half_fold import make_isaac_env
+        from imitation.teachers import IsaacScriptedTeacher as ScriptedTeacher
+        # one Kit startup at a time: concurrent first starts race to unpack the same extension cache
+        # (FileExistsError in omni.kit.pip_archive, then the app exits)
+        with open("/tmp/imitation_isaac_start.lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            env = make_isaac_env(**env_kwargs)
+    else:
+        from imitation.tasks import HalfFoldEnv
+        from imitation.teachers import ScriptedTeacher
+        env = HalfFoldEnv(**env_kwargs)
     teacher = PolicyTeacher(env, teacher_ckpt) if teacher_ckpt else ScriptedTeacher(env)
     shadow = False
     while True:
+        if SIM == "isaac":         # keep Kit's hang detector fed while the main process trains or evaluates
+            while not pipe.poll(10.0):
+                env.unwrapped.keep_kit_alive()
         cmd, arg = pipe.recv()
         try:
             if cmd == "reset":
@@ -91,6 +106,8 @@ def _worker(pipe, env_kwargs):
                 pipe.send(("ok", teacher.expert.resync() if hasattr(teacher, "expert") else {}))
             elif cmd == "close":
                 pipe.send(("ok", None))
+                if SIM == "isaac":     # leaving the interpreter with Isaac Sim up hangs at shutdown
+                    os._exit(0)
                 break
             else:
                 raise ValueError(cmd)
@@ -281,7 +298,7 @@ class _Slot:
 
 
 def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, perturb_fn=None,
-            meta_extra=None, progress=None, on_done=None, max_wait=0.01, stats=None) -> list[Episode]:
+            meta_extra=None, progress=None, on_done=None, max_wait=0.01, stats=None, stop_at=None) -> list[Episode]:
     """Run one episode per seed across the pool (see `_rollout`). Holds the shared CPU slot
     for the duration when `IMITATION_CPU_SLOT` is set (`imitation.cpu_slot`, M5c.3)."""
     from imitation.cpu_slot import cpu_slot
@@ -289,11 +306,12 @@ def rollout(pool: EnvPool, seeds, controller: Controller, reset_options=None, pe
         if stats is not None:
             stats["slot_wait_s"] = stats.get("slot_wait_s", 0.0) + waited
         return _rollout(pool, seeds, controller, reset_options, perturb_fn, meta_extra, progress, on_done,
-                        max_wait, stats)
+                        max_wait, stats, stop_at)
 
 
 def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_extra=None, progress=None,
-             on_done=None, max_wait=0.01, stats=None) -> list[Episode]:
+             on_done=None, max_wait=0.01, stats=None,
+             stop_at=None) -> list[Episode]:
     """Run one episode per seed across the pool; returns Episodes in seed order.
 
     Event-driven: each env gets its next command the moment its last one returns,
@@ -437,7 +455,7 @@ def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_
                     if progress:
                         progress(len(done), len(seeds), done[order[i]])
                     del active[i]
-                    if todo:
+                    if todo and (stop_at is None or time.time() < stop_at):
                         start(i)
                 else:
                     advance(i)
@@ -445,7 +463,8 @@ def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_
                 waiting_since = time.perf_counter()
     if stats is not None:
         stats["wall_s"] = stats.get("wall_s", 0.0) + time.perf_counter() - t_start
-    return [done[k] for k in range(len(seeds))]
+    # with stop_at, seeds not started by then are left out
+    return [done[k] for k in range(len(seeds)) if k in done]
 
 
 def _finish(s: _Slot, final_obs, controller, meta_extra) -> Episode:

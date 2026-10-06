@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-09-26 · **Branch:** `feature/imitation` · **Phase:** 6 next (everything before the VLA is closed)
+**Updated:** 2026-10-06 · **Branch:** `feat/isaac-half-fold` · **Phase:** Isaac half-fold port (MuJoCo track: 6 next)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -11,7 +11,14 @@ One-screen answer to "where are we". Update at the end of **every work pass** (s
 
 ## Where we are
 
-**Every milestone before the VLA is closed** (✅ met or ❌ closed with evidence; tracker
+**Isaac half-fold port (feat/isaac-half-fold, 2026-10-06).** The imitation pipeline runs on
+the Isaac Sim / LeHome half fold (`IMITATION_SIM=isaac`). With an anchor grasp
+(`GRASP_MODE=anchor`) the expert collects at 63% and BC `bc_v2a` folds **9/10** held-out
+seeds (n=10, [59.6, 98.2]); with LeHome's friction grasp BC folds 1/10. Report page:
+https://claude.ai/artifact/1nhwNMYZxoDbXB19CowKfh (demo due 2026-10-07). Numbers in
+`results.md` § Isaac half fold. Modal spend is near the $42.50 cap; DAgger not run.
+
+**MuJoCo track:** **Every milestone before the VLA is closed** (✅ met or ❌ closed with evidence; tracker
 below). The half-fold demo is rendered from pipeline-trained policies at their operating
 points: `docs/reports/media/half_fold_privileged.mp4` (4/4) and `half_fold_sensor.mp4` (3/4).
 Dated report: [reports/2026-09-25-phase5b.md](reports/2026-09-25-phase5b.md), with a shareable
@@ -66,7 +73,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 |---|---|
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
-| tests | 96 fast + 10 slow, all passing (`pytest -m "not slow"` / `-m slow`) |
+| tests | 103 fast (+1 skipped) + 10 slow, all passing (`pytest -m "not slow"` / `-m slow`) |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -106,6 +113,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
+| 14 | Isaac Sim 5.1 segfaults at startup (librtx.scenedb) on Modal hosts with NVIDIA driver 610.57.04; only A10G hosts are still on 580 (jobs refuse 610) | Isaac runs on Modal | — |
+| 13 | Isaac friction grasp slips (expert 6-16%); anchor grasp is a flag, not the LeHome default — needs agreement with the env author | Isaac data quality | — |
 | 12 | `imitation.cpu_slot` isn't fair: a lane that releases and re-takes it between eval sets starves a lane polling every 2 s (lane A waited 37 min) | parallel queues | — |
 | 11 | `v1_dagger_v1_r1`/`_r2` frozen with bad teacher labels — never train on them | DAgger | — |
 | 10 | `cloth_angles/tasks.py::QUARTER` diverged from `quarter_fold_env.STAGES` (3 ways) | world-model work only (parked) | M7.3 |
@@ -124,6 +133,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-06 · Isaac half-fold port committed: `IMITATION_SIM=isaac`, Markov expert, anchor grasp flag, Modal jobs; BC `bc_v2a` 9/10 held-out (anchor), expert 109/173; friction BC 1/10; report page republished · 103 fast + 10 slow pass · this commit
 - 2026-09-26 · **All pre-VLA milestones closed.** M5b.4 ❌ + RL dropped (iql_v4 89/34/34.5 @8); M5c.1 ✅ (expert label look-ahead 43% of DAgger); M5c.2 ❌ narrowly (6.0% inference share for diffusion eval); M5c.3 ❌ (GPU 27%); DAgger at replan 4 not kept; diffusion seeds 77-85% id_hard, vision seed 1 recovery 34.5%; demos at operating points (4/4, 3/4); dated report 2026-09-25-phase5b.md; page republished · 96 fast + 10 slow pass · fb33f4f
 - 2026-09-25 · M5b.5 ✅ (determinism repeat identical; M2.1/M2.3 re-evals inside original intervals); detector v2 on 128² (92.6% agreement); M5c.1 profile ran; pipeline.md Data section; expert label look-ahead now timed in profiles; `imitation.viz.gpu_busy`; diffusion seeds 1-2 + vision seed 1 trained; final queue **paused** at 15:16 (resume script) · 96 fast tests pass · ac0a45e
 - 2026-09-25 · M5b.6 closed: replan sweep — privileged best at replan 4 (99.5/77.0/79.5, +5 id_hard, +7 recovery), vision recovery 30→41% at replan 2; id_hard target 85% not reached; operating points adopted · 111241e

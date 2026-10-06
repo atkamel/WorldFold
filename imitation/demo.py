@@ -2,10 +2,11 @@
 
     python -m imitation.demo --ckpt outputs/imitation/runs/dagger_v1/best.pt --seeds 100000 100001
     python -m imitation.demo --ckpt expert --out outputs/imitation/demo/expert.mp4
+    IMITATION_SIM=isaac python -m imitation.demo --ckpt ...      # on Isaac Sim, its `main` camera
 
 Runs the policy exactly as `evaluate` does -- chunk of K actions, re-planned every
 `--replan-every` steps from the last `obs_horizon` observations -- in one process,
-rendering offscreen with MuJoCo's renderer. Default seeds are from the held-out
+rendering offscreen with MuJoCo's renderer (or, on Isaac, the env's `main` camera). Default seeds are from the held-out
 `id_easy` set, never training seeds. Writes `<out>.json` with each episode's outcome.
 """
 
@@ -17,12 +18,11 @@ from collections import deque
 from pathlib import Path
 
 import imageio.v2 as imageio
-import mujoco
 import numpy as np
 from PIL import Image, ImageDraw
 
 from imitation.seeds import EVAL_SEED_BASE
-from imitation.tasks import HalfFoldEnv
+from imitation.sim import SIM
 
 
 def _overlay(frame, lines):
@@ -34,14 +34,12 @@ def _overlay(frame, lines):
     return np.asarray(img)
 
 
-def run_episode(env, act_fn, seed, renderer, cam, label, frames, hold=20):
+def run_episode(env, act_fn, seed, render, label, frames, hold=20):
     obs, info = env.reset(seed=seed)
     act_fn.reset(obs, seed)
-    base = env.unwrapped
     for t in range(env.unwrapped.max_episode_steps):
         obs, _, term, trunc, info = env.step(act_fn(obs))
-        renderer.update_scene(base.data, camera=cam)
-        frames.append(_overlay(renderer.render(), [
+        frames.append(_overlay(render(), [
             label, f"seed {seed}  step {t + 1}", f"fold score {info['fold_score']:.2f}",
             f"grasped L {int(info['grasped']['left_'])} R {int(info['grasped']['right_'])}"]))
         if term or trunc:
@@ -84,7 +82,10 @@ class PolicyActor:
 
 class ExpertActor:
     def __init__(self, env):
-        from imitation.teachers import ScriptedTeacher
+        if SIM == "isaac":
+            from imitation.teachers import IsaacScriptedTeacher as ScriptedTeacher
+        else:
+            from imitation.teachers import ScriptedTeacher
         self.teacher = ScriptedTeacher(env)
 
     def reset(self, obs, seed):
@@ -105,30 +106,52 @@ def main():
     ap.add_argument("--fps", type=int, default=20)   # control_dt = 0.05 s -> real time
     args = ap.parse_args()
 
-    env = HalfFoldEnv()
+    if SIM == "isaac":
+        from imitation.tasks.isaac_half_fold import make_isaac_env
+        env = make_isaac_env(video_size=args.height)       # square: the camera's aspect ratio
+    else:
+        from imitation.tasks import HalfFoldEnv
+        env = HalfFoldEnv()
     base = env.unwrapped
     if args.ckpt == "expert":
         act_fn, label = ExpertActor(env), "scripted expert"
     else:
         act_fn = PolicyActor(args.ckpt, args.replan_every, env)
         label = f"{'vision' if act_fn.rig else 'state'} policy {Path(args.ckpt).parent.parent.name}/{Path(args.ckpt).parent.name}"
-    base.model.vis.global_.offwidth = max(base.model.vis.global_.offwidth, args.width)
-    base.model.vis.global_.offheight = max(base.model.vis.global_.offheight, args.height)
-    renderer = mujoco.Renderer(base.model, args.height, args.width)
-    cam = mujoco.MjvCamera()
-    env.reset(seed=args.seeds[0])
-    cam.lookat[:] = base.data.xpos[base._cloth_body_ids].mean(axis=0)
-    cam.distance, cam.azimuth, cam.elevation = 0.9, 90.0, -50.0
+    if SIM == "isaac":
+        def render():
+            return base._render_image()[0]
+    else:
+        import mujoco
+        base.model.vis.global_.offwidth = max(base.model.vis.global_.offwidth, args.width)
+        base.model.vis.global_.offheight = max(base.model.vis.global_.offheight, args.height)
+        renderer = mujoco.Renderer(base.model, args.height, args.width)
+        cam = mujoco.MjvCamera()
+        env.reset(seed=args.seeds[0])
+        cam.lookat[:] = base.data.xpos[base._cloth_body_ids].mean(axis=0)
+        cam.distance, cam.azimuth, cam.elevation = 0.9, 90.0, -50.0
+
+        def render():
+            renderer.update_scene(base.data, camera=cam)
+            return renderer.render()
 
     frames, rows = [], []
-    for seed in args.seeds:
-        rows.append(run_episode(env, act_fn, seed, renderer, cam, label, frames))
-        print(rows[-1], flush=True)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    for seed in args.seeds:
+        start = len(frames)
+        rows.append(run_episode(env, act_fn, seed, render, label, frames))
+        rows[-1]["frames"] = [start, len(frames)]       # this episode's frame range in the video
+        print(rows[-1], flush=True)
+        if SIM == "isaac":      # Isaac runs are long and remote: keep what is done if the run is cut short
+            imageio.mimwrite(out, frames, fps=args.fps, quality=8, macro_block_size=16)
+            out.with_suffix(".json").write_text(json.dumps({"ckpt": args.ckpt, "episodes": rows}, indent=1))
     imageio.mimwrite(out, frames, fps=args.fps, quality=8, macro_block_size=16)
     out.with_suffix(".json").write_text(json.dumps({"ckpt": args.ckpt, "episodes": rows}, indent=1))
-    print(f"wrote {out} ({len(frames)} frames), success {sum(r['success'] for r in rows)}/{len(rows)}")
+    print(f"wrote {out} ({len(frames)} frames), success {sum(r['success'] for r in rows)}/{len(rows)}", flush=True)
+    if SIM == "isaac":          # leaving the interpreter with Isaac Sim up hangs at shutdown
+        import os
+        os._exit(0)
 
 
 if __name__ == "__main__":

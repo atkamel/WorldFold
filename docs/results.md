@@ -699,3 +699,27 @@ batch composition depends on worker timing. Fixed by padding every policy batch 
 fixed size (`rollout.padded_predict`); evaluations after this commit are deterministic
 per seed. **M2.1-M2.3 numbers above predate the fix**: they're valid samples, but a
 re-run will not reproduce them exactly.
+
+## Isaac half fold (branch feat/isaac-half-fold)
+
+Isaac Sim 5.1 / LeHome env, stage 0 only, `IMITATION_SIM=isaac` (400-step episodes, start
+jitter ±1 cm). Runs on Modal A10G; data on the `worldfold-isaac` volume under `imitation/`.
+Not comparable to the MuJoCo rows above (different sim, grasp and seed ranges).
+
+### Friction grasp (LeHome default) (2026-10-04 / 05)
+
+| run | data | seeds | n | success | notes |
+|---|---|---|---|---|---|
+| expert checks | — | train seeds | 32 | 5/32 = 15.6% [6.9, 31.8] | all 204 grasp losses in 48 eps are slips with jaws shut, median 4 cm into the lift |
+| expert, collection v1a | — | train seeds, 30% recovery | 170 | 10/170 = 5.9% [3.2, 10.5] | failures cut at 300 steps |
+| `bc_v1a_2k` (chunk MLP) | v1a (10 successes) | 100000-100009 | 10 | 0/10 = 0.0% [0.0, 27.8] | every failure a lost grasp |
+| `bc_v1a_all` (chunk MLP) | v1a_all (170 eps, `--allow-failures`) | 100000-100009 | 10 | 1/10 = 10.0% [1.8, 40.4] | replan 4; mean fold score 0.20 |
+
+### Anchor grasp (`GRASP_MODE=anchor`, 4 mm) (2026-10-05)
+
+Kinematic anchor sphere per carried corner, PhysX attachment toggled by the jaw.
+
+| run | data | seeds | n | success | notes |
+|---|---|---|---|---|---|
+| expert, collection v2a | — | train seeds, 30% recovery | 173 | 109/173 = 63.0% [55.6, 69.8] | clean 78/118 = 66.1% [57.2, 74.0]; recovery 31/55 = 56.4% [43.3, 68.6]; v2a hash `e6621394726a`, v2a_all `031c57c25d50` |
+| **`bc_v2a`** (chunk MLP, 8.65M, 8k steps) | v2a (109 successes) | 100000-100009 | 10 | **9/10 = 90.0% [59.6, 98.2]** | replan 4; folds in 174-193 steps, fold score 0.90-0.98; miss = seed 100001 (0.54, 400 steps). Video `imitation/demo/bc_v2a.mp4`. n=10 only. |

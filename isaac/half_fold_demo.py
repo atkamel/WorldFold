@@ -30,6 +30,8 @@ from mujuco.cloth_params import CLOTH_COUNT, JOINT_DELTA_SCALE, TABLE_TOP_Z   # 
 
 PINCH_HEIGHT = 0.010   # fixed fingertip above the table at the pinch: its pad rests on the table
 PLACE_HEIGHT = 0.011
+PINCH_OFFSET = 0.005   # fingertip this far outside the corner (along the jaw direction), so the jaw sweeps the corner in
+PLACE_OVERSHOOT = 0.0  # carry the corner this far past its goal (along the carry), for the crease to spring back onto it
 ARC_HEIGHT = 0.12      # peak of the carry arc above the fold line; under the cloth's half length, so it never pulls
 ARC_WAYPOINTS = 20
 TRACK_TOL = 0.02       # rad
@@ -56,37 +58,44 @@ def fold_error(start, now):
     return np.linalg.norm((now - target)[..., :2], axis=-1)
 
 
+def plan_arm(ik, prefix, corner, goal, center, seed_q=None):
+    """One arm's joint targets per segment (and the arc's tip positions), to pinch `corner` and lay it on `goal`.
+    `center` (the cloth's middle) sets the jaw direction."""
+    jaw = np.r_[center[:2] - corner[:2], 0.0]
+    jaw /= np.linalg.norm(jaw)
+    offset = -PINCH_OFFSET * jaw[:2]
+    pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], TABLE_TOP_Z + PINCH_HEIGHT])
+    # the held point's mirror image across the fold line, so the corner lands on the goal (plus any overshoot)
+    carry = np.r_[(goal - corner)[:2], 0.0]
+    carry /= max(np.linalg.norm(carry), 1e-9)
+    target = np.asarray(goal, float) + PLACE_OVERSHOOT * carry
+    place = np.array([target[0] + offset[0], target[1] - offset[1], TABLE_TOP_Z + PLACE_HEIGHT])
+    q, poses = SEED_Q[prefix] if seed_q is None else seed_q, {}
+    for name, target in (("above", pinch + [0, 0, 0.04]), ("pinch", pinch)):
+        q, _ = ik.solve(prefix, target, jaw, q)
+        poses[name] = [q]
+    # half an ellipse from the pinch to the place, rising ARC_HEIGHT over the fold line; along it the fingers may
+    # tilt a little to keep the position
+    poses["arc"], poses["arc_tips"] = [], []
+    for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
+        target = pinch + (place - pinch) * (1.0 - math.cos(math.pi * s)) / 2.0
+        target[2] = pinch[2] + (place[2] - pinch[2]) * s + ARC_HEIGHT * math.sin(math.pi * s)
+        q, _ = ik.solve(prefix, target, jaw, q, orientation_weight=0.05)
+        poses["arc"].append(q)
+        poses["arc_tips"].append(target)
+    q, _ = ik.solve(prefix, place + [0, 0, 0.05], jaw, q, orientation_weight=0.02)
+    poses["retreat"] = [q]
+    poses["pinch_tip"] = pinch
+    poses["corner_target"] = target       # where the corner should be when the jaw lets go
+    return poses
+
+
 def plan(env, ik):
     """Joint targets per arm and segment, solved on the cloth as it lies now."""
-    base = env.unwrapped
-    center = base.cloth_positions().mean(axis=0)
-    poses = {}
-    for move in env.stages[0].moves:
-        p = move.prefix
-        corner = np.mean([env._vertex(c) for c in move.corners], axis=0)
-        goal = env.goal(move)
-        jaw = np.r_[center[:2] - corner[:2], 0.0]
-        jaw /= np.linalg.norm(jaw)
-        offset = -0.005 * jaw[:2]
-        pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], TABLE_TOP_Z + PINCH_HEIGHT])
-        # the held point's mirror image across the fold line, so the corner lands on the goal
-        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + PLACE_HEIGHT])
-        q, poses[p] = SEED_Q[p], {}
-        for name, target in (("above", pinch + [0, 0, 0.04]), ("pinch", pinch)):
-            q, _ = ik.solve(p, target, jaw, q)
-            poses[p][name] = [q]
-        # half an ellipse from the pinch to the place, rising ARC_HEIGHT over the fold line; along it the fingers may
-        # tilt a little to keep the position
-        poses[p]["arc"], poses[p]["arc_tips"] = [], []
-        for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
-            target = pinch + (place - pinch) * (1.0 - math.cos(math.pi * s)) / 2.0
-            target[2] = pinch[2] + (place[2] - pinch[2]) * s + ARC_HEIGHT * math.sin(math.pi * s)
-            q, _ = ik.solve(p, target, jaw, q, orientation_weight=0.05)
-            poses[p]["arc"].append(q)
-            poses[p]["arc_tips"].append(target)
-        q, _ = ik.solve(p, place + [0, 0, 0.05], jaw, q, orientation_weight=0.02)
-        poses[p]["retreat"] = [q]
-    return poses
+    center = env.unwrapped.cloth_positions().mean(axis=0)
+    return {move.prefix: plan_arm(ik, move.prefix, np.mean([env._vertex(c) for c in move.corners], axis=0),
+                                  env.goal(move), center)
+            for move in env.stages[0].moves}
 
 
 def run_episode(env, ik, seed, frames=None):

@@ -375,3 +375,26 @@ def test_cuda_graph_diffusion_sampling_matches_eager_exactly():
     eager = ChunkPolicy.predict(p, x)
     np.testing.assert_array_equal(p.predict(x), eager)          # first call captures the graph
     np.testing.assert_array_equal(p.predict(x * 0.5), ChunkPolicy.predict(p, x * 0.5))   # replay, new input
+
+
+def test_merge_lists_shard_episodes_and_rejects_repeated_seeds(tmp_path):
+    from imitation.data.merge import merge
+    for name, seeds in (("a", (0, 1)), ("b", (2,))):
+        w = DatasetWriter(tmp_path, name)
+        for s in seeds:
+            w.add(make_episode(s))
+        w.freeze()
+    m = merge(tmp_path, "ab", ["a", "b"])
+    assert m["n_episodes"] == 3
+    _, eps = load_dataset(tmp_path, "ab")
+    assert sorted(e.meta["seed"] for e in eps) == [0, 1, 2]
+    with pytest.raises(ValueError):
+        merge(tmp_path, "aa", ["a", "a"])
+
+
+def test_merge_freezes_a_shard_cut_off_mid_collection(tmp_path):
+    from imitation.data.merge import merge
+    w = DatasetWriter(tmp_path, "cut")
+    w.add(make_episode(5))          # never frozen: the collection was killed
+    m = merge(tmp_path, "all", ["cut"])
+    assert m["n_episodes"] == 1

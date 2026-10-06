@@ -21,12 +21,13 @@ import numpy as np
 from imitation.data.schema import DatasetWriter
 from imitation.rollout import EnvPool, ExpertController, Perturbation, rollout
 from imitation.seeds import TRAIN_SEED_BASE
+from imitation.sim import PROFILE, SIM
 from imitation.spec import ACTION_DIM, OBS_DIM
 
 DEFAULT_ROOT = "outputs/imitation/datasets"
 
 
-def recovery_perturbation(fraction, t_range=(10, 70), k_range=(5, 15)):
+def recovery_perturbation(fraction, t_range=PROFILE["collect_knock_t"], k_range=(5, 15)):
     def fn(seed, rng):
         if rng.random() >= fraction:
             return None
@@ -52,10 +53,13 @@ def main():
     ap.add_argument("--recovery-fraction", type=float, default=0.3)
     ap.add_argument("--mixed", action="store_true", help="keep failures in the demo version")
     ap.add_argument("--resume", action="store_true", help="continue an unfrozen version")
+    ap.add_argument("--stop-after-min", type=float, default=None,
+                    help="start no new episode after this many minutes, finish the running ones and freeze")
     args = ap.parse_args()
 
-    config = {k: v for k, v in vars(args).items() if k != "resume"} | {
-        "task": "half_fold", "teacher": "QuarterFoldExpert(stage 0)"}
+    config = {k: v for k, v in vars(args).items() if k not in ("resume", "stop_after_min")} | {
+        "task": "half_fold", "sim": SIM,
+        "teacher": "IsaacHalfFoldExpert" if SIM == "isaac" else "QuarterFoldExpert(stage 0)"}
     writer = DatasetWriter(args.root, args.version, config=config, resume=args.resume)
     fail_writer = writer if args.mixed else DatasetWriter(
         args.root, f"{args.version}_failures", config=config | {"demos": args.version}, resume=args.resume)
@@ -68,9 +72,10 @@ def main():
         (writer if ep.meta["success"] else fail_writer).add(ep, obs_dim=OBS_DIM, action_dim=ACTION_DIM)
 
     t0 = time.time()
+    stop_at = t0 + 60 * args.stop_after_min if args.stop_after_min else None
     with EnvPool(args.workers) as pool:
         rollout(pool, seeds, ExpertController(), perturb_fn=recovery_perturbation(args.recovery_fraction),
-                progress=printer(t0), on_done=save)
+                progress=printer(t0), on_done=save, stop_at=stop_at)
     for w in dict.fromkeys((writer, fail_writer)):
         m = w.freeze()
         print(f"froze {args.root}/{w.version}: {summary(m['episodes'])}, hash {m['content_hash'][:12]}")
