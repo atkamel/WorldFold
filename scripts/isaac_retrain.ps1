@@ -5,7 +5,7 @@
 # outputs/imitation/isaac_weld/w5/w5.log with STEP / DONE / FAIL markers for a monitor.
 #   powershell -ExecutionPolicy Bypass -File scripts\isaac_retrain.ps1 [-Phase privileged|vision|final|all]
 #   powershell -ExecutionPolicy Bypass -File scripts\isaac_retrain.ps1 -Only <stage>     # one stage (used for overlap)
-# At most 3 Isaac processes at once (CPU heat budget): DAgger 2 workers + 1 side eval.
+# At most 3 Isaac processes (CPU heat budget); camera stages use 2: 3 x B = 8 with the rig cameras overflows 16 GB VRAM.
 param([ValidateSet("privileged", "vision", "final", "all")][string]$Phase = "all", [string]$Only = "",
       [int]$EnvsPerProc = 8)
 $ErrorActionPreference = "Stop"
@@ -24,7 +24,12 @@ $log = Join-Path $out "w5.log"
 $cams = "main=128,left_wrist_cam=64,right_wrist_cam=64"
 $sets = @("id_easy", "id_hard", "recovery")
 
-function Note($msg) { $msg; Add-Content -Path $log -Value $msg -Encoding utf8 }
+function Note($msg) {     # a reader holding the log open must not end the run: retry, then give up on this line
+    $msg
+    foreach ($i in 1..10) {
+        try { [IO.File]::AppendAllText((Join-Path $repo $log), "$msg`r`n"); return } catch { Start-Sleep -Milliseconds 300 }
+    }
+}
 
 $script:sideStages = @()
 function Stage($name, $done, [scriptblock]$body) {
@@ -66,7 +71,7 @@ $vis = "$runs\${tag}_distill"
 
 if ($Phase -in "privileged", "all" -or $Only) {
     Stage "collect" "$ds\$tag\manifest.json" {
-        & $py -u -m imitation.data.collect --backend $B --episodes 400 --workers 3 --recovery-fraction 0.3 `
+        & $py -u -m imitation.data.collect --backend $B --episodes 400 --workers 2 --recovery-fraction 0.3 `
             --render --cameras $cams --version $tag --root $ds --resume }
     # both seeds train at once on the GPU (no Isaac process running)
     $s1 = Side "train_diff_s1"
@@ -101,7 +106,7 @@ if ($Phase -in "vision", "all" -or $Only) {
         & $py -u -m imitation.dagger --backend $B --init "$runs\${tag}_vision_t0\final.pt" --dataset $tag --root $ds `
             --out $vis --teacher $teacher --relabel --rounds 2 --episodes 128 --recovery-fraction 0.6 `
             --shift-fraction 0.3 --replan-every 2 --dagger-weight 2 --train-steps 15000 --eval-n 100 `
-            --eval-sets $sets --score-sets $sets --min-gain-se 1 --workers 3 --resume
+            --eval-sets $sets --score-sets $sets --min-gain-se 1 --workers 2 --resume
         if ($LASTEXITCODE -eq 0) { Set-Content "$vis\done.txt" (Get-Date -Format s) } }
     Stage "detector_train" "$runs\${tag}_detector\detector.pt" {
         & $py -u -m imitation.vision.success train --versions $tag "${tag}_failures" --root $ds `
