@@ -13,7 +13,8 @@ laptop: teacher/mujoco_live/teleop_client.py  <--TCP-->  GPU node: Isaac + teach
 ```
 
 ## 0. Laptop setup (once)
-Windows (raw two-mouse input uses the Win32 raw input API in `mujoco_live/rawmouse.py`).
+Windows (raw two-mouse input uses the Win32 raw input API in `mujoco_live/rawmouse.py`). Mac/Linux: not yet,
+see task 8; you can still work on the code there.
 ```bash
 git clone -b ROY-vla-teacher https://github.com/atkamel/WorldFold && cd WorldFold
 pip install -r teacher/mujoco_live/requirements.txt
@@ -99,5 +100,27 @@ Physics is ~9 ms/step on an L40S; most of the remaining server time is in LeHome
 | 5 | **Crash**: disable IsaacLab's recursive `_abort_signal_handle_callback` to see the real error; try a cheap keepalive with rendering off | needs Isaac (WATcloud); `ORACLE_APP_PUMP_TICKS` sets the keepalive period |
 | 6 | Table height, stream stall in background, mouse speed, wheel | client-side; test on the fake server |
 | 7 | Replay demos in Isaac -> training data | demos only count after replay |
+| 8 | **Two mice on Mac / Linux** (today: Windows only) | see below |
 
-Tasks 1-4, 6 can be done and tested on a laptop with the fake server (section 1).
+Tasks 1-4, 6, 8 can be done and tested on a laptop with the fake server (section 1).
+
+### Task 8: two mice on Mac / Linux
+Windows merges all mice into one cursor but its Raw Input API still says which device each move came from;
+`mujoco_live/rawmouse.py` uses that. Mac and Linux expose the same information another way:
+- **Linux**: each mouse is its own `/dev/input/event*` device; read them with `python-evdev`
+  (`REL_X/REL_Y/REL_WHEEL`, `BTN_LEFT/RIGHT/MIDDLE`). Needs read access: add yourself to the `input` group.
+  Grab the devices (`dev.grab()`) so the moves don't also drive the desktop cursor.
+- **Mac**: IOKit's HID Manager (`IOHIDManagerRegisterInputValueCallback`, reachable from Python via PyObjC or
+  ctypes) reports values per device. The terminal needs **Input Monitoring** permission once
+  (System Settings -> Privacy & Security).
+
+What to build: a `MiceReader` with the same interface as the Windows one, chosen by `sys.platform`:
+- `take()` returns `{device_id: (dx, dy, wheel_notches, left_held, right_held, events)}` and clears the totals;
+  `events` lists `"left_down"`, `"left_up"`, `"right_down"`, ... plus `"middle_held"` while the wheel button is down
+- `register()` / `listening()` (can just return True), `ok`, and `is_external_mouse(id)` (True for USB/Bluetooth
+  mice, False for a built-in touchpad).
+
+The clients also make a few Windows-only calls (`ctypes.windll`: DPI awareness, `ClipCursor`, `FindWindowW` in
+`teleop_client.py`, `teleop_client_ps.py`, `game.py`); guard those with `sys.platform == "win32"`.
+Done when `python rawmouse.py` prints separate moves/clicks for two mice and the fake-server session plays with both.
+Rough size: an afternoon for Linux, about a day for Mac (mostly permissions).
