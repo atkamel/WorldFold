@@ -1225,3 +1225,39 @@ The CIs overlap (they're identical), so parity is met.
   without. Retries help a little on net, so they stay on.
 - **W3b closed (user decision, 2026-10-06):** stop tuning and collect W5 on the W3 expert (retries on). Recovery
   ceiling is the pooled **147/180 = 81.7%** (Wilson 75.4–86.6%), below the 85 floor. Plateau accepted by the user.
+
+### W5 (fast track) — Isaac weld retrain, selection-stage numbers (2026-10-06)
+
+- **Dataset:** `isaac_v1_weld`, 384 expert successes plus 16 in `isaac_v1_weld_failures`, from 400 seeds (0–399,
+  30% knocked). Hash `468089355dd7`. Collected at B = 8 × 2 processes in 75 min.
+- **Protocol:** diffusion, 30k steps (the M2.4 recipe). Evaluation at n = 100 per set, replan 8, deterministic,
+  `isaac_weld` with the MuJoCo eval sets. These numbers only choose seeds and rounds; the final n = 200 numbers
+  come later.
+
+| policy | id_easy | id_hard | recovery |
+|---|---|---|---|
+| BC diffusion, seed 0 | 100/100 = 100% [96.3, 100.0] | 85/100 = 85% [76.7, 90.7] | 44/100 = 44% [34.7, 53.8] |
+| BC diffusion, seed 1 | 98/100 = 98% [93.0, 99.4] | 73/100 = 73% [63.6, 80.7] | 38/100 = 38% [29.1, 47.8] |
+| **DAgger round 1** (from seed 0) | 100/100 = 100% [96.3, 100.0] | 88/100 = 88% [80.2, 93.0] | 49/100 = 49% [39.4, 58.7] |
+
+- **Failure codes:**
+  - seed 0: id_hard G1 15; recovery G1 43, F1 8, S1 5
+  - seed 1: id_easy G1 2; id_hard G1 27; recovery G1 51, S1 6, F1 5
+  - round 1: id_hard G1 11, S1 1; recovery G1 35, S1 11, F1 5
+- **G1 on the weld profile** means the gripper closed more than `GRASP_RADIUS` = 3 cm from its corner, so the weld
+  never engaged, or the arm released early. It is an aiming error, not a slipping weld.
+- **DAgger round 1:**
+  - 128 student rollouts (DAgger seeds), 30% knocked; takeover labels with p = 0.3 (Isaac has no look-ahead
+    snapshot).
+  - The student succeeded on 120/128; 403 teacher labels. Data version `isaac_v1_weld_isaac_v1_weld_dagger_r1`
+    (hash `32fb84b8c1c2`).
+  - 15k warm-start steps.
+  - Gain **+0.9 SE** over the three sets: kept as the privileged teacher, but within noise.
+  - Validation loss rose from 0.021 to 0.049 during the fine-tune.
+- **Reading:**
+  - Seed variance is 12 pp on id_hard, more than MuJoCo's 8 pp.
+  - Recovery (44–49%) sits well below the expert's 81.7% ceiling. Grasp misses after a knock dominate.
+  - Takeover labels give about 3 labels per rollout. MuJoCo's look-ahead labelled every replan, which is why
+    one round gave +17 pp there and +5 pp here.
+- **Seed 1 timing:** its id_easy and id_hard ran alongside DAgger at 1 worker, B = 8. Its recovery ran
+  separately at 2 workers, B = 4, after the heat cap. Same seeds and same eval code.

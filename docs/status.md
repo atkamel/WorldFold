@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-06 · **Branch:** `feature/isaac-imitation` · **Phase:** W5 (weld retrain on Isaac, fast track): W3b closed, track G paused, `scripts/isaac_retrain.ps1` running
+**Updated:** 2026-10-06 · **Branch:** `feature/isaac-imitation` · **Phase:** W5 fast track, paused at a safe point (privileged done, vision trained; finals next)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,17 +41,26 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**W5 fast track (2026-10-06, user decision; plan `docs/superpowers/plans/2026-10-06-isaac-w5-fast-track.md`): in flight**
-- **Goal:** a strong Isaac half fold through the MuJoCo pipeline: diffusion BC → diffusion DAgger (privileged
-  teacher) → vision student (3 cameras + 48 sensor proprio dims) → detector → final n = 200 × 3 → demos.
-  Targets: privileged 95 / 75 / 65, vision id_easy ≥ 90.
-- **W3b closed:** attempt D (retries off) 58/80; the user accepted the W3 expert at 81.7% pooled recovery.
-- **Track G paused** by the user: `feature/isaac-grasp` and its worktree are left as is (IG.2 best = `6c8c5af`).
-- **Driver:** `scripts/isaac_retrain.ps1 -Phase all -EnvsPerProc 8` (resumable; log
-  `outputs/imitation/isaac_weld/w5/w5.log`). Vectorised rig cameras checked at B = 4 against B = 1 (frames match
-  up to physics noise).
-- **Protocol:** n = 100 per set to choose seeds and rounds, n = 200 only for the finals; ≤ 3 Isaac processes.
-- **Exit:** `python -m imitation.verify W5`.
+**W5 fast track: paused at a clean point (2026-10-06 19:05). Waiting for the user's "relaunch" and "restart guard"**
+(2 h task limit; the harness says not to auto-restart).
+- **Done:**
+  - `isaac_v1_weld` collected (384 + 16).
+  - Diffusion BC, seeds 0 and 1.
+  - DAgger round 1 (the privileged teacher): 100 / 88 / 49 at n = 100.
+  - Seed-1 check: 98 / 73 / 38.
+  - Vision student `isaac_v1_weld_vision_t0` trained (teacher-relabelled, 30k steps).
+  - Privileged demos ×3 sets: 3/3, 3/3, 2/3.
+- **Left, in this order** (`scripts/isaac_retrain.ps1 -Phase all`, which skips finished stages):
+  1. `final_privileged` (n = 200 × 3, replan 4)
+  2. detector train / agree
+  3. `final_vision` (n = 200 × 3, replan 2)
+  4. `demos_sensor`
+  5. the dated report, then `verify W5`
+- **Heat cap** (user, 2026-10-06; keep under 94 °C):
+  - ≤ 2 Isaac processes × 4 envs, no overlapping sims.
+  - Run `scripts/thermal_guard.py` alongside: pause at 90 °C, resume at 84 °C. The GPU peaked at 87 °C so far.
+- **Recovery is the weak set** (49%; expert ceiling 81.7%). Option: one more DAgger round with takeover p = 0.6,
+  about +1.5 h, if the user asks.
 
 ## Pre-VLA milestone tracker
 
@@ -82,7 +91,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 183 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 187 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -141,6 +150,11 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-06 · **W5 privileged phase done; heat cap.**
+  - BC s0 100/85/44, s1 98/73/38; DAgger r1 100/88/49 (n = 100).
+  - Vision student trained; privileged demos ×3.
+  - Thermal guard plus a 2 × 4 cap (`4153e19`); DAgger resume (`607ebf6`); demo `--set` (`32ff854`).
+  - Fast suite 187 passed, 4 skipped. (this commit)
 - 2026-10-06 · **W5 fast track started.** W3b closed (attempt D 58/80, plateau accepted); track G paused;
   `scripts/isaac_retrain.ps1` + `verify W5`; vectorised cameras smoke-checked; blocker 14 removed (not reproduced).
   Fast suite 183 passed, 4 skipped. (this commit)
