@@ -389,7 +389,7 @@ def _w4() -> Result:
 
 
 @check("W5", "weld retrain (scripts/isaac_retrain.ps1): final n = 200 x 3 evals for the privileged and vision bests, "
-             "DAgger and distillation histories, detector >= 90%, demos tracked")
+             "DAgger history and vision run, detector >= 90%, a demo per policy and eval set tracked")
 def _w5() -> Result:
     w5 = ROOT / "outputs" / "imitation" / "isaac_weld" / "w5"
     runs = ROOT / "outputs" / "imitation" / "runs"
@@ -406,10 +406,9 @@ def _w5() -> Result:
         ev.append(f"{name}: " + ", ".join(f"{s} {k}/{n} [{wilson(k, n)[0]:.1f}, {wilson(k, n)[1]:.1f}]"
                                           for s, (k, n) in counts.items()) + f" ok={good}")
         ok &= good and git_tracked(path)
-    for run in ("isaac_v1_weld_dagger", "isaac_v1_weld_distill"):
-        hist = runs / run / "history.json"
-        ok &= hist.exists() and git_tracked(hist)
-        ev.append(f"{run} history: exists={hist.exists()} tracked={git_tracked(hist)}")
+    for f in (runs / "isaac_v1_weld_dagger" / "history.json", runs / "isaac_v1_weld_vision_t0" / "run.json"):
+        ok &= f.exists() and git_tracked(f)
+        ev.append(f"{f.parent.name}/{f.name}: exists={f.exists()} tracked={git_tracked(f)}")
     agree = runs / "isaac_v1_weld_detector" / "agreement.json"
     if agree.exists():
         a = json.loads(agree.read_text())
@@ -418,7 +417,7 @@ def _w5() -> Result:
     else:
         ev.append(f"missing artifact: {agree}")
         ok = False
-    for name in ("privileged", "sensor"):
+    for name in [f"{p}_{s}" for p in ("privileged", "sensor") for s in ("id_easy", "id_hard", "recovery")]:
         mp4 = media / f"half_fold_isaac_{name}.mp4"
         ok &= mp4.exists() and git_tracked(mp4)
         ev.append(f"demo {mp4.name}: exists={mp4.exists()} tracked={git_tracked(mp4)}")

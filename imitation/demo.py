@@ -96,7 +96,7 @@ class ExpertActor:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True, help="policy checkpoint, or 'expert'")
-    ap.add_argument("--seeds", type=int, nargs="+", default=[EVAL_SEED_BASE["id_easy"] + i for i in range(3)])
+    ap.add_argument("--seeds", type=int, nargs="+", default=None, help="default: the first 3 id_easy seeds")
     ap.add_argument("--replan-every", type=int, default=8)
     ap.add_argument("--out", default="outputs/imitation/demo/half_fold.mp4")
     ap.add_argument("--width", type=int, default=960)
@@ -104,7 +104,14 @@ def main():
     ap.add_argument("--fps", type=int, default=20)   # control_dt = 0.05 s -> real time
     ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld"), default="mujoco")
     ap.add_argument("--demo-size", type=int, default=512, help="isaac: square size of the demo camera")
+    ap.add_argument("--set", default=None, choices=("id_easy", "id_hard", "recovery"),
+                    help="isaac: play episodes of this eval set (its seeds unless --seeds is given, its shifted "
+                         "poses and its knock), labelled in the video")
+    ap.add_argument("--n", type=int, default=3, help="with --set and no --seeds: the set's first n seeds")
     args = ap.parse_args()
+    args.seeds_given = args.seeds is not None
+    if args.seeds is None:
+        args.seeds = [EVAL_SEED_BASE["id_easy"] + i for i in range(3)]
     if is_isaac(args.backend):
         return isaac_main(args)
 
@@ -157,15 +164,28 @@ def isaac_main(args):
     def frame(obs):
         return np.ascontiguousarray(np.transpose(obs["demo"], (1, 2, 0)))
 
+    from imitation.seeds import eval_set
+    reset_options = perturb_fn = None
+    if args.set:                     # the evaluator's own set definition: same poses, same knock draw
+        set_seeds, reset_options, perturb_fn = eval_set(args.set, args.n, args.backend)
+        if not args.seeds_given:
+            args.seeds = set_seeds
+        label += f"  [{args.set}]"
     frames, rows = [], []
     for seed in args.seeds:
-        obs, info = env.reset(seed=seed)
+        obs, info = env.reset(seed=seed, options=reset_options(seed) if reset_options else None)
+        rng = np.random.default_rng([seed, 7919])          # as rollout: the knock is drawn from this stream
+        knock = perturb_fn(seed, rng) if perturb_fn else None
         if teacher:
             teacher.reset()
         hist, queue = deque([obs["state"]] * (policy.obs_horizon if policy else 1), maxlen=policy.obs_horizon
                             if policy else 1), deque()
         for t in range(env.unwrapped.max_episode_steps):
-            if teacher:
+            knocked = knock is not None and knock.active(t)
+            if knocked:                                       # k uniform-random actions, then the policy replans
+                action = rng.uniform(-1, 1, len(env.action_space.low)).astype(np.float32)
+                queue.clear()
+            elif teacher:
                 action = teacher.act()
             else:
                 if not queue:
@@ -178,7 +198,8 @@ def isaac_main(args):
             hist.append(obs["state"])
             frames.append(_overlay(frame(obs), [
                 label, f"seed {seed}  step {t + 1}", f"fold score {info['fold_score']:.2f}",
-                f"grasped L {int(info['grasped']['left_'])} R {int(info['grasped']['right_'])}"]))
+                f"grasped L {int(info['grasped']['left_'])} R {int(info['grasped']['right_'])}"]
+                + (["KNOCK (random actions)"] if knocked else [])))
             if term or trunc:
                 break
         verdict = "SUCCESS" if info["success"] else f"FAIL ({info['termination_reason'] or 'truncated'})"
