@@ -136,7 +136,12 @@ timed function. Always verify `modal container list` is empty at the end.
 | `wf_adapter.py` | WorldFold ⇄ teacher adapter: 3 rendered cameras, 12-dim state, absolute→joint-delta actions, continuous gripper, grasp-anywhere, start pose |
 | `yappi_serve.py` | runs his `serve.py` under yappi (all threads); SIGUSR1 dumps per-thread stats |
 | `render_cams.py` | local camera-view check (WorldFold top + wrist views) |
-| `results/` | Phase 0 benchmark JSONs, physics profile JSONs |
+| `results/` | Phase 0 benchmark JSONs, physics profile JSONs, teleop session logs (`runpod/`, `watcloud/`) |
+| `PLAY_ISAAC.md` | **start here for teleop**: play the Isaac cloth scene with two mice (laptop, WATcloud, RunPod), open tasks |
+| `mujoco_live/` | laptop side: the two-mouse game client, the local MuJoCo game, probes |
+| `oracle/teleop/` | server side: controller, Isaac world, stream protocol, fake server |
+| `oracle/native/` | C++ SO-101 IK + cloth height lookup (prebuilt for Windows + Linux in `lib/`) |
+| `watcloud/`, `runpod/` | run Isaac on WATcloud (Slurm) or RunPod; `runpod/image/` builds the Isaac Docker image |
 
 Optional: `ROY_SIM_DIR=<path to stats-worldfold/mujuco>` enables `sim="roy"` (arms-on-flanks sim).
 MuJoCo functions need the SO101 assets vendored. `modal_teacher.py` copies them from a local `so101_nexus` install

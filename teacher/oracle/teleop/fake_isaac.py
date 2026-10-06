@@ -100,6 +100,7 @@ if __name__ == "__main__":
     from teleop.server import TeleopServer
     env = FakeEnv()
     w = IsaacWorld(env, helpers(), settle_ticks=5)
+    print("aim-point IK:", w.ik_backend, flush=True)
     g = Game(w)
     state_view = "--state" in sys.argv          # the laptop draws (Polyscope client) instead of receiving JPEGs
     hello = dict(backend="fake-isaac", dt=w.dt, tris=w.faces.tolist(), thickness=0.004,

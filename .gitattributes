@@ -1,0 +1,3 @@
+# shell scripts run on Linux pods/nodes: a CRLF checkout makes bash fail silently (RunPod 2026-10-05)
+*.sh text eol=lf
+*.sbatch text eol=lf

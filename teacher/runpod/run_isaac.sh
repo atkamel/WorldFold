@@ -2,7 +2,7 @@
 # Run one Isaac session on the RunPod pod, then STOP THE POD (so nothing keeps billing).
 #
 #   bash teacher/runpod/run_isaac.sh grip              # adhesion A/B: grip held + release stuck, flat pads
-#   bash teacher/runpod/run_isaac.sh teleop            # two-mouse play: laptop runs mujoco_live/teleop_client.py
+#   bash teacher/runpod/run_isaac.sh teleop            # two-mouse play: laptop runs mujoco_live/teleop_client.py (no cameras)
 #
 # Options (env vars): DEVICE=cpu|cuda:0 (sim device)  GARMENT=Top_Long_Seen_0  PADS=flat  MAX_S=1800 (hard cap)  KEEP_POD=1 (don't stop the pod)
 #                     FRICTION/ADHESION (-1 = keep the challenge's values; the A/B uses cloth variants instead)
@@ -36,6 +36,11 @@ stop_pod() {
 trap stop_pod EXIT
 
 bash "$WF_DIR/teacher/runpod/link_code.sh"
+
+# Isaac Sim 5.1 is certified for NVIDIA driver 580; 610 segfaults its renderer at startup (isaac-sim/IsaacSim #650, #651)
+DRV=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1)
+echo "[run] GPU driver $DRV"
+case "$DRV" in 580.*) ;; *) echo "[run] FATAL: driver $DRV is not 580.x - Isaac 5.1 would crash at startup"; exit 3 ;; esac
 
 # ---- the same scene edits as the Modal functions: cloth physics values, every top starts flat at the centre ----
 "$CH/.venv/bin/python" - "$CH" "$FRICTION" "$ADHESION" <<'PY'
@@ -71,12 +76,28 @@ case "$MODE" in
 J
 )
     ;;
+  assist)
+    # grab assist test (oracle_fold.assist_test): the live-play world, N random grabs per grab preset, no client
+    export ORACLE_JOBS="[{\"garment\": \"$GARMENT\", \"mode\": \"assist_test\", \"n\": ${N_GRABS:-20}, \"presets\": ${PRESETS:-[\"mujoco_feel\", \"tested\", \"assist\"]}}]" ORACLE_CLOTH=${CLOTH:-real}
+    export LEHOME_CHECK_INTERVAL=1000000 ORACLE_STEPS_PER_TICK=1 LEHOME_NO_CAMERAS=1
+    "$CH/.venv/bin/python" "$WF_DIR/teacher/no_cameras_patch.py" "$(dirname "$CH")"
+    ;;
   teleop)
     export ORACLE_JOBS="[{\"garment\": \"$GARMENT\"}]" ORACLE_TELEOP=1 ORACLE_TELEOP_PORT=7777
     export ORACLE_TELEOP_IDLE=${IDLE_S:-300} ORACLE_TELEOP_MAX=$MAX_S ORACLE_CLOTH=${CLOTH:-real}
     # LeHome re-reads the whole cloth for its success check every 30 observations: rare during live play only
     export LEHOME_CHECK_INTERVAL=${LEHOME_CHECK_INTERVAL:-1000000}
     export ORACLE_STEPS_PER_TICK=${STEPS_PER_TICK:-1}   # physics steps per control tick (Isaac barely renders in the state view)
+    # live play without LeHome's 3 cameras (the laptop draws; demos get images when replayed): NOCAM=0 keeps them
+    if [ "${NOCAM:-1}" = 1 ]; then
+      "$CH/.venv/bin/python" "$WF_DIR/teacher/no_cameras_patch.py" "$(dirname "$CH")"
+      export LEHOME_NO_CAMERAS=1
+    fi
+    # Blosc2 for the compressed state stream (teleop/protocol.py; without it the stream is sent uncompressed)
+    NPV=$("$CH/.venv/bin/python" -c 'import numpy; print(numpy.__version__)')
+    (uv pip install --python "$CH/.venv/bin/python" blosc2 "numpy==$NPV" -q 2>/dev/null \
+       || "$CH/.venv/bin/python" -m pip install -q blosc2 "numpy==$NPV") \
+      && "$CH/.venv/bin/python" -c 'import blosc2; print("[run] blosc2", blosc2.__version__)' || echo "[run] blosc2 NOT installed (uncompressed stream)"
     echo "[run] TELEOP: connect from the laptop to this pod's public TCP port for 7777"
     echo "      (RunPod console -> Connect -> 'TCP port mappings'):  python teleop_client.py <IP> <PORT>"
     ;;
@@ -85,7 +106,7 @@ esac
 
 cd "$CH"
 timeout --kill-after=60 "$MAX_S" .venv/bin/python -u -m scripts.oracle_fold --garment_type "$GTYPE" --garment_name "$GARMENT" \
-  --headless --enable_cameras --device "${DEVICE:-cpu}" --seed 42 2>&1 | tee "$OUT/run.log" \
+  --headless $([ "${LEHOME_NO_CAMERAS:-0}" = 1 ] || echo --enable_cameras) --device "${DEVICE:-cpu}" --seed 42 2>&1 | tee "$OUT/run.log" \
   | grep --line-buffered -E "\[oracle\]|TELEOP|Traceback|Error:" | grep --line-buffered -v carb.launcher
 echo "[run] isaac exit: ${PIPESTATUS[0]}"
 

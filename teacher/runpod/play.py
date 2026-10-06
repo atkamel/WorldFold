@@ -33,6 +33,10 @@ def ssh(host, port, cmd, timeout=60, input_bytes=None):
 
 def code_tarball():
     """teacher/ without results and caches (~25 MB), extracted on the pod as /workspace/WorldFold/teacher."""
+    for root, _, files in os.walk(TEACHER):        # a Windows (CRLF) shell script fails on the pod before it can log
+        for f in files:
+            if f.endswith(".sh") and b"\r" in open(os.path.join(root, f), "rb").read():
+                raise RuntimeError(f"{os.path.join(root, f)} has Windows line endings: convert to LF before uploading")
     buf = io.BytesIO()
     skip = ("results", "__pycache__", ".pytest_cache")
     with tarfile.open(fileobj=buf, mode="w:gz") as tf:
@@ -80,15 +84,19 @@ def main():
         if ssh(host, sp, "sleep 3; test -s /workspace/teleop.log && echo OK", timeout=30).stdout.strip() != b"OK":
             raise RuntimeError("teleop did not start (no /workspace/teleop.log)")
         log("Isaac starting (scene build ~3-4 min)")
+        t_start = time.time()
         shown = False
         while True:
-            r = ssh(host, sp, "grep -E 'TELEOP|FATAL|Traceback|Error:|isaac exit|session took' /workspace/teleop.log | tail -5", timeout=30)
+            r = ssh(host, sp, "grep -E 'TELEOP|FATAL|Traceback|Error:|isaac exit|session took|syntax error|command not found' "
+                              "/workspace/teleop.log | tail -5", timeout=30)
             out = r.stdout.decode(errors="ignore")
             if "TELEOP listening" in out and not shown:
                 log("READY - connect from another terminal in mujoco_live:")
                 print(f"\n    python teleop_client.py {host} {tport}\n", flush=True)
                 shown = True
-            if any(s in out for s in ("FATAL", "isaac exit", "TELEOP end")):   # a Traceback alone may be harmless
+            if not shown and time.time() - t_start > 720:
+                raise RuntimeError("Isaac not ready after 12 min")
+            if any(s in out for s in ("FATAL", "isaac exit", "TELEOP end", "syntax error", "command not found")):   # a Traceback alone may be harmless
                 log("session over:\n" + out.strip())
                 break
             time.sleep(10)

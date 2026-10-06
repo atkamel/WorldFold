@@ -1,0 +1,10 @@
+# Laptop side: the two-mouse game client (Windows; raw mice via rawmouse.py) + the local MuJoCo game.
+# Tested with Python 3.14 on Windows 11 (versions below are what ran on 2026-10-06).
+numpy>=2.0
+polyscope>=2.6        # the Isaac state view (teleop_client_ps.py)
+pygame-ce>=2.5        # windows, input, the local MuJoCo game
+blosc2>=4.0           # decompresses the server's state stream (protocol.py)
+mujoco>=3.3           # local MuJoCo game + replays
+numba>=0.60           # local cloth (cloth.py) + fold score (neat_metric.py)
+imageio>=2.30
+pillow>=10

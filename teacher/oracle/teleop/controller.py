@@ -79,7 +79,9 @@ class Game:
         self.next_frame_t = self.next_cloth_t = self.time
 
     def cloth_state(self):
-        return np.round(self.w.cloth.x * 100, 2).tolist()
+        # an array, not a list: turning 14,746 points into text takes ~10 ms, so the sink does it off the control
+        # loop (it is written out as the same JSON list)
+        return np.round(self.w.cloth.x * 100, 2)
 
     def snapshot(self):
         return dict(world=self.w.get_state(), cursor={a: self.cursor[a].copy() for a in ARMS},
@@ -340,9 +342,12 @@ class Game:
                             "tip_cm": list(np.round(w.tip(a) * 100, 2)), "score": self.score, "cloth_cm": self.cloth_state()})
                 if ph == "drop_after_close":  # button was released while the jaws were still closing
                     self.phase[a], self.t_phase[a] = "place", 0.0
-                elif n:
+                elif n or getattr(w, "busy", None):
+                    # Isaac (grab assist): the jaws stay shut until the player lets go, even when the pad sensor counts
+                    # no cloth (the assist test lifted the cloth in 20/20 grabs; the sensor saw nothing in 2 of them)
                     self.phase[a], self.t_phase[a] = "carry", 0.0
-                    self.msg = f"{a} holding the cloth - move it, let go to drop" if self.mode[a] == "lift" else f"{a} dragging along the table"
+                    self.msg = (f"{a} holding the cloth - move it, let go to drop" if self.mode[a] == "lift"
+                                else f"{a} dragging along the table")
                 else:
                     w.release(a)
                     self.phase[a], self.t_phase[a] = "rising", 0.0

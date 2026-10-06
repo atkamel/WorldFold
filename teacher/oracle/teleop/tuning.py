@@ -25,6 +25,7 @@ SPECS = {
     "grab_press":   (0.012, 0.0, 0.025, 0.002, "grip", "grab: press into table", "mm", 1000),
     "grab_close":   (16.0, 2.0, 40.0, 2.0, "grip", "grab: closing ticks", "ticks", 1),
     "grab_lift":    (0.015, 0.0, 0.04, 0.005, "grip", "grab: lift after closing", "mm", 1000),
+    "grab_ds":      (0.0015, 0.0005, 0.005, 0.0005, "grip", "grab: slide speed per tick", "mm", 1000),
     "rel_backoff":  (0.020, 0.0, 0.04, 0.005, "grip", "release: back off", "mm", 1000),
     "rel_lift":     (0.0007, 0.0002, 0.003, 0.0001, "grip", "release: lift per tick", "mm", 1000),
     "rel_open":     (8.0, 1.0, 20.0, 1.0, "grip", "release: opening ticks", "ticks", 1),
@@ -46,6 +47,12 @@ KINDS = ("control", "grip", "cloth")
 # The jaws still squeeze the cloth for real (MuJoCo pins it instead), so grip may slip more than with the slide.
 MUJOCO_FEEL = {"grab_slide": 0.0, "grab_close": 4.0, "grab_lift": 0.0,
                "rel_backoff": 0.0, "rel_open": 2.0, "rel_hold": 0.0, "rel_up": 0.0}
+
+# Grab assist (shared autonomy, like lane-keeping assist): the player aims and holds; the tested gather grasp runs
+# by itself in a fraction of a second (moving finger leads a 3 cm slide pressed into the table, close, small lift), the
+# jaws then stay shut until the player lets go. Real physics throughout: demos replay as recorded.
+ASSIST = {"grab_slide": 0.030, "grab_press": 0.012, "grab_ds": 0.003, "grab_close": 6.0, "grab_lift": 0.010,
+          "rel_backoff": 0.010, "rel_open": 4.0, "rel_hold": 4.0, "rel_up": 0.02, "rel_lift": 0.002}
 
 # cloth key -> LeHome particle_config entry (oracle_fold.set_cloth overrides)
 CLOTH_KEYS = {"gravity": "particle_material.gravity_scale", "adhesion": "particle_material.adhesion",

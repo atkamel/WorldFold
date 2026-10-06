@@ -45,12 +45,19 @@ def cloth_verts(env):
     import numpy as np
     o = env.object
     try:
-        pos, ori = o.get_world_pose()
-        sc = o.get_world_scale()
+        # the garment's own pose (not its particles) only changes when the garment is (re)built or reset: cache it per
+        # garment object (IsaacWorld.reset drops the cache). Two USD queries per call before: ~0.8 ms on an L40S host
+        cache = getattr(env, "_cloth_pose_cache", None)
+        if cache is None or cache[0] is not o:
+            pos, ori = o.get_world_pose()
+            sc = o.get_world_scale()
+            from isaacsim.core.utils.rotations import quat_to_rot_matrix
+            A = (quat_to_rot_matrix(_np(ori)) * _np(sc)[None, :]).T        # points @ A + pos == transform_points
+            cache = env._cloth_pose_cache = (o, np.ascontiguousarray(A, dtype=np.float64), np.asarray(_np(pos), np.float64))
         # same USD attribute _get_points_pose reads, but via the buffer protocol: 0.003 ms instead of ~160 ms
         # (Isaac Sim 5.1 builds a torch tensor element by element; audit 2026-10-05)
-        pts = np.array(o._prim.GetAttribute("points").Get(), dtype=np.float32)
-        return np.asarray(o.transform_points(pts, _np(pos), _np(ori), _np(sc)), dtype=np.float64)
+        pts = np.array(o._prim.GetAttribute("points").Get(), dtype=np.float64)
+        return pts @ cache[1] + cache[2]
     except Exception as e:  # GPU path / API drift
         log("cloth_verts fallback:", repr(e))
         return np.asarray(o.get_current_mesh_points()[0], dtype=np.float64)
@@ -454,14 +461,12 @@ def live(env, args):
     log("LIVE done, frames", len(all_frames))
 
 
-def teleop(env, args):
-    """Real-time two-mouse play (teleop/): a human on the laptop drives both arms through a Modal tunnel.
-    Same controller as the local MuJoCo game; grabs/releases use the tested grasp and release moves."""
+def _teleop_world(env):
+    """The live-play world (teleop/isaac_world.IsaacWorld) with every speed fix installed, settled and checked.
+    Returns (world, the cloth's current physics values for the tuning panel or None)."""
     import numpy as np
     from scripts.utils.remote_loop import capture_physics_state, restore_physics_state
     from teleop.isaac_world import IsaacWorld
-    from teleop.controller import Game
-    from teleop.server import TeleopServer
     import torch
     name = env.cfg.garment_name
     # speed fixes (audit 2026-10-05); none of them changes the physics:
@@ -477,46 +482,163 @@ def teleop(env, args):
         log("TELEOP fast cloth read NOT installed:", repr(e))
     # 3. no reward computation during play (the laptop scores folds); the success-check interval is set by run_isaac.sh
     env._get_rewards = lambda: torch.zeros(1, device=env.device)
-    # 4. fast IK: same algorithm compiled with numba (matches the original to 4e-11 rad)
+    # 4. the iterative IK compiled with numba (matches the original to 4e-11 rad). Since the exact C++ solver
+    #    (so101_native_ik, loaded by IsaacWorld below) this is only the fallback for points that one cannot reach.
     try:
         import fold_plans as fp
         from so101_fastik import FastIK
         FastIK(fp.K).install()
-        log("TELEOP fast IK installed")
+        log("TELEOP fallback IK: numba")
     except Exception as e:
-        log("TELEOP fast IK NOT installed (original IK in use):", repr(e))
+        log("TELEOP fallback IK: numpy (numba version not installed:", repr(e)[:160] + ")")
+    # 5. PhysX writes its results back to USD (where we and LeHome read the cloth and the robot links). IsaacLab's headless
+    #    app loads omni.physx.fabric, which turns that write-back off: without this the cloth we stream stays frozen.
+    import carb
+    st = carb.settings.get_settings()
+    keys = ("/physics/updateToUsd", "/physics/updateParticlesToUsd", "/physics/updateVelocitiesToUsd", "/physics/fabricEnabled")
+    log("TELEOP physics->USD settings before:", {k: st.get(k) for k in keys})
+    st.set_bool("/physics/updateToUsd", True)
+    st.set_bool("/physics/updateParticlesToUsd", True)
     if os.environ.get("ORACLE_CLOTH"):
         set_cloth(env, name, os.environ["ORACLE_CLOTH"])
+    v_spawn = cloth_verts(env)
     helpers = dict(cloth_verts=cloth_verts, cloth_faces=cloth_faces, between_pads=between_pads,
                    capture=capture_physics_state, restore=lambda e, s: restore_physics_state(e, s, "exact", "oracle"),
                    set_cloth=set_cloth_tuned)
     w = IsaacWorld(env, helpers)
+    log("TELEOP aim-point IK:", w.ik_backend)
+    v_settled = cloth_verts(env)        # self-check: the cloth falls onto the table while the world settles
+    moved = float(np.abs(v_settled - v_spawn).max()) * 1000
+    log(f"TELEOP cloth self-check: moved {moved:.1f} mm while settling ({'OK' if moved > 5 else 'STALE - cloth read is frozen'}); "
+        f"z range {v_settled[:, 2].min():.3f}..{v_settled[:, 2].max():.3f}")
     kin_check(env)
     try:
         start = cloth_now(env)          # live-tuning panel starts at the cloth's real values
     except Exception as e:
         log("TELEOP could not read the cloth values, panel shows defaults:", repr(e)); start = None
-    from teleop.tuning import MUJOCO_FEEL
-    g = Game(w, tune=dict(start or {}, **MUJOCO_FEEL))       # MuJoCo-game feel: hold = grab, let go = drop
+    return w, start
+
+
+def teleop(env, args):
+    """Real-time two-mouse play (teleop/): a human on the laptop drives both arms through a Modal tunnel.
+    Same controller as the local MuJoCo game; grabs use the grab assist (teleop/tuning.py ASSIST)."""
+    import numpy as np
+    from teleop.controller import Game
+    from teleop.server import TeleopServer
+    name = env.cfg.garment_name
+    w, start = _teleop_world(env)
+    from teleop import tuning
+    preset = os.environ.get("ORACLE_GRAB", "assist")
+    g = Game(w, tune=dict(start or {}, **(tuning.ASSIST if preset == "assist" else tuning.MUJOCO_FEEL if preset == "mujoco" else {})))
+    log(f"TELEOP grab preset: {preset}")
     state_view = os.environ.get("ORACLE_VIEW", "state") == "state"
     if not state_view and os.environ.get("ORACLE_FPV", "1") != "0":
         try:
             w.set_fpv_camera()
         except Exception as e:
             log("TELEOP FPV camera NOT set (LeHome top camera in use):", repr(e))
-    im = w.render()
+    nocam = os.environ.get("LEHOME_NO_CAMERAS") == "1"     # no_cameras_patch.py: no sensors, the laptop draws
+    if nocam and not state_view:
+        raise RuntimeError("LEHOME_NO_CAMERAS=1 needs the state view (ORACLE_VIEW=state): there is no picture to send")
+    im = None if nocam else w.render()
+    size = [960, 600] if im is None else [im.shape[1], im.shape[0]]
     hello = dict(backend="isaac", garment=name, dt=w.dt, tris=(w.faces.tolist() if w.faces is not None else None),
-                 thickness=0.004, flat_cloth_cm=np.round(w.flat_local * 100, 2).tolist(), frame_size=[im.shape[1], im.shape[0]],
+                 thickness=0.004, flat_cloth_cm=np.round(w.flat_local * 100, 2).tolist(), frame_size=size,
                  cam=w.camera_info())     # lets the laptop draw the cursor itself (no network delay on the cursor)
     if state_view:
         hello.update(w.state_hello())
-    log(f"TELEOP ready: garment {name}, control dt {w.dt:.4f}s, frame {im.shape[1]}x{im.shape[0]}, "
+    log(f"TELEOP ready: garment {name}, control dt {w.dt:.4f}s, {'no cameras' if nocam else f'frame {size[0]}x{size[1]}'}, "
         f"table z {w.table_z:.3f}, {len(w.flat_local)} cloth points")
     TeleopServer(g, w.render, hello, port=int(os.environ.get("ORACLE_TELEOP_PORT", "7777")), dt=w.dt, frame_every=1,
                  log_path=os.path.join(OUT, "teleop_demo.jsonl"), idle_s=int(os.environ.get("ORACLE_TELEOP_IDLE", "300")),
                  max_s=int(os.environ.get("ORACLE_TELEOP_MAX", "3000")), log=log,
                  wall_speed=float(os.environ.get("ORACLE_WALL_SPEED", "8")),
-                 state=w.state_bytes if state_view else None).serve()
+                 state=w.state_bytes if state_view else None,
+                 profile=((300, int(os.environ["ORACLE_PROFILE"]), os.path.join(OUT, "teleop_profile.pstats"))
+                          if os.environ.get("ORACLE_PROFILE") else None),
+                 keepalive=_app_keepalive(), keepalive_every=int(os.environ.get("ORACLE_APP_PUMP_TICKS", "0"))).serve()
+
+
+def assist_test(env, args, job):
+    """Grab assist test: the same world and grab code as live play, at `n` random spots on the shirt (the same spots
+    for every preset). Per grab: hover 3 cm above the spot, go down like the controller does, run w.grab, then lift
+    5 cm with the jaws as the grab left them. Counts the cloth points lifted above 2 cm within 8 cm of the tip."""
+    import json
+    import numpy as np
+    from teleop import tuning
+    w, _ = _teleop_world(env)
+    base = {k: v[0] for k, v in tuning.SPECS.items()}
+    presets = {"mujoco_feel": tuning.MUJOCO_FEEL, "tested": {}, "assist": tuning.ASSIST}
+    presets = {k: presets[k] for k in job.get("presets", list(presets))}
+    snap = w.get_state()
+    rng = np.random.default_rng(int(job.get("seed", 0)))
+    flat = w.flat_local
+    targets = []
+    while len(targets) < int(job.get("n", 20)):
+        p = flat[rng.integers(len(flat))].copy()
+        a = "L" if p[0] < 0 else "R"
+        q4, err, tilt = w.ik(a, p + np.array([0, 0, 0.03]), w.q(a), w.roll(a))
+        if err < 0.002 and tilt < 40:
+            targets.append((a, p))
+
+    pump, pump_every, n_steps = _app_keepalive(), int(job.get("pump_every", 500)), [0]
+
+    def step():
+        w.step()
+        n_steps[0] += 1
+        if pump and pump_every and n_steps[0] % pump_every == 0:
+            pump()
+
+    def move(a, goal, ticks):
+        start = w.tip(a)
+        for i in range(1, ticks + 1):
+            q4, err, _ = w.ik(a, start + (goal - start) * i / ticks, w.q(a), w.roll(a))
+            if err < 0.004:
+                w.set_arm(a, q4, w.roll(a))
+            step()
+
+    rows = []
+    for name, preset in presets.items():
+        w.tune = dict(base, **preset)
+        ok = 0
+        for i, (a, p) in enumerate(targets):
+            w.set_state(snap)
+            top = w.surface_under(p[:2])
+            move(a, np.array([p[0], p[1], top + 0.03]), 60)
+            move(a, np.array([p[0], p[1], top + w.tune["down_offset"]]), 20)
+            w.grab(a)
+            t = 0
+            while w.busy(a) and t < 600:
+                step(); t += 1
+            held = int(w.held[a])
+            move(a, w.tip(a) + np.array([0, 0, 0.05]), 40)
+            v, tip = w.verts_local(), w.tip(a)
+            lifted = int(((v[:, 2] > 0.02) & (np.hypot(v[:, 0] - tip[0], v[:, 1] - tip[1]) < 0.08)).sum())
+            good = lifted >= 15
+            ok += good
+            row = dict(preset=name, i=i, arm=a, target_cm=np.round(p * 100, 1).tolist(), grab_ticks=t,
+                       grab_s=round(t * w.dt, 2), between_pads=held, lifted=lifted, held_ok=bool(good))
+            rows.append(row)
+            log("ASSIST_ROW " + json.dumps(row))
+        g = [r for r in rows if r["preset"] == name]
+        log(f"ASSIST_SUMMARY {name}: {ok}/{len(g)} lifted the cloth; grab move {np.mean([r['grab_s'] for r in g]):.2f} s "
+            f"(sim time) on average")
+    log(f"ASSIST_DONE {n_steps[0]} physics steps, app loop ticked every {pump_every if pump else 'never'}")
+    json.dump(rows, open(os.path.join(OUT, "assist_test.json"), "w"), indent=1)
+    return rows
+
+
+def _app_keepalive():
+    """Without cameras IsaacLab never runs Kit's app loop (nothing renders), and Kit crashed in 3 of 5 such sessions
+    (a native fault while idle or at connect/disconnect). The server calls this ~1/s while waiting and every 48 ticks
+    while playing. ORACLE_APP_PUMP=0 turns it off."""
+    if os.environ.get("LEHOME_NO_CAMERAS") != "1" or os.environ.get("ORACLE_APP_PUMP", "1") == "0":
+        return None
+    import omni.kit.app
+    app = omni.kit.app.get_app()
+    log("TELEOP app keepalive on (Kit app loop ~1/s while waiting for the client; during play only if ORACLE_APP_PUMP_TICKS"
+        " is set: one app update costs ~0.5 s)")
+    return app.update
 
 
 # ---- grip assay: one standardised sleeve grasp -> lift -> hold -> carry, measured from cloth vertices -------------
@@ -1183,7 +1305,11 @@ def run(args, simulation_app):
     os.makedirs(OUT, exist_ok=True)
 
     env_cfg = parse_env_cfg(args.task, device=args.device)
-    env_cfg.sim.use_fabric = False
+    env_cfg.sim.use_fabric = os.environ.get("ORACLE_FABRIC", "0") == "1"
+    probe_mode = os.environ.get("ORACLE_GPU_PROBE") == "1"
+    if probe_mode:                       # GPU-pipeline diagnostic (gpu_probe.py): stack dump + exit on a hang
+        import gpu_probe
+        gpu_probe.arm_watchdog(log, f"env creation on {args.device}, use_fabric={env_cfg.sim.use_fabric}")
     env_cfg.use_random_seed = False
     env_cfg.seed = args.seed
     env_cfg.random_seed = args.seed
@@ -1228,6 +1354,12 @@ def run(args, simulation_app):
     env = gym.make(args.task, cfg=env_cfg).unwrapped
     env.initialize_obs()
     log(f"env ready in {time.time() - t0:.1f}s; device={env.device} dt={env.cfg.sim.dt} max_ep_len={env.max_episode_length}")
+    if probe_mode:
+        try:
+            gpu_probe.probe(env, log, cloth_verts, set_cloth, jobs[0]["garment"])
+        finally:
+            env.close()
+        return
     if os.environ.get("ORACLE_TELEOP"):
         try:
             teleop(env, args)
@@ -1272,6 +1404,12 @@ def run(args, simulation_app):
                     results.append(dict(garment=name, trial=r["trial"], neat=r["neat"], cloth=cloth))
                 except Exception as e:
                     log("FOLD FAILED", name, repr(e)); traceback.print_exc()
+                continue
+            if job.get("mode") == "assist_test":
+                try:
+                    results.append(dict(garment=name, assist=len(assist_test(env, args, job))))
+                except Exception as e:
+                    log("ASSIST TEST FAILED", repr(e)); traceback.print_exc()
                 continue
             if job.get("mode") == "grasp_test":
                 try:

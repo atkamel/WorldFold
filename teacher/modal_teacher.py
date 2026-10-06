@@ -137,12 +137,17 @@ isaac_image = (
     )
     .run_commands(f"cd {CH} && hf download lehome/asset_challenge --repo-type dataset --local-dir Assets "
                   "&& ls Assets/objects/Challenge_Garment/Release | head -5")
+    # Blosc2 for the teleop state stream (teleop/protocol.py), with Isaac's numpy pinned so nothing else moves
+    .run_commands(f"cd {CH} && uv pip install blosc2 \"numpy==$(.venv/bin/python -c 'import numpy; print(numpy.__version__)')\" "
+                  "--python .venv/bin/python && .venv/bin/python -c \"import blosc2, numpy; "
+                  "print('BLOSC2_OK', blosc2.__version__, 'numpy', numpy.__version__)\"")
     .env({"OMNI_KIT_ACCEPT_EULA": "YES", "ACCEPT_EULA": "Y", "PRIVACY_CONSENT": "Y",
           "__GLX_VENDOR_LIBRARY_NAME": "nvidia", "VK_ICD_FILENAMES": "/etc/vulkan/icd.d/nvidia_icd.json",
           "XDG_RUNTIME_DIR": "/tmp"})
     .add_local_file(str(_TEACHER / "real_in_sim_patch.py"), remote_path="/opt/teacher/real_in_sim_patch.py")
     .add_local_file(str(_TEACHER / "isaac_timing_patch.py"), remote_path="/opt/teacher/isaac_timing_patch.py")
     .add_local_file(str(_TEACHER / "verts_dump_patch.py"), remote_path="/opt/teacher/verts_dump_patch.py")
+    .add_local_file(str(_TEACHER / "no_cameras_patch.py"), remote_path="/opt/teacher/no_cameras_patch.py")
     .add_local_dir(str(_TEACHER / "towel" / TOWEL_NAME),
                    remote_path=f"{CH}/Assets/objects/Challenge_Garment/Release/Top_Short/{TOWEL_NAME}")
     .add_local_dir(str(_TEACHER / "oracle"), remote_path="/opt/teacher/oracle", ignore=["__pycache__", "*.png"])
@@ -1654,11 +1659,27 @@ def isaac_live(garment: str = "Top_Long_Seen_0", tag: str = "live", friction: fl
 # The demo log is written on the volume (and the laptop client keeps its own copy).
 #   PYTHONUTF8=1 python -m modal run --detach teacher/modal_teacher.py::isaac_teleop --garment Top_Long_Seen_0
 # ---------------------------------------------------------------------------------------------
-@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3600, cpu=4, memory=16384)
+# TELEOP_REGION=ca (or us-east, ...) pins the GPU near the player: lower ping, Modal bills 1.75x for a narrow region
+_TELEOP_REGION = [r for r in os.environ.get("TELEOP_REGION", "").split(",") if r] or None
+
+
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=3600, cpu=4, memory=16384,
+              region=_TELEOP_REGION)
 def isaac_teleop(garment: str = "Top_Long_Seen_0", tag: str = "teleop", friction: float = -1, adhesion: float = -1,
                  cx: float = 0.0, cy: float = 0.0, drop_z: float = 0.63, pads: str = "flat", cloth: str = "real",
-                 idle_s: int = 300, max_s: int = 3000):
+                 idle_s: int = 300, max_s: int = 3000, profile: int = 0, no_cameras: int = 0):
     import glob, json, os, pathlib, re, subprocess, threading, time
+    # Isaac Sim 5.1 is certified for NVIDIA driver 580; driver 610 segfaults its renderer at startup, every time
+    # (isaac-sim/IsaacSim issues #650, #651; seen on Modal 2026-10-06). Refuse such a machine before booting Isaac.
+    drv = subprocess.run(["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+                         capture_output=True, text=True).stdout.strip()
+    print(f"TELEOP GPU driver {drv}", flush=True)
+    if not drv.startswith("580."):
+        print("TELEOP_DONE " + json.dumps({"exit": "driver", "driver": drv}), flush=True)
+        return {"exit": "driver", "driver": drv}
+    if no_cameras:                   # LeHome without its 3 cameras + Isaac without --enable_cameras (no-render mode)
+        print(subprocess.run(["python", "/opt/teacher/no_cameras_patch.py", SRC], capture_output=True, text=True).stdout.strip(),
+              flush=True)
     cfg_p = f"{CH}/source/lehome/lehome/tasks/bedroom/config_file/particle_garment_cfg.yaml"
     y = open(cfg_p).read()
     for key, val in (("friction", friction), ("adhesion", adhesion)):
@@ -1678,30 +1699,93 @@ def isaac_teleop(garment: str = "Top_Long_Seen_0", tag: str = "teleop", friction
     env = dict(os.environ, PYTHONPATH="/opt/teacher/oracle", ORACLE_DIR="/opt/teacher/oracle",
                ORACLE_JOBS=json.dumps([{"garment": garment}]), ORACLE_OUT=str(out), ORACLE_TELEOP="1",
                ORACLE_TELEOP_PORT=str(port), ORACLE_TELEOP_IDLE=str(idle_s), ORACLE_TELEOP_MAX=str(max_s),
-               ORACLE_PADS=pads, ORACLE_CLOTH=cloth, LEHOME_NO_DEPTH="1", LEHOME_DISABLE_KEYBOARD="1", PYTHONUNBUFFERED="1")
+               ORACLE_PADS=pads, ORACLE_CLOTH=cloth, LEHOME_NO_DEPTH="1", LEHOME_DISABLE_KEYBOARD="1", PYTHONUNBUFFERED="1",
+               LEHOME_CHECK_INTERVAL="1000000")   # LeHome's full-cloth success check: rare during live play (as run_isaac.sh)
+    if profile:                      # cProfile `profile` ticks of the live loop (from tick 300), top functions in the log
+        env["ORACLE_PROFILE"] = str(profile)
+    if no_cameras:
+        env["LEHOME_NO_CAMERAS"] = "1"
     cmd = [f"{CH}/.venv/bin/python", "-u", "-m", "scripts.oracle_fold", "--garment_type", gtype, "--garment_name", garment,
-           "--headless", "--enable_cameras", "--device", "cpu", "--seed", "42"]
+           "--headless", "--device", "cpu", "--seed", "42"] + ([] if no_cameras else ["--enable_cameras"])
+    # (no_cameras keeps LeHome's normal app: IsaacLab's isaaclab.python.headless.kit loads omni.physx.fabric, which stops
+    #  PhysX writing the cloth to USD - measured 2026-10-06: the streamed cloth stayed frozen, even with
+    #  /physics/updateParticlesToUsd set back on at runtime)
     t0 = time.time()
     with modal.forward(port, unencrypted=True) as tunnel:
         host, tport = tunnel.tcp_socket
         print(f"TELEOP_ADDR {host} {tport}", flush=True)
-        p = subprocess.Popen(cmd, cwd=CH, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
         keys = re.compile(r"\[oracle\]|TELEOP|Traceback|Exception|Error:")
+        # Isaac's renderer sometimes segfaults while starting (librtx.scenedb, ~1 start in 3 on Modal L40S, before any
+        # of our code runs): start it again on the same machine, same address, up to 3 times
+        for attempt in range(3):
+            ready = threading.Event()
+            p = subprocess.Popen(cmd, cwd=CH, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                 bufsize=1)
 
-        def drain():
-            with open(out / "run.log", "w") as f:
-                for line in p.stdout:
-                    f.write(line)
-                    if keys.search(line) and "carb.launcher" not in line:
-                        print(f"[{time.time() - t0:5.0f}s] " + line.rstrip()[:600], flush=True)
-        threading.Thread(target=drain, daemon=True).start()
-        try:
-            p.wait(timeout=max_s + 600)
-        except subprocess.TimeoutExpired:
-            p.kill()
+            def drain(p=p, ready=ready, attempt=attempt):
+                with open(out / f"run{'' if attempt == 0 else attempt}.log", "w") as f:
+                    for line in p.stdout:
+                        f.write(line)
+                        if "TELEOP listening" in line:
+                            ready.set()
+                        if keys.search(line) and "carb.launcher" not in line:
+                            print(f"[{time.time() - t0:5.0f}s] " + line.rstrip()[:600], flush=True)
+            th = threading.Thread(target=drain, daemon=True); th.start()
+            try:
+                p.wait(timeout=max_s + 600)
+            except subprocess.TimeoutExpired:
+                p.kill(); p.wait()
+            th.join(timeout=10)
+            if ready.is_set() or p.returncode != -11:
+                break
+            print(f"TELEOP Isaac crashed while starting (exit {p.returncode}); restarting ({attempt + 1}/3)", flush=True)
     vol.commit()
     res = {"dir": str(out), "wall_s": round(time.time() - t0, 1), "exit": p.returncode}
     print("TELEOP_DONE " + json.dumps(res), flush=True)
+    return res
+
+
+# ---------------------------------------------------------------------------------------------
+# GPU-pipeline diagnostic (teacher/oracle/gpu_probe.py): does LeHome run on IsaacLab's GPU pipeline (incl. the garment
+# rebuild that hung before), and what does a physics step cost with the cloth's USD write-back on vs off?
+#   PYTHONUTF8=1 python -m modal run --detach teacher/modal_teacher.py::isaac_gpu_probe
+# ---------------------------------------------------------------------------------------------
+@app.function(image=isaac_image, gpu="L40S", volumes={VOL_PATH: vol}, timeout=1500, cpu=4, memory=16384)
+def isaac_gpu_probe(garment: str = "Top_Long_Seen_0", device: str = "cuda:0", fabric: int = 0, max_s: int = 1080):
+    import glob, json, os, pathlib, re, subprocess, threading, time
+    for jp in glob.glob(f"{CH}/Assets/objects/Challenge_Garment/Release/Top_*/*/*.json"):   # every top starts flat
+        c = json.load(open(jp))
+        c["initial_pos_range"] = c["soft_reset_pos_range"] = [0.0, 0.0, 0.63, 0.0, 0.0, 0.63]
+        c["initial_rot_range"] = c["soft_reset_rot_range"] = [0, 0, 0, 0, 0, 0]
+        json.dump(c, open(jp, "w"), indent=4)
+    out = pathlib.Path(VOL_PATH, "isaac", "gpu-probe-" + time.strftime("%Y%m%d-%H%M%S")); out.mkdir(parents=True, exist_ok=True)
+    gtype = "_".join(garment.split("_")[:2]).lower()
+    env = dict(os.environ, PYTHONPATH="/opt/teacher/oracle", ORACLE_DIR="/opt/teacher/oracle",
+               ORACLE_JOBS=json.dumps([{"garment": garment}]), ORACLE_OUT=str(out), ORACLE_GPU_PROBE="1",
+               ORACLE_FABRIC=str(int(fabric)), ORACLE_PADS="flat", LEHOME_NO_DEPTH="1", LEHOME_DISABLE_KEYBOARD="1",
+               PYTHONUNBUFFERED="1")
+    cmd = [f"{CH}/.venv/bin/python", "-u", "-m", "scripts.oracle_fold", "--garment_type", gtype, "--garment_name", garment,
+           "--headless", "--enable_cameras", "--device", device, "--seed", "42"]
+    t0 = time.time()
+    p = subprocess.Popen(cmd, cwd=CH, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    keys = re.compile(r"\[oracle\]|Traceback|Exception|Error:|Fatal|File \"|Thread 0x|Current thread")
+
+    def drain():
+        with open(out / "run.log", "w") as f:
+            for line in p.stdout:
+                f.write(line)
+                if keys.search(line) and "carb.launcher" not in line:
+                    print(f"[{time.time() - t0:5.0f}s] " + line.rstrip()[:400], flush=True)
+    th = threading.Thread(target=drain, daemon=True); th.start()
+    try:
+        p.wait(timeout=max_s)
+    except subprocess.TimeoutExpired:
+        print("PROBE hard timeout: killing Isaac", flush=True)
+        p.kill(); p.wait()
+    th.join(timeout=10)
+    vol.commit()
+    res = {"dir": str(out), "wall_s": round(time.time() - t0, 1), "exit": p.returncode}
+    print("PROBE_DONE " + json.dumps(res), flush=True)
     return res
 
 

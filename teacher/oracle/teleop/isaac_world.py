@@ -20,6 +20,7 @@ from so101_kin import HOME, GRIP_OPEN, GRIP_CLOSED
 from .tuning import SPECS
 
 SIDE = {"L": "left", "R": "right"}
+NSIDE = {"L": 0, "R": 1}  # the native IK's arm index
 SHIRT_Y = 0.19            # where the controller expects the shirt centre (table frame)
 
 
@@ -35,12 +36,12 @@ class _ClothView:
 class IsaacWorld:
     TUNE_GRIP = True          # the controller offers the grasp/release settings in the tuning panel
     CLOTH_LOG_S = None        # no full-cloth record every simulated second (a ~24 ms stall); grab/drop records keep it
-    HMAP_CELL = 0.02          # surface_under: 2 cm buckets, rebuilt once per step instead of scanning all points per call
 
     def __init__(self, env, helpers, settle_ticks=150):
         import torch
         self.env, self.h, self.torch = env, helpers, torch
         self.K = fp.K
+        self.nik = self._load_native_ik()
         self.settle_ticks = settle_ticks
         self.xlim, self.ylim = (-0.32, 0.32), (-0.08, 0.44)
         self.cloth = _ClothView(self)
@@ -82,6 +83,7 @@ class IsaacWorld:
     def reset(self):
         env = self.env
         env.reset()
+        env._cloth_pose_cache = None      # oracle_fold.cloth_verts: the garment may have moved
         self.obs = env._get_observations()
         self.cq = {"L": HOME["left"].copy(), "R": HOME["right"].copy()}     # commanded arm joints (5 incl. roll)
         self.cg = {"L": GRIP_CLOSED, "R": GRIP_CLOSED}
@@ -101,6 +103,8 @@ class IsaacWorld:
 
     # ---------------- arms (controller interface)
     def tip(self, a):
+        if self.nik is not None:
+            return self.nik.frame(NSIDE[a], self.q_meas[a])[0] - self.O
         return self.to_local(self.K.tip(self.q_meas[a], SIDE[a])[0])
 
     def q(self, a):
@@ -110,10 +114,36 @@ class IsaacWorld:
         return float(self.q_meas[a][4])
 
     def jaw_yaw(self, a, q5=None):
-        x = self.K.fk(self.q_meas[a] if q5 is None else q5, SIDE[a])[:3, 0]   # jaw opening axis (tip frame x)
+        q5 = self.q_meas[a] if q5 is None else q5
+        if self.nik is not None:
+            x = self.nik.frame(NSIDE[a], q5)[2]                               # jaw opening axis (tip frame x)
+        else:
+            x = self.K.fk(q5, SIDE[a])[:3, 0]
         return float(np.arctan2(x[1], x[0]))
 
+    def _load_native_ik(self):
+        """The aim-point IK in C++ (native/so101_ik.hpp): exact and ~1 microsecond instead of milliseconds. The numpy
+        solver stays as the fallback when the library is missing for this machine or disagrees with so101_kin.
+        ORACLE_NATIVE_IK=0 turns it off."""
+        self.ik_backend = "numpy (so101_kin)"
+        if os.environ.get("ORACLE_NATIVE_IK", "1") == "0":
+            return None
+        try:
+            from so101_native_ik import NativeIK
+            nik = NativeIK(self.K)
+            nik.install()                # the scripted grab / release paths (fold_plans -> SO101.ik) use it too
+            self.ik_backend = "native closed form (so101_ik)"
+            return nik
+        except Exception as e:
+            self.ik_backend += f" - native IK not loaded: {e!r}"
+            return None
+
     def ik(self, a, goal, q4, roll, seeds=True):
+        if self.nik is not None:
+            # exact answer: tip on the goal with the least tilt, or err = inf when no joint angles reach it.
+            # seeds (the first try of a tick) = the other elbow branch may be used if the current one cannot reach.
+            q, err, tilt, _ = self.nik.solve(NSIDE[a], goal + self.O, roll, q4, seeds)
+            return q, err, tilt
         side = SIDE[a]
         q0 = np.r_[q4, roll]
         q, err = self.K.ik(self.to_isaac(goal), side, q0, direction=(0, 0, -1), w_dir=0.005, iters=25)
@@ -157,7 +187,7 @@ class IsaacWorld:
         z_press = max(top - press, fp.Z_TABLE - fp.PRESS - (press - 0.012))   # tested: 1.2 cm (stacks: from their top)
         start, end = aim[:2] - d * half, aim[:2] + d * half            # slide centred on the aim, moving finger leads
         qs, _ = fp._path(side, [aim, (start[0], start[1], z_land), (end[0], end[1], z_press)], q5, q5[4],
-                         ds=0.0015 if half > 0 else 0.004)   # MuJoCo feel (no slide): press down in a few ticks
+                         ds=self._t("grab_ds") if half > 0 else 0.004)   # no slide (MuJoCo feel): press down in a few ticks
         g0 = self.g_meas[a]
         nc = max(1, int(round(self._t("grab_close"))))
         sc = [(q, GRIP_OPEN) for q in qs]
@@ -201,7 +231,7 @@ class IsaacWorld:
         if getattr(self, "_grab_side", {}).pop(a, False):
             v = self.verts()
             self.held[a] = int(self.h["between_pads"](self.q_meas[a], SIDE[a], v))
-            self.cg[a] = GRIP_CLOSED if self.held[a] else GRIP_OPEN
+            self.cg[a] = GRIP_CLOSED                  # shut until the player lets go (controller then calls release)
         else:
             self.cg[a] = GRIP_OPEN
 
@@ -228,38 +258,32 @@ class IsaacWorld:
         return self.to_local(self.verts())
 
     def _buckets(self):
-        """Resting cloth points sorted into 2 cm grid cells, built once per physics step, so surface_under only checks
-        the points in the 3x3 cells around the query (same answer as scanning all 14,746 points, ~100x less work)."""
+        """Resting cloth points indexed once per physics step (same answers as scanning all points): the native grid
+        (so101_cloth.hpp) when the library is loaded, else a SciPy cKDTree."""
         key = tuple(bool(self.held[a] or self.script[a]) for a in ("L", "R"))
         if getattr(self, "_hmap", None) is not None and self._hmap[0] == key:
+            return self._hmap
+        if self.nik is not None:      # cloth hanging from a gripper is not a surface
+            tips = [self.tip(a) for a in ("L", "R") if self.held[a] or self.script[a]]
+            self._hmap = (key, self.nik.cloth_build(self.verts(), self.O, tips), None)
             return self._hmap
         v = self.verts_local()
         keep = v[:, 2] < 0.04
         for a in ("L", "R"):          # cloth hanging from a gripper is not a surface
             if self.held[a] or self.script[a]:
                 keep &= np.linalg.norm(v - self.tip(a), axis=1) > 0.04
+        from scipy.spatial import cKDTree
         p = v[keep]
-        c = self.HMAP_CELL
-        cid = np.floor(p[:, :2] / c).astype(np.int64)
-        code = cid[:, 0] * 100003 + cid[:, 1]
-        order = np.argsort(code, kind="stable")
-        self._hmap = (key, p[order], code[order])
+        self._hmap = (key, p, cKDTree(p[:, :2], balanced_tree=False, compact_nodes=False))
         return self._hmap
 
     def surface_under(self, xy, radius=0.02):
-        _, p, code = self._buckets()
-        c = self.HMAP_CELL
-        i0, j0 = int(np.floor(xy[0] / c)), int(np.floor(xy[1] / c))
-        r = int(np.ceil(radius / c))
-        best = -np.inf
-        for i in range(i0 - r, i0 + r + 1):
-            lo = np.searchsorted(code, i * 100003 + j0 - r, "left"); hi = np.searchsorted(code, i * 100003 + j0 + r, "right")
-            if hi > lo:
-                q = p[lo:hi]
-                near = np.hypot(q[:, 0] - xy[0], q[:, 1] - xy[1]) < radius
-                if near.any():
-                    best = max(best, float(q[near, 2].max()))
-        return best + 0.003 if np.isfinite(best) else 0.0
+        _, p, tree = self._buckets()
+        if tree is None:                                      # native index (p = number of points kept)
+            top = self.nik.cloth_top(float(xy[0]), float(xy[1]), radius)
+            return top + 0.003 if top > -np.inf else 0.0
+        idx = tree.query_ball_point(np.asarray(xy, float)[:2], radius) if len(p) else []
+        return float(p[idx, 2].max()) + 0.003 if idx else 0.0
 
     def score(self):
         return {}                     # the laptop scores every drop (it has the fold-score code); keeps this fast
@@ -307,10 +331,16 @@ class IsaacWorld:
     QUANT = 1e-4                      # state view: cloth points sent as int16 in 0.1 mm units (+-3.2 m)
 
     def state_bytes(self, game=None):
-        """State view payload: measured joint angles (12 float32) + cloth points in the table frame (int16, QUANT m)."""
-        q = np.asarray(self.obs["observation.state"], dtype=np.float32).ravel()[:12]
-        v = np.clip(np.round(self.verts_local() / self.QUANT), -32767, 32767).astype("<i2")
-        return q.astype("<f4").tobytes() + v.tobytes()
+        """State view payload: measured joint angles (12 float32) + cloth points in the table frame (int16, QUANT m).
+        Copies the sim's numbers now and returns a function that packs them: the server calls it on its sender
+        thread, so the packing overlaps the next physics step."""
+        q = np.array(self.obs["observation.state"], dtype=np.float32).ravel()[:12]
+        v, O = np.array(self.verts(), dtype=float), self.O.copy()
+
+        def pack():
+            vq = np.clip(np.round((v - O[:3]) / self.QUANT), -32767, 32767).astype("<i2")
+            return q.astype("<f4").tobytes() + vq.tobytes()
+        return pack
 
     def state_hello(self):
         return dict(view="state", origin=self.O.tolist(), quant=self.QUANT)

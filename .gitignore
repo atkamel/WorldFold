@@ -14,3 +14,6 @@ outputs/cloth_angles/*
 .DS_Store
 MUJOCO_LOG.TXT
 teacher/oracle/assets/
+
+# laptop game client: recorded sessions stay local (hundreds of MB)
+teacher/mujoco_live/demos/

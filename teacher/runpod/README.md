@@ -29,7 +29,7 @@ It checks the driver first and prints `SETUP DONE` at the end. Safe to rerun.
 ```bash
 bash /workspace/WorldFold/teacher/runpod/run_isaac.sh grip     # adhesion A/B, prints a GRIP/RELEASE table
 bash /workspace/WorldFold/teacher/runpod/run_isaac.sh teleop   # then on the laptop:
-#   python mujoco_live/teleop_client.py <pod public IP> <public port mapped to 7777>
+#   python teacher/mujoco_live/teleop_client.py <pod public IP> <public port mapped to 7777>
 ```
 Results: `/workspace/results/isaac/<stamp>-<mode>/` (run.log, json rows, summary.txt, teleop_demo.jsonl).
 The teleop client also keeps its own copy of the demo log on the laptop.
