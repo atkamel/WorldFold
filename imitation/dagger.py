@@ -81,6 +81,18 @@ def resume_state(out):
     return Path(kept["checkpoint"]), kept["eval"], history[-1]["dataset"], history[-1]["round"] + 1, history
 
 
+def cached_eval(path, run, log=print, reuse=True):
+    """Evaluate once per round: a `--resume` relaunch after a kill reuses the saved result."""
+    path = Path(path)
+    if reuse and path.exists():
+        log(f"   reusing eval {path}")
+        return json.loads(path.read_text())
+    res = run()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(res, indent=1))
+    return res
+
+
 def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--init", required=True, help="imitation-baseline checkpoint to start from")
@@ -157,8 +169,9 @@ def main():
         else:
             best_ckpt, dataset, first = Path(args.init), args.dataset, 1
             log(f"== round 0: evaluating {best_ckpt}")
-            best = evaluate(best_ckpt, args.eval_sets, args.eval_n, pool=pool, replan_every=args.replan_every, log=log,
-                            backend=args.backend)
+            best = cached_eval(out / "round_0_eval.json", lambda: evaluate(
+                best_ckpt, args.eval_sets, args.eval_n, pool=pool, replan_every=args.replan_every, log=log,
+                backend=args.backend), log, reuse=args.resume)
             history = [{"round": 0, "checkpoint": str(best_ckpt), "dataset": dataset, "eval": best, "kept": True}]
             with open(history_path, "w") as f:
                 json.dump(history, f, indent=1)
@@ -195,12 +208,17 @@ def main():
             log(f"   rollouts: student success {sum(e['success'] for e in new)}/{len(new)}, "
                 f"{n_labels} teacher labels, froze {version} ({m['n_episodes']} episodes), {time.time() - t0:.0f}s")
 
-            ckpt, _ = train(policy.kind, version, out / f"round_{r}", root=args.root, steps=args.train_steps,
-                            init_from=best_ckpt, dagger_weight=args.dagger_weight,
-                            teacher=teacher_ckpt if args.relabel else None,
-                            allow_failures=args.allow_failures or bool(args.relabel), log=log)
-            res = evaluate(ckpt, args.eval_sets, args.eval_n, pool=pool, replan_every=args.replan_every, log=log,
-                           backend=args.backend)
+            ckpt = out / f"round_{r}" / "final.pt"
+            if args.resume and ckpt.exists():      # killed after training: a job time limit, not a failure
+                log(f"   reusing trained {ckpt}")
+            else:
+                ckpt, _ = train(policy.kind, version, out / f"round_{r}", root=args.root, steps=args.train_steps,
+                                init_from=best_ckpt, dagger_weight=args.dagger_weight,
+                                teacher=teacher_ckpt if args.relabel else None,
+                                allow_failures=args.allow_failures or bool(args.relabel), log=log)
+            res = cached_eval(out / f"round_{r}" / "eval.json", lambda: evaluate(
+                ckpt, args.eval_sets, args.eval_n, pool=pool, replan_every=args.replan_every, log=log,
+                backend=args.backend), log, reuse=args.resume)
             gain, gain_se = score(res, sets) - score(best, sets), gain_in_se(res, best, sets)
             kept = gain > 0
             history.append({"round": r, "checkpoint": str(ckpt), "dataset": version, "beta": beta,
