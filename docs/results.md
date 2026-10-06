@@ -1214,3 +1214,14 @@ The CIs overlap (they're identical), so parity is met.
   different), and the same seed on another copy draws the same DR
 - a reset of copy 1 mid-run leaves twin copies 0 and 2 unchanged at that moment, and moves copy 0's trajectory by
   7.0e-11 (run-to-run noise 3.9e-11; the copy moved 0.45 m)
+
+### W3b attempt D: retries off, n = 80 (2026-10-04, recorded 2026-10-06), W3b closed
+
+- **Setup:** baseline expert with `max_retries = 0` and the cap at 250, on tune seeds 610000–610079 (two blocks of
+  40; `outputs/isaac/recovery/attD_noretry_{a,b}.jsonl`, logs `attD_{a,b}.log`).
+- **Result: 58/80 = 72.5%** (Wilson 61.9–81.1%). Block a: 32/40 (65.2–89.5%). Block b: 26/40 (49.5–77.9%).
+  Every failure is `truncated` (8 + 14).
+- **Paired against the baseline** (seeds 610000–610039, retries on, 35/40): 4 succeed only with retries, 1 only
+  without. Retries help a little on net, so they stay on.
+- **W3b closed (user decision, 2026-10-06):** stop tuning and collect W5 on the W3 expert (retries on). Recovery
+  ceiling is the pooled **147/180 = 81.7%** (Wilson 75.4–86.6%), below the 85 floor. Plateau accepted by the user.

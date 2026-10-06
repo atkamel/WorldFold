@@ -388,6 +388,44 @@ def _w4() -> Result:
     return Result("W4", "PASS" if ok else "FAIL", ev)
 
 
+@check("W5", "weld retrain (scripts/isaac_retrain.ps1): final n = 200 x 3 evals for the privileged and vision bests, "
+             "DAgger and distillation histories, detector >= 90%, demos tracked")
+def _w5() -> Result:
+    w5 = ROOT / "outputs" / "imitation" / "isaac_weld" / "w5"
+    runs = ROOT / "outputs" / "imitation" / "runs"
+    media = ROOT / "docs" / "reports" / "media"
+    ev, ok = [], True
+    for name in ("final_privileged_r4", "final_vision_r2"):
+        path = w5 / f"{name}.json"
+        if not path.exists():
+            ev.append(f"missing artifact: {path}")
+            ok = False
+            continue
+        counts = eval_counts(path)
+        good = set(counts) == {"id_easy", "id_hard", "recovery"} and all(n == 200 for _, n in counts.values())
+        ev.append(f"{name}: " + ", ".join(f"{s} {k}/{n} [{wilson(k, n)[0]:.1f}, {wilson(k, n)[1]:.1f}]"
+                                          for s, (k, n) in counts.items()) + f" ok={good}")
+        ok &= good and git_tracked(path)
+    for run in ("isaac_v1_weld_dagger", "isaac_v1_weld_distill"):
+        hist = runs / run / "history.json"
+        ok &= hist.exists() and git_tracked(hist)
+        ev.append(f"{run} history: exists={hist.exists()} tracked={git_tracked(hist)}")
+    agree = runs / "isaac_v1_weld_detector" / "agreement.json"
+    if agree.exists():
+        a = json.loads(agree.read_text())
+        ev.append(f"detector agreement {a['agree']}/{a['n']} = {a['rate']:.1%} (bar >= 90%)")
+        ok &= a["rate"] >= 0.9 and git_tracked(agree)
+    else:
+        ev.append(f"missing artifact: {agree}")
+        ok = False
+    for name in ("privileged", "sensor"):
+        mp4 = media / f"half_fold_isaac_{name}.mp4"
+        ok &= mp4.exists() and git_tracked(mp4)
+        ev.append(f"demo {mp4.name}: exists={mp4.exists()} tracked={git_tracked(mp4)}")
+    ok &= results_md_has("W5")
+    return Result("W5", "PASS" if ok else "FAIL", ev)
+
+
 @check("W1", "weld grasp on Isaac (GPU pipeline): engages, tracks like MuJoCo's weld lifted/carried, holds on neutral, releases, honours mask")
 def _w1() -> Result:
     f = ROOT / "outputs" / "isaac" / "weld_cuda" / "weld.json"

@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-04 · **Branch:** `feature/isaac-imitation` (V on `feature/isaac-vec`) · **Phase:** W (weld baseline on Isaac, revised 2026-10-04): W1–W4 ✅ → W3b / Z1 → V (done, awaiting lead verification) → W5 (slim); track G in parallel
+**Updated:** 2026-10-06 · **Branch:** `feature/isaac-imitation` · **Phase:** W5 (weld retrain on Isaac, fast track): W3b closed, track G paused, `scripts/isaac_retrain.ps1` running
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,30 +41,18 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**Phase W revision (2026-10-04, plan `docs/superpowers/plans/2026-10-04-isaac-weld-revision.md`): in flight**
-- **W4 ✅.** The pilot learns: diffusion 20/20 and vision 10/10 on id_easy.
-- **Z1 done for diffusion: no transfer.** The MuJoCo-trained diffusion checkpoints score 0–1/20 on every set, so
-  W5 trains from scratch. The vision zero-shot run was cut off by the 2 h job limit.
-- **V0 go; V1/V2 implemented** on `feature/isaac-vec` by an Opus agent (worktree `.claude/worktrees/agent-a92cce19dd29dae77`).
-  - Expert parity at B = 4 vs B = 1: 40/40 vs 40/40.
-  - Throughput 2.15× at B = 8.
-  - **Lead-verified on the branch:** fast suite 183 passed (MuJoCo included), slow suite 12 passed.
-  - **Merged into `feature/isaac-imitation`** (user allowed the merge, 2026-10-04). Opt-in with
-    `WORLDFOLD_ISAAC_ENVS_PER_PROC`, `isaac_weld` only.
-- **W3b (expert recovery) in progress.** Pooled 81.7% (147/180).
-  - Attempts A–C and a 300-step cap did not help; n = 40 noise is about ±10 pp.
-  - The user chose to keep working. Next: n = 80 paired attempts with per-retry logging, run on the vectorised env.
-- **Defect 14 (reported by the V agent): not reproduced.** `import mujoco` works from the main `.venv`, and the full
-  fast suite passed in the V worktree. It was transient or specific to that agent's run.
-- **W3b attempt D running:** retries off, n = 80 paired (seeds 610000–610079), with per-retry logging in
-  `isaac/recovery_replay.py`.
-- **Track G:** on `feature/isaac-grasp` (worktree `.claude/worktrees/agent-a55d8fa30a92a92f8`), now continued by a Sonnet agent.
-  - IG.1 ✅ (38b45d9).
-  - IG.2: best config #9 (bf73afd). The user approved redefining "released" as "the corner ends back on the cloth, not carried up".
-  - Next: rescore, n = 100 × 3 gate blocks, then IG.3.
-- **Track G (original note):** friction-grasp work (IG.1–IG.3) runs in parallel in a separate session on
-  `feature/isaac-grasp`, with `WORLDFOLD_N_ISAAC=1`.
-- **Compute:** at most 3 Isaac processes at once (W 2 + G 1).
+**W5 fast track (2026-10-06, user decision; plan `docs/superpowers/plans/2026-10-06-isaac-w5-fast-track.md`): in flight**
+- **Goal:** a strong Isaac half fold through the MuJoCo pipeline: diffusion BC → diffusion DAgger (privileged
+  teacher) → vision student (3 cameras + 48 sensor proprio dims) → detector → final n = 200 × 3 → demos.
+  Targets: privileged 95 / 75 / 65, vision id_easy ≥ 90.
+- **W3b closed:** attempt D (retries off) 58/80; the user accepted the W3 expert at 81.7% pooled recovery.
+- **Track G paused** by the user: `feature/isaac-grasp` and its worktree are left as is (IG.2 best = `6c8c5af`).
+- **Driver:** `scripts/isaac_retrain.ps1 -Phase all -EnvsPerProc 8` (resumable; log
+  `outputs/imitation/isaac_weld/w5/w5.log`). Vectorised rig cameras checked at B = 4 against B = 1 (frames match
+  up to physics noise).
+- **Protocol:** n = 100 per set to choose seeds and rounds, n = 200 only for the finals; ≤ 3 Isaac processes.
+- **Exit:** `python -m imitation.verify W5`.
+
 ## Pre-VLA milestone tracker
 
 Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA starts
@@ -94,7 +82,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 167 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 183 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -134,7 +122,6 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 14 | Windows Application Control blocks MuJoCo's `_enums.pyd` in `.venv` (seen 2026-10-04 from the V worktree): `import mujoco` fails, so the full fast suite can't collect `mujuco/tests` | running the fast suite | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujuco/` first on `sys.path`; `mujuco/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
 | 12 | `imitation.cpu_slot` isn't fair: a lane that releases and re-takes it between eval sets starves a lane polling every 2 s (lane A waited 37 min) | parallel queues | — |
 | 11 | `v1_dagger_v1_r1`/`_r2` frozen with bad teacher labels — never train on them | DAgger | — |
@@ -154,6 +141,9 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-06 · **W5 fast track started.** W3b closed (attempt D 58/80, plateau accepted); track G paused;
+  `scripts/isaac_retrain.ps1` + `verify W5`; vectorised cameras smoke-checked; blocker 14 removed (not reproduced).
+  Fast suite 183 passed, 4 skipped. (this commit)
 - 2026-10-04 · **W3b recovery plateau and parallel tracks.**
   - W3b attempts A–C: 30, 34, 31 of 40 against a 35/40 baseline. A 300-step cap: 31/40. Pooled 81.7%; the user
     chose to keep working.
