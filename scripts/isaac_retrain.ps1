@@ -48,7 +48,7 @@ function Stage($name, $done, [scriptblock]$body) {
 # Run one stage of this script in a second process (overlap); returns the process to wait on.
 function Side($name) {
     if ($Only) { return $null }
-    Note "SIDE $name"
+    $null = Note "SIDE $name"      # Note echoes; keep it out of the return value
     $script:sideStages += $name
     Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @("-ExecutionPolicy", "Bypass", "-File",
         $PSCommandPath, "-Only", $name, "-EnvsPerProc", "$EnvsPerProc")
