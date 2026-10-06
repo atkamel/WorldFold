@@ -38,6 +38,7 @@ python -m cloth_angles.train --config cloth_angles/config.yaml
 ```
 mujuco/sim_main.py   ClothFoldEnv: tasks fold/drop/push/drag, state/pixels/hybrid obs, 14-dim action
 cloth_fold_rl/       single-corner fold task: env wrapper, scripted expert, BC, PPO, committed checkpoints
+imitation/           half-fold imitation + DAgger: teachers, episode store, chunk/diffusion policies
 mujuco/simulations/  earlier prototypes and smoke test
 cloth_angles/        RSSM world model over cloth angle fields: collect, train, evaluate
 policy_runner/       policy interface and registry (random, ppo)
@@ -47,6 +48,15 @@ outputs/videos/      recorded rollouts
 ```
 
 ## Docs
+
+**Imitation pipeline (active work):**
+
+- [Status — where we are right now](docs/status.md)
+- [Roadmap — what we are building, in order](docs/roadmap.md)
+- [Design doc — task, obs/action spec, metrics, budget](docs/imitation.md)
+- [Results — every measured number](docs/results.md)
+
+**Reference:**
 
 - [Fold task: why the wrapper, results, physical grasp](cloth_fold_rl/README.md)
 - [World model: benchmarks, analytic reward, imagination](docs/world_model.md)

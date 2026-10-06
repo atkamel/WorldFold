@@ -1,0 +1,115 @@
+{
+ "ckpt": "outputs/imitation/runs/bc_v2a/final.pt",
+ "episodes": [
+  {
+   "seed": 100000,
+   "steps": 178,
+   "success": true,
+   "fold_score": 0.9534216028516574,
+   "termination_reason": "success",
+   "frames": [
+    0,
+    198
+   ]
+  },
+  {
+   "seed": 100001,
+   "steps": 400,
+   "success": false,
+   "fold_score": 0.5443119756577894,
+   "termination_reason": null,
+   "frames": [
+    198,
+    618
+   ]
+  },
+  {
+   "seed": 100002,
+   "steps": 191,
+   "success": true,
+   "fold_score": 0.9043111443576685,
+   "termination_reason": "success",
+   "frames": [
+    618,
+    829
+   ]
+  },
+  {
+   "seed": 100003,
+   "steps": 191,
+   "success": true,
+   "fold_score": 0.9393314231189257,
+   "termination_reason": "success",
+   "frames": [
+    829,
+    1040
+   ]
+  },
+  {
+   "seed": 100004,
+   "steps": 193,
+   "success": true,
+   "fold_score": 0.938519335555403,
+   "termination_reason": "success",
+   "frames": [
+    1040,
+    1253
+   ]
+  },
+  {
+   "seed": 100005,
+   "steps": 174,
+   "success": true,
+   "fold_score": 0.9774399626272319,
+   "termination_reason": "success",
+   "frames": [
+    1253,
+    1447
+   ]
+  },
+  {
+   "seed": 100006,
+   "steps": 175,
+   "success": true,
+   "fold_score": 0.9642053953813191,
+   "termination_reason": "success",
+   "frames": [
+    1447,
+    1642
+   ]
+  },
+  {
+   "seed": 100007,
+   "steps": 183,
+   "success": true,
+   "fold_score": 0.9508987459262149,
+   "termination_reason": "success",
+   "frames": [
+    1642,
+    1845
+   ]
+  },
+  {
+   "seed": 100008,
+   "steps": 186,
+   "success": true,
+   "fold_score": 0.9241622176991967,
+   "termination_reason": "success",
+   "frames": [
+    1845,
+    2051
+   ]
+  },
+  {
+   "seed": 100009,
+   "steps": 174,
+   "success": true,
+   "fold_score": 0.9755486665057429,
+   "termination_reason": "success",
+   "frames": [
+    2051,
+    2245
+   ]
+  }
+ ]
+}

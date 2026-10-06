@@ -46,6 +46,15 @@ DROP_TILT_DEG           = 10.0
 # about -0.015 rad, so closing to GRIPPER_CLOSED squeezes.
 PAD_LINING_THICKNESS    = 0.003
 PAD_LINING_FRICTION     = 1.5
+# "friction": nothing attaches the cloth, the jaws hold it by friction (LeHome's way). "anchor": as MuJoCo's weld, a jaw
+# that closes with its stage-0 corner within grasp_radius locks that corner to the gripper (lab_scene's grasp anchors)
+# until it opens. Friction alone slips early in the lift (see isaac/README.md), so the scripted fold rarely completes.
+GRASP_MODE              = "friction"
+ANCHOR_RADIUS           = 0.004       # m: grips the corner particle and its nearest neighbours, so it acts as a pivot; 8 mm held a whole patch rigid and the fold sprang back on release (expert 3/4 at 4 mm, 1/7 at 8 mm)
+ANCHOR_MASS             = 0.002
+# the cloth's particle-material friction (it sets cloth-on-rigid friction, the jaws' grip included); None keeps
+# LeHome's particle_garment_cfg.yaml value
+CLOTH_FRICTION          = None
 # LeHome's USD root frame in the MJCF base frame (ARM_BASE_* poses): same kinematics, with the root offset and
 # turned +90 deg about z. Fitted on six joint poses, residual under 0.3 mm.
 USD_ROOT_OFFSET         = np.array([0.0164, -0.0208, -0.0324])
@@ -153,6 +162,16 @@ def grid_particles(subdiv):
     return np.array([(ix * subdiv) * n + iy * subdiv for ix in range(CLOTH_COUNT) for iy in range(CLOTH_COUNT)])
 
 
+# ISAAC_ENV_PARAMS='{"CLOTH_FRICTION": 1.0, "GRIPPER_CLOSED": -0.3}' overrides the constants above (and lab_scene's,
+# which imports them from here), for sweeping the grasp physics without editing code
+import json as _json   # noqa: E402
+import os as _os       # noqa: E402
+for _name, _value in _json.loads(_os.environ.get("ISAAC_ENV_PARAMS", "{}")).items():
+    if _name not in globals():
+        raise KeyError(f"ISAAC_ENV_PARAMS: unknown constant {_name}")
+    globals()[_name] = _value
+
+
 class IsaacClothFoldEnv(gym.Env):
 
     metadata = {"render_modes": ["rgb_array"], "render_fps": 20}
@@ -208,7 +227,15 @@ class IsaacClothFoldEnv(gym.Env):
         self.weld_mask = {p: None for p in self.prefixes}
 
         cfg = make_cfg(PHYSICS_DT, self.n_substeps, image_size if self._use_image else None)
-        self.lab = SceneEnv(cfg, CLOTH_CENTER)
+        if GRASP_MODE not in ("friction", "anchor"):
+            raise ValueError(f"GRASP_MODE {GRASP_MODE!r}")
+        # the corner each arm carries in stage 0, the first of its grasp corners
+        self._anchor_vtx = {p: self.grasp_corners[p][0] for p in self.prefixes} if GRASP_MODE == "anchor" else {}
+        self.lab = SceneEnv(cfg, CLOTH_CENTER,
+                            anchor_particles={p: int(self._grid[v]) for p, v in self._anchor_vtx.items()})
+        self._held = {p: None for p in self.prefixes}      # anchor pose in the gripper link frame while held
+        if self._anchor_vtx:
+            self.lab.substep_hook = self._drive_anchors
         self.arms = self.lab.arms
         left = self.arms["left_"]
         self._dof_limits = _npy(left.data.soft_joint_pos_limits[0, self.lab.joint_ids["left_"]])   # (6, 2), both arms
@@ -281,7 +308,41 @@ class IsaacClothFoldEnv(gym.Env):
     def joint_velocities(self, prefix):
         return _npy(self.arms[prefix].data.joint_vel[0, self.lab.joint_ids[prefix]])
 
+    # ---- anchor grasp (GRASP_MODE "anchor") ----
+    def _update_anchor(self, prefix):
+        if prefix not in self._anchor_vtx:
+            return
+        if not self._gripper_closed[prefix]:
+            if self._held[prefix] is not None:
+                self._held[prefix] = None
+                self.lab.set_attachment(prefix, False)
+            return
+        if self._held[prefix] is not None:
+            return
+        allowed = self.weld_mask.get(prefix)
+        vtx = self._anchor_vtx[prefix]
+        if allowed is not None and vtx not in allowed:
+            return
+        if np.linalg.norm(self._particles[self._grid[vtx]] - self.gripper_position(prefix)) >= self.grasp_radius:
+            return
+        # the anchor onto the corner as it lies now (unrotated, as at the attachment's rest pose), then lock it on
+        corner = self._particles[self._grid[vtx]]
+        self.lab.put_anchor(prefix, corner)
+        _, _, gpos, R = self._gripper_link(prefix)
+        self._held[prefix] = (R.T @ (corner - gpos), R.T)
+        self.lab.set_attachment(prefix, True)
+
+    def _drive_anchors(self):
+        for prefix, held in self._held.items():
+            if held is None:
+                continue
+            offset, rot = held
+            _, _, gpos, R = self._gripper_link(prefix)
+            self.lab.put_anchor(prefix, gpos + R @ offset, _quat_from_matrix(R @ rot))
+
     def grasp_active(self, prefix):
+        if prefix in self._anchor_vtx:
+            return self._held[prefix] is not None
         # nothing attaches the cloth, so this reports what the wrappers ask: the gripper is closed with one of its
         # corners (grasp_corners, filtered by weld_mask) within grasp_radius of the gripper frame
         if not self._gripper_closed[prefix]:
@@ -407,15 +468,22 @@ class IsaacClothFoldEnv(gym.Env):
         # one control step: the scene holds both arms' joint targets for n_substeps physics steps
         targets = np.concatenate([self._joint_targets["left_"], self._joint_targets["right_"]])[None, :]
         self.lab.step(self._torch.as_tensor(targets, dtype=self._torch.float32, device=self.lab.device))
-        if not self._use_image and time.time() - self._kit_ticked > KIT_TICK_PERIOD_S:
-            # state mode only steps physics, which never ticks Kit's main loop, and Kit's hang detector aborts the app
-            # after 120 s without a tick. Tick it the way IsaacLab's SimulationContext.render does when it renders
-            # nothing, with simulation playback paused so the update doesn't step physics. (Image modes render.)
-            self.lab.sim.set_setting("/app/player/playSimulations", False)
-            _app.update()
-            self.lab.sim.set_setting("/app/player/playSimulations", True)
-            self._kit_ticked = time.time()
+        if not self._use_image:
+            self.keep_kit_alive()
         self._refresh_cloth()
+
+    def keep_kit_alive(self):
+        """Tick Kit's main loop if KIT_TICK_PERIOD_S has passed since the last tick. State mode only steps physics,
+        which never ticks it, and Kit's hang detector aborts the app after 120 s without a tick; a process that
+        holds the env while doing something else (an idle rollout worker) calls this too."""
+        if time.time() - self._kit_ticked <= KIT_TICK_PERIOD_S:
+            return
+        # tick it the way IsaacLab's SimulationContext.render does when it renders nothing, with simulation
+        # playback paused so the update doesn't step physics. (Image modes render.)
+        self.lab.sim.set_setting("/app/player/playSimulations", False)
+        _app.update()
+        self.lab.sim.set_setting("/app/player/playSimulations", True)
+        self._kit_ticked = time.time()
 
     # ---- gym API ----
     def reset(self, seed=None, options=None):
@@ -434,6 +502,10 @@ class IsaacClothFoldEnv(gym.Env):
         tilt = self.np_random.uniform(-DROP_TILT_DEG, DROP_TILT_DEG, size=2)
         self.lab.reset_cloth(offset, DROP_HEIGHT, (tilt[0], tilt[1], 0.0))
         self._particles = self.lab.particle_positions()
+        for prefix, vtx in self._anchor_vtx.items():   # released, waiting on their corners
+            self._held[prefix] = None
+            self.lab.set_attachment(prefix, False)
+            self.lab.put_anchor(prefix, self._particles[self._grid[vtx]])
         self._particle_vel = np.zeros_like(self._particles)
 
         for _ in range(self.settle_steps):
@@ -466,6 +538,8 @@ class IsaacClothFoldEnv(gym.Env):
 
         self.set_gripper("left_", float(clipped[6]))
         self.set_gripper("right_", float(clipped[13]))
+        for prefix in self._anchor_vtx:
+            self._update_anchor(prefix)
         self.apply_joint_delta("left_", clipped[0:5])
         self.apply_joint_delta("right_", clipped[7:12])
         self._advance()

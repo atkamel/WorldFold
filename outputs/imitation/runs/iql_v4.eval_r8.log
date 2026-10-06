@@ -1,0 +1,4 @@
+  id_easy   success 89% (178/200)  fold 0.887  grasp 100%  failures {'F1': 15, 'S1': 3, 'G1': 4}  536s
+  id_hard   success 34% (68/200)  fold 0.495  grasp 59%  failures {'G1': 95, 'S1': 27, 'F1': 8, 'M1': 2}  1078s
+  recovery  success 34% (69/200)  fold 0.723  grasp 99%  failures {'F1': 43, 'G1': 55, 'S1': 33}  916s
+wrote outputs\imitation\runs\iql_v4\eval_r8.json

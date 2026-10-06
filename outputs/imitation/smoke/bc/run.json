@@ -1,0 +1,49 @@
+{
+ "git_commit": "c95c4315e09d886cee22dbfe16afe9df76e431a4-dirty",
+ "dataset": {
+  "root": "outputs/imitation/datasets",
+  "version": "smoke",
+  "content_hash": "b0c31ff343d02bbf5884ad46a311ddcdaceaa204e123ee7d464fccaf9317d4d1",
+  "n_episodes": 19,
+  "n_train_samples": 1599,
+  "n_dagger_labels": 0
+ },
+ "policy": {
+  "kind": "chunk_mlp",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "width": 512,
+   "depth": 4,
+   "dropout": 0.1
+  },
+  "n_params": 8645312
+ },
+ "train": {
+  "steps": 600,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 1.0,
+  "init_from": null,
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 6.3
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\smoke\\bc\\final.pt",
+  "sha256": "6db8b13e705b1d45b4854c3d1a3f5a325e2877fb77af37772900029b47872449"
+ },
+ "history": [
+  {
+   "step": 600,
+   "train_loss": 0.03196344915777445,
+   "val_loss": 0.3707786202430725
+  }
+ ]
+}
