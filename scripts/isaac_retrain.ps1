@@ -5,9 +5,10 @@
 # outputs/imitation/isaac_weld/w5/w5.log with STEP / DONE / FAIL markers for a monitor.
 #   powershell -ExecutionPolicy Bypass -File scripts\isaac_retrain.ps1 [-Phase privileged|vision|final|all]
 #   powershell -ExecutionPolicy Bypass -File scripts\isaac_retrain.ps1 -Only <stage>     # one stage (used for overlap)
-# At most 3 Isaac processes (CPU heat budget); camera stages use 2: 3 x B = 8 with the rig cameras overflows 16 GB VRAM.
+# Heat budget (user, 2026-10-06): at most 2 Isaac processes x 4 envs, no overlapping sims, and keep the laptop under
+# 94 C -- run scripts/thermal_guard.py alongside; rollouts and training pause while its flag is set (imitation/thermal.py).
 param([ValidateSet("privileged", "vision", "final", "all")][string]$Phase = "all", [string]$Only = "",
-      [int]$EnvsPerProc = 8)
+      [int]$EnvsPerProc = 4)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
@@ -82,18 +83,17 @@ if ($Phase -in "privileged", "all" -or $Only) {
         & $py -u -m imitation.train --policy diffusion --dataset $tag --root $ds --run "$runs\${tag}_diff_s1" `
             --steps 30000 --seed 1 }
     Join $s1 "train_diff_s1" "$runs\${tag}_diff_s1\final.pt"
-    # DAgger from seed 0 (its round 0 is the seed-0 BC eval); seed 1 is evaluated alongside as the seed check
-    $e1 = Side "eval_diff_s1"
-    Stage "eval_diff_s1" "$out\eval_diff_s1_r8.json" {
-        & $py -u -m imitation.evaluate --backend $B --ckpt "$runs\${tag}_diff_s1\final.pt" --sets $sets --n 100 `
-            --workers 1 --out "$out\eval_diff_s1_r8.json" }
+    # DAgger from seed 0 (its round 0 is the seed-0 BC eval). Seed 1 is the seed-variance check: id_easy / id_hard
+    # finished in eval_diff_s1.log before the heat cap; only its recovery set runs here, alone.
     Stage "dagger" "$priv\done.txt" {
         # one round (fast track, user 2026-10-06): MuJoCo's gain came almost all from round 1 (M5b.1)
         & $py -u -m imitation.dagger --backend $B --init "$runs\${tag}_diff_s0\final.pt" --dataset $tag --root $ds `
             --out $priv --rounds 1 --episodes 128 --train-steps 15000 --eval-n 100 --eval-sets $sets `
             --score-sets $sets --min-gain-se 1 --workers 2 --labels takeover --takeover-p 0.3 --resume
         if ($LASTEXITCODE -eq 0) { Set-Content "$priv\done.txt" (Get-Date -Format s) } }
-    Join $e1 "eval_diff_s1" "$out\eval_diff_s1_r8.json"
+    Stage "eval_diff_s1_recovery" "$out\eval_diff_s1_recovery_r8.json" {
+        & $py -u -m imitation.evaluate --backend $B --ckpt "$runs\${tag}_diff_s1\final.pt" --sets recovery --n 100 `
+            --workers 2 --out "$out\eval_diff_s1_recovery_r8.json" }
     if (-not $Only) { Note "PRIVILEGED COMPLETE best=$(Best $priv)" }
 }
 
@@ -113,24 +113,22 @@ $bp = if (Test-Path "$priv\history.json") { Best $priv } else { "" }
 $bv = "$runs\${tag}_vision_t0\final.pt"     # fast track: the teacher-relabelled vision BC is the student (M5b.3: round 0 won)
 
 if ($Phase -in "vision", "all" -or $Only) {
-    # the privileged final eval (2 sims) and its demos (1 sim) run while the vision student trains on the GPU
-    $fp = Side "final_privileged"
+    # the vision student trains on the GPU while the privileged demos run (1 CPU-pipeline sim): 2 jobs at once
     $dp = Side "demos_privileged"
-    Stage "final_privileged" "$out\final_privileged_r4.json" {
-        & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets --n 200 --replan-every 4 --workers 2 `
-            --out "$out\final_privileged_r4.json" }
     Stage "demos_privileged" "docs\reports\media\half_fold_isaac_privileged_recovery.mp4" { Demos "privileged" $bp 4 }
     Stage "train_vision_t0" "$runs\${tag}_vision_t0\final.pt" {
         & $py -u -m imitation.train --policy vision --dataset $tag --root $ds --run "$runs\${tag}_vision_t0" `
             --steps 30000 --batch 256 --seed 0 --teacher $bp }
+    Join $dp "demos_privileged" "docs\reports\media\half_fold_isaac_privileged_recovery.mp4"
+    Stage "final_privileged" "$out\final_privileged_r4.json" {
+        & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets --n 200 --replan-every 4 --workers 2 `
+            --out "$out\final_privileged_r4.json" }
     Stage "detector_train" "$runs\${tag}_detector\detector.pt" {
         & $py -u -m imitation.vision.success train --versions $tag "${tag}_failures" --root $ds `
             --out "$runs\${tag}_detector" --steps 2000 }
     Stage "detector_agree" "$runs\${tag}_detector\agreement.json" {
         & $py -u -m imitation.vision.success agree --ckpt "$runs\${tag}_detector\detector.pt" `
             --versions $tag "${tag}_failures" --root $ds }
-    Join $fp "final_privileged" "$out\final_privileged_r4.json"
-    Join $dp "demos_privileged" "docs\reports\media\half_fold_isaac_privileged_recovery.mp4"
     if (-not $Only) { Note "VISION COMPLETE" }
 }
 

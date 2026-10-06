@@ -21,6 +21,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from imitation.thermal import hot, wait_while_hot
+
 from imitation.data.collect import DEFAULT_ROOT
 from imitation.data.loader import WindowSampler
 from imitation.data.dataset import Normalizer, bc_episodes, clamp_fraction, split_episodes
@@ -146,6 +148,8 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
     t0, history, running = time.time(), [], 0.0
     policy.train()
     for step in range(1, steps + 1):
+        if step % 50 == 0 and hot():          # thermal guard: the GPU cools while training waits
+            wait_while_hot(log)
         idx = (torch.multinomial(weights, batch, replacement=True) if n_dagger and dagger_weight != 1.0
                else torch.randint(0, n_train, (batch,), device=device))
         X, Y, M, imgs = data["train"].batch(idx)

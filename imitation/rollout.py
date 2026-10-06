@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from imitation.data.schema import ACTOR_PERTURB, ACTOR_STUDENT, ACTOR_TEACHER, Episode
+from imitation.thermal import hot, wait_while_hot
 
 ACTION_DIM = 12
 
@@ -558,6 +559,8 @@ def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_
     waiting_since = None
 
     def send(i, cmd, arg=None):
+        if hot():                # thermal guard: hold new work; idle workers keep ticking Kit meanwhile
+            wait_while_hot()
         pool.pipes[i].send((cmd, arg))
         inflight[i] = cmd
 

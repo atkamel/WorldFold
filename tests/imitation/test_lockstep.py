@@ -298,3 +298,21 @@ def test_envs_per_proc(monkeypatch):
     monkeypatch.setenv("WORLDFOLD_ISAAC_ENVS_PER_PROC", "0")
     with pytest.raises(ValueError):
         envs_per_proc("isaac_weld")
+
+
+def test_thermal_pause_holds_work_and_keeps_episodes(monkeypatch, tmp_path):
+    """The thermal guard's flag (imitation/thermal.py) pauses the driver before it sends work; the slots idle and
+    keep ticking, and once the flag clears the episodes are the same as an unpaused run."""
+    import imitation.thermal as thermal
+    flag = tmp_path / "pause"
+    monkeypatch.setenv("WORLDFOLD_THERMAL_FLAG", str(flag))
+    monkeypatch.setattr(thermal, "_last_check", 0.0)
+    monkeypatch.setattr(thermal, "_last_hot", False)
+    ref, _ = _run(1, 3, SEEDS[:5], PolicyController(FakePolicy(), replan_every=2, takeover=0.4), perturb_fn=_perturb)
+    flag.write_text("hot")
+    monkeypatch.setattr(thermal, "_last_check", 0.0)
+    threading.Timer(0.6, flag.unlink).start()
+    eps, pool = _run(1, 3, SEEDS[:5], PolicyController(FakePolicy(), replan_every=2, takeover=0.4),
+                     perturb_fn=_perturb)
+    _same(ref, eps)
+    assert not flag.exists()
