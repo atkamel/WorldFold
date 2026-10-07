@@ -1598,3 +1598,26 @@ worst case.
   - right: 16/20 / 14/20 / 15/20;
   - 11/20 env successes.
   - Pooled with A (n = 40): held 40/40 left and 30/40 right.
+
+### F1 — grasp honesty (`isaac/honesty_check.py`, 2026-10-07)
+
+The scripted expert (ScriptedTeacher, retries on) runs id_easy seeds from 100000. Every step is checked for:
+- pinned particles;
+- PhysX attachment prims on the stage (at reset and at the end);
+- a closed-jaw command whose target is not the closed target;
+- a lifted corner (> 2 cm above rest, within 5 cm of the gripper) next to an open jaw for more than 5 consecutive
+  steps.
+
+| backend | n | pins | attachments | jaw forced open | lifted by an open jaw (> 5 steps) | longest open-jaw lift | lifted steps | successes | honest |
+|---|---|---|---|---|---|---|---|---|---|
+| **isaac_friction** | 20 | 0 | 0 | 0 | 0 | 3 steps | 3,667 | 18/20 | **yes** |
+| isaac_weld (negative control) | 5 | 251 | 0 | 496 | 3 | 47 steps | 120 | 5/5 | no |
+
+- **The first friction run flagged 40 steps.** That run (`friction_v1_strict.json`) counted any lifted corner by an
+  open jaw.
+  - The 40 were exactly 2 steps per arm per episode: the release. The jaw opens at place height (2–3.8 cm up) and the
+    corner falls within 2 steps.
+  - The rule now allows 5 steps. The weld carries its corner 47 steps with the jaw open.
+- **Friction failures:** 100013 succeeded only at step 278; 100015 was truncated at 400.
+- **18/20 = 90% [69.9, 97.2]** is the first full-episode number for the physical-grasp expert, on LeHome's
+  id_easy set with retries on. The F3 gate measures it at n = 100.
