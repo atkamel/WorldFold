@@ -49,7 +49,7 @@ class IsaacArmExpert:
     OPEN_PHASES = ("approach", "descend", "release", "retreat", "done")
     # everything that changes while it acts: ScriptedTeacher saves / restores these around a label
     PHASE_FIELDS = ("phase", "q_target", "phase_steps", "retreat_target", "release_allowed", "rng", "plan", "wp",
-                    "budget", "regrasps", "miss_steps", "last_jaw")
+                    "budget", "regrasps", "miss_steps", "last_jaw", "align_tries")
 
     # the pinch / place geometry and dwells, as class attributes so the grasp bench can try candidates (track G)
     PINCH_HEIGHT = 0.005             # fingertip above the table at the pinch (IG.2 #9; half_fold_demo / weld: 0.010)
@@ -65,6 +65,11 @@ class IsaacArmExpert:
     MISS_STEPS = 3
     REPLAN_MOVE = 0.0        # m > 0: re-plan the approach whenever the corner has moved this far from the planned pinch
     CARRY_SPEED = 1.0        # joint-speed scale in lift/carry (< 1: a slower carry)
+    # m > 0: close only once the gripper frame is within this (horizontally) of the pinch point re-solved on the corner
+    # as it lies now; otherwise re-plan and descend again (at most ALIGN_TRIES times). F2: right-arm slips start as a
+    # pinch ~1 cm off that the closing jaw sweeps 3.5 cm across the pinch (shallow grip, 2.8 vs 1.4 cm deep)
+    ALIGN_TOL = 0.0
+    ALIGN_TRIES = 2
 
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
 
@@ -96,6 +101,7 @@ class IsaacArmExpert:
         self.regrasps = 0
         self.miss_steps = 0
         self.last_jaw = None
+        self.align_tries = 0
 
     def _corner(self):
         cloth = self.base.cloth_positions()
@@ -204,6 +210,14 @@ class IsaacArmExpert:
         closed_q = getattr(self.base, "_closed_q", jaw)
         return jaw <= closed_q + JAW_SHUT_TOL and last is not None and abs(jaw - last) < JAW_STILL
 
+    def _misaligned(self):
+        """The gripper frame is more than ALIGN_TOL (horizontally) from the pinch point on the corner as it lies now."""
+        corner = self._corner()
+        jaw = self.plan["jaw"]
+        pinch = corner[:2] - self.PINCH_INSET * jaw[:2]
+        site = np.asarray(self.base.gripper_position(self.prefix), dtype=float)
+        return float(np.linalg.norm(site[:2] - pinch)) > self.ALIGN_TOL
+
     def _restart_grasp(self):
         """Missed or slipped: open, re-plan on the corner where it lies now, and approach again (REGRASP)."""
         self.regrasps += 1
@@ -232,6 +246,11 @@ class IsaacArmExpert:
             if self._arrived(TRACK_TOL) or patience:
                 if name == "approach":       # re-solve the pinch on the corner as it lies now (closed loop)
                     self.plan = self._make_plan(from_q=self._q())
+                elif self.ALIGN_TOL and self.align_tries < self.ALIGN_TRIES and self._misaligned():
+                    self.align_tries += 1
+                    self.plan = self._make_plan(from_q=self._q())
+                    self.phase_steps = 0
+                    return
                 self._next()
         elif name == "close":
             shut = self._jaw_shut() if self.SETTLE_LIFT else True
