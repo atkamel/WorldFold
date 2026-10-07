@@ -4,8 +4,10 @@ Runs the scripted expert (the pipeline's ScriptedTeacher) for N episodes on one 
   pins           no particle is pinned (env._pinned and the scene's pin table are empty)
   attachments    the stage holds no PhysX attachment prims (PhysxPhysicsAttachment / AutoAttachment), at reset and end
   jaw_target     while the gripper is commanded closed, the jaw joint's target is the closed target, not forced open
-  lifted_shut    whenever an arm's grasp corner is LIFT_MIN above its rest height and within HOLD_DIST of the gripper,
-                 that arm's jaw is physically shut (joint within JAW_SETTLED_TOL of the closed target)
+  lifted_shut    an arm's grasp corner never rides LIFT_MIN above its rest height, within HOLD_DIST of the gripper,
+                 with that arm's jaw physically open (beyond JAW_SETTLED_TOL of the closed target) for more than
+                 OPEN_CARRY_MAX consecutive steps. A released corner falls within a few steps of the jaw opening
+                 (that is physics, not a violation); a weld carries it with the jaw open for the whole carry.
 A friction backend must have zero violations of every check. The weld backend is the negative control: its jaws are
 forced open while its pinned corner rides in the air, so jaw_target and lifted_shut must fire there.
 
@@ -26,6 +28,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 LIFT_MIN = 0.02            # = isaac.grasp_metrics.LIFT_MIN
+OPEN_CARRY_MAX = 5         # control steps (0.25 s) a lifted corner may stay by an open jaw: the fall after a release
 CHECKS = ("pins", "attachments", "jaw_target", "lifted_shut")
 
 
@@ -51,6 +54,7 @@ def run(args):
     counts = {c: 0 for c in CHECKS}
     examples = {c: [] for c in CHECKS}
     lifted_steps = 0
+    max_open_run = 0
     episodes = []
 
     def flag(check, seed, t, detail):
@@ -63,6 +67,7 @@ def run(args):
         env.reset(seed=seed)
         teacher.reset()
         rest = {p: float(np.mean([base.cloth_positions()[v][2] for v in base.grasp_corners[p]])) for p in base.prefixes}
+        open_run = {p: 0 for p in base.prefixes}
         for hit in attachment_prims(base.lab.sim.stage):
             flag("attachments", seed, 0, {"prim": hit})
         info, t = {}, 0
@@ -78,13 +83,17 @@ def run(args):
                 if base._gripper_closed[p] and abs(jaw_t - base._closed_q) > 1e-6:
                     flag("jaw_target", seed, t, {"arm": p, "target": round(jaw_t, 3)})
                 site = base.gripper_position(p)
-                for v in base.grasp_corners[p]:
-                    c = allc[v]
-                    if c[2] > rest[p] + LIFT_MIN and np.linalg.norm(c - site) < HOLD_DIST:
-                        lifted_steps += 1
-                        if jaw_q > base._closed_q + JAW_SETTLED_TOL:
-                            flag("lifted_shut", seed, t, {"arm": p, "jaw": round(jaw_q, 3),
-                                                          "corner_z_up_cm": round(100 * (c[2] - rest[p]), 1)})
+                carried = [allc[v] for v in base.grasp_corners[p]
+                           if allc[v][2] > rest[p] + LIFT_MIN and np.linalg.norm(allc[v] - site) < HOLD_DIST]
+                lifted_steps += bool(carried)
+                if carried and jaw_q > base._closed_q + JAW_SETTLED_TOL:
+                    open_run[p] += 1
+                    max_open_run = max(max_open_run, open_run[p])
+                    if open_run[p] == OPEN_CARRY_MAX + 1:
+                        flag("lifted_shut", seed, t, {"arm": p, "jaw": round(jaw_q, 3),
+                                                      "corner_z_up_cm": round(100 * (carried[0][2] - rest[p]), 1)})
+                else:
+                    open_run[p] = 0
             if term or trunc:
                 break
         for hit in attachment_prims(base.lab.sim.stage):
@@ -95,6 +104,7 @@ def run(args):
 
     report = {"backend": args.backend, "profile": base.profile, "grasp_mode": base.grasp_mode, "n": args.n,
               "seeds": [args.seed0, args.seed0 + args.n], "lifted_steps": lifted_steps, "violations": counts,
+              "max_open_carry_steps": max_open_run, "open_carry_max": OPEN_CARRY_MAX,
               "examples": examples, "episodes": episodes,
               "successes": sum(e["success"] for e in episodes),
               "honest": all(v == 0 for v in counts.values()) and lifted_steps > 0}
