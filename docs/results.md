@@ -1539,12 +1539,19 @@ Kept means it gained more than 1 SE on held or placed with released not regressi
 | B | + adhesion 0.1 (F0), stopped at 9 eps (`f2_b_adh01`) | 4/9 / 2/9 | 4/9 / 2/9 | 1/9 | no gain while the jaw is stiff |
 | **A** | LeHome's gripper drive kp 17.8 / kd 0.6 / 10 N m instead of MuJoCo's kp 998 / 3.35 N m (F0) (`f2_a_gripdrive`) | **20/20** [83.9, 100] / 16/20 | **16/20** [58.4, 91.9] / 15/20 | 9/20 | **kept** (held +12 / +6): the slip's cause; now the profile default |
 | E | + adhesion 0.1, LeHome's own value (A) (`f2_e_adh01`) | 20/20 / 18/20 | 17/20 / 15/20 | 12/20 | not kept by the rule (+1 held, +2 placed: < 1 SE); adhesion 0.3 next |
+| F | + adhesion 0.3, the cap (A, **with the mean-miss overshoot**) (`f2_f_adh03`) | 20/20 / 9/20 | 11/20 / 10/20 | 2/20 | rejected (confounded, see below) |
+| G | + SETTLE_LIFT = 1, Ruby's lift-when-shut rule (A, **with the mean-miss overshoot**) (`f2_g_settlelift`) | 20/20 / 9/20 | 11/20 / 10/20 | 2/20 | not kept (confounded); retest on the 1 cm baseline |
 
 - Released equals held in A and E (every held corner was let go back onto the cloth), so adhesion 0.1 did not make the
   cloth stick to the pads.
 - **Placement after A:** settled miss over held episodes, mean (x, y): left (+1.9, +0.8) cm (n = 20), right
   (−1.3, +1.5) cm (n = 16); per-axis SD 2.1–3.5 cm. The friction profile's overshoot is now #9's minus this mean
   (`isaac/fold_expert.OVERSHOOT_FRICTION_PROFILE`). The spread (the dynamics DR) is what the expert's retries close.
+- **Reverted the same day:** F and G both ran with the mean-miss overshoot, and both lost against A and E. The right
+  arm held 11/20 vs 16–17, and placement fell on both arms (9–10/20 vs 15–18). F's and G's knobs barely changed the
+  per-seed outcomes against each other, so the shared overshoot is the regression: the landing point depends on the
+  target. The friction profile is back on #9's offsets. F and G say nothing about adhesion 0.3 or SETTLE_LIFT on
+  their own.
 
 ### Pinch reachability at LeHome's cloth position — why isaac_friction runs LeHome's task sets (2026-10-07)
 

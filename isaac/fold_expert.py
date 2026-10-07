@@ -32,12 +32,10 @@ RETREAT = 0.05
 OVERSHOOT_FRICTION = {key: np.zeros(3) for key in ((0, "left_"), (0, "right_"), (1, "left_"), (1, "right_"))}
 OVERSHOOT_FRICTION[(0, "left_")][:] = (-0.001, 0.052, 0.0)
 OVERSHOOT_FRICTION[(0, "right_")][:] = (0.013, 0.050, 0.0)
-# The "friction" profile (Phase F: MuJoCo's stiff arm drives, dynamics DR) lands differently: #9's offsets minus F2
-# candidate A's mean settled miss over its held episodes (left (+1.9, +0.8) cm n = 20, right (-1.3, +1.5) cm n = 16;
-# per-axis spread 2-3.5 cm, which the expert's retries close)
+# The "friction" profile (Phase F) keeps #9's offsets. Subtracting F2-A's mean settled miss (left (+1.9, +0.8) cm,
+# right (-1.3, +1.5) cm) made it worse: F2 attempts F and G, which both carried it, held 11/20 and placed 10/20 on the
+# right arm against A's 16 / 15 (results.md). The landing point is not independent of the target.
 OVERSHOOT_FRICTION_PROFILE = {key: v.copy() for key, v in OVERSHOOT_FRICTION.items()}
-OVERSHOOT_FRICTION_PROFILE[(0, "left_")][:] = (-0.020, 0.044, 0.0)
-OVERSHOOT_FRICTION_PROFILE[(0, "right_")][:] = (0.026, 0.035, 0.0)
 OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE, "anchor": OVERSHOOT_FRICTION_PROFILE}
 
 
