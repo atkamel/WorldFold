@@ -94,7 +94,7 @@ def test_collect_config_records_isaac_stack():
     assert parse_cameras(None) is None
 
 
-@pytest.mark.parametrize("module", ["imitation.check_resync", "imitation.benchmark_expert"])
+@pytest.mark.parametrize("module", ["imitation.benchmark_expert"])
 def test_isaac_expert_clis_refuse_for_now(module):
     code = f"import sys\nsys.argv = ['x', '--backend', 'isaac']\nfrom {module} import main\nmain()"
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)

@@ -301,3 +301,18 @@ class IsaacArmExpert:
         self.q_target = None
         self.retreat_target = None
         return name
+
+def _apply_env_params():
+    """WORLDFOLD_EXPERT_PARAMS="SETTLE_LIFT=1,REGRASP=2": IsaacArmExpert class-attribute overrides for a whole run,
+    rollout workers included (they import this module). Unset or empty changes nothing."""
+    import json
+    import os
+    text = os.environ.get("WORLDFOLD_EXPERT_PARAMS", "")
+    for item in filter(None, (s.strip() for s in text.split(","))):
+        key, val = item.split("=", 1)
+        if not hasattr(IsaacArmExpert, key):
+            raise ValueError(f"WORLDFOLD_EXPERT_PARAMS: IsaacArmExpert has no {key}")
+        setattr(IsaacArmExpert, key, json.loads(val))
+
+
+_apply_env_params()
