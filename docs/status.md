@@ -46,25 +46,27 @@ benchmarks.** Plan: [superpowers/plans/2026-10-07-physical-grasp.md](superpowers
 roadmap Phase F (F0–F6). Rules: friction + adhesion ≤ 0.3, no attachments, pins or welds. Ruby's anchor grasp is
 ported as a comparison profile only (`isaac_anchor`).
 
-- **Done:**
-  - track G merged (`60c6820`); new `friction` profile / `isaac_friction` backend;
-  - physical `grasp_active`; G2 slip code; `isaac/honesty_check.py`; expert re-grasp knobs;
-  - F2 knobs (adhesion, gravity, physics rate); verify F0–F3; the anchor profile.
-- **F0 result:** the GPU friction profile holds 8/20 and 10/20 per arm, vs #9's 20/20 and 19/20 on the CPU. The
-  corners slip with the jaws shut; numbers are in results.md. At the weld profile's cloth position (0, 0) the pinch
-  can't reach, so the profile keeps LeHome's (0, −0.135).
-- **In flight (F2 diagnostics, n = 20 on 600000–19, 2 Isaac processes):**
-  - A: LeHome gripper drive;
-  - B: adhesion 0.1;
-  - then C: lehome profile on the GPU (device test);
-  - then D: friction without DR.
-  - Outputs in `outputs/isaac/grasp/f2_*`. Re-run any killed run with the same `scripts/grasp_bench.ps1` command;
-    it resumes.
-- **Then:**
-  - the F1 honesty runs (friction n = 20, weld n = 5);
-  - the F2 n = 100 blocks on the kept config;
-  - F3 expert gate;
-  - F4 retrain.
+- **Found and fixed:**
+  - **Slips:** `MUJOCO_ARM_DRIVE` was applied to the gripper too, at kp 998 and 3.35 N m. With LeHome's gripper drive
+    (kp 17.8 / kd 0.6 / 10 N m) the corners stop slipping.
+  - **Adhesion:** 0.1, LeHome's own value, is now the default.
+  - **Overshoot:** the mean-miss correction regressed placement, so it was reverted to #9's.
+  - **Reach:** at LeHome's cloth position the pinch can fold only about ±1.5 cm of cloth offset. MuJoCo's id_hard is
+    0/200 reachable, so `isaac_friction` runs LeHome's own task sets (1 cm jitter, the Isaac id_hard ring and knock).
+    **The weld (W5) numbers are on MuJoCo's sets, so the two are not directly comparable.**
+- **Where the grasp stands** (F2 attempt I, n = 20, 1 cm jitter): held 20/20 on both arms, placed 19/20 and 20/20,
+  19/20 env successes.
+- **F1 honesty:**
+  - The weld negative control fails every check: 251 pinned steps, the jaw forced open on 496, open-jaw carries up to
+    47 steps.
+  - The friction re-run under the refined release rule is in flight.
+- **In flight** (2 Isaac processes):
+  - F2 gate blocks: A (600100–199) and B (600200–299), then fresh (600300–399), in `outputs/isaac/grasp/f2_*`.
+    `scripts/grasp_bench.ps1` resumes a cut run.
+- **Next:**
+  1. F3: `scripts/f3_gate.ps1 -Lane eval`, then `-Lane resync`.
+  2. Anchor comparison rows (n = 50, single env).
+  3. F4: `scripts/f4_retrain.ps1`.
 - **Heat cap** (user, 2026-10-06; keep under 94 °C): ≤ 2 Isaac processes × 4 envs; `scripts/thermal_guard.py`
   alongside.
 - **Watch logs with `scripts/watch_logs.sh`, not `tail -F`.** A tail holds a Windows file handle. That blocks renames
