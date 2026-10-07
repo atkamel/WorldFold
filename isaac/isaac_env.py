@@ -99,8 +99,13 @@ PROFILES["lehome"]["friction_grasp"] = FRICTION_GRASP
 # the cloth out). Track G's 6c8c5af said this became the lehome default, but FRICTION_GRASP stayed all None.
 # The cloth sits where LeHome puts it (CLOTH_CENTER, 13.5 cm toward the arms), not at the weld profile's (0, 0): the
 # pinch needs a near-vertical jaw, which the SO101 cannot reach at (0, 0) (F0: descend ended 7-11 cm short).
+# The gripper keeps LeHome's own drive (kp 17.8, kd 0.6, 10 N m): MUJOCO_ARM_DRIVE is applied to every actuator group,
+# and with it on the jaw (kp 998, 3.35 N m) the corners slipped out mid-carry (F0: held 8/20 and 10/20 per arm; F2
+# candidate A, LeHome's gripper drive: see results.md).
+LEHOME_GRIPPER_DRIVE    = {"stiffness": 17.8, "damping": 0.6, "effort_limit_sim": 10.0}
 PROFILES["friction"] = dict(PROFILES["weld"], grasp_mode="friction", weld_tau=None, cloth_center=CLOTH_CENTER,
-                            friction_grasp=dict(FRICTION_GRASP, gripper_closed=0.05))
+                            friction_grasp=dict(FRICTION_GRASP, gripper_closed=0.05,
+                                                gripper_drive=LEHOME_GRIPPER_DRIVE))
 # "anchor": COMPARISON ONLY, not a physical grasp (port of Ruby Zhou's feat/isaac-half-fold anchor, e188194, so our
 # numbers can be set beside hers). Same setup and friction knobs as "friction", but the jaws' hold is replaced by a
 # kinematic attachment: a 4 mm sphere per arm is attached to the cloth particles at the arm's first grasp corner; it is
