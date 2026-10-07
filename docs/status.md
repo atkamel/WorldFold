@@ -148,6 +148,10 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-07 · **Repo state and PR prep.**
+  - Fetched: 0 behind `origin/main` (still `ce02b44`, PR #15). W5 ran on that sim.
+  - New remote `feat/isaac-half-fold` (Ruby Zhou) overlaps; trial merge conflicts in 9 files.
+  - Change log `docs/changelog/2026-10-07-feature-isaac-imitation.md`. (this commit)
 - 2026-10-07 · **W5 done.**
   - Privileged 99.0 / 97.5 / 54.5, sensor-only 99.0 / 82.5 / 31.0 (n = 200); detector 98.0%.
   - 6 benchmark demos; dated report; `verify W5` PASS.
