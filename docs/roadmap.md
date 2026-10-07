@@ -179,8 +179,8 @@ Added 2026-10-02.
 
 | | milestone | exit |
 |---|---|---|
-| IG.1 | Grasp bench (per-arm acquired / held / placed / released, anchor drift) | baseline on tuning seeds 600 000+ |
-| IG.2 | Grasp reliability loop (one knob per iteration; adhesion 0, friction ≤ 2.0, no attachments) | per arm, n = 100 on two blocks plus a fresh block: acquired / held / released ≥ 98, placed ≥ 95 |
+| IG.1 | Grasp bench (per-arm acquired / held / placed / released, anchor drift) | baseline on tuning seeds 600 000+ — ✅ 2026-10-03 (track G): `isaac/grasp_bench.py`, n = 20; left held 18/20, right held 1/20 |
+| IG.2 | Grasp reliability loop (one knob per iteration; adhesion 0, friction ≤ 2.0, no attachments) | per arm, n = 100 on two blocks plus a fresh block: acquired / held / released ≥ 98, placed ≥ 95. "released" (redefined, user-approved 2026-10-04): the corner was held and by the end of the retreat is back on the cloth, not carried up by the gripper (within 2.5 cm of its rest height); where it lands is "placed". The old < 3 cm move test is kept as `released_strict`, a record only |
 | IG.3 | Expert ceiling gate on Isaac | id_easy ≥ 95, id_hard ≥ 90, recovery ≥ 90, check_resync ≥ 90 (n = 100; 92–94 extends to n = 200) |
 | IS.1–6 | Full retrain at scale (`isaac_v1` 400 eps, BC ×2 seeds, replan sweep, DAgger, vision ×2, detector ≥ 90%) | n = 200 × 3 sets, Wilson, gains in SE |
 | I-DR | Visual DR in the Isaac rig + dynamics DR | robustness on held-out DR draws |

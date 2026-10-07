@@ -500,11 +500,122 @@ def _w3() -> Result:
     return Result("W3", "PASS" if ok else "FAIL", ev)
 
 
+# ---------------------------------------------------------------- track G: friction grasp (lehome profile)
+GRASP = ROOT / "outputs" / "isaac" / "grasp"
+TUNE_BLOCK = (600_000, 700_000)            # imitation.seeds TUNE_SEED_BASE block
+GRASP_METRICS = ("acquired", "held", "placed", "released")
+IG2_BAR = {"acquired": 98.0, "held": 98.0, "released": 98.0, "placed": 95.0}
+IG2_BLOCKS = ("ig2_block_a", "ig2_block_b", "ig2_fresh")
+
+
+def _grasp_summary(name):
+    d = GRASP / name
+    s, rows = d / "summary.json", d / "rows.jsonl"
+    if not (s.exists() and rows.exists()):
+        return None, [f"missing artifact: {s} / {rows.name}"]
+    return json.loads(s.read_text(encoding="utf-8")), []
+
+
+def _grasp_lines(name, s):
+    out = []
+    for p, st in s["arms"].items():
+        out.append(f"{name} {p}: " + ", ".join(
+            f"{m} {st[m]['k']}/{st[m]['n']} [{st[m]['wilson'][0]}, {st[m]['wilson'][1]}]" for m in GRASP_METRICS)
+            + f", anchor drift max {st['anchor_drift_m']['max']} m")
+    return out
+
+
+@check("IG.1", "friction-grasp bench: per-arm acquired / held / placed / released + anchor drift, baseline (grasp as built) on tune seeds 600000+")
+def _ig1() -> Result:
+    s, ev = _grasp_summary("ig1_baseline")
+    if s is None:
+        return Result("IG.1", "FAIL", ev)
+    seeds = s["seeds"]
+    in_block = all(TUNE_BLOCK[0] <= x < TUNE_BLOCK[1] for x in seeds)
+    as_built = all(v is None for v in (s.get("config") or {}).get("knobs", {"x": 1}).values())
+    complete = sorted(s["arms"]) == ["left_", "right_"] and all(
+        m in st for st in s["arms"].values() for m in GRASP_METRICS + ("anchor_drift_m",))
+    ev += _grasp_lines("ig1_baseline", s)
+    ev.append(f"n {s['n']}, seeds {seeds[0]}..{seeds[-1]} in tune block={in_block}; knobs as built={as_built}")
+    tracked = git_tracked(GRASP / "ig1_baseline" / "summary.json") and git_tracked(GRASP / "ig1_baseline" / "rows.jsonl")
+    code, tail = _pytest("tests/imitation/test_grasp_metrics.py")
+    ev.append(f"test_grasp_metrics.py exit {code}: {tail}")
+    ok = s["n"] >= 20 and in_block and as_built and complete and tracked and code == 0 and results_md_has("IG.1")
+    return Result("IG.1", "PASS" if ok else "FAIL", ev)
+
+
+@check("IG.2", "friction-grasp reliability: per arm, n = 100 on two tune blocks plus a fresh block, acquired / held / released >= 98, placed >= 95, one config")
+def _ig2() -> Result:
+    ev, ok, configs, seeds = [], True, [], []
+    for name in IG2_BLOCKS:
+        s, miss = _grasp_summary(name)
+        if s is None:
+            ev += miss
+            ok = False
+            continue
+        good = s["n"] >= 100 and all(TUNE_BLOCK[0] <= x < TUNE_BLOCK[1] for x in s["seeds"])
+        for st in s["arms"].values():
+            good &= all(st[m]["rate"] >= IG2_BAR[m] for m in GRASP_METRICS)
+        good &= git_tracked(GRASP / name / "summary.json")
+        ev += _grasp_lines(name, s)
+        ev.append(f"{name}: n {s['n']} meets bar={good}")
+        ok &= good
+        configs.append(json.dumps(s.get("config", {}).get("knobs"), sort_keys=True)
+                       + json.dumps(s.get("config", {}).get("expert"), sort_keys=True))
+        seeds.append(set(s["seeds"]))
+    if len(seeds) == len(IG2_BLOCKS):
+        disjoint = all(not (seeds[i] & seeds[j]) for i in range(3) for j in range(i + 1, 3))
+        same = len(set(configs)) == 1
+        # the fresh block's seeds appear in no other grasp run (it was never tuned on)
+        others = [json.loads(line)["seed"] for d in GRASP.glob("*/rows.jsonl") if d.parent.name != "ig2_fresh"
+                  for line in d.read_text(encoding="utf-8").splitlines() if line.strip()]
+        fresh = not (seeds[2] & set(others))
+        ev.append(f"blocks disjoint={disjoint}, one config={same}, fresh block untouched by tuning={fresh}")
+        ok &= disjoint and same and fresh
+    ok &= results_md_has("IG.2")
+    return Result("IG.2", "PASS" if ok else "FAIL", ev)
+
+
+IG3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "recovery": 90.0}
+IG3_RESYNC = 90.0
+
+
+@check("IG.3", "friction expert gate on Isaac (lehome): n >= 100 id_easy >= 95, id_hard >= 90, recovery >= 90, check_resync >= 90")
+def _ig3() -> Result:
+    d = ROOT / "outputs" / "imitation" / "isaac" / "ig3"
+    ev, ok = [], True
+    for s, bar in IG3_GATE.items():
+        path = d / f"eval_expert_{s}.json"
+        if not path.exists():
+            ev.append(f"missing artifact: {path}")
+            ok = False
+            continue
+        k, n = eval_counts(path)[s]
+        lo, hi = wilson(k, n)
+        rate = 100.0 * k / n
+        ev.append(f"{s}: {k}/{n} = {rate:.1f}% [{lo:.1f}, {hi:.1f}] (bar {bar:.0f})")
+        ok &= n >= 100 and rate >= bar and git_tracked(path)
+    rs = d / "check_resync.json"
+    if rs.exists():
+        r = json.loads(rs.read_text(encoding="utf-8"))
+        for m, v in r["modes"].items():
+            rate = 100.0 * v["success"] / v["n"]
+            lo, hi = wilson(v["success"], v["n"])
+            ev.append(f"check_resync {m}: {v['success']}/{v['n']} = {rate:.1f}% [{lo:.1f}, {hi:.1f}] (bar {IG3_RESYNC:.0f})")
+            ok &= v["n"] >= 100 and rate >= IG3_RESYNC
+        ok &= git_tracked(rs)
+    else:
+        ev.append(f"missing artifact: {rs}")
+        ok = False
+    ok &= results_md_has("IG.3")
+    return Result("IG.3", "PASS" if ok else "FAIL", ev)
+
+
 @check("I3.3", "close-out: every other Phase I check passes here, roadmap Phase I rows closed, docs updated")
 def _i33() -> Result:
     ev, ok = [], True
     for mid, (_, fn) in CHECKS.items():
-        if mid == "I3.3" or not mid.startswith("I"):      # Phase I checks only
+        if mid == "I3.3" or not mid.startswith("I") or mid.startswith("IG"):   # Phase I's viability checks only
             continue
         try:
             r = fn()

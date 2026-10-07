@@ -26,6 +26,12 @@ OPEN_DWELL = 6               # ("arc", 1.0, 6)
 LIFT_WAYPOINTS = 3           # the first arc waypoints count as "lift" (phase groups for the teacher)
 ABOVE = 0.04                 # pre-pinch height above the pinch point
 RETREAT = 0.05
+# per (stage, arm): metres past the goal to place at, the friction grasp's measured spring-back (cf.
+# cloth_fold_rl.quarter_fold_expert.OVERSHOOT on MuJoCo, isaac.weld_expert.OVERSHOOT_ISAAC on the weld profile).
+# Stage 0 is calibrated (track G, IG.2 attempt 8: minus the settled miss of attempt 3); stage 1 stays zero.
+OVERSHOOT_FRICTION = {key: np.zeros(3) for key in ((0, "left_"), (0, "right_"), (1, "left_"), (1, "right_"))}
+OVERSHOOT_FRICTION[(0, "left_")][:] = (-0.001, 0.052, 0.0)
+OVERSHOOT_FRICTION[(0, "right_")][:] = (0.013, 0.050, 0.0)
 
 
 class IsaacArmExpert:
@@ -35,6 +41,14 @@ class IsaacArmExpert:
     # everything that changes while it acts: ScriptedTeacher saves / restores these around a label
     PHASE_FIELDS = ("phase", "q_target", "phase_steps", "retreat_target", "release_allowed", "rng", "plan", "wp",
                     "budget")
+
+    # the pinch / place geometry and dwells, as class attributes so the grasp bench can try candidates (track G)
+    PINCH_HEIGHT = 0.005             # fingertip above the table at the pinch (IG.2 #9; half_fold_demo / weld: 0.010)
+    PINCH_INSET = 0.005              # pinch point this far in from the corner, toward the cloth centre
+    PLACE_HEIGHT = PLACE_HEIGHT
+    ARC_HEIGHT = ARC_HEIGHT
+    CLOSE_DWELL = CLOSE_DWELL
+    OPEN_DWELL = OPEN_DWELL
 
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
 
@@ -80,10 +94,10 @@ class IsaacArmExpert:
         goal = np.asarray(self.goal(), dtype=float)
         jaw = np.r_[center[:2] - corner[:2], 0.0]
         jaw /= np.linalg.norm(jaw)
-        offset = -0.005 * jaw[:2]
-        pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], TABLE_TOP_Z + PINCH_HEIGHT])
+        offset = -self.PINCH_INSET * jaw[:2]
+        pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], TABLE_TOP_Z + self.PINCH_HEIGHT])
         # the held point's mirror image across the fold line, so the corner lands on the goal
-        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + PLACE_HEIGHT])
+        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
         q = list(SEED_Q[p]) if from_q is None else list(from_q)
         plan = {"jaw": jaw}
         q, _ = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q)
@@ -94,7 +108,7 @@ class IsaacArmExpert:
         start = pinch
         for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
             tip = start + (place - start) * (1.0 - math.cos(math.pi * s)) / 2.0
-            tip[2] = start[2] + (place[2] - start[2]) * s + ARC_HEIGHT * math.sin(math.pi * s)
+            tip[2] = start[2] + (place[2] - start[2]) * s + self.ARC_HEIGHT * math.sin(math.pi * s)
             q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05)
             plan["arc"].append(q)
             plan["arc_tips"].append(tip)
@@ -107,14 +121,14 @@ class IsaacArmExpert:
         ik, p = self._ik, self.prefix
         goal = np.asarray(self.goal(), dtype=float)
         jaw = self.plan["jaw"] if self.plan else np.array([0.0, -1.0, 0.0])
-        offset = -0.005 * jaw[:2]
-        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + PLACE_HEIGHT])
+        offset = -self.PINCH_INSET * jaw[:2]
+        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
         start = np.asarray(self.base.gripper_position(p), dtype=float)
         q, arc, tips = self._q(), [], []
         n = max(2, int(np.ceil(np.linalg.norm(place - start) / 0.02)))
         for s in np.linspace(0.0, 1.0, n + 1)[1:]:
             tip = start + (place - start) * s
-            tip[2] = max(tip[2], place[2]) + 0.5 * ARC_HEIGHT * math.sin(math.pi * s) * (start[2] > place[2] + 0.02)
+            tip[2] = max(tip[2], place[2]) + 0.5 * self.ARC_HEIGHT * math.sin(math.pi * s) * (start[2] > place[2] + 0.02)
             q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05)
             arc.append(q)
             tips.append(tip)
@@ -172,7 +186,7 @@ class IsaacArmExpert:
                     self.plan = self._make_plan(from_q=self._q())
                 self._next()
         elif name == "close":
-            if self.phase_steps >= CLOSE_DWELL:
+            if self.phase_steps >= self.CLOSE_DWELL:
                 self.wp = 0
                 self._next()
         elif name in ("lift", "carry"):
@@ -190,7 +204,7 @@ class IsaacArmExpert:
         elif name == "hold":
             self._next()
         elif name == "release":
-            if self.phase_steps >= OPEN_DWELL:
+            if self.phase_steps >= self.OPEN_DWELL:
                 self._next()
         elif name == "retreat":
             if self._arrived(TRACK_TOL) or patience:

@@ -1,0 +1,136 @@
+{
+ "n": 2,
+ "seeds": [
+  600000,
+  600001
+ ],
+ "arms": {
+  "left_": {
+   "acquired": {
+    "k": 2,
+    "n": 2,
+    "rate": 100.0,
+    "wilson": [
+     34.2,
+     100.0
+    ]
+   },
+   "held": {
+    "k": 2,
+    "n": 2,
+    "rate": 100.0,
+    "wilson": [
+     34.2,
+     100.0
+    ]
+   },
+   "placed": {
+    "k": 2,
+    "n": 2,
+    "rate": 100.0,
+    "wilson": [
+     34.2,
+     100.0
+    ]
+   },
+   "released": {
+    "k": 2,
+    "n": 2,
+    "rate": 100.0,
+    "wilson": [
+     34.2,
+     100.0
+    ]
+   },
+   "released_strict": {
+    "k": 2,
+    "n": 2,
+    "rate": 100.0,
+    "wilson": [
+     34.2,
+     100.0
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.0409,
+    "max": 0.041
+   },
+   "first_failure": {}
+  },
+  "right_": {
+   "acquired": {
+    "k": 2,
+    "n": 2,
+    "rate": 100.0,
+    "wilson": [
+     34.2,
+     100.0
+    ]
+   },
+   "held": {
+    "k": 0,
+    "n": 2,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     65.8
+    ]
+   },
+   "placed": {
+    "k": 0,
+    "n": 2,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     65.8
+    ]
+   },
+   "released": {
+    "k": 0,
+    "n": 2,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     65.8
+    ]
+   },
+   "released_strict": {
+    "k": 0,
+    "n": 2,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     65.8
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.047,
+    "max": 0.0518
+   },
+   "first_failure": {
+    "held": 2
+   }
+  }
+ },
+ "config": {
+  "knobs": {
+   "particle_friction": null,
+   "pad_friction": null,
+   "pad_thickness": null,
+   "gripper_drive": null,
+   "gripper_closed": null
+  },
+  "expert": {
+   "PINCH_HEIGHT": 0.01,
+   "PINCH_INSET": 0.005,
+   "PLACE_HEIGHT": 0.011,
+   "ARC_HEIGHT": 0.12,
+   "CLOSE_DWELL": 8,
+   "OPEN_DWELL": 6
+  },
+  "code": "C:\\Users\\ethan\\Documents\\Projects\\watai\\WorldFold\\.claude\\worktrees\\agent-a55d8fa30a92a92f8\\isaac\\grasp_bench.py"
+ },
+ "reasons": {
+  "bench_stop": 2
+ }
+}

@@ -1074,6 +1074,174 @@ Artifacts: `outputs/imitation/isaac_weld/w3/eval_expert_{id_easy,id_hard,recover
 **W3 decision (2026-10-03, user):** recovery 81/100 is accepted as the Isaac expert's recovery ceiling, and W4 runs
 on this expert. `verify W3` records the bar as 80, with the planned 90 noted. id_easy and id_hard meet their bars.
 
+## Track G — friction grasp on Isaac (LeHome profile)
+
+### IG.1 grasp bench, baseline as built (2026-10-03)
+
+`isaac/grasp_bench.py` runs the friction expert (`IsaacArmExpert` in `QuarterFoldExpert`, the pipeline's
+ScriptedTeacher) on `IsaacClothFoldEnv(profile="lehome")`, CPU device, with **retries off**, so each arm's first
+attempt is scored. Per-step traces (phase, gripperframe site, corner, jaw angle, anchor) are kept per seed and the
+flags are computed from them by `isaac/grasp_metrics.py`:
+- **acquired:** when the expert enters carry, the corner is ≥ 2 cm above its rest height and within 5 cm of the site.
+- **held:** acquired, and the corner stays within 5 cm of the site until the jaw opens. A held corner rides 2.5–3.8 cm
+  from the site (the fixed fingertip), up between the pads; a dropped one jumps to ≥ 6 cm.
+- **placed:** 15 steps after the jaw opens, the corner is within 5 cm of its goal (the env's test).
+- **released:** held, and from the jaw opening to the end of the retreat the corner moves < 3 cm horizontally and ends
+  < 2.5 cm above its rest height.
+- **anchor drift:** the largest displacement of the arm's anchor corner (cloth_0 / cloth_110) over the episode.
+
+Rates are unconditional (out of all episodes). Knobs all as built (particle friction 0.5, pad lining 1.5 / 3 mm,
+LeHome gripper drive, closed target −0.1 rad; pinch inset 5 mm, pinch height 1 cm). Tune seeds 600000–600019, n = 20
+(seeds 600000–1 come from the bench's smoke run, same code and config). Wilson 95%.
+
+| arm | acquired | held | placed | released | anchor drift mean / max |
+|---|---|---|---|---|---|
+| left | 20/20 [83.9, 100] | 18/20 [69.9, 97.2] | 14/20 [48.1, 85.5] | 12/20 [38.7, 78.1] | 4.0 / 5.0 cm |
+| right | 11/20 [34.2, 74.2] | 1/20 [0.9, 23.6] | 0/20 [0, 16.1] | 0/20 [0, 16.1] | 5.1 / 7.5 cm |
+
+- **The right arm is the problem.** Its corner gets pushed out of the pinch as the jaw closes: in the gripper frame the
+  corner is displaced up to 3.4 cm sideways (vs < 1 cm on the left) and lifts into the pads. 9/20 corners never
+  rise; 10 of the 11 acquired fall out during the carry (steps 82–127, mostly while the arm descends toward the goal).
+- **Left:** it holds 18/20, but 6 placements miss by 5.5–8.4 cm and 8 releases move the corner 3–6 cm: the corner is
+  let go about 5 cm above the table (it rides 2.5 cm above the site, and the site stops ~2.4 cm above the table at
+  place), and it falls outward.
+- **Anchor drift** is 3–7.5 cm, well under the 20 cm drag limit; most of it happens at close, when the pinch pulls the
+  cloth toward the arms.
+- **Speed:** 115–350 s per episode (0.7–2 control steps/s) with the W4 pilot's 2 Isaac workers sharing the GPU, so an
+  n = 20 trial takes about 50 min and an n = 100 block about 4 h.
+
+Artifacts: `outputs/isaac/grasp/ig1_baseline/{rows.jsonl,summary.json,bench.log}` (traces regenerate, not committed).
+
+### IG.2 reliability loop — attempt log (2026-10-03, one knob per attempt)
+
+Each attempt changes one knob from the best config so far and runs the bench on tune seeds 600000–600019 (n = 20,
+paired with the IG.1 baseline), Wilson 95%. A knob is kept only if it beats its parent. Rates as left / right.
+
+| # | change (from parent) | acquired | held | placed | released | anchor drift max | verdict |
+|---|---|---|---|---|---|---|---|
+| 0 | IG.1 baseline (as built) | 20 / 11 | 18 / 1 | 14 / 0 | 12 / 0 | 5.0 / 7.5 cm | parent |
+| 1 | particle friction 0.5 → 1.5 | 20 / 20 | **2 / 0** | 3 / 5 | 1 / 0 | 1.8 / 6.0 cm | rejected |
+| 2 | pinch inset 5 → 15 mm (expert) | 17 / 7 | **1 / 0** | 0 / 0 | 0 / 0 | 23.5 / 6.2 cm | rejected |
+| 3 | closed jaw target −0.1 → +0.05 rad | 20 / 20 | **20 / 14** | 9 / 8 | 2 / 1 | 4.3 / 5.1 cm | **kept** (new parent) |
+| 4 | #3 + place height 1.1 → −1.0 cm (expert) | 20 / 20 | 19 / 14 | 9 / 5 | 5 / 2 | 5.1 / 28.0 cm | not kept |
+| 5 | closed jaw target +0.05 → +0.08 rad | 20 / 19 | **0 / 0** | 0 / 0 | 0 / 0 | 5.4 / 11.9 cm | rejected |
+| 6 | closed jaw target +0.05 → +0.02 rad | 20 / 20 | 19 / 17 | 5 / 1 | 4 / 2 | 7.2 / 13.3 cm | not kept (held within noise of #3, placement worse) |
+| 7 | #3 + jaw opens at 0.1 rad / step (`jaw_open_rate`, ~11 steps instead of ~3) | 20 / 20 | 20 / 14 | 10 / 9 | 2 / 0 | 6.7 / 12.5 cm | not kept (no release gain) |
+| 8 | #3 + placement overshoot from #3's settled miss: left (−0.1, +5.2) cm, right (+1.3, +5.0) cm (`OVERSHOOT_FRICTION`) | 20 / 20 | 20 / 12 | **18 / 11*** | 10 / 3 | 5.9 / 5.2 cm | **kept** (new parent); 11/20 episodes succeed with retries off |
+
+| 9 | #8 + pinch height 1.0 → 0.5 cm (expert) | 20 / 20 | **20 / 19** | **19 / 18*** | 6 / 4 | 7.7 / 5.1 cm | **kept** (new parent); 17/20 episodes succeed with retries off |
+
+\* Placement is read at the episode end from #8 on; see the metric note below.
+
+- **#1:** the higher friction fixes the right arm's pinch (acquired 20/20 [83.9, 100] vs 11/20 [34.2, 74.2]), and the
+  cloth barely slides on the table (anchor drift mean 0.8 / 1.4 cm). But it loses the carry on both arms: held
+  2/20 [2.8, 30.1] and 0/20 [0, 16.1]. The corner slides down out of the fingers near the top of the arc (steps
+  97–144). The particle material's friction is also the cloth–table friction, so the table now holds the rest of
+  the sheet and the arc pulls the corner out.
+
+- **#2:** a deeper bite (the fixed finger 15 mm in from the corner instead of 5) is worse on every flag: left held 1/20 [0.9, 23.6], right acquired 7/20 [18.1, 56.7]. One episode dragged the cloth (an arc that ran along the table). The pinch works best right at the edge.
+- **#3 (kept):**
+  - Why: at −0.1 rad the jaw passes through the fixed pad (the articulation doesn't collide its own adjacent links),
+    so the pads overlap and squeeze the particles out. At +0.05 the jaw stops short of the pad and pinches the cloth.
+  - Held: left 20/20 [83.9, 100] (was 18/20 [69.9, 97.2]); right 14/20 [48.1, 85.5] (was 1/20 [0.9, 23.6]).
+    Acquired is 20/20 on both arms. 3/20 episodes succeed, with retries off.
+  - What fails now is release and placement: placed 9/20 [25.8, 65.8] and 8/20 [21.9, 61.3], released 2/20 [2.8, 30.1]
+    and 1/20 [0.9, 23.6].
+  - The held corner rides about 3.6 cm above the fingertip, and the site stops about 2.4 cm above the table at place.
+    So the corner is let go about 6 cm up, and as the jaw opens it falls 3–5 cm outward (−y, away from the fold line).
+- **#4:** the place target 2.1 cm lower didn't move the site down meaningfully, and releases stayed within noise:
+  5/20 [11.2, 46.9] and 2/20 [2.8, 30.1]. Right-arm placement fell to 5/20 [11.2, 46.9], and one episode dragged the
+  cloth (right anchor 28 cm). Not kept.
+- **#5 (sweep around #3):** +0.08 rad lifts every corner (acquired 20/20, 19/20), but no corner is held through the
+  carry: held 0/20 [0, 16.1] on both arms. The working window of the closed target is narrow. −0.1 squeezes the
+  cloth out, +0.08 pinches too lightly, and +0.05 holds.
+- **#6:**
+  - Held: 19/20 [76.4, 99.1] and 17/20 [64.0, 94.8], against #3's 20/20 and 14/20 (34 vs 36 of 40 arms).
+  - Placements are worse: 5/20 [11.2, 46.9] and 1/20 [0.9, 23.6].
+  - Settled miss (corner − goal, 15 steps after release, held episodes): left (+4.1, −4.4) cm, sd (1.9, 1.9);
+    right (−4.5, −5.9) cm, sd (1.9, 1.8). With #3: left (+0.1, −5.2), sd (1.3, 1.2); right (−1.3, −5.0), sd (1.0, 2.0).
+  - #3 stays the parent: it holds as well, and its spring-back is tighter, which is what an overshoot can correct.
+- **#7:** opening the jaw over about 11 steps changes nothing that matters (released 2/20 [2.8, 30.1] and 0/20
+  [0, 16.1]; placed 10/20 and 9/20, within noise of #3). The trace confirms the jaw ramps at 0.1 rad per step.
+- **What "released" is measuring (analysis on attempts 0, 3, 6, 7).**
+  - Every held corner is let go: by the end of the retreat it lies back on the cloth (< 2.5 cm above rest).
+    - #3: 20/20 left, 14/14 held on the right.
+    - #7: 20/20 and 14/14 (13 of 13 were scored when this was written).
+  - What fails the strict 3 cm test is the horizontal move after opening: median 4.2 / 4.6 cm in #3, 3.8 / 4.8 cm in
+    #7, max 7.4 cm. The corner is let go about 5 cm above the table and the fold's flap springs outward; on MuJoCo the
+    same spring-back is 3–4 cm and is absorbed by `OVERSHOOT`.
+  - So with the current hold height, the strict "released" flag is a spring-back test, not a test of the jaw letting
+    go. It moves only if the corner is held lower (it rides 3.6 cm above the fingertip, up between the pads). A wider
+    or slower opening doesn't change it. Placement can be corrected with an overshoot (#8).
+- **#8 (kept):** the overshoot is minus #3's mean settled miss, as W3 did for the weld.
+  - Placed: left 18/20 [69.9, 97.2], right 11/20 [34.2, 74.2].
+  - Released: 10/20 [29.9, 70.1] and 3/20 [5.2, 36.0]. Releasing nearer the fold line also shortens the outward slide.
+  - 11/20 bench episodes end in the env's own success, with retries off. The I2.1 expert had 2/20 with retries.
+  - The open problem is now the right arm's hold: 12/20 [38.7, 78.1] here, 14/20 in #3. Its drops repeat on the same
+    seeds (600001, 010, 013, 014, 018), late in the carry (steps 127–169, while the arm descends to the goal), and
+    often after a weak lift (corner rise 3 cm against 7 cm).
+- **Metric note (2026-10-04), placement read time.**
+  - "placed" was read 15 steps after the jaw opened. A released corner keeps sliding for 20+ steps, so that read
+    disagreed with the env's own success test: #8 seed 600017 scored not placed at that read, yet ended in env
+    success.
+  - From #8 on, placement is read at the episode end: the env's success, or SETTLE_WAIT steps after both arms
+    retreated. That is the env's own judging time. `isaac/grasp_metrics.py` changed, and every run was rescored from
+    its traces (`--summarize --rescore`).
+  - Placed under the new read, left / right: baseline 18 / 0 (was 14 / 0), #1 4 / 5, #2 0 / 0, #3 9 / 8, #4 9 / 5,
+    #5 0 / 0, #6 6 / 6, #7 10 / 8, #8 18 / 11. The other flags are unchanged. The rows above keep the earlier
+    read, except #8's.
+- **#9 (kept):** the fingertip goes 5 mm lower at the pinch, so the pads bite the cloth closer to the table.
+  - Left / right, Wilson 95%:
+    - acquired 20/20 [83.9, 100] on both arms
+    - held 20/20 [83.9, 100] and 19/20 [76.4, 99.1] (the right arm's was 12/20 in #8)
+    - placed 19/20 [76.4, 99.1] and 18/20 [69.9, 97.2]
+  - 17/20 episodes end in the env's success with retries off. The seeds that dropped before (600001, 013, 014, 018)
+    now hold; 600010 still drops.
+  - Settled miss with #8's overshoot: left (+1.1, +0.1) cm, sd (2.1, 2.1); right (−1.6, 0.0) cm, sd (1.2, 2.2).
+    The overshoot is centred.
+  - Strict "released" is 6/20 [14.5, 51.9] and 4/20 [8.1, 41.6]. Every held corner is let go (back on the cloth after
+    the retreat: 20/20 and 19/20).
+  - The release move (median 5.1 / 5.3 cm) is now by design. The overshoot releases each corner about 4 cm inside its
+    goal, and the spring-back carries it onto the goal.
+- **IG.2 status at #9: plateau on the bar as defined.** Acquired, held and placed are at or near their bars on the tune
+  seeds (n = 20, point estimates 95–100%). Strict "released" (< 3 cm horizontal move after the jaw opens) can't be met
+  together with an overshoot placement, since that placement relies on the move. A decision on the release metric is
+  needed before the n = 100 blocks (see status.md).
+
+- **Definition change: "released" (approved by the user 2026-10-04).**
+  - New "released": the corner was held, and by the end of the expert's retreat it is back on the cloth (within
+    2.5 cm of its rest height, so not carried up by the gripper). Where it lands is scored by "placed". The old
+    test is kept as `released_strict` (also needs a horizontal move < 3 cm from the jaw opening to the end of the
+    retreat).
+  - Why: with an overshoot placement the move is by design (the spring-back carries the corner onto the goal), so
+    strict "released" could not be met together with the placement bar. The flags are recomputed from the stored
+    traces (`--summarize --rescore`); no run was repeated. n = 20, seeds 600000-600019 (baseline and #3 onward; the
+    earlier attempts' rows are as logged above), Wilson 95%.
+
+  | # | released, new (left / right) | released_strict = old definition (left / right) |
+  |---|---|---|
+  | 0 baseline | 17 / 1 | 12 / 0 |
+  | 1 particle friction 1.5 | 1 / 0 | 1 / 0 |
+  | 2 inset 15 mm | 1 / 0 | 0 / 0 |
+  | 3 closed +0.05 | 20 / 14 | 2 / 1 |
+  | 4 place low | 19 / 14 | 5 / 2 |
+  | 5 closed +0.08 | 0 / 0 | 0 / 0 |
+  | 6 closed +0.02 | 19 / 17 | 4 / 2 |
+  | 7 jaw rate 0.1 | 20 / 14 | 2 / 0 |
+  | 8 overshoot | 20 / 12 | 10 / 3 |
+  | 9 pinch 0.5 cm | **20 / 19** [83.9, 100] / [76.4, 99.1] | 6 / 4 [14.5, 51.9] / [8.1, 41.6] |
+
+  Under the new definition released equals held in every attempt except the baseline left arm (held 18, released
+  17: one held corner was carried up by the retreat) and #1 left (held 2, released 1): a held corner is, in practice,
+  always let go.
+
+- **Defaults (2026-10-04):** #9's knobs are now the lehome-profile defaults: `FRICTION_GRASP["gripper_closed"] = 0.05`, `IsaacArmExpert.PINCH_HEIGHT = 0.005`, stage-0 `OVERSHOOT_FRICTION` left (-0.1, +5.2) cm / right (+1.3, +5.0) cm. Friction mode only: weld regression `test_isaac_weld.py` + `test_isaac_profile.py` in `.venv-isaac` 17 passed (`weld_regression.log`); fast suite `pytest -m "not slow"` 173 passed, 4 skipped (`import mujoco` works here).
+
+Artifacts: `outputs/isaac/grasp/t{1..4}_*/{rows.jsonl,summary.json,bench.log}`.
+
+Weld path unchanged by the opt-in knobs: `tests/imitation/test_isaac_weld.py` + `test_isaac_profile.py` in
+`.venv-isaac` on this branch, 17 passed (`outputs/isaac/grasp/weld_regression.log`).
+
 **Naming (2026-10-04):** the Isaac profile `"mujoco"` is renamed `"weld"`. It runs entirely in Isaac and only
 carries over the MuJoCo setup's settings. Earlier entries and artifacts above keep the old name. MuJoCo itself is
 now a frozen reference: no new MuJoCo runs (user decision).

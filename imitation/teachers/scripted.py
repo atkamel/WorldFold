@@ -48,11 +48,10 @@ class ScriptedTeacher(Teacher):
         if getattr(env.unwrapped, "profile", None) == "weld":     # Isaac weld profile (Phase W): the FoldExpert
             from isaac.weld_expert import OVERSHOOT_ISAAC, IsaacFoldExpert
             self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=IsaacFoldExpert, overshoot=OVERSHOOT_ISAAC)
-        elif hasattr(env.unwrapped, "lab"):     # Isaac (Phase I): the friction-pinch expert, no MuJoCo overshoot
-            import numpy as np
-            from isaac.fold_expert import IsaacArmExpert
-            zero = {key: np.zeros(3) for key in ((0, "left_"), (0, "right_"), (1, "left_"), (1, "right_"))}
-            self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=IsaacArmExpert, overshoot=zero)
+        elif hasattr(env.unwrapped, "lab"):     # Isaac lehome profile: the friction-pinch expert, its own overshoot
+            from isaac.fold_expert import OVERSHOOT_FRICTION, IsaacArmExpert
+            self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=IsaacArmExpert,
+                                            overshoot={k: v.copy() for k, v in OVERSHOOT_FRICTION.items()})
         else:
             self.expert = QuarterFoldExpert(env, seed=seed)
 

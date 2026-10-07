@@ -79,6 +79,21 @@ PROFILES = {
                "arm_drive": MUJOCO_ARM_DRIVE, "dynamics_dr": True, "grasp_mode": "weld", "device": "cuda:0",
                "weld_tau": WELD_TAU},
 }
+# Friction-grasp knobs (track G, roadmap IG.2), read only on the "lehome" profile with grasp_mode="friction"; None keeps
+# the scene as ported in Phase I. particle_friction: the cloth particle material's friction, which PhysX applies to the
+# cloth against every rigid body (table and jaws alike; LeHome 0.5). pad_friction / pad_thickness: the finger lining
+# (PAD_LINING_*). gripper_drive: {ImplicitActuatorCfg field: value} for the gripper actuator only (LeHome kp 17.8,
+# kd 0.6, 10 N m). gripper_closed: the closed jaw target (rad, GRIPPER_CLOSED; the joint's limit is -0.1745).
+# jaw_open_rate: opening moves the jaw target at most this many rad per control step (None: straight to GRIPPER_OPEN)
+FRICTION_GRASP          = {"particle_friction": None, "pad_friction": None, "pad_thickness": None,
+                           "gripper_drive": None, "gripper_closed": None, "jaw_open_rate": None}
+PROFILES["lehome"]["friction_grasp"] = FRICTION_GRASP
+# "friction" (Phase F): the weld profile's setup (cloth pose, flat drop, MuJoCo arm drives, dynamics DR, GPU pipeline,
+# so it vectorises) with the friction grasp instead of the weld: the jaws close and only contact moves the cloth. Its
+# knobs start at track G's IG.2 attempt 9 (closed jaw +0.05 rad: at -0.1 the jaw overlaps the fixed pad and squeezes
+# the cloth out). Track G's 6c8c5af said this became the lehome default, but FRICTION_GRASP stayed all None.
+PROFILES["friction"] = dict(PROFILES["weld"], grasp_mode="friction", weld_tau=None,
+                            friction_grasp=dict(FRICTION_GRASP, gripper_closed=0.05))
 DR_RANGE                = (0.7, 1.3)          # mujuco/sim_main.py reset
 CLOTH_SPEED_LIMIT       = 20.0                # m/s; replaces MuJoCo's qacc explosion check
 KIT_TICK_PERIOD_S       = 30.0                # state mode ticks Kit this often; its hang detector allows 120 s
@@ -190,16 +205,17 @@ class IsaacClothFoldEnv(gym.Env):
 
     def __init__(self, control_dt=0.05, max_episode_steps=200, observation_mode="state", image_size=(84, 84),
                  camera_names=None, n_cloth_samples=9, n_tasks=4, grasp_corners=None, grasp_radius=GRASP_RADIUS,
-                 headless=True, cameras=None, grasp_mode=None, device=None, profile="lehome"):
+                 headless=True, cameras=None, grasp_mode=None, device=None, profile="lehome", grasp_knobs=None):
         self._configure(control_dt, max_episode_steps, observation_mode, image_size, camera_names, n_cloth_samples,
-                        n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile)
+                        n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile, grasp_knobs)
         self._attach(self._build_scene(1), 0)
 
     def _build_scene(self, n_copies):
         from isaac.lab_scene import SceneEnv, make_cfg
         cfg = make_cfg(PHYSICS_DT, self.n_substeps, self.image_size if self._use_image else None, rig=self.rig,
-                       device=self.sim_device, arm_drive=self._prof["arm_drive"], n_copies=n_copies)
-        lab = SceneEnv(cfg, self._prof["cloth_center"])
+                       device=self.sim_device, arm_drive=self._prof["arm_drive"], n_copies=n_copies,
+                       gripper_drive=self.grasp_knobs.get("gripper_drive"))
+        lab = SceneEnv(cfg, self._prof["cloth_center"], grasp=self.grasp_knobs)
         lab.weld_tau = self._prof["weld_tau"]
         lab.weld_mass = WELD_MASS
         return lab
@@ -218,7 +234,7 @@ class IsaacClothFoldEnv(gym.Env):
         self._particle_vel = np.zeros_like(self._particles)
 
     def _configure(self, control_dt, max_episode_steps, observation_mode, image_size, camera_names, n_cloth_samples,
-                   n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile):
+                   n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile, grasp_knobs=None):
         # profile: a PROFILES key; grasp_mode and device default to the profile's
         # device: "cpu" (LeHome's choice: on the CUDA device the grippers pass through the cloth) or "cuda:0", whose
         # particle tensor view the weld grasp needs to pin particles exactly (zero mass + set positions, Phase W)
@@ -237,6 +253,17 @@ class IsaacClothFoldEnv(gym.Env):
         if grasp_mode == "weld" and device == "cpu":
             raise ValueError("grasp_mode='weld' needs the GPU pipeline (device='cuda:0'); see lab_scene.site_pose")
         self.grasp_mode = grasp_mode
+        # friction-grasp knobs (FRICTION_GRASP): the profile's values, then grasp_knobs on top (a bench's candidate)
+        self.grasp_knobs = dict(self._prof.get("friction_grasp", {}))
+        if grasp_knobs:
+            if grasp_mode != "friction" or "friction_grasp" not in self._prof:
+                raise ValueError("grasp_knobs apply to a friction-grasp profile only (lehome, friction)")
+            unknown = set(grasp_knobs) - set(FRICTION_GRASP)
+            if unknown:
+                raise ValueError(f"unknown grasp knobs {sorted(unknown)}")
+            self.grasp_knobs.update(grasp_knobs)
+        closed = self.grasp_knobs.get("gripper_closed")
+        self._closed_q = GRIPPER_CLOSED if closed is None else float(closed)
         self._pinned = {"left_": {}, "right_": {}}    # weld: {grid vertex: (particle idx, offsets)}
         # cameras: {name: square size} -- the imitation pipeline's camera rig (main + wrists), read with render_rig();
         # independent of observation_mode's own 84x84 main image
@@ -478,7 +505,11 @@ class IsaacClothFoldEnv(gym.Env):
             self._gripper_closed[prefix] = True
         elif command > 0.3:
             self._gripper_closed[prefix] = False
-        self._joint_targets[prefix][5] = GRIPPER_CLOSED if self._gripper_closed[prefix] else GRIPPER_OPEN
+        target = self._closed_q if self._gripper_closed[prefix] else GRIPPER_OPEN
+        rate = self.grasp_knobs.get("jaw_open_rate")
+        if rate and self.grasp_mode == "friction" and not self._gripper_closed[prefix]:
+            target = min(target, self._joint_targets[prefix][5] + float(rate))     # open gradually (track G)
+        self._joint_targets[prefix][5] = target
         if self.grasp_mode == "weld":
             if self._gripper_closed[prefix]:
                 self._try_weld(prefix)
@@ -679,9 +710,9 @@ class IsaacSubEnv(IsaacClothFoldEnv):
     def _configure_kwargs(self, control_dt=0.05, max_episode_steps=200, observation_mode="state", image_size=(84, 84),
                           camera_names=None, n_cloth_samples=9, n_tasks=4, grasp_corners=None,
                           grasp_radius=GRASP_RADIUS, headless=True, cameras=None, grasp_mode=None, device=None,
-                          profile="lehome"):
+                          profile="lehome", grasp_knobs=None):
         self._configure(control_dt, max_episode_steps, observation_mode, image_size, camera_names, n_cloth_samples,
-                        n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile)
+                        n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile, grasp_knobs)
 
     def _submit_targets(self):
         self.lab.set_copy_targets(self._copy, self._targets())

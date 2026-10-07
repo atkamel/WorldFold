@@ -90,15 +90,19 @@ LININGS = {"gripper": ((-0.017042, 0.000205, -0.073359), (0.997564, 0.0, -0.0697
            "jaw": ((-0.001287, -0.050919, 0.018299), (0.709761, 0.696602, -0.069295, -0.078629), -1.0, 1.0)}
 
 
-def _robot(prim_path, base_pos, drive=None):
+def _robot(prim_path, base_pos, drive=None, gripper_drive=None):
     """drive: {ImplicitActuatorCfg field: value} applied to every actuator group (the weld profile's
-    MUJOCO_ARM_DRIVE); None keeps LeHome's SO101 drives."""
+    MUJOCO_ARM_DRIVE); None keeps LeHome's SO101 drives. gripper_drive: the same for the gripper actuator only,
+    applied after drive (a friction-grasp knob, isaac_env.FRICTION_GRASP)."""
     pos, rot = usd_root_pose(base_pos, ARM_BASE_QUAT)
     init = SO101_FOLLOWER_CFG.init_state.replace(pos=tuple(float(v) for v in pos), rot=tuple(float(v) for v in rot),
                                                  joint_pos=HOME)
     cfg = SO101_FOLLOWER_CFG.replace(prim_path=prim_path, init_state=init)
     if drive:
         cfg = cfg.replace(actuators={name: act.replace(**drive) for name, act in cfg.actuators.items()})
+    if gripper_drive:
+        cfg = cfg.replace(actuators={name: act.replace(**gripper_drive) if name == "sts3215-gripper" else act
+                                     for name, act in cfg.actuators.items()})
     return cfg
 
 
@@ -181,7 +185,8 @@ class SceneCfg(DirectRLEnvCfg):
     n_copies: int = 1               # milestone V: independent copies of arms + table + cloth (GPU pipeline)
 
 
-def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", arm_drive=None, n_copies=1):
+def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", arm_drive=None, n_copies=1,
+             gripper_drive=None):
     if not 1 <= n_copies <= MAX_COPIES:
         raise ValueError(f"n_copies must be in 1..{MAX_COPIES}, got {n_copies}")
     if n_copies > 1 and device == "cpu":
@@ -191,9 +196,9 @@ def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", ar
     cfg = SceneCfg()
     cfg.n_copies = n_copies
     cfg.action_space = 12 * n_copies
-    if arm_drive:
-        cfg.left_robot = _robot("/World/Robot/Left_Robot", ARM_BASE_LEFT, arm_drive)
-        cfg.right_robot = _robot("/World/Robot/Right_Robot", ARM_BASE_RIGHT, arm_drive)
+    if arm_drive or gripper_drive:
+        cfg.left_robot = _robot("/World/Robot/Left_Robot", ARM_BASE_LEFT, arm_drive, gripper_drive)
+        cfg.right_robot = _robot("/World/Robot/Right_Robot", ARM_BASE_RIGHT, arm_drive, gripper_drive)
     cfg.sim.device = device
     cfg.sim.use_fabric = device != "cpu"        # the GPU pipeline reads state through fabric / tensor views
     cfg.rig = dict(rig) if rig else None
@@ -210,8 +215,10 @@ class SceneEnv(DirectRLEnv):
 
     cfg: SceneCfg
 
-    def __init__(self, cfg, cloth_center):
+    def __init__(self, cfg, cloth_center, grasp=None):
         self.cloth_center = np.asarray(cloth_center, dtype=float)
+        # friction-grasp knobs (isaac_env.FRICTION_GRASP); a missing or None value keeps the scene as ported
+        self.grasp = {k: v for k, v in (grasp or {}).items() if v is not None}
         self.copies = [_Copy(c) for c in range(cfg.n_copies)]
         self.weld_tau = None    # None: rigid weld (zero-mass pins); seconds: soft weld, see _drive_pins
         self.weld_mass = 1.0    # soft weld: pinned particles' mass multiple (the solver moves heavier ones less)
@@ -252,8 +259,8 @@ class SceneEnv(DirectRLEnv):
         self.copies[0].mass_scale = value
 
     def _setup_scene(self):
-        lining = sim_utils.RigidBodyMaterialCfg(static_friction=PAD_LINING_FRICTION,
-                                                dynamic_friction=PAD_LINING_FRICTION)
+        pad_mu = float(self.grasp.get("pad_friction", PAD_LINING_FRICTION))
+        lining = sim_utils.RigidBodyMaterialCfg(static_friction=pad_mu, dynamic_friction=pad_mu)
         floor = sim_utils.GroundPlaneCfg(size=(2 * FLOOR_SIZE, 2 * FLOOR_SIZE), color=FLOOR_COLOR)
         table = sim_utils.CuboidCfg(size=(TABLE_SIZE, TABLE_SIZE, TABLE_TOP_Z),
                                     collision_props=sim_utils.CollisionPropertiesCfg(),
@@ -292,7 +299,7 @@ class SceneEnv(DirectRLEnv):
 
     def _add_linings(self, robot_path):
         # a box on each finger's inner face, over LeHome's capsule pad: PAD_LINING_THICKNESS out from the capsule
-        t = PAD_LINING_THICKNESS
+        t = float(self.grasp.get("pad_thickness", PAD_LINING_THICKNESS))
         for link, (center, quat, side, tip) in LININGS.items():
             local = np.array([side * (PAD_RADIUS + t / 2.0 - 0.0005), 0.0, tip * (0.035 - 0.0215)])
             R = _matrix_from_quat(quat)
@@ -326,6 +333,8 @@ class SceneEnv(DirectRLEnv):
         particle_cfg.objects.garment_config.particle_mass = CLOTH_MASS / (n * n)
         particle_cfg.objects.particle_material.gravity_scale = CLOTH_GRAVITY_SCALE
         particle_cfg.objects.particle_material.adhesion = CLOTH_ADHESION
+        if "particle_friction" in self.grasp:          # friction-grasp knob; adhesion stays CLOTH_ADHESION (0)
+            particle_cfg.objects.particle_material.friction = float(self.grasp["particle_friction"])
         z = TABLE_TOP_Z + particle_cfg.objects.particle_system.rest_offset + 0.001
         cp.cloth_pose = np.array([self.cloth_center[0], self.cloth_center[1], z])
         if cp.index:
