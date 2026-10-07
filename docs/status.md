@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-06 · **Branch:** `feature/isaac-imitation` · **Phase:** W5 fast track, paused at a safe point (privileged done, vision trained; finals next)
+**Updated:** 2026-10-07 · **Branch:** `feature/isaac-imitation` · **Phase:** W5 ✅ (Isaac weld retrain done, report out); next: recovery
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,26 +41,24 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**W5 fast track: paused at a clean point (2026-10-06 19:05). Waiting for the user's "relaunch" and "restart guard"**
-(2 h task limit; the harness says not to auto-restart).
-- **Done:**
-  - `isaac_v1_weld` collected (384 + 16).
-  - Diffusion BC, seeds 0 and 1.
-  - DAgger round 1 (the privileged teacher): 100 / 88 / 49 at n = 100.
-  - Seed-1 check: 98 / 73 / 38.
-  - Vision student `isaac_v1_weld_vision_t0` trained (teacher-relabelled, 30k steps).
-  - Privileged demos ×3 sets: 3/3, 3/3, 2/3.
-- **Left, in this order** (`scripts/isaac_retrain.ps1 -Phase all`, which skips finished stages):
-  1. `final_privileged` (n = 200 × 3, replan 4)
-  2. detector train / agree
-  3. `final_vision` (n = 200 × 3, replan 2)
-  4. `demos_sensor`
-  5. the dated report, then `verify W5`
+**W5 ✅ (2026-10-07).** Report: [reports/2026-10-06-isaac-w5.md](reports/2026-10-06-isaac-w5.md), with 6 demo
+videos (each policy × each benchmark).
+
+| policy (Isaac, weld profile, n = 200) | id_easy | id_hard | recovery |
+|---|---|---|---|
+| privileged: DAgger r1, replan 4 | 99.0 | **97.5** | 54.5 |
+| sensor-only: vision student, replan 2 | 99.0 | 82.5 | 31.0 |
+| expert ceiling | 100 | 100 | 81.7 (pooled) |
+
+- **Recovery is the gap.** Most failures are missed re-grasps after the knock (G1).
+- **Next options, the user's call:**
+  1. More DAgger rounds with takeover p = 0.6 (about +1.5 h per round).
+  2. A better expert re-grasp (W3b plateaued at 81.7%).
+  3. Resume track G (friction grasp, paused).
 - **Heat cap** (user, 2026-10-06; keep under 94 °C):
-  - ≤ 2 Isaac processes × 4 envs, no overlapping sims.
-  - Run `scripts/thermal_guard.py` alongside: pause at 90 °C, resume at 84 °C. The GPU peaked at 87 °C so far.
-- **Recovery is the weak set** (49%; expert ceiling 81.7%). Option: one more DAgger round with takeover p = 0.6,
-  about +1.5 h, if the user asks.
+  - ≤ 2 Isaac processes × 4 envs.
+  - `scripts/thermal_guard.py` alongside: pause at 90 °C, resume at 84 °C. The GPU stayed ≤ 87 °C, with no pauses.
+- **Long Isaac evals:** run with `--resume` (each set is saved as it finishes); the 2 h job limit cuts single runs.
 
 ## Pre-VLA milestone tracker
 
@@ -150,6 +148,11 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-07 · **W5 done.**
+  - Privileged 99.0 / 97.5 / 54.5, sensor-only 99.0 / 82.5 / 31.0 (n = 200); detector 98.0%.
+  - 6 benchmark demos; dated report; `verify W5` PASS.
+  - `evaluate --resume` (per-set saves).
+  - Fast 187 passed, 4 skipped; slow 12 passed. (this commit)
 - 2026-10-06 · **W5 privileged phase done; heat cap.**
   - BC s0 100/85/44, s1 98/73/38; DAgger r1 100/88/49 (n = 100).
   - Vision student trained; privileged demos ×3.
