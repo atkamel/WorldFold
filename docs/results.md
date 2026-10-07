@@ -1621,3 +1621,26 @@ The scripted expert (ScriptedTeacher, retries on) runs id_easy seeds from 100000
 - **Friction failures:** 100013 succeeded only at step 278; 100015 was truncated at 400.
 - **18/20 = 90% [69.9, 97.2]** is the first full-episode number for the physical-grasp expert, on LeHome's
   id_easy set with retries on. The F3 gate measures it at n = 100.
+
+### F2 gate blocks on attempt I's config (n = 100 each, 1 cm jitter, first attempt, retries off)
+
+| block | seeds | left held / placed / released | right held / placed / released | env successes |
+|---|---|---|---|---|
+| A | 600100–199 | 100 / 95 / 100 | 96 / 91 / 96 | 86/100 |
+| B | 600200–299 | 99 / 93 / 99 | **89** / **84** / 89 | 79/100 |
+
+- Acquired: 100/100 left in both blocks; right 100 and 99.
+- **The left arm meets the full IG.2 bar** (98 / 95), except B's placed at 93. **The right arm does not meet even the
+  plateau bar** on B: held 89 [81.4, 93.7].
+- **Right-arm slip mechanism** (blocks A + B, 14 slips against 185 holds):
+  - At the end of the close, a slipped corner sat 2.83 cm from the gripper frame (SD 0.41). A held one sat 1.39 cm
+    (SD 0.92).
+  - The slip offset is +2.5 cm in world y.
+  - During descend + close the corner moved 3.54 cm (holds: 1.66). At the end of the descent the pinch was −1.0 cm
+    off in y (holds: −0.4); the closing right jaw then swept the corner across the pinch.
+  - The corner leaves the jaws mid-carry, about 7 cm up.
+  - This is IG.1's "the right jaw pushes its corner sideways", now measured.
+- The fix is in the expert: `IsaacArmExpert.ALIGN_TOL` re-plans and re-descends when the pinch is off before
+  closing.
+  - Candidates on tune seeds 600400–439 (n = 40): J, pad friction 2.0; K, 200 Hz physics; L, ALIGN_TOL 8 mm.
+  - Blocks A, B and fresh re-run on the winner.
