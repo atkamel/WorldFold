@@ -3,6 +3,9 @@
 OBS_DIM = 139
 ACTION_DIM = 12
 
+# proprio dims of the gripper actuator command (left, right); 1.0 = open, below 0.5 = closing or closed
+GRIPPER_CTRL_DIMS = (10, 35)
+
 # Observation subsets for the privileged-features ablation (imitation.md 2.1, roadmap M2.3).
 # Dims outside a subset are zeroed after normalization, so every policy keeps OBS_DIM inputs.
 _SENSOR_PROPRIO = [i for i in range(50) if i not in (24, 49)]     # 24/49: sim grasp-weld flags

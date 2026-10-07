@@ -36,7 +36,7 @@ def build_parser():
     ap.add_argument("--seed-base", type=int, default=0)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--out", default=None, help="optional JSON file for the per-episode rows")
-    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
     return ap
 
 

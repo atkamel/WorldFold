@@ -34,13 +34,17 @@ OVERSHOOT_FRICTION[(0, "left_")][:] = (-0.001, 0.052, 0.0)
 OVERSHOOT_FRICTION[(0, "right_")][:] = (0.013, 0.050, 0.0)
 
 
+JAW_SHUT_TOL = 0.05          # = isaac_env.JAW_SETTLED_TOL
+JAW_STILL = 0.01             # rad per control step
+
+
 class IsaacArmExpert:
     PHASES = ("approach", "descend", "close", "lift", "carry", "place", "hold")
     RELEASE_PHASES = ("release", "retreat", "done")
     OPEN_PHASES = ("approach", "descend", "release", "retreat", "done")
     # everything that changes while it acts: ScriptedTeacher saves / restores these around a label
     PHASE_FIELDS = ("phase", "q_target", "phase_steps", "retreat_target", "release_allowed", "rng", "plan", "wp",
-                    "budget")
+                    "budget", "regrasps", "miss_steps", "last_jaw")
 
     # the pinch / place geometry and dwells, as class attributes so the grasp bench can try candidates (track G)
     PINCH_HEIGHT = 0.005             # fingertip above the table at the pinch (IG.2 #9; half_fold_demo / weld: 0.010)
@@ -49,6 +53,13 @@ class IsaacArmExpert:
     ARC_HEIGHT = ARC_HEIGHT
     CLOSE_DWELL = CLOSE_DWELL
     OPEN_DWELL = OPEN_DWELL
+    # Phase F (F2/F3), ideas from origin/feat/isaac-half-fold's Markov expert; 0 = off (track G's behaviour), so the
+    # grasp bench can A/B each one (--expert SETTLE_LIFT=1,...)
+    SETTLE_LIFT = 0          # 1: close ends only once the jaw is shut and still (lifting mid-squeeze slips)
+    REGRASP = 0              # n > 0: corner not held for MISS_STEPS steps in lift/carry -> open and re-approach, n times
+    MISS_STEPS = 3
+    REPLAN_MOVE = 0.0        # m > 0: re-plan the approach whenever the corner has moved this far from the planned pinch
+    CARRY_SPEED = 1.0        # joint-speed scale in lift/carry (< 1: a slower carry)
 
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
 
@@ -77,6 +88,9 @@ class IsaacArmExpert:
         self.plan = None          # {"jaw", "above", "pinch", "arc": [q...], "arc_tips": [...], "retreat"}
         self.wp = 0               # index into the arc while lifting / carrying / placing
         self.budget = 0           # steps allowed on the current target (half_fold_demo's per-pose budget)
+        self.regrasps = 0
+        self.miss_steps = 0
+        self.last_jaw = None
 
     def _corner(self):
         cloth = self.base.cloth_positions()
@@ -99,7 +113,7 @@ class IsaacArmExpert:
         # the held point's mirror image across the fold line, so the corner lands on the goal
         place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
         q = list(SEED_Q[p]) if from_q is None else list(from_q)
-        plan = {"jaw": jaw}
+        plan = {"jaw": jaw, "corner": corner.copy()}
         q, _ = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q)
         plan["above"] = q
         q, _ = ik.solve(p, pinch, jaw, q)
@@ -165,6 +179,8 @@ class IsaacArmExpert:
                                + (POSE_SETTLE_STEPS if last else 0))
             delta = (self.q_target - self._q()) / JOINT_DELTA_SCALE
             action[0:5] = delta / max(1.0, float(np.max(np.abs(delta))))     # all joints arrive together
+            if name in ("lift", "carry"):
+                action[0:5] *= self.CARRY_SPEED
         self.phase_steps += 1
         self._maybe_advance(name)
         return action
@@ -176,9 +192,36 @@ class IsaacArmExpert:
         self.phase = min(self.phase + 1, len(self.PHASES) - 1)
         self.phase_steps = 0
 
+    def _jaw_shut(self):
+        """The jaw has reached its closed target and stopped (SETTLE_LIFT)."""
+        jaw = float(self.base.joint_positions(self.prefix)[5])
+        last, self.last_jaw = self.last_jaw, jaw
+        closed_q = getattr(self.base, "_closed_q", jaw)
+        return jaw <= closed_q + JAW_SHUT_TOL and last is not None and abs(jaw - last) < JAW_STILL
+
+    def _restart_grasp(self):
+        """Missed or slipped: open, re-plan on the corner where it lies now, and approach again (REGRASP)."""
+        self.regrasps += 1
+        self.miss_steps = 0
+        self.plan = self._make_plan(from_q=self._q())
+        self.phase = self.PHASES.index("approach")
+        self.phase_steps = 0
+        self.q_target = None
+        self.wp = 0
+
     def _maybe_advance(self, name):
         if name == "done" or (name == "hold" and not (self.release_allowed and "release" in self.PHASES)):
             return
+        if self.REGRASP and name in ("lift", "carry"):
+            held = self.base.grasp_active(self.prefix)
+            self.miss_steps = 0 if held else self.miss_steps + 1
+            if self.miss_steps >= self.MISS_STEPS and self.regrasps < self.REGRASP:
+                self._restart_grasp()
+                return
+        if self.REPLAN_MOVE and name == "approach" and self.plan is not None and "corner" in self.plan:
+            if float(np.linalg.norm(self._corner() - self.plan["corner"])) > self.REPLAN_MOVE:
+                self.plan = self._make_plan(from_q=self._q())
+                self.phase_steps = 0
         patience = self.phase_steps > self.budget    # a pose pressed into the table or cloth may never get closer
         if name in ("approach", "descend"):
             if self._arrived(TRACK_TOL) or patience:
@@ -186,8 +229,10 @@ class IsaacArmExpert:
                     self.plan = self._make_plan(from_q=self._q())
                 self._next()
         elif name == "close":
-            if self.phase_steps >= self.CLOSE_DWELL:
+            shut = self._jaw_shut() if self.SETTLE_LIFT else True
+            if (self.phase_steps >= self.CLOSE_DWELL and shut) or self.phase_steps >= 3 * self.CLOSE_DWELL:
                 self.wp = 0
+                self.miss_steps = 0
                 self._next()
         elif name in ("lift", "carry"):
             last = len(self.plan["arc"]) - 1

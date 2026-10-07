@@ -112,7 +112,7 @@ def build_parser():
     ap.add_argument("--min-gain-se", type=float, default=1.0, help="stop when a round gains less (in SE)")
     ap.add_argument("--resume", action="store_true", help="continue from <out>/history.json")
     ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
-    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
     ap.add_argument("--teacher", default="expert", help="'expert' or a privileged state-policy checkpoint")
     ap.add_argument("--labels", choices=("lookahead", "takeover"), default=None,
                     help="scripted-teacher labels: look-ahead from a sim snapshot (MuJoCo), or executed expert "

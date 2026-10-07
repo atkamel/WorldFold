@@ -1,7 +1,8 @@
 """Friction-grasp bench (track G, roadmap IG.1-IG.2): the friction expert's first attempt on each arm, scored per arm
 as acquired / held / placed / released plus anchor drift (definitions in isaac/grasp_metrics.py).
 
-Each episode is the Isaac half fold on the "lehome" profile (friction grasp, CPU device) driven by the pipeline's
+Each episode is the Isaac half fold on the "lehome" profile (friction grasp, CPU device; --profile friction: the
+Phase F GPU profile) driven by the pipeline's
 ScriptedTeacher (IsaacArmExpert in QuarterFoldExpert) with retries off, so a failed grasp is a failure and not a
 second chance. It stops once both arms have retreated and waited SETTLE_WAIT steps, or the env ends the episode.
 Every step's phase, gripperframe site, corner, jaw angle and anchor per arm goes to traces/<seed>.json; one row per
@@ -96,11 +97,15 @@ def run(args):
         setattr(IsaacArmExpert, k, v)
     sys.argv = sys.argv[:1]                  # AppLauncher reads sys.argv
     base = IsaacClothFoldEnv(observation_mode="state", max_episode_steps=CAP, grasp_corners=GRASP_CORNERS,
-                             grasp_radius=GRASP_RADIUS, profile="lehome", grasp_knobs=knobs or None)
-    env = HalfFoldEnv(base_env=base, max_episode_steps=CAP, cloth_jitter=ISAAC_CLOTH_JITTER)
+                             grasp_radius=GRASP_RADIUS, profile=args.profile, grasp_knobs=knobs or None)
+    if args.profile == "lehome":
+        jitter = ISAAC_CLOTH_JITTER
+    else:                                    # the GPU profiles (friction, Phase F) use MuJoCo's cloth jitter
+        from cloth_fold_rl.fold_env import CLOTH_JITTER as jitter
+    env = HalfFoldEnv(base_env=base, max_episode_steps=CAP, cloth_jitter=jitter)
     teacher = ScriptedTeacher(env)
     qf = teacher.expert
-    config = {"knobs": base.grasp_knobs, "expert": {k: getattr(IsaacArmExpert, k) for k in
+    config = {"profile": args.profile, "knobs": base.grasp_knobs, "expert": {k: getattr(IsaacArmExpert, k) for k in
                                                     ("PINCH_HEIGHT", "PINCH_INSET", "PLACE_HEIGHT", "ARC_HEIGHT",
                                                      "CLOSE_DWELL", "OPEN_DWELL")},
               "overshoot": {f"{s}{p}": np.round(v, 4).tolist() for (s, p), v in OVERSHOOT_FRICTION.items() if s == 0},
@@ -162,6 +167,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", default="600000:600020", help="start:end (imitation.seeds TUNE_SEED_BASE block)")
     ap.add_argument("--out", help="output directory (absolute when cwd is another checkout)")
+    ap.add_argument("--profile", choices=("lehome", "friction"), default="lehome",
+                    help="IsaacClothFoldEnv profile; friction = Phase F's GPU profile")
     ap.add_argument("--knobs", default=None, help="k=v,..., isaac_env.FRICTION_GRASP overrides (gripper_drive.stiffness=50)")
     ap.add_argument("--expert", default=None, help="k=v,..., IsaacArmExpert class-attribute overrides")
     ap.add_argument("--overshoot", default=None, help="stage-0 'lx,ly,rx,ry' (m) placement offsets")

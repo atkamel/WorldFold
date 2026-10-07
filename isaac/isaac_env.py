@@ -92,8 +92,14 @@ PROFILES["lehome"]["friction_grasp"] = FRICTION_GRASP
 # so it vectorises) with the friction grasp instead of the weld: the jaws close and only contact moves the cloth. Its
 # knobs start at track G's IG.2 attempt 9 (closed jaw +0.05 rad: at -0.1 the jaw overlaps the fixed pad and squeezes
 # the cloth out). Track G's 6c8c5af said this became the lehome default, but FRICTION_GRASP stayed all None.
-PROFILES["friction"] = dict(PROFILES["weld"], grasp_mode="friction", weld_tau=None,
+# The cloth sits where LeHome puts it (CLOTH_CENTER, 13.5 cm toward the arms), not at the weld profile's (0, 0): the
+# pinch needs a near-vertical jaw, which the SO101 cannot reach at (0, 0) (F0: descend ended 7-11 cm short).
+PROFILES["friction"] = dict(PROFILES["weld"], grasp_mode="friction", weld_tau=None, cloth_center=CLOTH_CENTER,
                             friction_grasp=dict(FRICTION_GRASP, gripper_closed=0.05))
+# friction grasp_active (Phase F): a closed jaw within this of its target counts as settled (track G traces: 0.14-0.21
+# rad mid-close, exactly the target once shut); the held corner rides 1-4 cm from the gripper frame during the carry
+JAW_SETTLED_TOL         = 0.05
+HOLD_DIST               = 0.05                # = isaac.grasp_metrics.HOLD_DIST
 DR_RANGE                = (0.7, 1.3)          # mujuco/sim_main.py reset
 CLOTH_SPEED_LIMIT       = 20.0                # m/s; replaces MuJoCo's qacc explosion check
 KIT_TICK_PERIOD_S       = 30.0                # state mode ticks Kit this often; its hang detector allows 120 s
@@ -386,14 +392,18 @@ class IsaacClothFoldEnv(gym.Env):
     def grasp_active(self, prefix):
         if self.grasp_mode == "weld":
             return bool(self._pinned[prefix])
-        # nothing attaches the cloth, so this reports what the wrappers ask: the gripper is closed with one of its
-        # corners (grasp_corners, filtered by weld_mask) within grasp_radius of the gripper frame
+        # Nothing attaches the cloth, so this reads the physical state (Phase F): the jaw is commanded closed AND has
+        # settled at its closed target (still closing, or held open by something, is not a grasp), AND one of the
+        # arm's corners (grasp_corners, filtered by weld_mask) is within HOLD_DIST of the gripper frame. A corner
+        # that slips out falls away from the jaws, so this goes False with the jaws still shut (failure code G2).
         if not self._gripper_closed[prefix]:
+            return False
+        if self.joint_positions(prefix)[5] > self._closed_q + JAW_SETTLED_TOL:
             return False
         pos = self.gripper_position(prefix)
         allc = self.cloth_positions()
         allowed = self.weld_mask.get(prefix)
-        return any(np.linalg.norm(allc[vtx] - pos) < self.grasp_radius for vtx in self.grasp_corners[prefix]
+        return any(np.linalg.norm(allc[vtx] - pos) < HOLD_DIST for vtx in self.grasp_corners[prefix]
                    if allowed is None or vtx in allowed)
 
     # ---- task helpers (mirror ClothFoldEnv) ----

@@ -21,6 +21,7 @@ import numpy as np
 from imitation.data.schema import ACTOR_PERTURB, Episode
 from imitation.rollout import EnvPool, ExpertController, PolicyController, rollout
 from imitation.seeds import eval_set
+from imitation.spec import GRIPPER_CTRL_DIMS
 
 SUCCESS_DIST = 0.05
 
@@ -57,6 +58,13 @@ def failure_code(ep: Episode) -> str | None:
     ever = ep.grasped.any(axis=0)
     if not ever.all():
         return "G1"
+    # G2 (Phase F): a slip -- the arm lost its corner while its jaws were still commanded closed. Only a physical
+    # (friction) grasp can do this; a weld holds until the jaws open.
+    for arm in range(2):
+        g = ep.grasped[:, arm]
+        lost = np.flatnonzero(g[:-1] & ~g[1:]) + 1
+        if len(lost) and (ep.obs[np.minimum(lost, len(ep.obs) - 1), GRIPPER_CTRL_DIMS[arm]] < 0.5).any():
+            return "G2"
     # an arm let go before its corner got near the goal
     dist = m.get("final_move_distance", [0.0, 0.0])
     for arm in range(2):
@@ -169,7 +177,7 @@ def build_parser():
     ap.add_argument("--sets", nargs="+", default=["id_easy", "id_hard", "recovery"])
     ap.add_argument("--n", type=int, default=48)
     ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
-    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
     ap.add_argument("--replan-every", type=int, default=8)
     ap.add_argument("--out", default=None, help="JSON report path (default: next to the checkpoint)")
     ap.add_argument("--save-episodes", default=None, help="directory to write the rollouts to")

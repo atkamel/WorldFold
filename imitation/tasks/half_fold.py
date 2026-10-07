@@ -72,11 +72,22 @@ class HalfFoldEnv(QuarterFoldEnv):
         return super().step(action)
 
 
-BACKENDS = ("mujoco", "isaac", "isaac_weld")
+BACKENDS = ("mujoco", "isaac", "isaac_weld", "isaac_friction")
+
+
+# the GPU-pipeline Isaac profiles: MuJoCo's eval sets, jitter and DR; vectorised (milestone V)
+GPU_BACKENDS = ("isaac_weld", "isaac_friction")
+
+
+def _gpu_cap(backend):
+    if backend == "isaac_friction":
+        from imitation.isaac_runtime import FRICTION_MAX_STEPS
+        return FRICTION_MAX_STEPS
+    return HALF_FOLD_MAX_STEPS
 
 
 def is_isaac(backend) -> bool:
-    """True for every Isaac Sim backend ("isaac", "isaac_weld")."""
+    """True for every Isaac Sim backend ("isaac", "isaac_weld", "isaac_friction")."""
     return str(backend).startswith("isaac")
 
 
@@ -88,6 +99,8 @@ def make_env(backend="mujoco", **kwargs):
                       episode cap and jitter; needs the .venv-isaac environment and one env per process.
     backend="isaac_weld": the same Isaac env built with profile="weld" (weld grasp, MuJoCo arm drives); episode
                       cap (HALF_FOLD_MAX_STEPS) and cloth jitter (MuJoCo CLOTH_JITTER) are MuJoCo's.
+    backend="isaac_friction": as isaac_weld, with profile="friction" (the jaws hold the cloth by contact, no weld) and
+                      the FRICTION_MAX_STEPS cap (Phase F).
     """
     if backend == "mujoco":
         return HalfFoldEnv(**kwargs)
@@ -101,10 +114,10 @@ def make_env(backend="mujoco", **kwargs):
             cameras = kwargs.get("cameras") or CAMERAS
         kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras)
         return HalfFoldEnv(**kwargs)
-    if backend == "isaac_weld":
+    if backend in GPU_BACKENDS:
         from cloth_fold_rl.fold_env import CLOTH_JITTER
         from imitation.isaac_runtime import ISAAC_PROFILES, make_isaac_base
-        kwargs.setdefault("max_episode_steps", HALF_FOLD_MAX_STEPS)
+        kwargs.setdefault("max_episode_steps", _gpu_cap(backend))
         kwargs.setdefault("cloth_jitter", CLOTH_JITTER)
         cameras = None
         if kwargs.get("obs_mode", "state") == "dict":
@@ -122,11 +135,11 @@ def make_env_batch(backend="isaac_weld", n=1, **kwargs):
     Each env is built exactly as make_env(backend, **kwargs) builds one, except that its base env is
     sub-env i of an isaac.isaac_env.IsaacClothFoldBatch; physics advances only through the batch (see
     imitation/lockstep.py). Only the GPU weld profile (isaac_weld) is vectorised."""
-    if backend != "isaac_weld":
-        raise ValueError(f"only isaac_weld runs several envs per process, got {backend!r}")
+    if backend not in GPU_BACKENDS:
+        raise ValueError(f"only {GPU_BACKENDS} run several envs per process, got {backend!r}")
     from cloth_fold_rl.fold_env import CLOTH_JITTER
     from imitation.isaac_runtime import ISAAC_PROFILES, make_isaac_batch
-    kwargs.setdefault("max_episode_steps", HALF_FOLD_MAX_STEPS)
+    kwargs.setdefault("max_episode_steps", _gpu_cap(backend))
     kwargs.setdefault("cloth_jitter", CLOTH_JITTER)
     cameras = None
     if kwargs.get("obs_mode", "state") == "dict":

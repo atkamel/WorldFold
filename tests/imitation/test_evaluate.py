@@ -29,3 +29,13 @@ def test_saved_eval_versions_do_not_collide():
     a = save_version_name("id_easy", "runs/a/final.pt", 200)
     assert a != save_version_name("id_easy", "runs/b/final.pt", 200)
     assert a != save_version_name("id_easy", "runs/a/final.pt", 100)
+
+
+def test_slip_with_jaws_closed_is_g2_and_opening_is_not():
+    from imitation.spec import GRIPPER_CTRL_DIMS
+    ep = _failed(None)
+    ep.grasped[20:, 1] = False                    # right arm loses its corner at t = 20
+    ep.obs[:, GRIPPER_CTRL_DIMS[1]] = -0.1        # ... with its jaws still commanded closed
+    assert failure_code(ep) == "G2"
+    ep.obs[20:, GRIPPER_CTRL_DIMS[1]] = 1.0       # the jaws opened at t = 20: a release, not a slip
+    assert failure_code(ep) != "G2"

@@ -275,8 +275,9 @@ def envs_per_proc(backend) -> int:
     b = int(os.environ.get("WORLDFOLD_ISAAC_ENVS_PER_PROC", "1"))
     if b < 1:
         raise ValueError(f"WORLDFOLD_ISAAC_ENVS_PER_PROC must be >= 1, got {b}")
-    if b > 1 and backend != "isaac_weld":
-        raise ValueError(f"WORLDFOLD_ISAAC_ENVS_PER_PROC > 1 needs the GPU weld profile (isaac_weld), not {backend}")
+    from imitation.tasks.half_fold import GPU_BACKENDS
+    if b > 1 and backend not in GPU_BACKENDS:
+        raise ValueError(f"WORLDFOLD_ISAAC_ENVS_PER_PROC > 1 needs a GPU profile {GPU_BACKENDS}, not {backend}")
     return b
 
 

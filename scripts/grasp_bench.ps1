@@ -8,6 +8,7 @@ param(
     [string]$Knobs = "",
     [string]$Expert = "",
     [string]$Overshoot = "",
+    [ValidateSet("lehome", "friction")][string]$Profile = "lehome",
     [string]$Main = "C:\Users\ethan\Documents\Projects\watai\WorldFold"
 )
 $ErrorActionPreference = "Stop"
@@ -21,7 +22,7 @@ if (-not $outAbs.StartsWith($code)) { throw "-Out must be inside $code" }
 New-Item -ItemType Directory -Force $outAbs | Out-Null
 $log = Join-Path $outAbs "bench.log"
 $script = Join-Path $code "isaac\grasp_bench.py"
-$cmd = "`"$py`" -u `"$script`" --seeds $Seeds --out `"$outAbs`""
+$cmd = "`"$py`" -u `"$script`" --seeds $Seeds --out `"$outAbs`" --profile $Profile"
 if ($Knobs) { $cmd += " --knobs $Knobs" }        # k=v,... (no spaces, no quotes)
 if ($Expert) { $cmd += " --expert $Expert" }
 if ($Overshoot) { $cmd += " --overshoot=$Overshoot" }   # lx,ly,rx,ry; "=" so a leading minus is not an option
