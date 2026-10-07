@@ -13,7 +13,7 @@ import pytest
 
 def test_backends_listed():
     from imitation.tasks.half_fold import BACKENDS
-    assert BACKENDS == ("mujoco", "isaac", "isaac_weld", "isaac_friction")
+    assert BACKENDS == ("mujoco", "isaac", "isaac_weld", "isaac_friction", "isaac_anchor")
 
 
 def test_unknown_backend_rejected():

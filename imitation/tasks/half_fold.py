@@ -72,22 +72,22 @@ class HalfFoldEnv(QuarterFoldEnv):
         return super().step(action)
 
 
-BACKENDS = ("mujoco", "isaac", "isaac_weld", "isaac_friction")
+BACKENDS = ("mujoco", "isaac", "isaac_weld", "isaac_friction", "isaac_anchor")
 
 
 # the GPU-pipeline Isaac profiles: MuJoCo's eval sets, jitter and DR; vectorised (milestone V)
-GPU_BACKENDS = ("isaac_weld", "isaac_friction")
+GPU_BACKENDS = ("isaac_weld", "isaac_friction")      # isaac_anchor is GPU-pipeline too but single-env only: not listed
 
 
 def _gpu_cap(backend):
-    if backend == "isaac_friction":
+    if backend in ("isaac_friction", "isaac_anchor"):
         from imitation.isaac_runtime import FRICTION_MAX_STEPS
         return FRICTION_MAX_STEPS
     return HALF_FOLD_MAX_STEPS
 
 
 def is_isaac(backend) -> bool:
-    """True for every Isaac Sim backend ("isaac", "isaac_weld", "isaac_friction")."""
+    """True for every Isaac Sim backend ("isaac", "isaac_weld", "isaac_friction", "isaac_anchor")."""
     return str(backend).startswith("isaac")
 
 
@@ -101,6 +101,8 @@ def make_env(backend="mujoco", **kwargs):
                       cap (HALF_FOLD_MAX_STEPS) and cloth jitter (MuJoCo CLOTH_JITTER) are MuJoCo's.
     backend="isaac_friction": as isaac_weld, with profile="friction" (the jaws hold the cloth by contact, no weld) and
                       the FRICTION_MAX_STEPS cap (Phase F).
+    backend="isaac_anchor": as isaac_friction, with profile="anchor": a comparison-only kinematic anchor replaces the
+                      physical grasp (see docs/imitation.md section 10). One env per process, never vectorised.
     """
     if backend == "mujoco":
         return HalfFoldEnv(**kwargs)
@@ -114,7 +116,7 @@ def make_env(backend="mujoco", **kwargs):
             cameras = kwargs.get("cameras") or CAMERAS
         kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras)
         return HalfFoldEnv(**kwargs)
-    if backend in GPU_BACKENDS:
+    if backend in GPU_BACKENDS or backend == "isaac_anchor":
         from cloth_fold_rl.fold_env import CLOTH_JITTER
         from imitation.isaac_runtime import ISAAC_PROFILES, make_isaac_base
         kwargs.setdefault("max_episode_steps", _gpu_cap(backend))

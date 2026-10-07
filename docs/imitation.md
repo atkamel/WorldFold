@@ -374,6 +374,16 @@ fields mean slightly different things:
 
 MuJoCo-trained normalizers and checkpoints don't transfer.
 
+**`isaac_anchor` (comparison only).** Profile `anchor` = the `friction` profile's setup with
+`grasp_mode="anchor"`, a port of Ruby Zhou's grasp on `feat/isaac-half-fold` (e188194) so our numbers
+can be set beside hers. It is a distance-gated kinematic attachment, **not a physical grasp**: each arm
+has a 4 mm kinematic sphere attached to the cloth particles at its first grasp corner
+(`PhysxPhysicsAttachment`); it engages when the jaw is commanded closed with that corner within
+`grasp_radius` of the gripper frame, is teleported with the gripper before every physics substep, and
+releases when the jaw opens. The jaws close normally but hold nothing; `grasp_active` means "anchor
+engaged". Single env, copy 0 only (no `WORLDFOLD_ISAAC_ENVS_PER_PROC > 1`), same expert and step cap as
+`isaac_friction`. Results on it must never be reported as a physical-grasp result.
+
 **Isaac eval sets** (`imitation.seeds.eval_set(..., backend="isaac")`) use the same seed bases:
 - `id_easy`: the default reset.
 - `id_hard`: one axis forced to ±1 cm, which is the reach limit (`isaac/reach_check.py`). It's
