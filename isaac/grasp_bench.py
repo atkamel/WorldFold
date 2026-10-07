@@ -81,10 +81,11 @@ def run(args):
     from imitation.tasks.half_fold import HalfFoldEnv
     from imitation.isaac_runtime import ISAAC_CLOTH_JITTER
     from isaac.isaac_env import IsaacClothFoldEnv
-    from isaac.fold_expert import OVERSHOOT_FRICTION, IsaacArmExpert
+    from isaac.fold_expert import OVERSHOOTS, IsaacArmExpert
     from imitation.teachers.scripted import ScriptedTeacher
 
     qfe.MAX_RETRIES = 0
+    OVERSHOOT_FRICTION = OVERSHOOTS[args.profile]      # the profile's table (ScriptedTeacher reads the same one)
     if args.overshoot:                       # stage-0 placement offsets, a candidate (fold_expert.OVERSHOOT_FRICTION)
         lx, ly, rx, ry = (float(v) for v in args.overshoot.split(","))
         OVERSHOOT_FRICTION[(0, "left_")][:] = (lx, ly, 0.0)
