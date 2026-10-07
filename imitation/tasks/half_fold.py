@@ -86,6 +86,16 @@ def _gpu_cap(backend):
     return HALF_FOLD_MAX_STEPS
 
 
+def _jitter(backend):
+    """Reset cloth jitter: LeHome's 1 cm for the backends on LeHome's task distribution (imitation.seeds), else MuJoCo's."""
+    from imitation.seeds import LEHOME_TASK_BACKENDS
+    if backend in LEHOME_TASK_BACKENDS:
+        from imitation.isaac_runtime import ISAAC_CLOTH_JITTER
+        return ISAAC_CLOTH_JITTER
+    from cloth_fold_rl.fold_env import CLOTH_JITTER
+    return CLOTH_JITTER
+
+
 def is_isaac(backend) -> bool:
     """True for every Isaac Sim backend ("isaac", "isaac_weld", "isaac_friction", "isaac_anchor")."""
     return str(backend).startswith("isaac")
@@ -117,10 +127,9 @@ def make_env(backend="mujoco", **kwargs):
         kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras)
         return HalfFoldEnv(**kwargs)
     if backend in GPU_BACKENDS or backend == "isaac_anchor":
-        from cloth_fold_rl.fold_env import CLOTH_JITTER
         from imitation.isaac_runtime import ISAAC_PROFILES, make_isaac_base
         kwargs.setdefault("max_episode_steps", _gpu_cap(backend))
-        kwargs.setdefault("cloth_jitter", CLOTH_JITTER)
+        kwargs.setdefault("cloth_jitter", _jitter(backend))
         cameras = None
         if kwargs.get("obs_mode", "state") == "dict":
             from imitation.vision.render import CAMERAS
@@ -139,10 +148,9 @@ def make_env_batch(backend="isaac_weld", n=1, **kwargs):
     imitation/lockstep.py). Only the GPU weld profile (isaac_weld) is vectorised."""
     if backend not in GPU_BACKENDS:
         raise ValueError(f"only {GPU_BACKENDS} run several envs per process, got {backend!r}")
-    from cloth_fold_rl.fold_env import CLOTH_JITTER
     from imitation.isaac_runtime import ISAAC_PROFILES, make_isaac_batch
     kwargs.setdefault("max_episode_steps", _gpu_cap(backend))
-    kwargs.setdefault("cloth_jitter", CLOTH_JITTER)
+    kwargs.setdefault("cloth_jitter", _jitter(backend))
     cameras = None
     if kwargs.get("obs_mode", "state") == "dict":
         from imitation.vision.render import CAMERAS

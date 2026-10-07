@@ -1545,3 +1545,36 @@ Kept means it gained more than 1 SE on held or placed with released not regressi
 - **Placement after A:** settled miss over held episodes, mean (x, y): left (+1.9, +0.8) cm (n = 20), right
   (−1.3, +1.5) cm (n = 16); per-axis SD 2.1–3.5 cm. The friction profile's overshoot is now #9's minus this mean
   (`isaac/fold_expert.OVERSHOOT_FRICTION_PROFILE`). The spread (the dynamics DR) is what the expert's retries close.
+
+### Pinch reachability at LeHome's cloth position — why isaac_friction runs LeHome's task sets (2026-10-07)
+
+No-physics IK (`isaac/reach_check.py`'s `max_error` with `isaac.pinch.PinchIK`), pinch + above + place per arm.
+"Reachable" uses reach_check's tolerances: grasp error ≤ 4.66 mm and place error ≤ 17.6 mm, the nominal ±1 cm box's
+worst case.
+
+| cloth offsets | reachable | place error median / p90 (mm) |
+|---|---|---|
+| MuJoCo id_hard (`shifted_pose`, 2.5–4 cm), seeds 200000–199 | **0/200** | 32.9 / 42.8 |
+| uniform ±1.5 cm, n = 100 | 74/100 | 7.8 / 18.7 |
+| uniform ±2.0 cm | 60/100 | 7.7 / 20.1 |
+| uniform ±2.5 cm (MuJoCo's reset jitter) | 39/100 | 13.6 / 26.8 |
+| Isaac id_hard (`shifted_pose_isaac`, 1 cm ring), seeds 200000–099 | 100/100 | 10.1 / 16.6 |
+
+- The top-down pinch cannot fold most cloth placements that MuJoCo's weld setup uses.
+  - The SO101 reaches the corners, but not the fold line with a near-vertical jaw.
+  - The weld never needed a vertical jaw.
+- **Decision (lead, 2026-10-07):** `isaac_friction` and `isaac_anchor` run LeHome's task distribution, which is the
+  original `isaac` backend's sets from I1.2:
+  - 1 cm jitter;
+  - the Isaac id_hard ring;
+  - the recovery knock window (35, 140);
+  - the 400-step cap.
+  `isaac_weld` keeps MuJoCo's sets. **Weld (W5) and friction numbers are therefore not on identical sets.** The
+  report must say so.
+- **F2 attempts A, E, F and G ran at MuJoCo's ±2.5 cm jitter.** That is part of why the right arm misses: 4 of 20 in
+  `f2_a2_gripdrive_fresh`, with the pinch landing 2.4–3.9 cm off the corner. Later attempts run at 1 cm.
+- `f2_a2_gripdrive_fresh` (A's config, seeds 600020–39, 2.5 cm jitter):
+  - left: acquired / held / placed 20/20 / 20/20 / 15/20;
+  - right: 16/20 / 14/20 / 15/20;
+  - 11/20 env successes.
+  - Pooled with A (n = 40): held 40/40 left and 30/40 right.

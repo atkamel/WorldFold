@@ -100,15 +100,14 @@ def run(args):
     base = IsaacClothFoldEnv(observation_mode="state", max_episode_steps=CAP, grasp_corners=GRASP_CORNERS,
                              grasp_radius=GRASP_RADIUS, profile=args.profile, grasp_knobs=knobs or None,
                              device=args.device)
-    if args.profile == "lehome":
-        jitter = ISAAC_CLOTH_JITTER
-    else:                                    # the GPU profiles (friction, Phase F) use MuJoCo's cloth jitter
-        from cloth_fold_rl.fold_env import CLOTH_JITTER as jitter
+    # LeHome's 1 cm jitter on every profile here: the pinch reaches ~1.5 cm of cloth offset (imitation.seeds,
+    # LEHOME_TASK_BACKENDS). F2 attempts up to G ran the friction profile at MuJoCo's 2.5 cm (config "jitter").
+    jitter = ISAAC_CLOTH_JITTER
     env = HalfFoldEnv(base_env=base, max_episode_steps=CAP, cloth_jitter=jitter,
                       domain_randomization=not args.no_dr)
     teacher = ScriptedTeacher(env)
     qf = teacher.expert
-    config = {"profile": args.profile, "device": base.sim_device, "dr": not args.no_dr, "knobs": base.grasp_knobs, "expert": {k: getattr(IsaacArmExpert, k) for k in
+    config = {"jitter": jitter, "profile": args.profile, "device": base.sim_device, "dr": not args.no_dr, "knobs": base.grasp_knobs, "expert": {k: getattr(IsaacArmExpert, k) for k in
                                                     ("PINCH_HEIGHT", "PINCH_INSET", "PLACE_HEIGHT", "ARC_HEIGHT",
                                                      "CLOSE_DWELL", "OPEN_DWELL")},
               "overshoot": {f"{s}{p}": np.round(v, 4).tolist() for (s, p), v in OVERSHOOT_FRICTION.items() if s == 0},

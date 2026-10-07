@@ -39,7 +39,8 @@ def recovery_perturbation(fraction, t_range=(10, 70), k_range=(5, 15)):
 
 def recovery_perturbation_for(backend, fraction):
     """MuJoCo's (10, 70) onset window scaled by 230/97 for the longer Isaac fold."""
-    if backend != "isaac":      # mujoco and isaac_weld share MuJoCo's episode timing
+    from imitation.seeds import LEHOME_TASK_BACKENDS
+    if backend not in LEHOME_TASK_BACKENDS:      # mujoco and isaac_weld share MuJoCo's episode timing
         return recovery_perturbation(fraction)
     return recovery_perturbation(fraction, t_range=(24, 166), k_range=(5, 15))
 

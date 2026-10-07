@@ -39,6 +39,8 @@ def test_cli_parsers_accept_isaac_anchor(module):
     assert build_parser().parse_args(_CLI_ARGS[module] + ["--backend", "isaac_anchor"]).backend == "isaac_anchor"
 
 
-def test_eval_sets_match_mujoco_for_anchor():
+def test_anchor_and_friction_use_lehome_task_sets():
     from imitation.seeds import eval_set
-    assert eval_set("id_hard", 8, "isaac_anchor")[0] == eval_set("id_hard", 8, "mujoco")[0]
+    for b in ("isaac_anchor", "isaac_friction"):
+        assert eval_set("id_hard", 8, b)[1] is eval_set("id_hard", 8, "isaac")[1]
+    assert eval_set("id_hard", 8, "isaac_weld")[1] is eval_set("id_hard", 8, "mujoco")[1]
