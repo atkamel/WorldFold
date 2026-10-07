@@ -133,9 +133,12 @@ if ($Phase -in "vision", "all" -or $Only) {
 }
 
 if ($Phase -in "final", "all" -or $Only) {
-    Stage "final_vision" "$out\final_vision_r2.json" {
+    # over 2 h in all (camera rendering at replan 2): each set is saved as it finishes and --resume skips it,
+    # so a job-limit cut costs at most one set; the .done marker says all three are in
+    Stage "final_vision" "$out\final_vision_r2.done" {
         & $py -u -m imitation.evaluate --backend $B --ckpt $bv --sets $sets --n 200 --replan-every 2 --workers 2 `
-            --out "$out\final_vision_r2.json" }
+            --out "$out\final_vision_r2.json" --resume
+        if ($LASTEXITCODE -eq 0) { Set-Content "$out\final_vision_r2.done" (Get-Date -Format s) } }
     Stage "demos_sensor" "docs\reports\media\half_fold_isaac_sensor_recovery.mp4" { Demos "sensor" $bv 2 }
     if (-not $Only) { Note "W5 COMPLETE" }
 }

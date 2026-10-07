@@ -1285,3 +1285,34 @@ no pauses).
   all failures.
 - **Detector** (`isaac_v1_weld_detector`, image-based success classifier on `isaac_v1_weld` + `_failures`):
   agreement with the sim's success check is 392/400 = 98.0% [96.1, 99.0]. TP 376, FP 0, FN 8. Above the 90% bar.
+
+### W5 final: sensor-only student at its operating point (2026-10-07)
+
+- **Policy:** `isaac_v1_weld_vision_t0`, vision, 30k steps, batch 256.
+- **Training data:** every `isaac_v1_weld` step relabelled by the DAgger r1 teacher (the M5b.3 round-0 recipe).
+- **Inputs:** main camera 128² plus 2 wrist cameras 64², and the 48 sensor proprio dims.
+- **Eval:** replan 2, n = 200 per set, deterministic, `isaac_weld`, 2 processes × 4 envs with the thermal guard (GPU
+  ≤ 81 °C).
+
+| set | success | Wilson 95% | failure codes |
+|---|---|---|---|
+| id_easy | 198/200 = 99.0% | 96.4–99.7 | G1 2 |
+| id_hard | 165/200 = 82.5% | 76.6–87.1 | G1 28, S1 5, F1 2 |
+| recovery | 62/200 = 31.0% | 25.0–37.7 | G1 115, F1 21, M1 1, S1 1 |
+
+- **Against the MuJoCo sensor-only best** (M5b.3 + M5b.6, replan 2: 94.0 / 91.0 / 41.0):
+  - id_easy +5 pp.
+  - id_hard −8.5 pp (intervals overlap slightly).
+  - recovery −10 pp.
+- **Against its own teacher** (99.0 / 97.5 / 54.5):
+  - id_easy 0 pp.
+  - id_hard −15 pp.
+  - recovery −23.5 pp.
+- **The student misses grasps the teacher makes:** grasp success is 93% on id_hard (teacher: 100%). After a knock,
+  re-grasping without corner positions mostly fails: G1 is 115 of 138 recovery failures.
+- **Demos** (first 3 seeds of each set, replan 2):
+  - id_easy 3/3
+  - id_hard 3/3
+  - recovery 1/3: seeds 300001 and 300002 time out after the knock.
+- **W5 total wall time:** about 12 h including pauses (collection 13:11 → finals 01:13). The sim stages ran under
+  the heat cap after 17:17.

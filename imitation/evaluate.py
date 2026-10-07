@@ -113,7 +113,7 @@ class _TimedPolicy:
 
 
 def evaluate(ckpt, sets=("id_easy",), n=48, workers=None, replan_every=8, pool=None, log=print, save_dir=None,
-             backend="mujoco"):
+             backend="mujoco", on_set=None):
     from imitation.policies.common import load_policy
 
     policy = None if ckpt == "expert" else load_policy(ckpt)
@@ -146,6 +146,8 @@ def evaluate(ckpt, sets=("id_easy",), n=48, workers=None, replan_every=8, pool=N
                 timed.batch.clear()
             results[name] = summarize(eps, infer)
             r = results[name]
+            if on_set is not None:         # e.g. persist each set as it finishes (a job limit can cut a long eval)
+                on_set(name, r)
             log(f"  {name:9s} success {r['success_rate']:.0%} ({round(r['success_rate'] * r['n'])}/{r['n']})  "
                 f"fold {r['mean_fold_score']:.3f}  grasp {r['grasp_success']:.0%}  "
                 f"failures {r['failure_codes']}  {time.time() - t0:.0f}s")
@@ -171,18 +173,36 @@ def build_parser():
     ap.add_argument("--replan-every", type=int, default=8)
     ap.add_argument("--out", default=None, help="JSON report path (default: next to the checkpoint)")
     ap.add_argument("--save-episodes", default=None, help="directory to write the rollouts to")
+    ap.add_argument("--resume", action="store_true",
+                    help="keep the sets already in --out (same checkpoint and replan) and run only the missing ones")
     return ap
 
 
 def main():
     args = build_parser().parse_args()
-    results = evaluate(args.ckpt, args.sets, args.n, resolve_workers(args.backend, args.workers), args.replan_every,
-                       save_dir=args.save_episodes, backend=args.backend)
-    out = args.out or (Path(args.ckpt).with_name(f"eval_r{args.replan_every}.json") if args.ckpt != "expert"
-                       else Path("outputs/imitation/eval_expert.json"))
-    with open(out, "w") as f:
-        json.dump({"checkpoint": args.ckpt, "replan_every": args.replan_every, "results": results,
-                   "failure_codes": FAILURE_CODES}, f, indent=1)
+    out = Path(args.out or (Path(args.ckpt).with_name(f"eval_r{args.replan_every}.json") if args.ckpt != "expert"
+                            else Path("outputs/imitation/eval_expert.json")))
+    results = {}
+    if args.resume and out.exists():
+        prev = json.loads(out.read_text())
+        if prev.get("checkpoint") == args.ckpt and prev.get("replan_every") == args.replan_every:
+            results = {k: v for k, v in prev["results"].items() if v.get("n") == args.n}
+            print(f"resuming {out}: have {sorted(results)}")
+
+    def write(name=None, r=None):
+        if name is not None:
+            results[name] = r
+        order = [s for s in args.sets if s in results] + [s for s in results if s not in args.sets]
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "w") as f:
+            json.dump({"checkpoint": args.ckpt, "replan_every": args.replan_every,
+                       "results": {s: results[s] for s in order}, "failure_codes": FAILURE_CODES}, f, indent=1)
+
+    todo = [s for s in args.sets if s not in results]
+    if todo:
+        evaluate(args.ckpt, todo, args.n, resolve_workers(args.backend, args.workers), args.replan_every,
+                 save_dir=args.save_episodes, backend=args.backend, on_set=write)
+    write()
     print(f"wrote {out}")
 
 
