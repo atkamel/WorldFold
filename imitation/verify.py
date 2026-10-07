@@ -636,6 +636,117 @@ def _i33() -> Result:
     return Result("I3.3", "PASS" if ok else "FAIL", ev)
 
 
+# ---------------------------------------------------------------- Phase F: physical grasp (friction profile)
+HONESTY = ROOT / "outputs" / "isaac" / "honesty"
+F0_RUN = "f0_friction_gpu_v2"
+IG2_BEST = {"left_": {"held": (20, 20)}, "right_": {"held": (19, 20)}}     # track G IG.2 attempt 9 (CPU, lehome)
+F2_BLOCKS = ("f2_block_a", "f2_block_b", "f2_fresh")
+F2_PLATEAU = {"acquired": 95.0, "held": 95.0, "released": 95.0, "placed": 90.0}
+F3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "recovery": 90.0}
+
+
+@check("F0", "friction profile (GPU, weld setup + friction grasp): grasp bench n >= 20 on tune seeds; held per arm within the interval of track G #9, or the delta recorded in results.md")
+def _f0() -> Result:
+    s, ev = _grasp_summary(F0_RUN)
+    if s is None:
+        return Result("F0", "FAIL", ev)
+    cfg = s.get("config") or {}
+    ev += _grasp_lines(F0_RUN, s)
+    within = True
+    for p, ref in IG2_BEST.items():
+        k, n = ref["held"]
+        lo_ref = wilson(k, n)[0]
+        hi = s["arms"][p]["held"]["wilson"][1]
+        within &= hi >= lo_ref
+        ev.append(f"{p} held upper {hi} vs #9's lower {lo_ref:.1f}")
+    ev.append(f"profile {cfg.get('profile')}, n {s['n']}, within #9's interval={within}")
+    ok = (cfg.get("profile") == "friction" and s["n"] >= 20 and git_tracked(GRASP / F0_RUN / "summary.json")
+          and results_md_has("F0"))
+    return Result("F0", "PASS" if ok else "FAIL", ev)
+
+
+@check("F1", "grasp honesty: friction expert episodes with no pins, attachments or forced-open jaws, jaws shut whenever a corner is lifted; the weld profile fails it (negative control)")
+def _f1() -> Result:
+    ev, ok = [], True
+    for name, want in (("friction", True), ("weld", False)):
+        path = HONESTY / f"{name}.json"
+        if not path.exists():
+            ev.append(f"missing artifact: {path}")
+            ok = False
+            continue
+        r = json.loads(path.read_text(encoding="utf-8"))
+        ev.append(f"{name}: n {r['n']}, honest {r['honest']}, violations {r['violations']}, lifted steps "
+                  f"{r['lifted_steps']}, successes {r['successes']}")
+        ok &= r["honest"] == want and r["lifted_steps"] > 0 and git_tracked(path)
+        if want:
+            ok &= r["n"] >= 20
+    ok &= results_md_has("F1")
+    return Result("F1", "PASS" if ok else "FAIL", ev)
+
+
+@check("F2", "friction grasp reliability on the friction profile: per arm, n = 100 on two tune blocks plus a fresh block, acquired / held / released >= 98, placed >= 95 (plateau 95 / 90 if recorded), one config")
+def _f2() -> Result:
+    plateau = results_md_has("F2 plateau accepted")
+    bar = F2_PLATEAU if plateau else IG2_BAR
+    ev, ok, configs, seeds = [f"bar {'plateau' if plateau else 'full'}: {bar}"], True, [], []
+    for name in F2_BLOCKS:
+        s, miss = _grasp_summary(name)
+        if s is None:
+            ev += miss
+            ok = False
+            continue
+        good = s["n"] >= 100 and all(TUNE_BLOCK[0] <= x < TUNE_BLOCK[1] for x in s["seeds"])
+        good &= (s.get("config") or {}).get("profile") == "friction"
+        for st in s["arms"].values():
+            good &= all(st[m]["rate"] >= bar[m] for m in GRASP_METRICS)
+        good &= git_tracked(GRASP / name / "summary.json")
+        ev += _grasp_lines(name, s)
+        ev.append(f"{name}: n {s['n']} meets bar={good}")
+        ok &= good
+        c = s.get("config") or {}
+        configs.append(json.dumps(c.get("knobs"), sort_keys=True) + json.dumps(c.get("expert"), sort_keys=True))
+        seeds.append(set(s["seeds"]))
+    if len(seeds) == len(F2_BLOCKS):
+        disjoint = all(not (seeds[i] & seeds[j]) for i in range(3) for j in range(i + 1, 3))
+        others = [json.loads(line)["seed"] for d in GRASP.glob("*/rows.jsonl") if d.parent.name != "f2_fresh"
+                  for line in d.read_text(encoding="utf-8").splitlines() if line.strip()]
+        fresh = not (seeds[2] & set(others))
+        ev.append(f"blocks disjoint={disjoint}, one config={len(set(configs)) == 1}, fresh untouched={fresh}")
+        ok &= disjoint and len(set(configs)) == 1 and fresh
+    ok &= results_md_has("F2")
+    return Result("F2", "PASS" if ok else "FAIL", ev)
+
+
+@check("F3", "friction expert gate (isaac_friction): n >= 100 id_easy >= 95, id_hard >= 90, recovery >= 90 (85 if the plateau is recorded), check_resync >= 90")
+def _f3() -> Result:
+    d = ROOT / "outputs" / "imitation" / "isaac_friction" / "f3"
+    gate = dict(F3_GATE, recovery=85.0) if results_md_has("F3 plateau accepted") else F3_GATE
+    ev, ok = [], True
+    for s, bar in gate.items():
+        path = d / f"eval_expert_{s}.json"
+        if not path.exists():
+            ev.append(f"missing artifact: {path}")
+            ok = False
+            continue
+        k, n = eval_counts(path)[s]
+        lo, hi = wilson(k, n)
+        ev.append(f"{s}: {k}/{n} = {100.0 * k / n:.1f}% [{lo:.1f}, {hi:.1f}] (bar {bar:.0f})")
+        ok &= n >= 100 and 100.0 * k / n >= bar and git_tracked(path)
+    rs = d / "check_resync.json"
+    if rs.exists():
+        r = json.loads(rs.read_text(encoding="utf-8"))
+        for m, v in r["modes"].items():
+            rate = 100.0 * v["success"] / v["n"]
+            ev.append(f"check_resync {m}: {v['success']}/{v['n']} = {rate:.1f}% (bar {IG3_RESYNC:.0f})")
+            ok &= v["n"] >= 100 and rate >= IG3_RESYNC
+        ok &= git_tracked(rs)
+    else:
+        ev.append(f"missing artifact: {rs}")
+        ok = False
+    ok &= results_md_has("F3")
+    return Result("F3", "PASS" if ok else "FAIL", ev)
+
+
 # ---------------------------------------------------------------- CLI
 def run_one(mid: str) -> Result:
     desc, fn = CHECKS[mid]

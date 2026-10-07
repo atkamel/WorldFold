@@ -85,8 +85,13 @@ PROFILES = {
 # (PAD_LINING_*). gripper_drive: {ImplicitActuatorCfg field: value} for the gripper actuator only (LeHome kp 17.8,
 # kd 0.6, 10 N m). gripper_closed: the closed jaw target (rad, GRIPPER_CLOSED; the joint's limit is -0.1745).
 # jaw_open_rate: opening moves the jaw target at most this many rad per control step (None: straight to GRIPPER_OPEN)
+# Phase F (F2), the rest of LeHome's particle material and the physics rate: adhesion (LeHome 0.1, we spawn 0; the
+# user's cap is ADHESION_MAX), adhesion_offset_scale (LeHome 0: adhesion acts in contact only), gravity_scale (LeHome
+# 2, we spawn 1), physics_hz (100; a multiple of 20 so it divides the 0.05 s control step).
 FRICTION_GRASP          = {"particle_friction": None, "pad_friction": None, "pad_thickness": None,
-                           "gripper_drive": None, "gripper_closed": None, "jaw_open_rate": None}
+                           "gripper_drive": None, "gripper_closed": None, "jaw_open_rate": None,
+                           "adhesion": None, "adhesion_offset_scale": None, "gravity_scale": None, "physics_hz": None}
+ADHESION_MAX            = 0.3                 # user rule (2026-10-07): friction + adhesion only, adhesion <= 0.3
 PROFILES["lehome"]["friction_grasp"] = FRICTION_GRASP
 # "friction" (Phase F): the weld profile's setup (cloth pose, flat drop, MuJoCo arm drives, dynamics DR, GPU pipeline,
 # so it vectorises) with the friction grasp instead of the weld: the jaws close and only contact moves the cloth. Its
@@ -218,7 +223,7 @@ class IsaacClothFoldEnv(gym.Env):
 
     def _build_scene(self, n_copies):
         from isaac.lab_scene import SceneEnv, make_cfg
-        cfg = make_cfg(PHYSICS_DT, self.n_substeps, self.image_size if self._use_image else None, rig=self.rig,
+        cfg = make_cfg(self.physics_dt, self.n_substeps, self.image_size if self._use_image else None, rig=self.rig,
                        device=self.sim_device, arm_drive=self._prof["arm_drive"], n_copies=n_copies,
                        gripper_drive=self.grasp_knobs.get("gripper_drive"))
         lab = SceneEnv(cfg, self._prof["cloth_center"], grasp=self.grasp_knobs)
@@ -268,6 +273,10 @@ class IsaacClothFoldEnv(gym.Env):
             if unknown:
                 raise ValueError(f"unknown grasp knobs {sorted(unknown)}")
             self.grasp_knobs.update(grasp_knobs)
+        if (self.grasp_knobs.get("adhesion") or 0.0) > ADHESION_MAX:
+            raise ValueError(f"adhesion {self.grasp_knobs['adhesion']} is over the cap {ADHESION_MAX}")
+        hz = self.grasp_knobs.get("physics_hz")
+        self.physics_dt = PHYSICS_DT if hz is None else 1.0 / float(hz)
         closed = self.grasp_knobs.get("gripper_closed")
         self._closed_q = GRIPPER_CLOSED if closed is None else float(closed)
         self._pinned = {"left_": {}, "right_": {}}    # weld: {grid vertex: (particle idx, offsets)}
@@ -287,7 +296,9 @@ class IsaacClothFoldEnv(gym.Env):
 
         self.control_dt = control_dt
         self.max_episode_steps = max_episode_steps
-        self.n_substeps = int(round(control_dt / PHYSICS_DT))
+        self.n_substeps = int(round(control_dt / self.physics_dt))
+        if abs(self.n_substeps * self.physics_dt - control_dt) > 1e-9:
+            raise ValueError(f"physics dt {self.physics_dt} does not divide the control step {control_dt}")
         self.settle_steps = int(round(SETTLE_STEPS * ARM_TIMESTEP / control_dt))
         self.grasp_corners = dict(GRASP_CORNERS if grasp_corners is None else grasp_corners)
         self.grasp_radius = grasp_radius

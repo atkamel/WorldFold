@@ -333,8 +333,15 @@ class SceneEnv(DirectRLEnv):
         particle_cfg.objects.garment_config.particle_mass = CLOTH_MASS / (n * n)
         particle_cfg.objects.particle_material.gravity_scale = CLOTH_GRAVITY_SCALE
         particle_cfg.objects.particle_material.adhesion = CLOTH_ADHESION
-        if "particle_friction" in self.grasp:          # friction-grasp knob; adhesion stays CLOTH_ADHESION (0)
-            particle_cfg.objects.particle_material.friction = float(self.grasp["particle_friction"])
+        mat = particle_cfg.objects.particle_material
+        if "particle_friction" in self.grasp:          # friction-grasp knobs (isaac_env.FRICTION_GRASP)
+            mat.friction = float(self.grasp["particle_friction"])
+        if "adhesion" in self.grasp:                   # Phase F: LeHome's own value is 0.1; capped at ADHESION_MAX
+            mat.adhesion = float(self.grasp["adhesion"])
+        if "adhesion_offset_scale" in self.grasp:
+            mat.adhesion_offset_scale = float(self.grasp["adhesion_offset_scale"])
+        if "gravity_scale" in self.grasp:              # LeHome's own value is 2
+            mat.gravity_scale = float(self.grasp["gravity_scale"])
         z = TABLE_TOP_Z + particle_cfg.objects.particle_system.rest_offset + 0.001
         cp.cloth_pose = np.array([self.cloth_center[0], self.cloth_center[1], z])
         if cp.index:
