@@ -1261,3 +1261,27 @@ The CIs overlap (they're identical), so parity is met.
     one round gave +17 pp there and +5 pp here.
 - **Seed 1 timing:** its id_easy and id_hard ran alongside DAgger at 1 worker, B = 8. Its recovery ran
   separately at 2 workers, B = 4, after the heat cap. Same seeds and same eval code.
+
+### W5 final: privileged teacher at its operating point, and the detector (2026-10-06)
+
+`isaac_v1_weld_dagger/round_1` (diffusion, DAgger r1 from seed 0), replan 4, n = 200 per set, deterministic,
+`isaac_weld` profile, MuJoCo eval seeds. Run at 2 processes × 4 envs with the thermal guard (GPU peaked at 81–87 °C;
+no pauses).
+
+| set | success | Wilson 95% | failure codes | mean steps (success) |
+|---|---|---|---|---|
+| id_easy | 198/200 = 99.0% | 96.4–99.7 | G1 1, S1 1 | 85.2 |
+| id_hard | 195/200 = 97.5% | 94.3–98.9 | S1 3, F1 2 | 90.5 |
+| recovery | 109/200 = 54.5% | 47.6–61.3 | G1 50, S1 18, F1 18, M1 5 | 113.0 |
+
+- Policy inference: 11.3–11.6 ms per batched call (batch 16).
+- **Against the MuJoCo best privileged policy** (M5b.1 + M5b.6, replan 4: 99.5 / 77.0 / 79.5):
+  - id_easy is equal.
+  - **id_hard is +20.5 pp**, with disjoint intervals (MuJoCo 70.7–82.3).
+  - **Recovery is −25 pp**, with disjoint intervals.
+- **Replan 4 vs replan 8** (the selection eval at n = 100): id_hard rose from 88 to 97.5, and grasp from 90% to
+  100%. Replanning twice as often removes the aiming misses (G1).
+- **Recovery stays the weak set.** The expert's own recovery is 81.7% pooled. G1 after the knock is half of
+  all failures.
+- **Detector** (`isaac_v1_weld_detector`, image-based success classifier on `isaac_v1_weld` + `_failures`):
+  agreement with the sim's success check is 392/400 = 98.0% [96.1, 99.0]. TP 376, FP 0, FN 8. Above the 90% bar.
