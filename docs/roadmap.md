@@ -206,6 +206,31 @@ Added 2026-10-03.
 | Z1 | Zero-shot MuJoCo-trained checkpoints on `isaac_weld` (diffusion DAgger r4, best BC, vision r2) | n = 20 × 3 sets recorded; W5 fine-tunes if id_easy ≥ 50 | ☐ |
 | V | Vectorised Isaac env: B cloth envs per process (GPU weld profile, 101×101), sub-env views, worker step barrier | expert parity B=4 vs B=1 (id_easy n = 40, Wilson); DR deterministic per seed; ≥ 3× episodes/h (kept if > 1.5×) | ☐ artifacts in (`feature/isaac-vec`): parity 40/40 vs 40/40, DR per seed ✓, 2.15× at B = 8 (kept, 3× not met); lead-verified (fast 183, slow 12), merged 2026-10-04 |
 | W5 | Slimmed weld retrain (`isaac_v1_weld` 400 ep on the W3b expert + vectorised env; diffusion ×2 seeds (fine-tuned from MuJoCo weights if Z1 says so), vision ×1, DAgger ×2, detector, demos, report; chunk-MLP dropped; cloth stays 101×101) | n = 200 × 3, Wilson, SE rules; MuJoCo-vs-Isaac side-by-side | ✅ 2026-10-07 (fast track): privileged DAgger r1 @4 99.0 / 97.5 / 54.5, sensor-only @2 99.0 / 82.5 / 31.0 (n = 200); detector 98.0%; 6 demos; report `docs/reports/2026-10-07-isaac-half-fold.md`; recovery target missed (expert ceiling 81.7%) |
+## Phase F — Physical grasp on LeHome's physics, retrain, raise the benchmarks
+
+Added 2026-10-07.
+- **Why:** W5's grasp is a weld. Particles are pinned once the gripper site is within 3 cm of the corner, and the jaws
+  are forced open. The demo shows an arm hovering while the cloth follows it.
+- **Goal:** a grasp where the jaws close and only contact forces move the cloth. Then retrain the pipeline on it.
+- **Rules** (user, 2026-10-07): LeHome-style friction + adhesion only.
+  - Adhesion is capped at 0.3, with a release test.
+  - Pads, jaw gap, drive gains and physics rate may change.
+  - No attachments, pins, welds, or kinematic writes to particles.
+- **Ruby's anchor grasp** (`origin/feat/isaac-half-fold`) is a distance-gated attachment. It is ported only as a
+  comparison profile. Her Markov expert ideas are borrowed.
+- **Weld results are frozen** as the reference. The benchmark push happens on the friction profile only.
+- **Plan:** [superpowers/plans/2026-10-07-physical-grasp.md](superpowers/plans/2026-10-07-physical-grasp.md).
+
+| | milestone | exit | status |
+|---|---|---|---|
+| F0 | Track G merged forward. `friction` profile = weld profile's setup (GPU, vectorised, DR, MuJoCo eval sets) + friction grasp with IG.2 #9 knobs as real defaults | grasp bench on the friction profile (B = 4, GPU) within the interval of #9, or delta documented + re-tune in F2; fast tests green | ☐ |
+| F1 | Grasp honesty and observability: no pins or attachment prims, jaws not forced open; physical `grasp_active` (jaw closed + settled, corner in the pad pocket); G2 slip code; demo overlay | honesty check passes on 20 friction expert episodes and fails on weld (negative control) | ☐ |
+| F2 | Grasp reliability loop (IG.2 continued): one knob per iteration, in order: adhesion, adhesion offset, gravity scale, jaw gap, gripper drive, pads, 200 Hz, particle friction; plus Ruby's lift-on-settled rule and carry speed | per arm, n = 100 on two blocks + a fresh block: acquired / held / released ≥ 98, placed ≥ 95 (plateau: 95 / 90) | ☐ |
+| F3 | Friction expert with Markov re-grasp (jaw-settle lift, physical hold check → re-grasp, replan on corner move, carry speed); anchor profile ported as a comparison row | expert n = 100: id_easy ≥ 95, id_hard ≥ 90, recovery ≥ 90 (≥ 85 plateau), check_resync ≥ 90; weld / anchor / friction rows side by side | ☐ |
+| F4 | Retrain on friction: `isaac_v1_friction` 400 eps, 50% knocked; diffusion × 2 seeds; DAgger × 2 at takeover p = 0.6; replan sweep; vision student; detector | n = 200 × 3 sets, Wilson; side by side with weld W5 | ☐ |
+| F5 | Benchmark push, one A/B at a time (SE rules, n = 200). Teacher: intervention upweighting, DAgger to plateau, seed ensemble. Student: student DAgger, image aug, recovery weighting, corner auxiliary head | teacher recovery ≥ 75, id_hard ≥ 95; student id_hard ≥ 90, recovery ≥ 45; otherwise ❌ with the margin | ☐ |
+| F6 | Report + demos (6 friction videos + a weld vs friction clip), HTML page | `verify F0..F6` PASS | ☐ |
+
 ## Phase 6 — Language-conditioned folds and the VLA  *(ref. milestone 3, reframed)*
 
 | | milestone | exit | status |
