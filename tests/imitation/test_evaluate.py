@@ -39,3 +39,15 @@ def test_slip_with_jaws_closed_is_g2_and_opening_is_not():
     assert failure_code(ep) == "G2"
     ep.obs[20:, GRIPPER_CTRL_DIMS[1]] = 1.0       # the jaws opened at t = 20: a release, not a slip
     assert failure_code(ep) != "G2"
+
+
+def test_demo_grasp_lines_mark_a_slip_only_with_the_jaw_closed():
+    from types import SimpleNamespace
+    from imitation.demo import grasp_lines
+    base = SimpleNamespace(grasp_mode="friction", _closed_q=0.05, _gripper_closed={"left_": True, "right_": False},
+                           joint_positions=lambda p: [0, 0, 0, 0, 0, 0.05 if p == "left_" else 1.0])
+    lost = {"grasped": {"left_": False, "right_": False}}
+    lines = grasp_lines(base, {"left_": True, "right_": True}, lost)
+    assert "grasp: friction (contact only)" in lines and "jaw L +0.05 shut  R +1.00 open" in lines
+    assert [ln for ln in lines if ln.startswith("SLIP")] == ["SLIP L: corner lost, jaw closed"]
+    assert grasp_lines(SimpleNamespace(), {}, lost) == []           # MuJoCo env: no Isaac grasp state

@@ -33,6 +33,24 @@ def _overlay(frame, lines):
     return np.asarray(img)
 
 
+def grasp_lines(base, prev_grasped, info):
+    """Overlay lines for an Isaac env (Phase F, F1): the grasp mode, each jaw's angle and whether it is shut, and a SLIP
+    marker on the step an arm loses its corner with the jaw still commanded closed (failure code G2)."""
+    if not hasattr(base, "grasp_mode"):
+        return []
+    closed_q = getattr(base, "_closed_q", 0.0)
+    jaws = []
+    for p, tag in (("left_", "L"), ("right_", "R")):
+        q = float(base.joint_positions(p)[5])
+        jaws.append(f"{tag} {q:+.2f} {'shut' if q <= closed_q + 0.05 else 'open'}")
+    lines = [f"grasp: {base.grasp_mode}" + (" (contact only)" if base.grasp_mode == "friction" else
+                                             " (kinematic)"), "jaw " + "  ".join(jaws)]
+    for p, tag in (("left_", "L"), ("right_", "R")):
+        if prev_grasped.get(p) and not info["grasped"][p] and base._gripper_closed[p]:
+            lines.append(f"SLIP {tag}: corner lost, jaw closed")
+    return lines
+
+
 def run_episode(env, act_fn, seed, renderer, cam, label, frames, hold=20):
     obs, info = env.reset(seed=seed)
     act_fn.reset(obs, seed)
@@ -194,11 +212,13 @@ def isaac_main(args):
                     chunk = padded_predict(policy, np.stack(hist)[None].astype(np.float32), images)[0]
                     queue.extend(chunk[:args.replan_every])
                 action = queue.popleft()
+            prev = dict(info.get("grasped", {})) if t else {}
             obs, _, term, trunc, info = env.step(action)
             hist.append(obs["state"])
             frames.append(_overlay(frame(obs), [
                 label, f"seed {seed}  step {t + 1}", f"fold score {info['fold_score']:.2f}",
                 f"grasped L {int(info['grasped']['left_'])} R {int(info['grasped']['right_'])}"]
+                + grasp_lines(env.unwrapped, prev, info)
                 + (["KNOCK (random actions)"] if knocked else [])))
             if term or trunc:
                 break
