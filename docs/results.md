@@ -1484,3 +1484,45 @@ no pauses).
   - recovery 1/3: seeds 300001 and 300002 time out after the knock.
 - **W5 total wall time:** about 12 h including pauses (collection 13:11 → finals 01:13). The sim stages ran under
   the heat cap after 17:17.
+
+## Phase F — physical grasp on LeHome's physics (2026-10-07)
+
+Rules: friction + adhesion only (adhesion ≤ 0.3), no attachments, pins, welds or kinematic writes to particles.
+Grasp-bench metrics are track G's (`isaac/grasp_metrics.py`): per arm, first attempt, retries off, tune seeds 600000+.
+
+### Track G block A, recovered from the paused worktree (ran 2026-10-04, recorded 2026-10-07) — INVALID as a #9 test
+
+`outputs/isaac/grasp/ig2_block_a` in the track G worktree, 76 of 100 episodes (600000–600075), lehome profile, CPU.
+The run's recorded knobs are all None: commit 6c8c5af said the closed jaw +0.05 became the lehome default, but
+`FRICTION_GRASP["gripper_closed"]` stayed None, so the jaw closed to −0.1 (the squeeze-out config #3 rejected).
+
+| arm | acquired | held | placed | released |
+|---|---|---|---|---|
+| left | 76/76 | 73/76 | 46/76 | 60/76 |
+| right | 59/76 | 27/76 | 8/76 | 12/76 |
+
+1/76 env successes. Kept as a record of the defect; not a measurement of #9.
+
+### F0 — the friction profile on the GPU pipeline (grasp bench, n = 20, seeds 600000–600019)
+
+Profile `friction`: the weld profile's setup (GPU, MuJoCo arm drives, dynamics DR ×U(0.7, 1.3), flat drop, MuJoCo
+jitter 2.5 cm) with the friction grasp, closed jaw +0.05 (actually set this time), track G #9's expert geometry.
+
+- **Cloth at the weld profile's (0, 0)** (`f0_friction_gpu_center00`, 1 episode before it was stopped): neither arm
+  acquired. The pinch IK ran out of reach: descend ended 11.0 / 7.4 cm from the corners at the right height. The
+  friction pinch needs a near-vertical jaw, which the SO101 cannot reach at (0, 0). The profile now keeps LeHome's
+  cloth position (0, −0.135).
+- **Cloth at LeHome's position** (`f0_friction_gpu_v2`):
+
+| arm | acquired | held | placed | released |
+|---|---|---|---|---|
+| left | 20/20 [83.9, 100] | 8/20 [21.9, 61.3] | 6/20 [14.5, 51.9] | 8/20 [21.9, 61.3] |
+| right | 17/20 [64.0, 94.8] | 10/20 [29.9, 70.1] | 7/20 [18.1, 56.7] | 10/20 [29.9, 70.1] |
+
+  2/20 env successes. Against track G #9 on the same seeds (CPU, lehome profile, no DR: held 20/20 and 19/20) the
+  held intervals are disjoint: **F0's gate is not met; the delta is recorded and F2 re-tunes**.
+- **Failure mode: slips with the jaws shut.** Seed 600003 (both arms): the corner rises with the gripper for ~9 cm
+  (20 carry steps), then drops out while the jaw stays at its +0.05 target. 42–57 s per episode (CPU: ~90 s).
+- Found while reading the profile: `MUJOCO_ARM_DRIVE` is applied to every actuator group, so the friction profile's
+  gripper ran kp 998 / effort 3.35 N m instead of LeHome's kp 17.8 / kd 0.6 / 10 N m. Under the weld the jaws were
+  forced open and it never mattered. F2 candidate A tests LeHome's gripper drive.

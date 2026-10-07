@@ -97,15 +97,17 @@ def run(args):
         setattr(IsaacArmExpert, k, v)
     sys.argv = sys.argv[:1]                  # AppLauncher reads sys.argv
     base = IsaacClothFoldEnv(observation_mode="state", max_episode_steps=CAP, grasp_corners=GRASP_CORNERS,
-                             grasp_radius=GRASP_RADIUS, profile=args.profile, grasp_knobs=knobs or None)
+                             grasp_radius=GRASP_RADIUS, profile=args.profile, grasp_knobs=knobs or None,
+                             device=args.device)
     if args.profile == "lehome":
         jitter = ISAAC_CLOTH_JITTER
     else:                                    # the GPU profiles (friction, Phase F) use MuJoCo's cloth jitter
         from cloth_fold_rl.fold_env import CLOTH_JITTER as jitter
-    env = HalfFoldEnv(base_env=base, max_episode_steps=CAP, cloth_jitter=jitter)
+    env = HalfFoldEnv(base_env=base, max_episode_steps=CAP, cloth_jitter=jitter,
+                      domain_randomization=not args.no_dr)
     teacher = ScriptedTeacher(env)
     qf = teacher.expert
-    config = {"profile": args.profile, "knobs": base.grasp_knobs, "expert": {k: getattr(IsaacArmExpert, k) for k in
+    config = {"profile": args.profile, "device": base.sim_device, "dr": not args.no_dr, "knobs": base.grasp_knobs, "expert": {k: getattr(IsaacArmExpert, k) for k in
                                                     ("PINCH_HEIGHT", "PINCH_INSET", "PLACE_HEIGHT", "ARC_HEIGHT",
                                                      "CLOSE_DWELL", "OPEN_DWELL")},
               "overshoot": {f"{s}{p}": np.round(v, 4).tolist() for (s, p), v in OVERSHOOT_FRICTION.items() if s == 0},
@@ -169,6 +171,8 @@ def main():
     ap.add_argument("--out", help="output directory (absolute when cwd is another checkout)")
     ap.add_argument("--profile", choices=("lehome", "friction"), default="lehome",
                     help="IsaacClothFoldEnv profile; friction = Phase F's GPU profile")
+    ap.add_argument("--device", default=None, help="override the profile's device (cpu / cuda:0), a diagnostic")
+    ap.add_argument("--no-dr", action="store_true", help="dynamics DR off (a diagnostic; the GPU profiles have it on)")
     ap.add_argument("--knobs", default=None, help="k=v,..., isaac_env.FRICTION_GRASP overrides (gripper_drive.stiffness=50)")
     ap.add_argument("--expert", default=None, help="k=v,..., IsaacArmExpert class-attribute overrides")
     ap.add_argument("--overshoot", default=None, help="stage-0 'lx,ly,rx,ry' (m) placement offsets")

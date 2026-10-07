@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-07 · **Branch:** `feature/isaac-imitation` · **Phase:** W5 ✅ (Isaac weld retrain done, report out); next: recovery
+**Updated:** 2026-10-07 · **Branch:** `feature/isaac-imitation` · **Phase:** F (physical grasp) — F0 run, F2 knob loop in flight
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,24 +41,34 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**W5 ✅ (2026-10-07).** Report: [reports/2026-10-07-isaac-half-fold.md](reports/2026-10-07-isaac-half-fold.md), with 6 demo
-videos (each policy × each benchmark).
+**Phase F (user, 2026-10-07): replace the weld with a physical grasp on LeHome's physics, retrain, raise both
+benchmarks.** Plan: [superpowers/plans/2026-10-07-physical-grasp.md](superpowers/plans/2026-10-07-physical-grasp.md);
+roadmap Phase F (F0–F6). Rules: friction + adhesion ≤ 0.3, no attachments, pins or welds. Ruby's anchor grasp is
+ported as a comparison profile only (`isaac_anchor`).
 
-| policy (Isaac, weld profile, n = 200) | id_easy | id_hard | recovery |
-|---|---|---|---|
-| privileged: DAgger r1, replan 4 | 99.0 | **97.5** | 54.5 |
-| sensor-only: vision student, replan 2 | 99.0 | 82.5 | 31.0 |
-| expert ceiling | 100 | 100 | 81.7 (pooled) |
-
-- **Recovery is the gap.** Most failures are missed re-grasps after the knock (G1).
-- **Next options, the user's call:**
-  1. More DAgger rounds with takeover p = 0.6 (about +1.5 h per round).
-  2. A better expert re-grasp (W3b plateaued at 81.7%).
-  3. Resume track G (friction grasp, paused).
-- **Heat cap** (user, 2026-10-06; keep under 94 °C):
-  - ≤ 2 Isaac processes × 4 envs.
-  - `scripts/thermal_guard.py` alongside: pause at 90 °C, resume at 84 °C. The GPU stayed ≤ 87 °C, with no pauses.
-- **Long Isaac evals:** run with `--resume` (each set is saved as it finishes); the 2 h job limit cuts single runs.
+- **Done:**
+  - track G merged (`60c6820`); new `friction` profile / `isaac_friction` backend;
+  - physical `grasp_active`; G2 slip code; `isaac/honesty_check.py`; expert re-grasp knobs;
+  - F2 knobs (adhesion, gravity, physics rate); verify F0–F3; the anchor profile.
+- **F0 result:** the GPU friction profile holds 8/20 and 10/20 per arm, vs #9's 20/20 and 19/20 on the CPU. The
+  corners slip with the jaws shut; numbers are in results.md. At the weld profile's cloth position (0, 0) the pinch
+  can't reach, so the profile keeps LeHome's (0, −0.135).
+- **In flight (F2 diagnostics, n = 20 on 600000–19, 2 Isaac processes):**
+  - A: LeHome gripper drive;
+  - B: adhesion 0.1;
+  - then C: lehome profile on the GPU (device test);
+  - then D: friction without DR.
+  - Outputs in `outputs/isaac/grasp/f2_*`. Re-run any killed run with the same `scripts/grasp_bench.ps1` command;
+    it resumes.
+- **Then:**
+  - the F1 honesty runs (friction n = 20, weld n = 5);
+  - the F2 n = 100 blocks on the kept config;
+  - F3 expert gate;
+  - F4 retrain.
+- **Heat cap** (user, 2026-10-06; keep under 94 °C): ≤ 2 Isaac processes × 4 envs; `scripts/thermal_guard.py`
+  alongside.
+- **Watch logs with `scripts/watch_logs.sh`, not `tail -F`.** A tail holds a Windows file handle. That blocks renames
+  and the launcher's final `== exit` line.
 
 ## Pre-VLA milestone tracker
 

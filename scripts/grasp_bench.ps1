@@ -9,6 +9,8 @@ param(
     [string]$Expert = "",
     [string]$Overshoot = "",
     [ValidateSet("lehome", "friction")][string]$Profile = "lehome",
+    [string]$Device = "",
+    [switch]$NoDR,
     [string]$Main = "C:\Users\ethan\Documents\Projects\watai\WorldFold"
 )
 $ErrorActionPreference = "Stop"
@@ -23,6 +25,8 @@ New-Item -ItemType Directory -Force $outAbs | Out-Null
 $log = Join-Path $outAbs "bench.log"
 $script = Join-Path $code "isaac\grasp_bench.py"
 $cmd = "`"$py`" -u `"$script`" --seeds $Seeds --out `"$outAbs`" --profile $Profile"
+if ($Device) { $cmd += " --device $Device" }
+if ($NoDR) { $cmd += " --no-dr" }
 if ($Knobs) { $cmd += " --knobs $Knobs" }        # k=v,... (no spaces, no quotes)
 if ($Expert) { $cmd += " --expert $Expert" }
 if ($Overshoot) { $cmd += " --overshoot=$Overshoot" }   # lx,ly,rx,ry; "=" so a leading minus is not an option
