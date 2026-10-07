@@ -1526,3 +1526,22 @@ jitter 2.5 cm) with the friction grasp, closed jaw +0.05 (actually set this time
 - Found while reading the profile: `MUJOCO_ARM_DRIVE` is applied to every actuator group, so the friction profile's
   gripper ran kp 998 / effort 3.35 N m instead of LeHome's kp 17.8 / kd 0.6 / 10 N m. Under the weld the jaws were
   forced open and it never mattered. F2 candidate A tests LeHome's gripper drive.
+
+### F2 — grasp reliability loop on the friction profile (attempt log, n = 20 per attempt on 600000–600019 unless noted)
+
+Per arm, first attempt (retries off). "succ" = env successes. Each attempt changes one thing from its parent.
+Kept means it gained more than 1 SE on held or placed with released not regressing.
+
+| # | change (parent) | left held / placed | right held / placed | succ | verdict |
+|---|---|---|---|---|---|
+| ctrl | lehome profile, CPU, no DR, closed +0.05 actually set, fresh seeds 600020–39 (`f0_lehome_closed005`) | 20/20 / 20/20 | 18/20 / 15/20 | 14/20 | #9 replicates on fresh seeds (pooled with #9: held 40/40, 37/40) |
+| F0 | friction profile as first built (`f0_friction_gpu_v2`) | 8/20 / 6/20 | 10/20 / 7/20 | 2/20 | slips, jaws shut |
+| B | + adhesion 0.1 (F0), stopped at 9 eps (`f2_b_adh01`) | 4/9 / 2/9 | 4/9 / 2/9 | 1/9 | no gain while the jaw is stiff |
+| **A** | LeHome's gripper drive kp 17.8 / kd 0.6 / 10 N m instead of MuJoCo's kp 998 / 3.35 N m (F0) (`f2_a_gripdrive`) | **20/20** [83.9, 100] / 16/20 | **16/20** [58.4, 91.9] / 15/20 | 9/20 | **kept** (held +12 / +6): the slip's cause; now the profile default |
+| E | + adhesion 0.1, LeHome's own value (A) (`f2_e_adh01`) | 20/20 / 18/20 | 17/20 / 15/20 | 12/20 | not kept by the rule (+1 held, +2 placed: < 1 SE); adhesion 0.3 next |
+
+- Released equals held in A and E (every held corner was let go back onto the cloth), so adhesion 0.1 did not make the
+  cloth stick to the pads.
+- **Placement after A:** settled miss over held episodes, mean (x, y): left (+1.9, +0.8) cm (n = 20), right
+  (−1.3, +1.5) cm (n = 16); per-axis SD 2.1–3.5 cm. The friction profile's overshoot is now #9's minus this mean
+  (`isaac/fold_expert.OVERSHOOT_FRICTION_PROFILE`). The spread (the dynamics DR) is what the expert's retries close.
