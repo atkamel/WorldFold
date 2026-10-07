@@ -41,7 +41,7 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**W5 ✅ (2026-10-07).** Report: [reports/2026-10-06-isaac-w5.md](reports/2026-10-06-isaac-w5.md), with 6 demo
+**W5 ✅ (2026-10-07).** Report: [reports/2026-10-07-isaac-half-fold.md](reports/2026-10-07-isaac-half-fold.md), with 6 demo
 videos (each policy × each benchmark).
 
 | policy (Isaac, weld profile, n = 200) | id_easy | id_hard | recovery |

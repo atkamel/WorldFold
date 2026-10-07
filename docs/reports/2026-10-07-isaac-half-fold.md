@@ -1,8 +1,9 @@
-# Half-fold on Isaac Sim — 2026-10-06 (Phase W, W5: the imitation pipeline retrained on Isaac)
+# Half-fold on Isaac Sim — 2026-10-07 (Phase W, W5: the imitation pipeline retrained on Isaac)
 
-**Dated:** 6 Oct 2026 · **Branch:** `feature/isaac-imitation` · **Results as of:** `219e016`
+**Dated:** 7 Oct 2026 (runs 6–7 Oct) · **Branch:** `feature/isaac-imitation` · **Results as of:** `219e016`
 · **Sim:** Isaac Sim 5.1 (LeHome stack from `origin/main`, PR #15), weld grasp profile (`isaac_weld`)
 · **Eval:** n = 200 per set, held-out MuJoCo eval seeds, deterministic inference, Wilson 95% intervals.
+· **Page with videos inline:** [2026-10-07-isaac-half-fold.html](2026-10-07-isaac-half-fold.html) (open locally) · shareable copy https://claude.ai/artifact/FHvRnh8QobQDh2iccHonjk
 · **Previous report:** [2026-09-25-phase5b.md](2026-09-25-phase5b.md) (the same pipeline on MuJoCo)
 
 This report covers the move from MuJoCo to the Isaac Sim cloth-fold environment that `origin/main` brought in. The

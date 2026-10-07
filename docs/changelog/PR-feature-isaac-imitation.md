@@ -18,7 +18,7 @@
 
 - **Detector:** the success detector agrees with the sim's success check on 98.0% of episodes.
 - **Videos:** 6 demo videos, one per policy × benchmark, in `docs/reports/media/half_fold_isaac_*`.
-- **Report:** `docs/reports/2026-10-06-isaac-w5.md`.
+- **Report:** `docs/reports/2026-10-07-isaac-half-fold.md`.
 - **Full change log:** `docs/changelog/2026-10-07-feature-isaac-imitation.md`.
 
 ## What's in it

@@ -81,7 +81,7 @@ changed, +18.6k / −0.1k lines.
   - privileged policy, DAgger round 1 at replan 4: **99.0 / 97.5 / 54.5**
   - sensor-only student at replan 2: **99.0 / 82.5 / 31.0**
   - success detector: agrees with the sim on 98.0% of episodes
-- **Report:** [docs/reports/2026-10-06-isaac-w5.md](../reports/2026-10-06-isaac-w5.md), with 6 benchmark videos in
+- **Report:** [docs/reports/2026-10-07-isaac-half-fold.md](../reports/2026-10-07-isaac-half-fold.md), with 6 benchmark videos in
   `docs/reports/media/half_fold_isaac_*`.
 
 ## Known open items
