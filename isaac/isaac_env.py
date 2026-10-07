@@ -101,11 +101,12 @@ PROFILES["lehome"]["friction_grasp"] = FRICTION_GRASP
 # pinch needs a near-vertical jaw, which the SO101 cannot reach at (0, 0) (F0: descend ended 7-11 cm short).
 # The gripper keeps LeHome's own drive (kp 17.8, kd 0.6, 10 N m): MUJOCO_ARM_DRIVE is applied to every actuator group,
 # and with it on the jaw (kp 998, 3.35 N m) the corners slipped out mid-carry (F0: held 8/20 and 10/20 per arm; F2
-# candidate A, LeHome's gripper drive: see results.md).
+# candidate A, LeHome's gripper drive: see results.md). Adhesion 0.1 is LeHome's own particle-material value (we spawn 0);
+# F2 E and I, paired against A and H, gained in both (each < 1 SE) and never stuck the cloth to the pads.
 LEHOME_GRIPPER_DRIVE    = {"stiffness": 17.8, "damping": 0.6, "effort_limit_sim": 10.0}
 PROFILES["friction"] = dict(PROFILES["weld"], grasp_mode="friction", weld_tau=None, cloth_center=CLOTH_CENTER,
                             friction_grasp=dict(FRICTION_GRASP, gripper_closed=0.05,
-                                                gripper_drive=LEHOME_GRIPPER_DRIVE))
+                                                gripper_drive=LEHOME_GRIPPER_DRIVE, adhesion=0.1))
 # "anchor": COMPARISON ONLY, not a physical grasp (port of Ruby Zhou's feat/isaac-half-fold anchor, e188194, so our
 # numbers can be set beside hers). Same setup and friction knobs as "friction", but the jaws' hold is replaced by a
 # kinematic attachment: a 4 mm sphere per arm is attached to the cloth particles at the arm's first grasp corner; it is
