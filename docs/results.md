@@ -1541,6 +1541,19 @@ Kept means it gained more than 1 SE on held or placed with released not regressi
 | E | + adhesion 0.1, LeHome's own value (A) (`f2_e_adh01`) | 20/20 / 18/20 | 17/20 / 15/20 | 12/20 | not kept by the rule (+1 held, +2 placed: < 1 SE); adhesion 0.3 next |
 | F | + adhesion 0.3, the cap (A, **with the mean-miss overshoot**) (`f2_f_adh03`) | 20/20 / 9/20 | 11/20 / 10/20 | 2/20 | rejected (confounded, see below) |
 | G | + SETTLE_LIFT = 1, Ruby's lift-when-shut rule (A, **with the mean-miss overshoot**) (`f2_g_settlelift`) | 20/20 / 9/20 | 11/20 / 10/20 | 2/20 | not kept (confounded); retest on the 1 cm baseline |
+| H | A's config at **LeHome's 1 cm jitter**, #9's overshoot, fresh seeds 600040–59 (`f2_h_base_j1`) | 20/20 / 18/20 | 19/20 / 18/20 | 16/20 | the 1 cm baseline |
+| **I** | + adhesion 0.1 (H), paired seeds 600040–59 (`f2_i_adh01_j1`) | **20/20** [83.9, 100] / 19/20 | **20/20** [83.9, 100] / **20/20** | **19/20** | **kept** (see below) |
+
+- **Adhesion 0.1 kept** although neither paired comparison alone clears 1 SE:
+  - E vs A: +1 held, +2 placed, +3 successes.
+  - I vs H: +1 held, +3 placed, +3 successes.
+  It is LeHome's own particle-material value (we had spawned 0). Released equals held in both, so the cloth never
+  stuck to the pads. It is the friction profile's default from here.
+- **I reaches the IG.2 bar on n = 20:**
+  - acquired / held / released 100% on both arms;
+  - placed 95% / 100%.
+  The n = 100 gate blocks run on this config: A 600100–199, B 600200–299, fresh 600300–399 (no grasp run has used
+  those seeds).
 
 - Released equals held in A and E (every held corner was let go back onto the cloth), so adhesion 0.1 did not make the
   cloth stick to the pads.
