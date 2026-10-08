@@ -93,10 +93,12 @@ dropped (user, 2026-10-07). The comparison row is now Adam's as-built friction g
 
   - Drop is stuck after five attempts. The forced double drop leaves a crumpled half-fold
     (`docs/reports/media/f3b_drop_cart_expert.mp4`).
-  - Per the user's time-box rule it is reported, not gated.
+  - **The user skipped the forced-drop set entirely (2026-10-08).** It is not in the gate, the F4 data, the selection
+    or the finals.
   - The servo expert (`isaac/servo_expert.py`) was not adopted.
 - **In flight since ~12:50, 2026-10-08:** `scripts/f3_then_f4.ps1`.
-  - First the F3 gate on all 7 sets, n = 100, 2 × 8 → `outputs/imitation/isaac_friction/f3/`.
+  - First the F3 gate: id_easy, id_hard, knock_arm, joint_noise, overshoot and the legacy recovery (reported only);
+    n = 100, 2 × 8 → `outputs/imitation/isaac_friction/f3/`.
   - Then `verify F3`, then F4 on PASS.
   - Logs: `outputs/imitation/isaac_friction/f3_then_f4.log` and `f4/f4.log`.
   - To resume, re-run the same command; both stages skip finished work.

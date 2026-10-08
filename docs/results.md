@@ -1859,3 +1859,6 @@ from the traces (`isaac/plot_trace.py` figures in `docs/reports/media/f3b_trace_
   - Arm reach and arrival are no longer the limit. The crumpled double-drop state defeats a grasp-the-corner strategy.
 - **Fifth attempt on drop without a gain.** The user's time-box rule applies: drop is reported, not gated, and the F3
   gate and F4 proceed.
+- **2026-10-08, the user's decision: skip the forced-drop set entirely.** It is gone from the F3 gate, the F4 perturbed
+  demos and DAgger rollouts (knock_arm only), the DAgger selection (id_hard + knock_arm), the finals and the demos.
+  The drop code and seeds stay in place for later work.
