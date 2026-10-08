@@ -1644,3 +1644,19 @@ The scripted expert (ScriptedTeacher, retries on) runs id_easy seeds from 100000
   closing.
   - Candidates on tune seeds 600400–439 (n = 40): J, pad friction 2.0; K, 200 Hz physics; L, ALIGN_TOL 8 mm.
   - Blocks A, B and fresh re-run on the winner.
+
+**Fresh block** (600300–399, n = 100):
+- left: held 99, placed 86, released 99;
+- right: held 94, placed 91, released 94;
+- 78/100 env successes.
+- **Pooled over A + B + fresh (n = 300): held 298/300 left, 279/300 right (93.0% [89.5, 95.4]).** IG.2's full bar
+  is not met on this config.
+
+**Right-arm candidates** (on I's config, tune seeds 600400–439, n = 40, paired with each other):
+
+| # | change | left held / placed | right acquired / held / placed | succ | verdict |
+|---|---|---|---|---|---|
+| J | pad friction 1.5 → 2.0 | 40 / 38 | 40 / 39 / 34 | 32/40 | right held 97.5% vs 93.0% pooled (~+1 SE) |
+| K | physics 100 → 200 Hz (stopped at 24) | 20/24 / 18/24 | 24/24 / 21/24 / 14/24 | 12/24 | rejected: 3 cloth_dragged, holds worse on both arms |
+| **L** | `ALIGN_TOL` 8 mm (re-descend if the pinch is off before closing) | 40 / 39 | 38 / **38** / 37 | **36/40** | every acquired right corner held; 2 not acquired |
+| M | J + L | | | | running |
