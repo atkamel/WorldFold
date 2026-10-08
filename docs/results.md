@@ -1819,3 +1819,25 @@ the first 56 episodes; `isaac_v1_friction_failures`):
 | arm base → corner | 0.03 | 20/22 |
 
 - **Next attempt:** `REGRASP_JAW` + `REGRASP_TILT`, applied only after a resync. They are in test now.
+
+**Drop, the user's challenge (2026-10-08): "a dropped corner is closer to the base, it should not fail".** Confirmed
+from the traces (`isaac/plot_trace.py` figures in `docs/reports/media/f3b_trace_drop_combo_*.png`; video
+`f3b_drop_old_expert.mp4`: 630002 and 630004 fail at the cap, while 630005 and 630001 succeed in that run).
+- Dropped corners land **7–20 cm from their arm's base** (32 cm before the drop).
+- **The gripper gets within 1–5 cm of them at the right height.** The "reach" explanation recorded above was wrong.
+- **The open-loop expert's descend never "arrives".** Its joint-space TRACK_TOL does not fire with the arm folded near
+  its base, and the fingertip meets the table and cloth 1–1.5 cm short of the nominal pinch point.
+  - It parks there for 30–60 steps.
+  - DESCEND_RETRY and ALIGN_TOL then send it back up, until the 400-step cap.
+- **Offline IK confirms reachability:** from home, the one-step IK converges to 0.0 mm on a corner 10 cm from the base
+  (7 ms per arm-step).
+
+**A closed-loop servo expert** (`isaac/servo_expert.py`) re-solves IK every step on the live corner.
+- **v1** (6 mm arrival test): tune_drop **0/50**, grasp success 22%, M1 29. The test is unreachable for the reason
+  above, so it pushed until it dragged the cloth.
+- **v2** (stall-based arrival), one traced clean episode:
+  - descends took 49–90 steps (jitter defeats the stall test);
+  - during the close the gripper drifted 4–8 cm, chasing a corner the closing jaw pushed.
+- **Not adopted.** A from-scratch controller needs more tuning than the time-box allows.
+- **The same insight, targeted:** `CART_ARRIVE` gives the proven open-loop expert a Cartesian arrival test (within
+  2 cm, low, and still). A/B running.
