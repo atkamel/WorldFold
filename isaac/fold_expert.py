@@ -81,7 +81,7 @@ class IsaacArmExpert:
     # steps because the joint-space arrival test (TRACK_TOL) never fires with the arm folded near its base; then the
     # retry knobs sent it back up. 1: a descend has arrived when the gripper site is within CART_XY of the pinch point,
     # within CART_Z above it, and has stopped moving (< CART_STILL over CART_STEPS steps)
-    CART_ARRIVE = 0
+    CART_ARRIVE = 1          # F3b default (tune_id_easy 48/50 vs 44/50 without it)
     CART_XY = 0.02
     CART_Z = 0.02
     CART_STILL = 0.003
@@ -92,8 +92,8 @@ class IsaacArmExpert:
     PINCH_FOLLOW_Z = 0
     # F3b diagnosis (recovery traces, 18 post-knock closes): 6 closed 5-12 cm off the corner, each after a 44-60 step
     # descend that never arrived. The post-resync plan was IK-seeded from the knocked arm's joints.
-    RESYNC_IK_HOME = 0       # 1: after a resync, plan from the home seed (SEED_Q) and re-approach from above
-    DESCEND_RETRY = 0        # n > 0: a descend that times out without arriving re-approaches (home seed), n times
+    RESYNC_IK_HOME = 1       # 1: after a resync, plan from the home seed (SEED_Q) and re-approach from above
+    DESCEND_RETRY = 2        # n > 0: a descend that times out without arriving re-approaches (home seed), n times
     # F3b drop traces: a corner dropped mid-carry lands on top of the other half (9-17 mm up) and a top-down pinch closes
     # on the wrong layer. 1: when a resync finds the corner on the other layer, slide it along the top layer to its goal
     # with the closed jaw resting on it (a push), then hold / release as after a carry
