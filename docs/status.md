@@ -80,19 +80,26 @@ dropped (user, 2026-10-07). The comparison row is now Adam's as-built friction g
   - The partial collection (281/400, base expert) was discarded.
   - Its journals, the failure episodes and the logs are archived in `outputs/imitation/isaac_friction/f4_aborted/` as
     diagnosis evidence.
-- **Now: F3b** (plan `superpowers/plans/2026-10-08-expert-first.md`).
-  - **Done:**
-    - the perturbation suite (code, tests, spec);
-    - the trace diagnosis: 6 of 18 post-knock closes land 5–12 cm off the corner, after descends that never arrive
-      (the IK was seeded from the knocked joints);
-    - the `tune_*` sets;
-    - `f4_retrain.ps1` on the suite.
-  - **Running:** A/B on `tune_knock_arm` / `tune_drop` (n = 50 each). The base expert (`f3b/base`) against
-    `RESYNC_IK_HOME=1,DESCEND_RETRY=2` (`f3b/ikhome_retry`).
-  - **Then:**
-    - `powershell -File scripts/f3_then_f4.ps1 -Expert "<kept knobs>"` runs the F3 gate on all sets, then
-      `verify F3`, then F4 only if the gate passes.
-    - The base expert's F3 results moved to `f3_m_base/`.
+- **F3b result, as code defaults:** RESYNC_IK_HOME, DESCEND_RETRY = 2 and CART_ARRIVE (a Cartesian descend-arrival
+  test). Tune sets, n = 50:
+
+  | set | success |
+  |---|---|
+  | id_easy | 96 |
+  | knock_arm | 84 |
+  | joint_noise | 74 |
+  | overshoot | 86 |
+  | drop | 42 |
+
+  - Drop is stuck after five attempts. The forced double drop leaves a crumpled half-fold
+    (`docs/reports/media/f3b_drop_cart_expert.mp4`).
+  - Per the user's time-box rule it is reported, not gated.
+  - The servo expert (`isaac/servo_expert.py`) was not adopted.
+- **In flight since ~12:50, 2026-10-08:** `scripts/f3_then_f4.ps1`.
+  - First the F3 gate on all 7 sets, n = 100, 2 × 8 → `outputs/imitation/isaac_friction/f3/`.
+  - Then `verify F3`, then F4 on PASS.
+  - Logs: `outputs/imitation/isaac_friction/f3_then_f4.log` and `f4/f4.log`.
+  - To resume, re-run the same command; both stages skip finished work.
 - **Afterwards, in idle Isaac windows:**
   - check_resync;
   - **Adam's as-built row:** `scripts/adam_baseline.ps1`, n = 50 per set. It is one CPU Isaac process, so it runs only
