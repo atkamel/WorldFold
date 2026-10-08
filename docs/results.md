@@ -1801,3 +1801,21 @@ the first 56 episodes; `isaac_v1_friction_failures`):
 - **The fix tried:** `PUSH_ON_LAYER` slides a corner that has settled on the other half to its goal along the top
   layer, closed jaw resting on it, instead of pinching it.
 - **Slips (G2) are now the common failure on every set,** including clean starts: 10% on tune_id_easy.
+
+**Drop, attempt 4 (PUSH_ON_LAYER): 21/50 = 42%** (G2 24, M1 5). No gain.
+- **Traced re-run** (`recovery_friction/drop_push`, seeds 630002, 630004, 630005) corrects the earlier reading:
+  - Dropped corners settle **flat on the table**, 0–5 mm above a flat corner. The "9–17 mm" was measured from the
+    table top, not from a flat corner's rest height.
+  - So the push triggered once in six arm-episodes.
+- **The real failure is reach:**
+  - The arm cycles approach → descend → approach (up to 120 steps) and never arrives.
+  - The corner lands 10–25 cm from where it started, outside the top-down pinch's ±1.5 cm envelope.
+- **Offline IK at the 22 traced landing spots** (pinch + above within 5 mm):
+
+| jaw aim | orientation weight | reachable |
+|---|---|---|
+| cloth centre → corner (current) | 0.1 | 12/22 |
+| arm base → corner | 0.1 | 16/22 |
+| arm base → corner | 0.03 | 20/22 |
+
+- **Next attempt:** `REGRASP_JAW` + `REGRASP_TILT`, applied only after a resync. They are in test now.
