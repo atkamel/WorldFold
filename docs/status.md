@@ -80,13 +80,19 @@ dropped (user, 2026-10-07). The comparison row is now Adam's as-built friction g
   - The partial collection (281/400, base expert) was discarded.
   - Its journals, the failure episodes and the logs are archived in `outputs/imitation/isaac_friction/f4_aborted/` as
     diagnosis evidence.
-- **Now: F3b** (plan `superpowers/plans/2026-10-08-expert-first.md`):
-  1. A realistic perturbation suite (`knock_arm`, `drop`, `joint_noise`, `overshoot`). The legacy knock is reported
-     only.
-  2. Per-step recovery traces, then a mechanism diagnosis.
-  3. One fix per attempt on tune seeds.
-  4. F3 re-gate. Floor: each perturbation set ≥ 60%.
-  5. Then F4 from scratch.
+- **Now: F3b** (plan `superpowers/plans/2026-10-08-expert-first.md`).
+  - **Done:**
+    - the perturbation suite (code, tests, spec);
+    - the trace diagnosis: 6 of 18 post-knock closes land 5–12 cm off the corner, after descends that never arrive
+      (the IK was seeded from the knocked joints);
+    - the `tune_*` sets;
+    - `f4_retrain.ps1` on the suite.
+  - **Running:** A/B on `tune_knock_arm` / `tune_drop` (n = 50 each). The base expert (`f3b/base`) against
+    `RESYNC_IK_HOME=1,DESCEND_RETRY=2` (`f3b/ikhome_retry`).
+  - **Then:**
+    - `powershell -File scripts/f3_then_f4.ps1 -Expert "<kept knobs>"` runs the F3 gate on all sets, then
+      `verify F3`, then F4 only if the gate passes.
+    - The base expert's F3 results moved to `f3_m_base/`.
 - **Afterwards, in idle Isaac windows:**
   - check_resync;
   - **Adam's as-built row:** `scripts/adam_baseline.ps1`, n = 50 per set. It is one CPU Isaac process, so it runs only
