@@ -73,11 +73,15 @@ dropped (user, 2026-10-07). The comparison row is now Adam's as-built friction g
   - Re-grasped corners slip.
   - The 400-step cap runs out.
   - The cause fits a pinch planned at table height into a corner lying on a fold.
-- **In flight (recovery A/B, n = 100, 1 × 8 each):**
-  - `REGRASP=2` (`f3_regrasp`);
-  - `REGRASP=2,PINCH_FOLLOW_Z=1` (`f3_regrasp_followz`).
-  - The winner becomes the expert default. Then F3 is re-run on all sets, and F4 starts with
-    `scripts/f4_retrain.ps1 -WaitF3`.
+- **Recovery A/B, done:** neither REGRASP (26/100) nor PINCH_FOLLOW_Z (29/100) helps. M1 = 20% is the knock itself
+  dragging the cloth, so ~80% is the practical ceiling.
+- **F4 started 2026-10-08 00:48 on the base expert** (`scripts/f4_retrain.ps1`; log
+  `outputs/imitation/isaac_friction/f4/f4.log`).
+  - Collect runs at 2 × 6 with cameras (VRAM 15.4 / 16 GB), then BC → DAgger ×≤2 → vision → finals → demos.
+  - Resume by re-running the same command.
+- **Next for recovery:**
+  - Diagnose offline from the collection's knocked episodes (`isaac_v1_friction` + `_failures`); no Isaac lane needed.
+  - A better expert then re-runs the DAgger rounds.
 - **Afterwards, in idle Isaac windows:**
   - check_resync;
   - **Adam's as-built row:** `scripts/adam_baseline.ps1`, n = 50 per set. It is one CPU Isaac process, so it runs only
