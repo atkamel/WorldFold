@@ -14,7 +14,8 @@
 param([ValidateSet("privileged", "vision", "final", "all")][string]$Phase = "all", [string]$Only = "",
       [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [switch]$WaitF3, [string]$Expert = "",
       [switch]$NoVision, [int]$Rounds = 2, [int]$FinalN = 200, [int]$SelN = 100, [int]$Episodes = 400,
-      [int]$DaggerEpisodes = 128)
+      [int]$DaggerEpisodes = 128, [switch]$SkipDagger, [switch]$NoDemos)
+# -SkipDagger / -NoDemos (user, 2026-10-08: done within 3.5 h): the BC policy goes straight to the finals
 # -NoVision (user, 2026-10-08: the 9 h budget): state-only demos at the full envs per process, no vision student,
 # detector, vision finals or sensor demos; the privileged demos run after the finals (never 3 Isaac processes)
 $ErrorActionPreference = "Stop"
@@ -106,6 +107,7 @@ if ($Phase -in "privileged", "all" -or $Only) {
         & $py -u -m imitation.train --policy diffusion --dataset $tag --root $ds --run "$runs\${tag}_diff_s0" `
             --steps 30000 --seed 0 }
     # DAgger from seed 0 (its round 0 is the seed-0 BC eval on the selection sets)
+    if (-not $SkipDagger) {
     Stage "dagger" "$priv\done.txt" {
         # two rounds at takeover p = 0.6 (W5's one round at 0.3 gave +5 pp recovery on 403 labels)
         & $py -u -m imitation.dagger --backend $B --init "$runs\${tag}_diff_s0\final.pt" --dataset $tag --root $ds `
@@ -114,6 +116,7 @@ if ($Phase -in "privileged", "all" -or $Only) {
             --recovery-fraction 0.5 --perturb-kinds $kinds
         if ($LASTEXITCODE -eq 0) { Set-Content "$priv\done.txt" (Get-Date -Format s) } }
     if (-not $Only) { Note "PRIVILEGED COMPLETE best=$(Best $priv)" }
+    } elseif (-not $Only) { Note "PRIVILEGED COMPLETE (no DAgger) best=$runs\${tag}_diff_s0\final.pt" }
 }
 
 # Demo videos: 3 episodes of one eval set (its poses and knock), one Isaac env.
@@ -128,7 +131,7 @@ function Demos($policy, $ckpt, $replan) {
 }
 
 # Operating points from M5b.6: privileged replan 4, vision replan 2.
-$bp = if (Test-Path "$priv\history.json") { Best $priv } else { "" }
+$bp = if ($SkipDagger) { "$runs\${tag}_diff_s0\final.pt" } elseif (Test-Path "$priv\history.json") { Best $priv } else { "" }
 $bv = "$runs\${tag}_vision_t0\final.pt"     # fast track: the teacher-relabelled vision BC is the student (M5b.3: round 0 won)
 
 if ($Phase -in "vision", "all" -or $Only) {
@@ -151,8 +154,9 @@ if ($Phase -in "vision", "all" -or $Only) {
         if ($LASTEXITCODE -eq 0) { Set-Content "$out\final_privileged_r4.done" (Get-Date -Format s) } }
     if ($NoVision) {
         $script:sideStages = @($script:sideStages | Where-Object { $_ -ne "demos_privileged" })
-        Stage "demos_privileged" "docs\reports\media\half_fold_friction_privileged_knock_arm.mp4" {
-            Demos "privileged" $bp 4 }
+        if (-not $NoDemos) {
+            Stage "demos_privileged" "docs\reports\media\half_fold_friction_privileged_knock_arm.mp4" {
+                Demos "privileged" $bp 4 } }
         if (-not $Only) { Note "F4 COMPLETE (no vision)" }
         exit 0
     }
