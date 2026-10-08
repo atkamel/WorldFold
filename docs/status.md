@@ -96,12 +96,18 @@ dropped (user, 2026-10-07). The comparison row is now Adam's as-built friction g
   - **The user skipped the forced-drop set entirely (2026-10-08).** It is not in the gate, the F4 data, the selection
     or the finals.
   - The servo expert (`isaac/servo_expert.py`) was not adopted.
-- **In flight since ~12:50, 2026-10-08:** `scripts/f3_then_f4.ps1`.
-  - First the F3 gate: id_easy, id_hard, knock_arm, joint_noise, overshoot and the legacy recovery (reported only);
-    n = 100, 2 × 8 → `outputs/imitation/isaac_friction/f3/`.
-  - Then `verify F3`, then F4 on PASS.
-  - Logs: `outputs/imitation/isaac_friction/f3_then_f4.log` and `f4/f4.log`.
-  - To resume, re-run the same command; both stages skip finished work.
+- **In flight (6 h budget, user 2026-10-08):** `scripts/f3_then_f4.ps1`, restarted when F3's id_easy finished.
+  1. **F3 gate:** id_easy, id_hard and knock_arm at n = 100. The noise sets are measured in the finals. Results go to
+     `outputs/imitation/isaac_friction/f3/`.
+  2. **`verify F3`, then F4 on PASS:** `-NoVision -Rounds 1 -FinalN 100 -SelN 50 -Episodes 300 -DaggerEpisodes 96`.
+     - 300 state-only demos (50% arm-bumped);
+     - diffusion BC;
+     - one DAgger round (96 rollouts, selection on id_hard + knock_arm at n = 50);
+     - privileged finals at n = 100 on id_easy, id_hard, knock_arm, joint_noise and overshoot;
+     - privileged demos.
+  - **Skipped:** the vision student, the detector, the forced-drop set and the legacy knock.
+  - **Logs:** `outputs/imitation/isaac_friction/f3_then_f4.log`, `f4/f4.log`.
+  - **Resume:** re-run the same command.
 - **Afterwards, in idle Isaac windows:**
   - check_resync;
   - **Adam's as-built row:** `scripts/adam_baseline.ps1`, n = 50 per set. It is one CPU Isaac process, so it runs only
