@@ -110,7 +110,7 @@ def build_parser():
     ap.add_argument("--episodes", type=int, default=24)
     ap.add_argument("--k", type=int, default=10)
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction", "isaac_anchor"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
     ap.add_argument("--out", default=None, help="JSON summary (counts per mode); required for Isaac backends")
     return ap
 

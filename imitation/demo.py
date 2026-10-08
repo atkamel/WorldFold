@@ -120,7 +120,7 @@ def main():
     ap.add_argument("--width", type=int, default=960)
     ap.add_argument("--height", type=int, default=544)
     ap.add_argument("--fps", type=int, default=20)   # control_dt = 0.05 s -> real time
-    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction", "isaac_anchor"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
     ap.add_argument("--demo-size", type=int, default=512, help="isaac: square size of the demo camera")
     ap.add_argument("--set", default=None, choices=("id_easy", "id_hard", "recovery"),
                     help="isaac: play episodes of this eval set (its seeds unless --seeds is given, its shifted "

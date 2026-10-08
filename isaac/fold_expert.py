@@ -36,7 +36,7 @@ OVERSHOOT_FRICTION[(0, "right_")][:] = (0.013, 0.050, 0.0)
 # right (-1.3, +1.5) cm) made it worse: F2 attempts F and G, which both carried it, held 11/20 and placed 10/20 on the
 # right arm against A's 16 / 15 (results.md). The landing point is not independent of the target.
 OVERSHOOT_FRICTION_PROFILE = {key: v.copy() for key, v in OVERSHOOT_FRICTION.items()}
-OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE, "anchor": OVERSHOOT_FRICTION_PROFILE}
+OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE}
 
 
 JAW_SHUT_TOL = 0.05          # = isaac_env.JAW_SETTLED_TOL
@@ -70,6 +70,7 @@ class IsaacArmExpert:
     # pinch ~1 cm off that the closing jaw sweeps 3.5 cm across the pinch (shallow grip, 2.8 vs 1.4 cm deep)
     ALIGN_TOL = 0.008        # F2 L / M: every acquired right-arm corner held (40/40; 93% over n = 300 without it)
     ALIGN_TRIES = 2
+    OVERSHOOT_SCALE = 1.0    # scales the profile's placement overshoot table (0: none, Adam's as-built expert)
 
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
 

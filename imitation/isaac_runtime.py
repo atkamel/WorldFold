@@ -19,7 +19,7 @@ ISAAC_CLOTH_JITTER = 0.01   # = isaac.isaac_env.CLOTH_JITTER (kept literal so th
 # "isaac_weld" = MuJoCo-transfer profile (weld grasp, MuJoCo caps/jitter/DR; episodes and eval sets match MuJoCo).
 # "isaac_friction" = the weld profile's setup with LeHome's friction grasp instead of the weld (Phase F): MuJoCo eval
 # sets, jitter and DR, but a FRICTION_MAX_STEPS cap, since a physical pinch (close, settle, lift) is slower than a weld.
-ISAAC_PROFILES = {"isaac": "lehome", "isaac_weld": "weld", "isaac_friction": "friction", "isaac_anchor": "anchor"}
+ISAAC_PROFILES = {"isaac": "lehome", "isaac_weld": "weld", "isaac_friction": "friction"}
 FRICTION_MAX_STEPS = 400
 KIT_TICK_S = 30.0           # idle workers tick Kit this often; its hang detector allows 120 s
 

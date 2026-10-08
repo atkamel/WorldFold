@@ -177,7 +177,7 @@ def build_parser():
     ap.add_argument("--sets", nargs="+", default=["id_easy", "id_hard", "recovery"])
     ap.add_argument("--n", type=int, default=48)
     ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
-    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction", "isaac_anchor"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
     ap.add_argument("--replan-every", type=int, default=8)
     ap.add_argument("--out", default=None, help="JSON report path (default: next to the checkpoint)")
     ap.add_argument("--save-episodes", default=None, help="directory to write the rollouts to")

@@ -20,7 +20,7 @@ import torch
 from omegaconf import OmegaConf
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import Articulation, RigidObject, RigidObjectCfg
+from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import TiledCamera, TiledCameraCfg
@@ -38,7 +38,7 @@ from mujuco.cloth_params import (
     CLOTH_COUNT, CLOTH_MASS, GRIPPER_OPEN, TABLE_TOP_Z, camera_axes,
 )
 from isaac.isaac_env import (
-    ANCHOR_MASS, ANCHOR_RADIUS, CAMERA_CLIP, CLOTH_ADHESION, CLOTH_GRAVITY_SCALE, CLOTH_SUBDIV, FLOOR_COLOR, FLOOR_SIZE, GRIPPER_JOINT,
+    CAMERA_CLIP, CLOTH_ADHESION, CLOTH_GRAVITY_SCALE, CLOTH_SUBDIV, FLOOR_COLOR, FLOOR_SIZE, GRIPPER_JOINT,
     GRIPPERFRAME_POS, GRIPPERFRAME_QUAT,
     HEADLIGHT_AMBIENT, HEADLIGHT_DIFFUSE, LIGHT_INTENSITY, LIGHTS, TABLE_SIZE, PAD_LINING_FRICTION,
     PAD_LINING_THICKNESS, cloth_grid_mesh, usd_root_pose, _matrix_from_quat, _quat_facing, _quat_from_matrix,
@@ -215,15 +215,7 @@ class SceneEnv(DirectRLEnv):
 
     cfg: SceneCfg
 
-    def __init__(self, cfg, cloth_center, grasp=None, anchor_particles=None):
-        """anchor_particles: {arm prefix: cloth particle index} to attach a grasp anchor to (grasp_mode "anchor");
-        copy 0 only. None / {} spawns nothing and leaves the scene exactly as the weld and friction profiles build it."""
-        self.anchor_particles = dict(anchor_particles or {})
-        if self.anchor_particles and cfg.n_copies > 1:
-            raise NotImplementedError("grasp anchors are copy 0's only (the comparison-only anchor profile is not "
-                                      "vectorised)")
-        self.anchors = {}
-        self.substep_hook = None    # called before every physics substep (IsaacClothFoldEnv's anchor grasp)
+    def __init__(self, cfg, cloth_center, grasp=None):
         self.cloth_center = np.asarray(cloth_center, dtype=float)
         # friction-grasp knobs (isaac_env.FRICTION_GRASP); a missing or None value keeps the scene as ported
         self.grasp = {k: v for k, v in (grasp or {}).items() if v is not None}
@@ -294,7 +286,6 @@ class SceneEnv(DirectRLEnv):
             table.func(f"{root}/table", table, translation=(float(dx[0]), float(dx[1]), TABLE_TOP_Z / 2.0))
             cp.cloth, cp.cloth_rest = self._spawn_cloth(cp)
             if c == 0:
-                self.anchors = self._spawn_anchors(cp)
                 self.camera = None
                 if self.cfg.camera is not None:
                     self.camera = TiledCamera(self.cfg.camera)
@@ -305,64 +296,6 @@ class SceneEnv(DirectRLEnv):
                 self.scene.sensors[f"rig_{name}{suffix}"] = cp.rig_cameras[name]
         if self.camera is not None or self.rig_cameras:
             self._spawn_lights()
-
-    def _spawn_anchors(self, cp):
-        # Grasp anchors (grasp_mode "anchor"; comparison-only, NOT a physical grasp): particle cloth cannot attach to an
-        # articulation link, so each carried corner gets a small kinematic sphere, attached to the cloth particles it
-        # overlaps when the simulation starts (PhysX auto attachment). A particle attachment is one-way (the particles
-        # follow the body, the body ignores them), so the attachment is off except while IsaacClothFoldEnv holds the
-        # corner: it then puts the anchor on the corner, switches it on and moves the anchor with the gripper before
-        # every substep (substep_hook). The sphere collides with nothing (filtered against every other collider).
-        if not self.anchor_particles:
-            return {}
-        from pxr import PhysxSchema
-        anchors = {}
-        # the cloth too: its unattached particles inside the sphere's contact offset would otherwise shove the anchor
-        # away (seen on Ruby's branch: anchors thrown 2 m during the reset settle, dragging the cloth after them)
-        others = ["/World/table", "/World/floor", self.cfg.left_robot.prim_path, self.cfg.right_robot.prim_path,
-                  str(cp.cloth._prim.GetPath())]
-        for prefix, particle in self.anchor_particles.items():
-            path = f"/World/anchor_{prefix.rstrip('_')}"
-            cfg = RigidObjectCfg(
-                prim_path=path,
-                spawn=sim_utils.SphereCfg(
-                    radius=ANCHOR_RADIUS,
-                    rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
-                    mass_props=sim_utils.MassPropertiesCfg(mass=ANCHOR_MASS),
-                    collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
-                    visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.1, 0.4, 0.9))),
-                init_state=RigidObjectCfg.InitialStateCfg(pos=tuple(float(v) for v in cp.cloth_rest[particle])))
-            anchors[prefix] = RigidObject(cfg)
-            self.scene.rigid_objects[f"anchor_{prefix.rstrip('_')}"] = anchors[prefix]
-        stage = self.sim.stage
-        for prefix in anchors:
-            path = f"/World/anchor_{prefix.rstrip('_')}"
-            pairs = UsdPhysics.FilteredPairsAPI.Apply(stage.GetPrimAtPath(path))
-            pairs.CreateFilteredPairsRel().SetTargets(
-                others + [f"/World/anchor_{p.rstrip('_')}" for p in anchors if p != prefix])
-            att = PhysxSchema.PhysxPhysicsAttachment.Define(stage, f"{path}/cloth_attachment")
-            att.GetActor0Rel().SetTargets([cp.cloth._prim.GetPath()])
-            att.GetActor1Rel().SetTargets([path])
-            PhysxSchema.PhysxAutoAttachmentAPI.Apply(att.GetPrim())
-        self._attachments = {p: f"/World/anchor_{p.rstrip('_')}/cloth_attachment" for p in anchors}
-        return anchors
-
-    def set_attachment(self, prefix, enabled):
-        from pxr import PhysxSchema
-        att = PhysxSchema.PhysxPhysicsAttachment(self.sim.stage.GetPrimAtPath(self._attachments[prefix]))
-        attr = att.GetAttachmentEnabledAttr() or att.CreateAttachmentEnabledAttr()
-        attr.Set(bool(enabled))
-
-    def put_anchor(self, prefix, pos, quat=(1.0, 0.0, 0.0, 0.0)):
-        """Move a (kinematic) anchor: on reset to its corner, while held to its place on the gripper. No velocity
-        write: PhysX rejects one on a kinematic body, and 1000 such errors stop the simulation."""
-        pose = torch.tensor([[*(float(v) for v in pos), *(float(v) for v in quat)]], dtype=torch.float32,
-                            device=self.device)
-        self.anchors[prefix].write_root_pose_to_sim(pose)
-
-    def anchor_pose(self, prefix):
-        a = self.anchors[prefix]
-        return a.data.root_pos_w[0].detach().cpu().numpy(), a.data.root_quat_w[0].detach().cpu().numpy()
 
     def _add_linings(self, robot_path):
         # a box on each finger's inner face, over LeHome's capsule pad: PAD_LINING_THICKNESS out from the capsule
@@ -480,8 +413,6 @@ class SceneEnv(DirectRLEnv):
         self.targets = actions.clone()
 
     def _apply_action(self):
-        if self.substep_hook is not None:       # anchor grasp: teleport the held anchors before this substep
-            self.substep_hook()
         for cp in self.copies:
             k = 12 * cp.index
             cp.arms["left_"].set_joint_position_target(self.targets[:, k:k + 6], joint_ids=cp.joint_ids["left_"])

@@ -108,16 +108,6 @@ LEHOME_GRIPPER_DRIVE    = {"stiffness": 17.8, "damping": 0.6, "effort_limit_sim"
 PROFILES["friction"] = dict(PROFILES["weld"], grasp_mode="friction", weld_tau=None, cloth_center=CLOTH_CENTER,
                             friction_grasp=dict(FRICTION_GRASP, gripper_closed=0.05,
                                                 gripper_drive=LEHOME_GRIPPER_DRIVE, adhesion=0.1, pad_friction=2.0))
-# "anchor": COMPARISON ONLY, not a physical grasp (port of Ruby Zhou's feat/isaac-half-fold anchor, e188194, so our
-# numbers can be set beside hers). Same setup and friction knobs as "friction", but the jaws' hold is replaced by a
-# kinematic attachment: a 4 mm sphere per arm is attached to the cloth particles at the arm's first grasp corner; it is
-# engaged when the jaw is commanded closed with that corner within grasp_radius of the gripper frame, teleported with
-# the gripper before every physics substep while held, and released when the jaw opens. Single env, copy 0 only.
-# Built on "lehome" (CPU device, LeHome's drives, no DR), the setup Ruby measured it on: on the GPU pipeline the
-# attachment never moved the cloth (F3 smoke, isaac_friction-based: 0/10, fold score 0.01, every episode G2).
-PROFILES["anchor"] = dict(PROFILES["lehome"], grasp_mode="anchor")
-ANCHOR_RADIUS           = 0.004       # m: grips the corner particle and its nearest neighbours, so it acts as a pivot (Ruby: 8 mm held a whole patch rigid and the fold sprang back on release; expert 3/4 at 4 mm, 1/7 at 8 mm)
-ANCHOR_MASS             = 0.002
 # friction grasp_active (Phase F): a closed jaw within this of its target counts as settled (track G traces: 0.14-0.21
 # rad mid-close, exactly the target once shut); the held corner rides 1-4 cm from the gripper frame during the carry
 JAW_SETTLED_TOL         = 0.05
@@ -243,13 +233,7 @@ class IsaacClothFoldEnv(gym.Env):
         cfg = make_cfg(self.physics_dt, self.n_substeps, self.image_size if self._use_image else None, rig=self.rig,
                        device=self.sim_device, arm_drive=self._prof["arm_drive"], n_copies=n_copies,
                        gripper_drive=self.grasp_knobs.get("gripper_drive"))
-        # anchor grasp: the corner each arm carries in stage 0 (the first of its grasp corners) gets an anchor on the
-        # grid vertex's particle; SceneEnv refuses it with several copies
-        anchors = ({p: int(self._grid[self.grasp_corners[p][0]]) for p in self.prefixes}
-                   if self.grasp_mode == "anchor" else None)
-        lab = SceneEnv(cfg, self._prof["cloth_center"], grasp=self.grasp_knobs, anchor_particles=anchors)
-        if anchors:
-            lab.substep_hook = self._drive_anchors
+        lab = SceneEnv(cfg, self._prof["cloth_center"], grasp=self.grasp_knobs)
         lab.weld_tau = self._prof["weld_tau"]
         lab.weld_mass = WELD_MASS
         return lab
@@ -282,7 +266,7 @@ class IsaacClothFoldEnv(gym.Env):
             raise ValueError("the dynamics DR needs the GPU pipeline (device='cuda:0')")
         # MuJoCo's switch (ClothFoldEnv.domain_randomization; HalfFoldEnv sets it): only the "weld" profile has DR
         self.domain_randomization = False
-        if grasp_mode not in ("friction", "weld", "anchor"):
+        if grasp_mode not in ("friction", "weld"):
             raise ValueError(grasp_mode)
         if grasp_mode == "weld" and device == "cpu":
             raise ValueError("grasp_mode='weld' needs the GPU pipeline (device='cuda:0'); see lab_scene.site_pose")
@@ -303,7 +287,6 @@ class IsaacClothFoldEnv(gym.Env):
         closed = self.grasp_knobs.get("gripper_closed")
         self._closed_q = GRIPPER_CLOSED if closed is None else float(closed)
         self._pinned = {"left_": {}, "right_": {}}    # weld: {grid vertex: (particle idx, offsets)}
-        self._held = {"left_": None, "right_": None}  # anchor: (anchor offset, rotation) in the gripper link frame while engaged
         # cameras: {name: square size} -- the imitation pipeline's camera rig (main + wrists), read with render_rig();
         # independent of observation_mode's own 84x84 main image
         self.rig = dict(cameras) if cameras else {}
@@ -424,44 +407,9 @@ class IsaacClothFoldEnv(gym.Env):
     def joint_velocities(self, prefix):
         return _npy(self.arms[prefix].data.joint_vel[0, self._cp.joint_ids[prefix]])
 
-    # ---- anchor grasp (grasp_mode "anchor", comparison-only; Ruby's _update_anchor / _drive_anchors) ----
-    def _update_anchor(self, prefix):
-        # engage while the jaw is commanded closed with the carried corner within grasp_radius (distance-gated, like the
-        # weld; no check that the jaws actually hold anything), release when it opens
-        if not self._gripper_closed[prefix]:
-            if self._held[prefix] is not None:
-                self._held[prefix] = None
-                self.lab.set_attachment(prefix, False)
-            return
-        if self._held[prefix] is not None:
-            return
-        vtx = self.grasp_corners[prefix][0]
-        allowed = self.weld_mask.get(prefix)
-        if allowed is not None and vtx not in allowed:
-            return
-        if np.linalg.norm(self._particles[self._grid[vtx]] - self.gripper_position(prefix)) >= self.grasp_radius:
-            return
-        # the anchor onto the corner as it lies now (unrotated, as at the attachment's rest pose), then lock it on
-        corner = self._particles[self._grid[vtx]]
-        self.lab.put_anchor(prefix, corner)
-        _, _, gpos, R = self._gripper_link(prefix)
-        self._held[prefix] = (R.T @ (corner - gpos), R.T)
-        self.lab.set_attachment(prefix, True)
-
-    def _drive_anchors(self):
-        # SceneEnv.substep_hook: before every physics substep the held anchors follow their gripper link
-        for prefix, held in self._held.items():
-            if held is None:
-                continue
-            offset, rot = held
-            _, _, gpos, R = self._gripper_link(prefix)
-            self.lab.put_anchor(prefix, gpos + R @ offset, _quat_from_matrix(R @ rot))
-
     def grasp_active(self, prefix):
         if self.grasp_mode == "weld":
             return bool(self._pinned[prefix])
-        if self.grasp_mode == "anchor":
-            return self._held[prefix] is not None
         # Nothing attaches the cloth, so this reads the physical state (Phase F): the jaw is commanded closed AND has
         # settled at its closed target (still closing, or held open by something, is not a grasp), AND one of the
         # arm's corners (grasp_corners, filtered by weld_mask) is within HOLD_DIST of the gripper frame. A corner
@@ -683,10 +631,6 @@ class IsaacClothFoldEnv(gym.Env):
         super().reset(seed=seed)
         opts = options or {}
         self._domain_params = {}
-        if self.grasp_mode == "anchor":      # released before the cloth is moved, so the attachment drags nothing
-            for prefix in self.prefixes:
-                self._held[prefix] = None
-                self.lab.set_attachment(prefix, False)
         self._reset_scene()
         self._pinned = {p: {} for p in self.prefixes}
         self._cp.pins = {}
@@ -713,9 +657,6 @@ class IsaacClothFoldEnv(gym.Env):
         self._scene_call(self.lab.reset_cloth, offset, self._prof["drop_height"], (tilt[0], tilt[1], 0.0),
                          self._copy)
         self._particles = self.lab.particle_positions(self._copy)
-        if self.grasp_mode == "anchor":      # released, waiting on their corners
-            for prefix in self.prefixes:
-                self.lab.put_anchor(prefix, self._particles[self._grid[self.grasp_corners[prefix][0]]])
         self._particle_vel = np.zeros_like(self._particles)
 
         for k in range(self.settle_steps):
@@ -757,9 +698,6 @@ class IsaacClothFoldEnv(gym.Env):
 
         self.set_gripper("left_", float(clipped[6]))
         self.set_gripper("right_", float(clipped[13]))
-        if self.grasp_mode == "anchor":
-            for prefix in self.prefixes:
-                self._update_anchor(prefix)
         self.apply_joint_delta("left_", clipped[0:5])
         self.apply_joint_delta("right_", clipped[7:12])
         self._submit_targets()
@@ -844,8 +782,6 @@ class IsaacClothFoldBatch(BatchBase):
     def __init__(self, n, **kwargs):
         proto = IsaacClothFoldEnv.__new__(IsaacClothFoldEnv)
         IsaacSubEnv._configure_kwargs(proto, **kwargs)
-        if proto.grasp_mode == "anchor":
-            raise NotImplementedError("the anchor grasp is a single-env, comparison-only mode (copy 0 only)")
         if n > 1 and proto.sim_device == "cpu":
             raise ValueError("several envs per scene need the GPU pipeline (device='cuda:0')")
         self.n = n

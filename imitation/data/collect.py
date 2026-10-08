@@ -80,7 +80,7 @@ def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--episodes", type=int, default=400)
     ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
-    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction", "isaac_anchor"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
     ap.add_argument("--render", action="store_true", help="record camera images at collection")
     ap.add_argument("--cameras", default=None, help="e.g. main=128,left_wrist_cam=64,right_wrist_cam=64")
     ap.add_argument("--version", default="v1")
