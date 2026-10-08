@@ -1,0 +1,933 @@
+﻿Loading user config located at: 'C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/data/Kit/Isaac-Sim/5.1/user.config.json'
+[Info] [carb] Logging to file: C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/logs/Kit/Isaac-Sim/5.1/kit_20261007_212328.log
+2026-10-08T01:23:28Z [9ms] [Warning] [carb.crashreporter-breakpad.plugin] [previous crash] preventing upload of minidump due to user opt-out: 'C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/data/Kit/Isaac-Sim/5.1\c028bb7c-c523-4d6e-8b2b-2af63f808ac2.dmp'
+2026-10-08T01:23:28Z [10ms] [Warning] [carb.crashreporter-breakpad.plugin] [previous crash] preventing upload of minidump due to user opt-out: 'C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/data/Kit/Isaac-Sim/5.1\581073d2-5aa0-4aac-8bfa-8d8e8aec0915.dmp'
+[0.257s] [ext: omni.kit.async_engine-0.0.3] startup
+[0.547s] [ext: omni.metrics.core-0.0.3] startup
+[0.551s] [ext: omni.client.lib-1.1.0] startup
+[0.589s] [ext: omni.blobkey-1.1.2] startup
+[0.592s] [ext: omni.stats-1.0.1] startup
+[0.596s] [ext: omni.datastore-0.0.0] startup
+[0.601s] [ext: omni.client-1.3.0] startup
+[0.617s] [ext: omni.ujitso.default-1.0.0] startup
+[0.624s] [ext: omni.hsscclient-1.1.2] startup
+[0.642s] [ext: omni.gpu_foundation.shadercache.d3d12-1.0.0] startup
+[0.649s] [ext: omni.assets.plugins-0.0.0] startup
+[0.655s] [ext: omni.gpu_foundation-0.0.0] startup
+[0.699s] [ext: carb.windowing.plugins-1.0.0] startup
+[0.971s] [ext: omni.kit.renderer.init-0.0.0] startup
+[0.976s] [ext: omni.materialx.libs-1.0.7] startup
+[0.998s] [ext: omni.kit.pipapi-0.0.0] startup
+[1.001s] [ext: omni.usd.config-1.0.6] startup
+[1.034s] [ext: omni.gpucompute.plugins-0.0.0] startup
+[1.038s] [ext: omni.usd.libs-1.0.1] startup
+[1.215s] [ext: omni.kit.telemetry-0.5.2] startup
+[1.235s] [ext: omni.mdl-56.0.3] startup
+[1.372s] [ext: omni.iray.libs-0.0.0] startup
+[1.421s] [ext: omni.mdl.neuraylib-0.2.12] startup
+[1.433s] [ext: omni.kit.usd.mdl-1.1.5] startup
+2026-10-08T01:23:29Z [1,396ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Arc(TM) 140T GPU (32GB)
+2026-10-08T01:23:29Z [1,397ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Arc(TM) 140T GPU (32GB)
+[1.595s] [ext: omni.kit.pip_archive-0.0.0] startup
+[1.597s] [ext: omni.kit.loop-isaac-1.3.7] startup
+[1.601s] [ext: omni.kit.test-2.0.1] startup
+[1.796s] [ext: omni.appwindow-1.1.10] startup
+[1.802s] [ext: omni.kit.renderer.core-1.1.0] startup
+[1.818s] [ext: omni.kit.renderer.capture-0.0.0] startup
+[1.828s] [ext: omni.kit.renderer.imgui-2.0.5] startup
+[1.852s] [ext: omni.ui-2.27.1] startup
+[1.872s] [ext: omni.kit.mainwindow-1.0.3] startup
+[1.875s] [ext: carb.audio-0.1.0] startup
+[1.878s] [ext: omni.uiaudio-1.0.0] startup
+[1.883s] [ext: omni.kit.uiapp-0.0.0] startup
+[1.883s] [ext: omni.usd.schema.metrics.assembler-107.3.1] startup
+[1.895s] [ext: omni.usd.schema.geospatial-0.0.0] startup
+[1.907s] [ext: omni.usd.schema.anim-0.0.0] startup
+[1.962s] [ext: omni.usd.schema.physx-107.3.26] startup
+
+|---------------------------------------------------------------------------------------------|
+| Driver Version: 616.56        | Graphics API: D3D12
+|=============================================================================================|
+| GPU | Name                             | Active | LDA | GPU Memory | Vendor-ID | LUID       |
+|     |                                  |        |     |            | Device-ID | UUID       |
+|     |                                  |        |     |            | Bus-ID    |            |
+|---------------------------------------------------------------------------------------------|
+| 0   | NVIDIA GeForce RTX 5080 Laptop.. | Yes: 0 |     | 16003   MB | 10de      | 35350100.. |
+|     |                                  |        |     |            | 2c59      | 0          |
+|     |                                  |        |     |            | 1         |            |
+|---------------------------------------------------------------------------------------------|
+| 1   | Intel(R) Arc(TM) 140T GPU (32GB) |        |     | 128     MB | 8086      | c94f0100.. |
+|     |                                  |        |     |            | 7d51      | 0          |
+|     |                                  |        |     |            | N/A       |            |
+|=============================================================================================|
+| OS: Windows 11 Pro, Version: 10.0 (25H2), Build: 26200, Kernel: 10.0.26100.9457
+| Processor: Intel(R) Core(TM) Ultra 9 285H
+| Cores: 16 | Logical Cores: 16
+|---------------------------------------------------------------------------------------------|
+| Total Memory (MB): 64957 | Free Memory: 36178
+| Total Page/Swap (MB): 73661 | Free Page/Swap: 21299
+|---------------------------------------------------------------------------------------------|
+[1.999s] [ext: omni.usd.schema.omnigraph-1.0.0] startup
+2026-10-08T01:23:29Z [1,848ms] [Warning] [gpu.foundation.plugin] PCIe link width current (8) and maximum (16) for device 0 don't match.
+[2.016s] [ext: omni.usd.schema.semantics-0.0.0] startup
+[2.025s] [ext: omni.usd.schema.audio-0.0.0] startup
+[2.037s] [ext: isaacsim.robot.schema-3.6.0] startup
+[2.060s] [ext: omni.usd_resolver-1.0.0] startup
+[2.073s] [ext: omni.usd.core-1.5.3] startup
+[2.076s] [ext: omni.usd.schema.omni_lens_distortion-0.0.0] startup
+[2.127s] [ext: omni.usd.schema.omni_sensors-0.0.0] startup
+[2.129s] [ext: omni.usd.schema.omniscripting-1.0.0] startup
+[2.142s] [ext: omni.kit.window.popup_dialog-2.0.24] startup
+[2.155s] [ext: omni.graph.exec-0.9.6] startup
+[2.159s] [ext: omni.kit.widget.nucleus_connector-2.0.1] startup
+[2.171s] [ext: omni.kit.usd_undo-0.1.8] startup
+[2.173s] [ext: omni.kit.exec.core-0.13.4] startup
+[2.181s] [ext: omni.kit.actions.core-1.0.0] startup
+[2.192s] [ext: omni.resourcemonitor-107.0.1] startup
+[2.201s] [ext: omni.activity.core-1.0.3] startup
+[2.207s] [ext: omni.timeline-1.0.14] startup
+[2.215s] [ext: omni.kit.commands-1.4.10] startup
+[2.231s] [ext: usdrt.scenegraph-7.6.1] startup
+[2.342s] [ext: omni.kit.audiodeviceenum-1.0.2] startup
+[2.350s] [ext: omni.hydra.usdrt_delegate-7.5.1] startup
+[2.376s] [ext: omni.hydra.scene_delegate-0.3.4] startup
+[2.384s] [ext: omni.usd-1.13.10] startup
+[2.489s] [ext: omni.kit.asset_converter-5.0.17] startup
+[2.519s] [ext: omni.usd.schema.render_settings.rtx-0.0.0] startup
+[2.522s] [ext: omni.index.libs-380600.8087.0] startup
+[2.522s] [ext: omni.volume-0.5.2] startup
+[2.537s] [ext: omni.ujitso.client-0.0.0] startup
+[2.541s] [ext: omni.index-1.0.1] startup
+[2.544s] [ext: omni.hydra.rtx.shadercache.d3d12-1.0.0] startup
+[2.550s] [ext: omni.hydra.rtx-1.0.0] startup
+[2.652s] [ext: omni.kit.viewport.legacy_gizmos-1.0.19] startup
+[2.658s] [ext: omni.kit.raycast.query-1.1.0] startup
+[2.668s] [ext: omni.kit.widget.path_field-2.0.11] startup
+[2.673s] [ext: omni.kit.clipboard-1.0.5] startup
+[2.678s] [ext: omni.kit.widget.options_menu-1.1.6] startup
+[2.692s] [ext: omni.kit.helper.file_utils-0.1.9] startup
+[2.698s] [ext: omni.kit.widget.browser_bar-2.0.10] startup
+[2.703s] [ext: omni.kit.notification_manager-1.0.10] startup
+[2.711s] [ext: omni.kit.menu.core-1.1.2] startup
+[2.716s] [ext: omni.kit.widget.options_button-1.0.3] startup
+[2.718s] [ext: omni.kit.widget.filebrowser-2.12.3] startup
+[2.756s] [ext: omni.kit.viewport.registry-104.0.6] startup
+[2.759s] [ext: omni.kit.menu.utils-2.0.5] startup
+[2.803s] [ext: omni.kit.widget.context_menu-1.2.5] startup
+[2.810s] [ext: omni.kit.usd.layers-2.2.11] startup
+[2.860s] [ext: omni.ui.scene-1.11.5] startup
+[2.874s] [ext: omni.kit.context_menu-1.8.6] startup
+[2.889s] [ext: omni.kit.window.filepicker-2.13.4] startup
+[3.014s] [ext: omni.kit.widget.searchable_combobox-1.0.6] startup
+[3.022s] [ext: omni.kit.viewport.scene_camera_model-1.0.6] startup
+[3.029s] [ext: omni.kit.hydra_texture-1.4.6] startup
+[3.038s] [ext: omni.kit.window.file_importer-1.1.18] startup
+[3.052s] [ext: omni.kit.widget.settings-1.2.6] startup
+[3.065s] [ext: omni.kit.window.drop_support-1.0.5] startup
+[3.067s] [ext: omni.kit.widget.viewport-107.1.3] startup
+[3.106s] [ext: omni.kit.material.library-2.0.7] startup
+[3.151s] [ext: omni.hydra.engine.stats-1.0.3] startup
+[3.157s] [ext: omni.kit.window.preferences-1.8.0] startup
+[3.194s] [ext: omni.kit.viewport.window-107.2.0] startup
+[3.391s] [ext: omni.kit.manipulator.transform-107.0.0] startup
+[3.429s] [ext: omni.kvdb-107.3.26] startup
+[3.441s] [ext: omni.kit.widget.toolbar-2.0.1] startup
+[3.478s] [ext: omni.kit.viewport.utility-1.1.2] startup
+[3.484s] [ext: omni.usdphysics-107.3.26] startup
+[3.491s] [ext: omni.physx.foundation-107.3.26] startup
+[3.520s] [ext: omni.localcache-107.3.26] startup
+[3.530s] [ext: omni.convexdecomposition-107.3.26] startup
+[3.541s] [ext: omni.kit.manipulator.tool.snap-1.5.13] startup
+[3.565s] [ext: omni.kit.manipulator.selector-1.1.3] startup
+[3.571s] [ext: omni.physx.cooking-107.3.26] startup
+[3.582s] [ext: omni.kit.viewport.manipulator.transform-107.0.4] startup
+[3.592s] [ext: omni.physx-107.3.26] startup
+[3.629s] [ext: omni.kit.manipulator.viewport-107.0.1] startup
+[3.635s] [ext: omni.kit.primitive.mesh-1.0.17] startup
+[3.660s] [ext: omni.kit.manipulator.prim.core-107.0.8] startup
+[3.701s] [ext: omni.fabric.commands-1.1.6] startup
+[3.721s] [ext: omni.kit.manipulator.prim.usd-107.0.3] startup
+[3.725s] [ext: omni.kit.manipulator.prim.fabric-107.0.4] startup
+[3.732s] [ext: omni.debugdraw-0.1.4] startup
+[3.741s] [ext: omni.physx.commands-107.3.26] startup
+[3.781s] [ext: omni.kit.manipulator.selection-106.0.1] startup
+[3.788s] [ext: omni.kit.manipulator.prim-107.0.0] startup
+[3.788s] [ext: omni.physics.tensors-107.3.26] startup
+[3.816s] [ext: omni.kit.property.adapter.core-1.0.2] startup
+[3.825s] [ext: omni.kit.widget.highlight_label-1.0.3] startup
+[3.828s] [ext: omni.kit.widget.searchfield-1.1.8] startup
+[3.836s] [ext: omni.kit.property.adapter.fabric-1.0.3] startup
+[3.843s] [ext: omni.kit.widget.filter-1.1.4] startup
+[3.846s] [ext: omni.kit.widget.prompt-1.0.7] startup
+[3.851s] [ext: omni.kit.window.property-1.12.1] startup
+[3.865s] [ext: omni.kit.property.adapter.usd-1.0.2] startup
+[3.870s] [ext: omni.kit.hotkeys.core-1.3.10] startup
+[3.873s] [ext: omni.kit.window.file_exporter-1.0.33] startup
+[3.878s] [ext: omni.kit.stage_template.core-1.1.22] startup
+[3.881s] [ext: omni.kit.viewport.menubar.core-107.2.1] startup
+[3.948s] [ext: omni.kit.viewport.actions-107.0.2] startup
+[3.959s] [ext: omni.kit.window.file-2.0.5] startup
+[3.978s] [ext: omni.kit.window.content_browser_registry-0.0.6] startup
+[3.982s] [ext: omni.kit.viewport.menubar.display-107.0.3] startup
+[3.989s] [ext: omni.kit.window.content_browser-3.1.3] startup
+[4.027s] [ext: omni.kit.widget.stage-3.1.4] startup
+[4.115s] [ext: omni.inspect-1.0.2] startup
+[4.125s] [ext: omni.kit.widget.layers-1.8.6] startup
+[4.210s] [ext: omni.kit.property.usd-4.5.12] startup
+[4.315s] [ext: omni.kit.numpy.common-0.1.3] startup
+[4.321s] [ext: omni.physics-107.3.26] startup
+[4.334s] [ext: omni.graph.core-2.184.5] startup
+[4.342s] [ext: omni.usdphysics.ui-107.3.26] startup
+[4.420s] [ext: omni.physics.stageupdate-107.3.26] startup
+[4.434s] [ext: isaacsim.core.deprecation_manager-0.2.7] startup
+[4.437s] [ext: omni.physx.ui-107.3.26] startup
+[4.591s] [ext: isaacsim.core.version-2.0.6] startup
+[4.594s] [ext: omni.usd.metrics.assembler-107.3.1] startup
+[4.613s] [ext: omni.warp.core-1.8.2] startup
+[4.995s] [ext: omni.ui_query-1.1.8] startup
+[5.000s] [ext: omni.physics.physx-107.3.26] startup
+2026-10-08T01:23:32Z [4,837ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [omni::physx::IPhysxBenchmarks v1.0] (plugin: <default plugin>), by client: omni.physics.physx.plugin. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.
+[5.004s] [ext: isaacsim.storage.native-1.5.1] startup
+[5.012s] [ext: omni.usd.metrics.assembler.physics-107.3.26] startup
+[5.021s] [ext: omni.isaac.dynamic_control-2.0.7] startup
+2026-10-08T01:23:32Z [4,867ms] [Warning] [omni.isaac.dynamic_control] omni.isaac.dynamic_control is deprecated as of Isaac Sim 4.5. No action is needed from end-users.
+[5.035s] [ext: omni.graph.tools-1.79.2] startup
+[5.168s] [ext: omni.physx.tensors-107.3.26] startup
+[5.175s] [ext: isaacsim.core.utils-3.5.1] startup
+[5.186s] [ext: omni.graph-1.141.2] startup
+[5.350s] [ext: isaacsim.core.simulation_manager-1.4.4] startup
+[10.319s] [ext: omni.graph.action_core-1.1.7] startup
+[10.332s] [ext: omni.kit.stage_templates-2.0.0] startup
+[10.343s] [ext: isaacsim.core.prims-0.6.1] startup
+[10.464s] [ext: omni.graph.action_nodes-1.50.4] startup
+[10.472s] [ext: isaacsim.core.api-4.8.0] startup
+[10.558s] [ext: omni.graph.action-1.130.0] startup
+[10.563s] [ext: omni.kit.widget.stage_icons-1.0.8] startup
+[10.568s] [ext: omni.kit.selection-0.1.6] startup
+[10.574s] [ext: omni.kit.window.stage-2.6.1] startup
+[10.586s] [ext: omni.kit.menu.create-2.0.1] startup
+[10.592s] [ext: omni.kit.widget.text_editor-1.1.1] startup
+[10.607s] [ext: omni.kit.ui_test-1.3.7] startup
+[10.621s] [ext: omni.kit.scripting-107.3.2] startup
+[10.648s] [ext: omni.kit.window.extensions-1.4.27] startup
+[10.695s] [ext: omni.graph.visualization.nodes-2.1.3] startup
+[10.760s] [ext: isaacsim.replicator.behavior-1.1.16] startup
+[10.785s] [ext: isaacsim.gui.components-1.2.1] startup
+[10.828s] [ext: isaacsim.gui.menu-2.4.4] startup
+[10.885s] [ext: isaacsim.core.cloner-1.4.10] startup
+[10.898s] [ext: semantics.schema.editor-2.0.2] startup
+2026-10-08T01:23:38Z [10,750ms] [Warning] [pxr.Semantics] pxr.Semantics is deprecated - please use Semantics instead
+[10.919s] [ext: omni.kit.widget.zoombar-1.0.6] startup
+[10.923s] [ext: omni.kit.usd.collect-2.4.5] startup
+[10.940s] [ext: omni.kit.browser.core-2.3.13] startup
+[10.965s] [ext: omni.kit.menu.stage-1.2.7] startup
+[10.972s] [ext: omni.kit.tool.collect-2.2.18] startup
+[10.987s] [ext: omni.kit.browser.folder.core-1.10.9] startup
+[11.022s] [ext: isaacsim.core.experimental.utils-0.3.0] startup
+[11.029s] [ext: isaacsim.asset.browser-1.3.23] startup
+[11.539s] [ext: omni.kit.widget.graph-2.0.0] startup
+[11.587s] [ext: omni.graph.image.core-0.6.1] startup
+[11.591s] [ext: omni.kit.graph.delegate.default-1.2.3] startup
+[11.593s] [ext: omni.graph.image.nodes-1.3.1] startup
+[11.597s] [ext: omni.kit.graph.editor.core-1.5.3] startup
+[11.613s] [ext: omni.graph.nodes-1.170.10] startup
+[11.635s] [ext: omni.graph.ui_nodes-1.50.5] startup
+[11.646s] [ext: omni.kit.graph.usd.commands-1.3.1] startup
+[11.651s] [ext: omni.kit.widget.material_preview-1.0.16] startup
+[11.667s] [ext: omni.videoencoding-0.1.2] startup
+[11.677s] [ext: omni.kit.stagerecorder.core-107.0.3] startup
+[11.694s] [ext: omni.warp-1.8.2] startup
+[11.717s] [ext: omni.syntheticdata-0.6.13] startup
+[11.831s] [ext: omni.kit.window.material_graph-1.9.1] startup
+[11.962s] [ext: omni.graph.scriptnode-1.50.0] startup
+[11.983s] [ext: omni.kit.stagerecorder.ui-107.0.1] startup
+[12.035s] [ext: omni.replicator.core-1.12.27] startup
+2026-10-08T01:23:40Z [12,294ms] [Warning] [omni.graph.core.plugin] Found duplicate of category 'Replicator' - was 'Annotators', adding 'Fabric Reader'
+2026-10-08T01:23:40Z [12,294ms] [Warning] [omni.graph.core.plugin] Category 'Replicator' not accepted on node type 'omni.replicator.core.FabricReader' in extension 'omni.replicator.core'
+2026-10-08T01:23:40Z [12,296ms] [Warning] [omni.replicator.core.scripts.extension] No material configuration file, adding configuration to material settings directly.
+[12.468s] [ext: omni.kit.stagerecorder.bundle-105.0.2] startup
+[12.471s] [ext: isaacsim.core.nodes-3.4.3] startup
+[12.507s] [ext: isaacsim.test.docstring-1.1.0] startup
+[12.533s] [ext: isaacsim.sensors.camera-1.3.6] startup
+[12.580s] [ext: isaacsim.core.experimental.prims-0.8.1] startup
+[12.708s] [ext: omni.kit.usdz_export-1.0.9] startup
+[12.736s] [ext: isaacsim.robot.surface_gripper-3.3.1] startup
+[12.763s] [ext: isaacsim.sensors.physics-0.4.3] startup
+[12.813s] [ext: omni.kit.tool.asset_importer-4.3.2] startup
+[12.870s] [ext: isaacsim.robot.manipulators-3.3.6] startup
+[12.900s] [ext: isaacsim.robot.policy.examples-4.1.11] startup
+[12.926s] [ext: omni.sensors.nv.common-3.0.0] startup
+[13.001s] [ext: isaacsim.asset.importer.mjcf-2.5.13] startup
+[13.731s] [ext: isaacsim.util.debug_draw-3.1.0] startup
+[13.762s] [ext: omni.sensors.nv.materials-2.0.0] startup
+[13.802s] [ext: omni.sensors.net-1.0.0] startup
+[13.841s] [ext: isaacsim.sensors.physx-2.3.2] startup
+[13.899s] [ext: isaacsim.examples.browser-0.2.1] startup
+[13.951s] [ext: isaacsim.asset.importer.urdf-2.4.31] startup
+[14.193s] [ext: isaacsim.simulation_app-2.12.2] startup
+[14.201s] [ext: omni.sensors.nv.ids-2.0.0] startup
+[14.226s] [ext: omni.sensors.nv.lidar-3.0.0] startup
+[14.257s] [ext: omni.kit.property.audio-1.0.16] startup
+[14.270s] [ext: omni.kit.property.camera-1.0.10] startup
+[14.293s] [ext: omni.kit.property.geometry-2.0.4] startup
+[14.318s] [ext: omni.hydra.scene_api-0.1.2] startup
+[14.331s] [ext: omni.sensors.nv.wpm-3.0.0] startup
+[14.341s] [ext: omni.kit.property.light-1.0.12] startup
+[14.375s] [ext: omni.kit.property.material-1.11.9] startup
+[14.448s] [ext: omni.kit.property.render-1.2.1] startup
+[14.457s] [ext: omni.kit.property.transform-1.5.13] startup
+[14.507s] [ext: omni.sensors.nv.radar-3.0.0] startup
+[14.538s] [ext: omni.anim.curve.core-1.3.1] startup
+[14.608s] [ext: omni.kit.manipulator.camera-106.0.4] startup
+[14.652s] [ext: isaacsim.gui.property-1.1.3] startup
+[14.660s] [ext: omni.kit.property.bundle-1.4.1] startup
+[14.665s] [ext: isaacsim.sensors.rtx-15.8.4] startup
+[14.689s] [ext: omni.kit.viewport.menubar.camera-107.0.6] startup
+[14.719s] [ext: omni.kit.viewport.menubar.lighting-107.3.1] startup
+[14.733s] [ext: omni.kit.viewport.menubar.render-107.0.10] startup
+[14.746s] [ext: omni.kit.viewport.menubar.settings-107.0.3] startup
+[14.766s] [ext: omni.kit.window.script_editor-2.0.1] startup
+[14.781s] [ext: omni.kit.window.console-1.1.4] startup
+[14.795s] [ext: isaacsim.robot.wheeled_robots-4.0.24] startup
+[14.824s] [ext: omni.physx.demos-107.3.26] startup
+[14.962s] [ext: omni.kit.property.physx-107.3.26] startup
+[15.045s] [ext: omni.rtx.window.settings-0.6.19] startup
+[15.076s] [ext: omni.ocio-0.1.1] startup
+[15.089s] [ext: omni.asset_validator.core-1.1.6] startup
+[15.297s] [ext: omni.physx.vehicle-107.3.26] startup
+[15.405s] [ext: omni.replicator.replicator_yaml-2.0.11] startup
+[15.488s] [ext: omni.rtx.settings.core-0.6.5] startup
+[15.530s] [ext: omni.kit.window.toolbar-2.0.0] startup
+[15.540s] [ext: omni.kit.window.status_bar-0.1.9] startup
+[15.553s] [ext: omni.physx.asset_validator-107.3.26] startup
+[15.597s] [ext: omni.physx.camera-107.3.26] startup
+[15.623s] [ext: omni.physx.cct-107.3.26] startup
+[15.650s] [ext: omni.physx.graph-107.3.26] startup
+[15.679s] [ext: omni.physx.supportui-107.3.26] startup
+[15.750s] [ext: omni.physx.telemetry-107.3.26] startup
+[15.758s] [ext: omni.usd.metrics.assembler.ui-107.3.1] startup
+[15.788s] [ext: isaacsim.app.about-2.0.11] startup
+[15.792s] [ext: isaacsim.core.throttling-2.2.2] startup
+[15.797s] [ext: omni.kit.ui.actions-1.0.5] startup
+[15.803s] [ext: semantics.schema.property-2.0.1] startup
+[15.810s] [ext: omni.physx.bundle-107.3.26] startup
+[15.811s] [ext: isaaclab-0.53.1] startup
+[17.163s] [ext: isaaclab_assets-0.2.4] startup
+[17.861s] [ext: isaaclab_tasks-0.11.12] startup
+[18.631s] [ext: omni.kit.menu.common-2.0.1] startup
+[18.638s] [ext: isaaclab_rl-0.4.7] startup
+[18.639s] [ext: isaaclab_mimic-1.0.16] startup
+[18.641s] [ext: isaaclab.python-2.3.0] startup
+[18.648s] Simulation App Starting
+2026-10-08T01:23:47Z [18,958ms] [Warning] [omni.fabric.plugin] Warning: attribute overrideClipRange not found for bucket id 9
+
+[19.165s] app ready
+[INFO][AppLauncher]: Using device: cuda:0
+[INFO][AppLauncher]: Loading experience file: C:\Users\ethan\Documents\Projects\watai\WorldFold\.venv-isaac\src\IsaacLab\apps\isaaclab.python.kit
+
+[36m===================================================================================================================[0m
+[36m[1m[INFO][IsaacLab]: Logging to file: C:\Users\ethan\AppData\Local\Temp\isaaclab\logs\isaaclab_2026-10-07_21-23-52.log[0m
+[36m===================================================================================================================[0m
+
+[33m21:23:55 [simulation_context.py] WARNING: The `enable_external_forces_every_iteration` parameter in the PhysxCfg is set to False. If you are experiencing noisy velocities, consider enabling this flag. You may need to slightly increase the number of velocity iterations (setting it to 1 or 2 rather than 0), together with this flag, to improve the accuracy of velocity updates.[0m
+[INFO]: Base environment:
+	Environment device    : cuda:0
+	Environment seed      : None
+	Physics step-size     : 0.01
+	Rendering step-size   : 0.05
+	Environment step-size : 0.05
+2026-10-07 21:23:56 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:23:56 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:23:57 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:23:57 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:23:58 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:23:58 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:23:58 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:23:59 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+[22.306s] Simulation App Startup Complete
+2026-10-08T01:23:52Z [24,487ms] [Warning] [isaaclab.envs.direct_rl_env] Seed not set for the environment. The environment creation may not be deterministic.
+[24.870s] [ext: omni.physx.fabric-107.3.26] startup
+2026-10-08T01:23:56Z [28,222ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:23:56Z [28,657ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:23:57Z [29,078ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:23:57Z [29,521ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:23:58Z [29,975ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:23:58Z [30,432ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:23:58Z [30,894ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:23:59Z [31,335ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:23:59Z [31,359ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,359ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,360ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,360ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,361ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy1/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,361ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy1/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,361ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy1/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,362ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy1/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,363ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy2/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,363ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy2/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,363ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy2/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,363ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy2/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,364ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy3/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,364ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy3/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,365ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy3/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,365ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy3/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,366ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy4/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,366ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy4/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,366ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy4/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,366ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy4/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,367ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy5/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,367ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy5/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,368ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy5/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,368ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy5/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,369ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy6/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,369ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy6/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,369ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy6/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,369ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy6/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,370ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy7/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,370ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy7/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:23:59Z [31,370ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy7/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:23:59Z [31,370ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy7/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:24:01Z Loading user config located at: 'C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/data/Kit/Isaac-Sim/5.1/user.config.json'
+[Info] [carb] Logging to file: C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/logs/Kit/Isaac-Sim/5.1/kit_20261007_212406.log
+2026-10-08T01:24:06Z [13ms] [Warning] [carb.crashreporter-breakpad.plugin] [previous crash] preventing upload of minidump due to user opt-out: 'C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/data/Kit/Isaac-Sim/5.1\c028bb7c-c523-4d6e-8b2b-2af63f808ac2.dmp'
+2026-10-08T01:24:06Z [15ms] [Warning] [carb.crashreporter-breakpad.plugin] [previous crash] preventing upload of minidump due to user opt-out: 'C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/data/Kit/Isaac-Sim/5.1\581073d2-5aa0-4aac-8bfa-8d8e8aec0915.dmp'
+[0.272s] [ext: omni.kit.async_engine-0.0.3] startup
+[0.591s] [ext: omni.metrics.core-0.0.3] startup
+[0.594s] [ext: omni.client.lib-1.1.0] startup
+[0.635s] [ext: omni.blobkey-1.1.2] startup
+[0.639s] [ext: omni.stats-1.0.1] startup
+[0.646s] [ext: omni.datastore-0.0.0] startup
+[0.652s] [ext: omni.client-1.3.0] startup
+[0.671s] [ext: omni.ujitso.default-1.0.0] startup
+[0.681s] [ext: omni.hsscclient-1.1.2] startup
+[0.697s] [ext: omni.gpu_foundation.shadercache.d3d12-1.0.0] startup
+[0.705s] [ext: omni.assets.plugins-0.0.0] startup
+[0.714s] [ext: omni.gpu_foundation-0.0.0] startup
+[0.766s] [ext: carb.windowing.plugins-1.0.0] startup
+[1.050s] [ext: omni.kit.renderer.init-0.0.0] startup
+[1.054s] [ext: omni.materialx.libs-1.0.7] startup
+[1.071s] [ext: omni.kit.pipapi-0.0.0] startup
+[1.074s] [ext: omni.usd.config-1.0.6] startup
+[1.104s] [ext: omni.gpucompute.plugins-0.0.0] startup
+[1.108s] [ext: omni.usd.libs-1.0.1] startup
+[1.278s] [ext: omni.kit.telemetry-0.5.2] startup
+[1.301s] [ext: omni.mdl-56.0.3] startup
+[1.445s] [ext: omni.iray.libs-0.0.0] startup
+[1.477s] [ext: omni.mdl.neuraylib-0.2.12] startup
+[1.488s] [ext: omni.kit.usd.mdl-1.1.5] startup
+2026-10-08T01:24:07Z [1,418ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Arc(TM) 140T GPU (32GB)
+2026-10-08T01:24:07Z [1,420ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Arc(TM) 140T GPU (32GB)
+[1.646s] [ext: omni.kit.pip_archive-0.0.0] startup
+[1.648s] [ext: omni.kit.loop-isaac-1.3.7] startup
+[1.652s] [ext: omni.kit.test-2.0.1] startup
+[1.893s] [ext: omni.appwindow-1.1.10] startup
+[1.898s] [ext: omni.kit.renderer.core-1.1.0] startup
+[1.915s] [ext: omni.kit.renderer.capture-0.0.0] startup
+[1.923s] [ext: omni.kit.renderer.imgui-2.0.5] startup
+[1.947s] [ext: omni.ui-2.27.1] startup
+[1.968s] [ext: omni.kit.mainwindow-1.0.3] startup
+[1.973s] [ext: carb.audio-0.1.0] startup
+[1.976s] [ext: omni.uiaudio-1.0.0] startup
+[1.980s] [ext: omni.kit.uiapp-0.0.0] startup
+[1.980s] [ext: omni.usd.schema.metrics.assembler-107.3.1] startup
+[1.994s] [ext: omni.usd.schema.geospatial-0.0.0] startup
+[2.008s] [ext: omni.usd.schema.anim-0.0.0] startup
+
+|---------------------------------------------------------------------------------------------|
+| Driver Version: 616.56        | Graphics API: D3D12
+|=============================================================================================|
+| GPU | Name                             | Active | LDA | GPU Memory | Vendor-ID | LUID       |
+|     |                                  |        |     |            | Device-ID | UUID       |
+|     |                                  |        |     |            | Bus-ID    |            |
+|---------------------------------------------------------------------------------------------|
+| 0   | NVIDIA GeForce RTX 5080 Laptop.. | Yes: 0 |     | 16003   MB | 10de      | 35350100.. |
+|     |                                  |        |     |            | 2c59      | 0          |
+|     |                                  |        |     |            | 1         |            |
+|---------------------------------------------------------------------------------------------|
+| 1   | Intel(R) Arc(TM) 140T GPU (32GB) |        |     | 128     MB | 8086      | c94f0100.. |
+|     |                                  |        |     |            | 7d51      | 0          |
+|     |                                  |        |     |            | N/A       |            |
+|=============================================================================================|
+| OS: Windows 11 Pro, Version: 10.0 (25H2), Build: 26200, Kernel: 10.0.26100.9457
+| Processor: Intel(R) Core(TM) Ultra 9 285H
+| Cores: 16 | Logical Cores: 16
+|---------------------------------------------------------------------------------------------|
+| Total Memory (MB): 64957 | Free Memory: 28742
+| Total Page/Swap (MB): 73661 | Free Page/Swap: 7256
+|---------------------------------------------------------------------------------------------|
+[2.061s] [ext: omni.usd.schema.physx-107.3.26] startup
+2026-10-08T01:24:08Z [1,904ms] [Warning] [gpu.foundation.plugin] PCIe link width current (8) and maximum (16) for device 0 don't match.
+[2.112s] [ext: omni.usd.schema.omnigraph-1.0.0] startup
+[2.134s] [ext: omni.usd.schema.semantics-0.0.0] startup
+[2.148s] [ext: omni.usd.schema.audio-0.0.0] startup
+[2.162s] [ext: isaacsim.robot.schema-3.6.0] startup
+[2.191s] [ext: omni.usd_resolver-1.0.0] startup
+[2.210s] [ext: omni.usd.core-1.5.3] startup
+[2.212s] [ext: omni.usd.schema.omni_lens_distortion-0.0.0] startup
+[2.285s] [ext: omni.usd.schema.omni_sensors-0.0.0] startup
+[2.287s] [ext: omni.usd.schema.omniscripting-1.0.0] startup
+[2.309s] [ext: omni.kit.window.popup_dialog-2.0.24] startup
+[2.325s] [ext: omni.graph.exec-0.9.6] startup
+[2.329s] [ext: omni.kit.widget.nucleus_connector-2.0.1] startup
+[2.341s] [ext: omni.kit.usd_undo-0.1.8] startup
+[2.343s] [ext: omni.kit.exec.core-0.13.4] startup
+[2.353s] [ext: omni.kit.actions.core-1.0.0] startup
+[2.367s] [ext: omni.resourcemonitor-107.0.1] startup
+[2.378s] [ext: omni.activity.core-1.0.3] startup
+[2.385s] [ext: omni.timeline-1.0.14] startup
+[2.393s] [ext: omni.kit.commands-1.4.10] startup
+[2.419s] [ext: usdrt.scenegraph-7.6.1] startup
+[2.546s] [ext: omni.kit.audiodeviceenum-1.0.2] startup
+[2.555s] [ext: omni.hydra.usdrt_delegate-7.5.1] startup
+[2.583s] [ext: omni.hydra.scene_delegate-0.3.4] startup
+[2.591s] [ext: omni.usd-1.13.10] startup
+[2.686s] [ext: omni.kit.asset_converter-5.0.17] startup
+[2.709s] [ext: omni.usd.schema.render_settings.rtx-0.0.0] startup
+[2.713s] [ext: omni.index.libs-380600.8087.0] startup
+[2.713s] [ext: omni.volume-0.5.2] startup
+[2.724s] [ext: omni.ujitso.client-0.0.0] startup
+[2.727s] [ext: omni.index-1.0.1] startup
+[2.730s] [ext: omni.hydra.rtx.shadercache.d3d12-1.0.0] startup
+[2.734s] [ext: omni.hydra.rtx-1.0.0] startup
+[2.800s] [ext: omni.kit.viewport.legacy_gizmos-1.0.19] startup
+[2.805s] [ext: omni.kit.raycast.query-1.1.0] startup
+[2.813s] [ext: omni.kit.widget.path_field-2.0.11] startup
+[2.818s] [ext: omni.kit.clipboard-1.0.5] startup
+[2.823s] [ext: omni.kit.widget.options_menu-1.1.6] startup
+[2.841s] [ext: omni.kit.helper.file_utils-0.1.9] startup
+[2.847s] [ext: omni.kit.widget.browser_bar-2.0.10] startup
+[2.852s] [ext: omni.kit.notification_manager-1.0.10] startup
+[2.860s] [ext: omni.kit.menu.core-1.1.2] startup
+[2.863s] [ext: omni.kit.widget.options_button-1.0.3] startup
+[2.866s] [ext: omni.kit.widget.filebrowser-2.12.3] startup
+[2.898s] [ext: omni.kit.viewport.registry-104.0.6] startup
+[2.901s] [ext: omni.kit.menu.utils-2.0.5] startup
+[2.936s] [ext: omni.kit.widget.context_menu-1.2.5] startup
+[2.943s] [ext: omni.kit.usd.layers-2.2.11] startup
+[2.984s] [ext: omni.ui.scene-1.11.5] startup
+[2.993s] [ext: omni.kit.context_menu-1.8.6] startup
+[3.006s] [ext: omni.kit.window.filepicker-2.13.4] startup
+[3.116s] [ext: omni.kit.widget.searchable_combobox-1.0.6] startup
+[3.121s] [ext: omni.kit.viewport.scene_camera_model-1.0.6] startup
+[3.126s] [ext: omni.kit.hydra_texture-1.4.6] startup
+[3.132s] [ext: omni.kit.window.file_importer-1.1.18] startup
+[3.146s] [ext: omni.kit.widget.settings-1.2.6] startup
+[3.158s] [ext: omni.kit.window.drop_support-1.0.5] startup
+[3.160s] [ext: omni.kit.widget.viewport-107.1.3] startup
+[3.186s] [ext: omni.kit.material.library-2.0.7] startup
+[3.223s] [ext: omni.hydra.engine.stats-1.0.3] startup
+[3.227s] [ext: omni.kit.window.preferences-1.8.0] startup
+[3.259s] [ext: omni.kit.viewport.window-107.2.0] startup
+[3.432s] [ext: omni.kit.manipulator.transform-107.0.0] startup
+[3.462s] [ext: omni.kvdb-107.3.26] startup
+[3.471s] [ext: omni.kit.widget.toolbar-2.0.1] startup
+[3.502s] [ext: omni.kit.viewport.utility-1.1.2] startup
+[3.506s] [ext: omni.usdphysics-107.3.26] startup
+[3.512s] [ext: omni.physx.foundation-107.3.26] startup
+[3.525s] [ext: omni.localcache-107.3.26] startup
+[3.533s] [ext: omni.convexdecomposition-107.3.26] startup
+[3.542s] [ext: omni.kit.manipulator.tool.snap-1.5.13] startup
+[3.562s] [ext: omni.kit.manipulator.selector-1.1.3] startup
+[3.566s] [ext: omni.physx.cooking-107.3.26] startup
+[3.577s] [ext: omni.kit.viewport.manipulator.transform-107.0.4] startup
+[3.588s] [ext: omni.physx-107.3.26] startup
+[3.619s] [ext: omni.kit.manipulator.viewport-107.0.1] startup
+[3.624s] [ext: omni.kit.primitive.mesh-1.0.17] startup
+[3.643s] [ext: omni.kit.manipulator.prim.core-107.0.8] startup
+[3.677s] [ext: omni.fabric.commands-1.1.6] startup
+[3.695s] [ext: omni.kit.manipulator.prim.usd-107.0.3] startup
+[3.700s] [ext: omni.kit.manipulator.prim.fabric-107.0.4] startup
+[3.707s] [ext: omni.debugdraw-0.1.4] startup
+[3.716s] [ext: omni.physx.commands-107.3.26] startup
+[3.753s] [ext: omni.kit.manipulator.selection-106.0.1] startup
+[3.760s] [ext: omni.kit.manipulator.prim-107.0.0] startup
+[3.760s] [ext: omni.physics.tensors-107.3.26] startup
+[3.791s] [ext: omni.kit.property.adapter.core-1.0.2] startup
+[3.801s] [ext: omni.kit.widget.highlight_label-1.0.3] startup
+[3.805s] [ext: omni.kit.widget.searchfield-1.1.8] startup
+[3.810s] [ext: omni.kit.property.adapter.fabric-1.0.3] startup
+[3.817s] [ext: omni.kit.widget.filter-1.1.4] startup
+[3.821s] [ext: omni.kit.widget.prompt-1.0.7] startup
+[3.825s] [ext: omni.kit.window.property-1.12.1] startup
+[3.839s] [ext: omni.kit.property.adapter.usd-1.0.2] startup
+[3.843s] [ext: omni.kit.hotkeys.core-1.3.10] startup
+[3.847s] [ext: omni.kit.window.file_exporter-1.0.33] startup
+[3.850s] [ext: omni.kit.stage_template.core-1.1.22] startup
+[3.854s] [ext: omni.kit.viewport.menubar.core-107.2.1] startup
+[3.917s] [ext: omni.kit.viewport.actions-107.0.2] startup
+[3.930s] [ext: omni.kit.window.file-2.0.5] startup
+[3.949s] [ext: omni.kit.window.content_browser_registry-0.0.6] startup
+[3.952s] [ext: omni.kit.viewport.menubar.display-107.0.3] startup
+[3.958s] [ext: omni.kit.window.content_browser-3.1.3] startup
+[3.992s] [ext: omni.kit.widget.stage-3.1.4] startup
+[4.059s] [ext: omni.inspect-1.0.2] startup
+[4.066s] [ext: omni.kit.widget.layers-1.8.6] startup
+[4.135s] [ext: omni.kit.property.usd-4.5.12] startup
+[4.225s] [ext: omni.kit.numpy.common-0.1.3] startup
+[4.230s] [ext: omni.physics-107.3.26] startup
+[4.242s] [ext: omni.graph.core-2.184.5] startup
+[4.248s] [ext: omni.usdphysics.ui-107.3.26] startup
+[4.329s] [ext: omni.physics.stageupdate-107.3.26] startup
+[4.340s] [ext: isaacsim.core.deprecation_manager-0.2.7] startup
+[4.343s] [ext: omni.physx.ui-107.3.26] startup
+[4.469s] [ext: isaacsim.core.version-2.0.6] startup
+[4.472s] [ext: omni.usd.metrics.assembler-107.3.1] startup
+[4.490s] [ext: omni.warp.core-1.8.2] startup
+[4.869s] [ext: omni.ui_query-1.1.8] startup
+[4.874s] [ext: omni.physics.physx-107.3.26] startup
+2026-10-08T01:24:11Z [4,706ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [omni::physx::IPhysxBenchmarks v1.0] (plugin: <default plugin>), by client: omni.physics.physx.plugin. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.
+[4.879s] [ext: isaacsim.storage.native-1.5.1] startup
+[4.885s] [ext: omni.usd.metrics.assembler.physics-107.3.26] startup
+[4.894s] [ext: omni.isaac.dynamic_control-2.0.7] startup
+2026-10-08T01:24:11Z [4,734ms] [Warning] [omni.isaac.dynamic_control] omni.isaac.dynamic_control is deprecated as of Isaac Sim 4.5. No action is needed from end-users.
+[4.907s] [ext: omni.graph.tools-1.79.2] startup
+[5.041s] [ext: omni.physx.tensors-107.3.26] startup
+[5.054s] [ext: isaacsim.core.utils-3.5.1] startup
+[5.066s] [ext: omni.graph-1.141.2] startup
+[5.212s] [ext: isaacsim.core.simulation_manager-1.4.4] startup
+[9.974s] [ext: omni.graph.action_core-1.1.7] startup
+[9.985s] [ext: omni.kit.stage_templates-2.0.0] startup
+[9.999s] [ext: isaacsim.core.prims-0.6.1] startup
+[10.109s] [ext: omni.graph.action_nodes-1.50.4] startup
+[10.117s] [ext: isaacsim.core.api-4.8.0] startup
+[10.192s] [ext: omni.graph.action-1.130.0] startup
+[10.199s] [ext: omni.kit.widget.stage_icons-1.0.8] startup
+[10.206s] [ext: omni.kit.selection-0.1.6] startup
+[10.211s] [ext: omni.kit.window.stage-2.6.1] startup
+[10.223s] [ext: omni.kit.menu.create-2.0.1] startup
+[10.229s] [ext: omni.kit.widget.text_editor-1.1.1] startup
+[10.235s] [ext: omni.kit.ui_test-1.3.7] startup
+[10.245s] [ext: omni.kit.scripting-107.3.2] startup
+[10.273s] [ext: omni.kit.window.extensions-1.4.27] startup
+[10.317s] [ext: omni.graph.visualization.nodes-2.1.3] startup
+[10.339s] [ext: isaacsim.replicator.behavior-1.1.16] startup
+[10.349s] [ext: isaacsim.gui.components-1.2.1] startup
+[10.409s] [ext: isaacsim.gui.menu-2.4.4] startup
+[10.484s] [ext: isaacsim.core.cloner-1.4.10] startup
+[10.495s] [ext: semantics.schema.editor-2.0.2] startup
+2026-10-08T01:24:16Z [10,341ms] [Warning] [pxr.Semantics] pxr.Semantics is deprecated - please use Semantics instead
+[10.515s] [ext: omni.kit.widget.zoombar-1.0.6] startup
+[10.520s] [ext: omni.kit.usd.collect-2.4.5] startup
+[10.533s] [ext: omni.kit.browser.core-2.3.13] startup
+[10.557s] [ext: omni.kit.menu.stage-1.2.7] startup
+[10.562s] [ext: omni.kit.tool.collect-2.2.18] startup
+[10.579s] [ext: omni.kit.browser.folder.core-1.10.9] startup
+[10.614s] [ext: isaacsim.core.experimental.utils-0.3.0] startup
+[10.620s] [ext: isaacsim.asset.browser-1.3.23] startup
+[11.112s] [ext: omni.kit.widget.graph-2.0.0] startup
+[11.159s] [ext: omni.graph.image.core-0.6.1] startup
+[11.163s] [ext: omni.kit.graph.delegate.default-1.2.3] startup
+[11.166s] [ext: omni.graph.image.nodes-1.3.1] startup
+[11.170s] [ext: omni.kit.graph.editor.core-1.5.3] startup
+[11.182s] [ext: omni.graph.nodes-1.170.10] startup
+[11.204s] [ext: omni.graph.ui_nodes-1.50.5] startup
+[11.215s] [ext: omni.kit.graph.usd.commands-1.3.1] startup
+[11.224s] [ext: omni.kit.widget.material_preview-1.0.16] startup
+[11.239s] [ext: omni.videoencoding-0.1.2] startup
+[11.248s] [ext: omni.kit.stagerecorder.core-107.0.3] startup
+[11.263s] [ext: omni.warp-1.8.2] startup
+[11.285s] [ext: omni.syntheticdata-0.6.13] startup
+[11.391s] [ext: omni.kit.window.material_graph-1.9.1] startup
+[11.471s] [ext: omni.graph.scriptnode-1.50.0] startup
+[11.502s] [ext: omni.kit.stagerecorder.ui-107.0.1] startup
+[11.559s] [ext: omni.replicator.core-1.12.27] startup
+2026-10-08T01:24:18Z [11,808ms] [Warning] [omni.graph.core.plugin] Found duplicate of category 'Replicator' - was 'Annotators', adding 'Fabric Reader'
+2026-10-08T01:24:18Z [11,808ms] [Warning] [omni.graph.core.plugin] Category 'Replicator' not accepted on node type 'omni.replicator.core.FabricReader' in extension 'omni.replicator.core'
+2026-10-08T01:24:18Z [11,810ms] [Warning] [omni.replicator.core.scripts.extension] No material configuration file, adding configuration to material settings directly.
+[11.987s] [ext: omni.kit.stagerecorder.bundle-105.0.2] startup
+[11.989s] [ext: isaacsim.core.nodes-3.4.3] startup
+[12.020s] [ext: isaacsim.test.docstring-1.1.0] startup
+[12.041s] [ext: isaacsim.sensors.camera-1.3.6] startup
+[12.078s] [ext: isaacsim.core.experimental.prims-0.8.1] startup
+[12.216s] [ext: omni.kit.usdz_export-1.0.9] startup
+[12.230s] [ext: isaacsim.robot.surface_gripper-3.3.1] startup
+[12.256s] [ext: isaacsim.sensors.physics-0.4.3] startup
+[12.287s] [ext: omni.kit.tool.asset_importer-4.3.2] startup
+[12.361s] [ext: isaacsim.robot.manipulators-3.3.6] startup
+[12.424s] [ext: isaacsim.robot.policy.examples-4.1.11] startup
+[12.453s] [ext: omni.sensors.nv.common-3.0.0] startup
+[12.513s] [ext: isaacsim.asset.importer.mjcf-2.5.13] startup
+[13.262s] [ext: isaacsim.util.debug_draw-3.1.0] startup
+[13.277s] [ext: omni.sensors.nv.materials-2.0.0] startup
+[13.310s] [ext: omni.sensors.net-1.0.0] startup
+[13.348s] [ext: isaacsim.sensors.physx-2.3.2] startup
+[13.382s] [ext: isaacsim.examples.browser-0.2.1] startup
+[13.427s] [ext: isaacsim.asset.importer.urdf-2.4.31] startup
+[13.634s] [ext: isaacsim.simulation_app-2.12.2] startup
+[13.638s] [ext: omni.sensors.nv.ids-2.0.0] startup
+[13.663s] [ext: omni.sensors.nv.lidar-3.0.0] startup
+[13.687s] [ext: omni.kit.property.audio-1.0.16] startup
+[13.710s] [ext: omni.kit.property.camera-1.0.10] startup
+[13.728s] [ext: omni.kit.property.geometry-2.0.4] startup
+[13.771s] [ext: omni.hydra.scene_api-0.1.2] startup
+[13.787s] [ext: omni.sensors.nv.wpm-3.0.0] startup
+[13.798s] [ext: omni.kit.property.light-1.0.12] startup
+[13.818s] [ext: omni.kit.property.material-1.11.9] startup
+[13.896s] [ext: omni.kit.property.render-1.2.1] startup
+[13.909s] [ext: omni.kit.property.transform-1.5.13] startup
+[13.950s] [ext: omni.sensors.nv.radar-3.0.0] startup
+[13.972s] [ext: omni.anim.curve.core-1.3.1] startup
+[14.030s] [ext: omni.kit.manipulator.camera-106.0.4] startup
+[14.066s] [ext: isaacsim.gui.property-1.1.3] startup
+[14.082s] [ext: omni.kit.property.bundle-1.4.1] startup
+[14.094s] [ext: isaacsim.sensors.rtx-15.8.4] startup
+[14.130s] [ext: omni.kit.viewport.menubar.camera-107.0.6] startup
+[14.166s] [ext: omni.kit.viewport.menubar.lighting-107.3.1] startup
+[14.181s] [ext: omni.kit.viewport.menubar.render-107.0.10] startup
+[14.199s] [ext: omni.kit.viewport.menubar.settings-107.0.3] startup
+[14.226s] [ext: omni.kit.window.script_editor-2.0.1] startup
+[14.241s] [ext: omni.kit.window.console-1.1.4] startup
+[14.262s] [ext: isaacsim.robot.wheeled_robots-4.0.24] startup
+[14.298s] [ext: omni.physx.demos-107.3.26] startup
+[14.459s] [ext: omni.kit.property.physx-107.3.26] startup
+[14.560s] [ext: omni.rtx.window.settings-0.6.19] startup
+[14.596s] [ext: omni.ocio-0.1.1] startup
+[14.604s] [ext: omni.asset_validator.core-1.1.6] startup
+[14.800s] [ext: omni.physx.vehicle-107.3.26] startup
+[14.904s] [ext: omni.replicator.replicator_yaml-2.0.11] startup
+[14.979s] [ext: omni.rtx.settings.core-0.6.5] startup
+[15.008s] [ext: omni.kit.window.toolbar-2.0.0] startup
+[15.017s] [ext: omni.kit.window.status_bar-0.1.9] startup
+[15.026s] [ext: omni.physx.asset_validator-107.3.26] startup
+[15.063s] [ext: omni.physx.camera-107.3.26] startup
+[15.090s] [ext: omni.physx.cct-107.3.26] startup
+[15.121s] [ext: omni.physx.graph-107.3.26] startup
+[15.146s] [ext: omni.physx.supportui-107.3.26] startup
+[15.214s] [ext: omni.physx.telemetry-107.3.26] startup
+[15.228s] [ext: omni.usd.metrics.assembler.ui-107.3.1] startup
+[15.260s] [ext: isaacsim.app.about-2.0.11] startup
+[15.265s] [ext: isaacsim.core.throttling-2.2.2] startup
+[15.272s] [ext: omni.kit.ui.actions-1.0.5] startup
+[15.279s] [ext: semantics.schema.property-2.0.1] startup
+[15.291s] [ext: omni.physx.bundle-107.3.26] startup
+[15.293s] [ext: isaaclab-0.53.1] startup
+[16.523s] [ext: isaaclab_assets-0.2.4] startup
+[17.200s] [ext: isaaclab_tasks-0.11.12] startup
+[17.931s] [ext: omni.kit.menu.common-2.0.1] startup
+[17.936s] [ext: isaaclab_rl-0.4.7] startup
+[17.938s] [ext: isaaclab_mimic-1.0.16] startup
+[17.940s] [ext: isaaclab.python-2.3.0] startup
+[17.948s] Simulation App Starting
+2026-10-08T01:24:24Z [17,976ms] [Warning] [omni.kvdb.plugin] Disabling key-value database because another kit process is locking it
+2026-10-08T01:24:24Z [18,178ms] [Warning] [omni.fabric.plugin] Warning: attribute overrideClipRange not found for bucket id 9
+
+[18.393s] app ready
+[INFO][AppLauncher]: Using device: cuda:0
+[INFO][AppLauncher]: Loading experience file: C:\Users\ethan\Documents\Projects\watai\WorldFold\.venv-isaac\src\IsaacLab\apps\isaaclab.python.kit
+
+[36m===================================================================================================================[0m
+[36m[1m[INFO][IsaacLab]: Logging to file: C:\Users\ethan\AppData\Local\Temp\isaaclab\logs\isaaclab_2026-10-07_21-24-29.log[0m
+[36m===================================================================================================================[0m
+
+[33m21:24:36 [simulation_context.py] WARNING: The `enable_external_forces_every_iteration` parameter in the PhysxCfg is set to False. If you are experiencing noisy velocities, consider enabling this flag. You may need to slightly increase the number of velocity iterations (setting it to 1 or 2 rather than 0), together with this flag, to improve the accuracy of velocity updates.[0m
+[INFO]: Base environment:
+	Environment device    : cuda:0
+	Environment seed      : None
+	Physics step-size     : 0.01
+	Rendering step-size   : 0.05
+	Environment step-size : 0.05
+2026-10-07 21:24:37 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:24:38 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:24:38 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:24:39 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:24:39 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:24:40 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:24:40 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+2026-10-07 21:24:41 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+[21.829s] Simulation App Startup Complete
+2026-10-08T01:24:29Z [23,211ms] [Warning] [isaaclab.envs.direct_rl_env] Seed not set for the environment. The environment creation may not be deterministic.
+[23.630s] [ext: omni.physx.fabric-107.3.26] startup
+2026-10-08T01:24:37Z [31,483ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:24:38Z [31,976ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:24:38Z [32,440ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:24:39Z [32,890ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:24:39Z [33,337ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:24:40Z [33,793ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:24:40Z [34,272ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:24:41Z [34,724ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-08T01:24:41Z [34,751ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,751ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,752ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,752ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,753ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy1/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,753ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy1/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,753ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy1/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,754ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy1/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,754ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy2/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,754ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy2/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,755ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy2/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,755ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy2/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,755ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy3/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,756ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy3/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,756ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy3/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,756ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy3/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,757ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy4/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,757ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy4/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,757ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy4/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,758ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy4/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,758ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy5/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,758ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy5/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,758ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy5/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,759ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy5/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,759ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy6/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,759ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy6/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,760ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy6/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,760ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy6/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,760ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy7/Robot/Left_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,760ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy7/Robot/Left_Robot/jaw/Capsule
+2026-10-08T01:24:41Z [34,761ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy7/Robot/Right_Robot/gripper/Capsule
+2026-10-08T01:24:41Z [34,761ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Copy7/Robot/Right_Robot/jaw/Capsule
+2026-10-08T01:24:42Z [INFO]: Time taken for scene creation : 4.087420 seconds
+[INFO]: Scene manager:  <class InteractiveScene>
+	Number of environments: 1
+	Environment spacing   : 4.0
+	Source prim name      : /World/envs/env_0
+	Global prim paths     : []
+	Replicate physics     : True
+[INFO]: Starting the simulation. This may take a few seconds. Please wait...
+[INFO]: Time taken for simulation start : 3.868568 seconds
+[INFO]: Completed setting up the environment...
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [-2.5, 2.365, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [0.0, 2.365, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [0.0, -2.635, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [-2.5, -0.135, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+[INFO]: Time taken for scene creation : 4.200564 seconds
+[INFO]: Scene manager:  <class InteractiveScene>
+	Number of environments: 1
+	Environment spacing   : 4.0
+	Source prim name      : /World/envs/env_0
+	Global prim paths     : []
+	Replicate physics     : True
+[INFO]: Starting the simulation. This may take a few seconds. Please wait...
+[INFO]: Time taken for simulation start : 4.472193 seconds
+[INFO]: Completed setting up the environment...
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [-2.5, 2.365, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [2.5, -0.135, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [2.5, -0.135, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [-2.5, -0.135, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [0.0, -0.135, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [2.5, 2.365, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [2.5, -2.635, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [0.0, -2.635, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [2.5, 2.365, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [0.0, 2.365, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [0.0, -0.135, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [2.5, -2.635, 0.425]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 21:24:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:30 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:35 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:36 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:38 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:40 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:42 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:42 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:42 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:43 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:44 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:46 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:27:48 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:29:41 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:29:42 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:29:42 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:29:43 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:29:44 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:29:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:30:11 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:30:38 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:31:12 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:31:13 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:31:17 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:31:36 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:31:45 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:31:58 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:31:58 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:32:26 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:32:27 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:32:30 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:32:34 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:32:37 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:32:42 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:32:49 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:33:16 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:33:32 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:33:50 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:33:55 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:34:00 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:34:34 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:34:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:35:07 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:35:10 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:35:10 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:35:31 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:35:32 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:35:34 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:35:34 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:35:41 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:36:03 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:36:30 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:36:44 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:36:49 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:37:01 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:37:48 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:37:54 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:38:04 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:38:05 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:38:07 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:38:09 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:38:10 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:38:15 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:38:39 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:38:46 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:39:44 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:40:14 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:40:31 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:40:48 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:41:04 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:41:13 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:41:14 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:41:22 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:41:29 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:41:34 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:41:49 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:41:51 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:42:07 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:42:59 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:42:59 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:43:03 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:43:35 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [-2.5, 2.365, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:43:38 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [2.5, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07 21:43:50 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -2.635, 0.425], ori: [0.0, 0.0, 0.0]
+  id_easy   success 94% (94/100)  fold 0.901  grasp 100%  failures {'G2': 5, 'M1': 1}  1311s
+wrote outputs\imitation\isaac_friction\f3\eval_expert_id_easy.json
