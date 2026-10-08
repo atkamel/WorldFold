@@ -10,10 +10,12 @@ Set-Location $repo
 $log = "outputs/imitation/isaac_friction/f3_then_f4.log"
 function Note($m) { $m; Add-Content -Encoding utf8 $log "$(Get-Date -Format s) $m" }
 Note "GATE start expert='$Expert' out=$Out"
-& powershell -ExecutionPolicy Bypass -File scripts\f3_gate.ps1 -Lane eval -Out $Out -Expert $Expert -N 100
+$ex = @()
+if ($Expert) { $ex = @("-Expert", $Expert) }          # an empty -Expert "" arrives as a missing argument
+& powershell -ExecutionPolicy Bypass -File scripts\f3_gate.ps1 -Lane eval -Out $Out -N 100 @ex
 & .venv/Scripts/python.exe -m imitation.verify F3 *>&1 | Tee-Object -Variable verdict | Out-Null
 $verdict | ForEach-Object { Note "  $_" }
 if (-not ($verdict -match "^PASS F3")) { Note "GATE FAIL: F4 not started"; exit 1 }
 Note "GATE PASS: F4 starting"
-& powershell -ExecutionPolicy Bypass -File scripts\f4_retrain.ps1 -Expert $Expert
+& powershell -ExecutionPolicy Bypass -File scripts\f4_retrain.ps1 @ex
 Note "F4 exit $LASTEXITCODE"
