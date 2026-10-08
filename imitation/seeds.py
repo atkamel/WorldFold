@@ -22,6 +22,9 @@ TUNE_SEED_BASE = 600_000       # Isaac grasp-tuning blocks: 600_000 ..
 EVAL_SEED_BASE = {"id_easy": 100_000, "id_hard": 200_000, "recovery": 300_000, "knock_arm": 310_000,
                   "drop": 320_000, "joint_noise": 330_000, "overshoot": 340_000}
 PERTURB_SETS = ("knock_arm", "drop", "joint_noise", "overshoot")
+# tuning copies of the suite (and of the legacy knock) inside the tune block, so expert tuning never sees eval seeds
+TUNE_SET_BASE = {"tune_recovery": 610_000, "tune_knock_arm": 620_000, "tune_drop": 630_000,
+                 "tune_joint_noise": 640_000, "tune_overshoot": 650_000, "tune_id_easy": 660_000}
 JOINT_NOISE_SIGMA = 0.15         # of the max joint delta (actions are normalised to [-1, 1])
 OVERSHOOT_GAIN = (1.2, 1.4)
 DROP_K = 3
@@ -94,6 +97,11 @@ def perturbation_fn(kind, backend="mujoco"):
 
 def eval_set(name, n, backend="mujoco"):
     """(seeds, reset_options fn or None, perturb_fn or None) for a named evaluation set."""
+    if name in TUNE_SET_BASE:               # same distribution as the eval set it copies, tune-block seeds
+        base_name = name[len("tune_"):]
+        seeds = list(range(TUNE_SET_BASE[name], TUNE_SET_BASE[name] + n))
+        _, opts, fn = eval_set(base_name, n, backend)
+        return seeds, opts, fn
     seeds = list(range(EVAL_SEED_BASE[name], EVAL_SEED_BASE[name] + n))
     isaac = backend in LEHOME_TASK_BACKENDS   # isaac_weld uses the MuJoCo sets
     if name == "id_easy":

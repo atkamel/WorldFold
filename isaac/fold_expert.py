@@ -50,7 +50,7 @@ class IsaacArmExpert:
     OPEN_PHASES = ("approach", "descend", "release", "retreat", "done")
     # everything that changes while it acts: ScriptedTeacher saves / restores these around a label
     PHASE_FIELDS = ("phase", "q_target", "phase_steps", "retreat_target", "release_allowed", "rng", "plan", "wp",
-                    "budget", "regrasps", "miss_steps", "last_jaw", "align_tries")
+                    "budget", "regrasps", "miss_steps", "last_jaw", "align_tries", "descend_retries")
 
     # the pinch / place geometry and dwells, as class attributes so the grasp bench can try candidates (track G)
     PINCH_HEIGHT = 0.005             # fingertip above the table at the pinch (IG.2 #9; half_fold_demo / weld: 0.010)
@@ -76,6 +76,10 @@ class IsaacArmExpert:
     # a knock, re-grasp descents took 30-85 steps (clean: 4-5) and the re-grasped corners slipped -- consistent with a
     # pinch planned into a corner that lies on a fold
     PINCH_FOLLOW_Z = 0
+    # F3b diagnosis (recovery traces, 18 post-knock closes): 6 closed 5-12 cm off the corner, each after a 44-60 step
+    # descend that never arrived. The post-resync plan was IK-seeded from the knocked arm's joints.
+    RESYNC_IK_HOME = 0       # 1: after a resync, plan from the home seed (SEED_Q) and re-approach from above
+    DESCEND_RETRY = 0        # n > 0: a descend that times out without arriving re-approaches (home seed), n times
 
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
 
@@ -108,6 +112,7 @@ class IsaacArmExpert:
         self.miss_steps = 0
         self.last_jaw = None
         self.align_tries = 0
+        self.descend_retries = 0
 
     def _corner(self):
         cloth = self.base.cloth_positions()
@@ -255,6 +260,14 @@ class IsaacArmExpert:
             if self._arrived(TRACK_TOL) or patience:
                 if name == "approach":       # re-solve the pinch on the corner as it lies now (closed loop)
                     self.plan = self._make_plan(from_q=self._q())
+                elif (self.DESCEND_RETRY and patience and not self._arrived(TRACK_TOL)
+                      and self.descend_retries < self.DESCEND_RETRY):
+                    self.descend_retries += 1         # never arrived: back up and re-approach on a fresh IK branch
+                    self.plan = self._make_plan()
+                    self.phase = self.PHASES.index("approach")
+                    self.phase_steps = 0
+                    self.q_target = None
+                    return
                 elif self.ALIGN_TOL and self.align_tries < self.ALIGN_TRIES and self._misaligned():
                     self.align_tries += 1
                     self.plan = self._make_plan(from_q=self._q())
@@ -321,9 +334,13 @@ class IsaacArmExpert:
             self.plan["retreat"], _ = self._ik.solve(self.prefix, tip + [0, 0, RETREAT], self.plan["jaw"], self._q(),
                                                      orientation_weight=0.02)
         else:
-            self.plan = self._make_plan(from_q=self._q())
-            near = float(np.linalg.norm(tip[:2] - corner[:2])) < 0.02 and tip[2] - corner[2] < 0.07
-            name = "descend" if near else "approach"
+            if self.RESYNC_IK_HOME:               # the knocked joints are a poor IK seed: plan from home, approach
+                self.plan = self._make_plan()
+                name = "approach"
+            else:
+                self.plan = self._make_plan(from_q=self._q())
+                near = float(np.linalg.norm(tip[:2] - corner[:2])) < 0.02 and tip[2] - corner[2] < 0.07
+                name = "descend" if near else "approach"
         self.phase = self.PHASES.index(name)
         self.phase_steps = 0
         self.q_target = None
