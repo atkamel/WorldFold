@@ -1762,3 +1762,24 @@ the first 56 episodes; `isaac_v1_friction_failures`):
   - `DESCEND_RETRY`: back up and re-approach instead of closing after a non-arriving descend.
 - **Tuning sets** (`imitation.seeds.TUNE_SET_BASE`): `tune_knock_arm` 620000+, `tune_drop` 630000+, etc. They are
   copies of the suite in the tune block, so tuning never touches eval seeds.
+
+### F3b — expert fix loop on the tune sets (n = 50 per set, `f3b/`, 2026-10-08)
+
+| expert | tune_knock_arm | tune_drop |
+|---|---|---|
+| base (config M) | 35/50 = 70% [56.2, 80.9] (G2 11, M1 4) | 22/50 = 44% [31.2, 57.7] (G2 20, M1 8) |
+| + RESYNC_IK_HOME + DESCEND_RETRY = 2 | **42/50 = 84%** [71.5, 91.7] (G2 7, M1 1), 36% less wall time | 20/50 = 40% [27.6, 53.8] (G2 22, M1 8) |
+
+- **The gripper-free knock is far milder than the legacy one:**
+  - The base expert scores 70% on it, against 27% under the legacy knock.
+  - Drags fall to 8%, from 20%.
+  - Much of the old gap was the benchmark toggling the jaws.
+- **The IK fixes help after an arm bump** (+14 pp, ~1.6 SE, kept). They are neutral on drops.
+- **Drop mechanism** (`recovery_replay --kind drop`, 8 traced episodes on tune seeds 630000–007):
+  - Late drops (step ≥ 87) succeed: the corner falls near its goal.
+  - In mid-carry drops the corner lands on top of the other half, 9–17 mm (once 47 mm) above the table.
+  - The arm gets within 1.0–2.6 cm of it, but the pinch is planned at table height + 5 mm. The jaw closes under the
+    corner, which does not rise.
+  - Pinching the lower layer drags the anchored half (M1 16%).
+  - That is PINCH_FOLLOW_Z's case. The legacy knock left most corners on the table, so FOLLOW_Z had nothing to fix
+    there.
