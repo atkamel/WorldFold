@@ -30,6 +30,8 @@ def main():
     ap.add_argument("--retries", type=int, default=None, help="QuarterFoldExpert.MAX_RETRIES override (default 2)")
     ap.add_argument("--trace-dir", default=None, help="write a per-step trace per episode (F3b diagnosis)")
     ap.add_argument("--no-knock", action="store_true", help="clean episodes (re-run a clean truncation with traces)")
+    ap.add_argument("--kind", default="knock", choices=("knock", "knock_arm", "drop"),
+                    help="perturbation kind (imitation.seeds.perturbation_fn; knock = the legacy recovery knock)")
     ap.add_argument("--set", action="append", default=[], metavar="ATTR=VALUE",
                     help="override an IsaacFoldExpert class attribute for this run, e.g. REGRASP_OFFSET=none")
     args = ap.parse_args()
@@ -63,7 +65,12 @@ def main():
             retry_log.append({"t": int(self.base._step_count), "arm": key[1], "n": self.retries[key],
                               "miss": [round(float(v), 4) for v in self.correction[key]]})
     qfe.QuarterFoldExpert._maybe_retry = logged_retry
-    _, _, knock = eval_set("recovery", 1, args.backend)
+    from imitation.rollout import GRIPPER_DIMS
+    if args.kind == "knock":
+        _, _, knock = eval_set("recovery", 1, args.backend)
+    else:
+        from imitation.seeds import perturbation_fn
+        knock = perturbation_fn(args.kind, args.backend)
     env = make_env(args.backend, **({"max_episode_steps": args.max_steps} if args.max_steps else {}))
     expert = ScriptedTeacher(env, seed=0).expert
     base = env.unwrapped
@@ -79,8 +86,21 @@ def main():
         expert.reset()
         stale, timeline, prev = False, [], None
         retry_log.clear()
+        last_grip, drop_at, drop_arms = np.ones(2, dtype=np.float32), None, ()
         for t in range(base.max_episode_steps):
-            if p.active(t):
+            if p.kind == "drop" and drop_at is None and t >= p.t:
+                held = [j for j, pr in enumerate(("left_", "right_")) if base.grasp_active(pr)]
+                if held:
+                    drop_at, drop_arms = t, tuple(held)
+            if p.kind == "drop" and drop_at is not None and drop_at <= t < drop_at + p.k:
+                act, tag, stale = expert.act(), "K", True        # the expert acts, its holding jaws forced open
+                for j in drop_arms:
+                    act[GRIPPER_DIMS[j]] = 1.0
+            elif p.kind == "knock_arm" and p.active(t):
+                act = np.random.default_rng([seed, 4243, t]).uniform(-1, 1, ACTION_DIM).astype(np.float32)
+                act[list(GRIPPER_DIMS)] = last_grip
+                tag, stale = "K", True
+            elif p.kind == "knock" and p.active(t):
                 act, tag, stale = rng.uniform(-1, 1, ACTION_DIM).astype(np.float32), "K", True
             else:
                 if stale:
@@ -110,10 +130,11 @@ def main():
             if cur != prev:
                 timeline.append(f"t{t}:{cur} z{zc}")
             prev = cur
+            last_grip = np.asarray(act, dtype=np.float32)[list(GRIPPER_DIMS)]
             _, _, term, trunc, info = env.step(act)
             if term or trunc:
                 break
-        row = {"seed": seed, "knock": [p.t, p.k], "success": bool(info["success"]), "steps": t + 1,
+        row = {"seed": seed, "kind": p.kind, "drop_at": drop_at, "knock": [p.t if drop_at is None else drop_at, p.k], "success": bool(info["success"]), "steps": t + 1,
                "reason": info["termination_reason"] or "truncated", "retries": sum(expert.retries.values()),
                "d": [round(float(x), 4) for x in info["move_distance"]], "domain": dict(base._domain_params),
                "knobs": args.set, "max_steps": base.max_episode_steps, "max_retries": qfe.MAX_RETRIES,
