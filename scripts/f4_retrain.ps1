@@ -104,7 +104,7 @@ if ($Phase -in "privileged", "all" -or $Only) {
                 --perturb-kinds $kinds --render --cameras $cams --version $tag --root $ds --resume
         } }
     Stage "train_diff_s0" "$runs\${tag}_diff_s0\final.pt" {
-        & $py -u -m imitation.train --policy diffusion --dataset $tag --root $ds --run "$runs${tag}_diff_s0" `
+        & $py -u -m imitation.train --policy diffusion --dataset $tag --root $ds --run "$runs\${tag}_diff_s0" `
             --steps $BCSteps --seed 0 }
     # DAgger from seed 0 (its round 0 is the seed-0 BC eval on the selection sets)
     if (-not $SkipDagger) {
