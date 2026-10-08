@@ -1659,4 +1659,13 @@ The scripted expert (ScriptedTeacher, retries on) runs id_easy seeds from 100000
 | J | pad friction 1.5 → 2.0 | 40 / 38 | 40 / 39 / 34 | 32/40 | right held 97.5% vs 93.0% pooled (~+1 SE) |
 | K | physics 100 → 200 Hz (stopped at 24) | 20/24 / 18/24 | 24/24 / 21/24 / 14/24 | 12/24 | rejected: 3 cloth_dragged, holds worse on both arms |
 | **L** | `ALIGN_TOL` 8 mm (re-descend if the pinch is off before closing) | 40 / 39 | 38 / **38** / 37 | **36/40** | every acquired right corner held; 2 not acquired |
-| M | J + L | | | | running |
+| **M** | J + L: pad friction 2.0 and `ALIGN_TOL` 8 mm (`f2_m_pad2_align8`) | **40 / 40** | **40 / 40 / 38** | **36/40** | **kept**: now the friction profile's defaults; gate 2 (blocks A, B, fresh 600500–599) re-runs on it |
+
+- **Gate 1's blocks** (config I) are kept as `f2_gate1_block_a`, `f2_gate1_block_b` and `f2_gate1_fresh`.
+- **Gate 2's fresh block** uses seeds 600500–599, which no grasp run has touched. 600300–399 were gate 1's fresh
+  block.
+- **Anchor smoke test** (comparison profile, expert, id_easy n = 10) on the friction profile's base, GPU pipeline:
+  - 0/10, fold score 0.01, every episode G2.
+  - The kinematic anchor engaged, but the cloth never followed it.
+  - The anchor profile now sits on the lehome base (CPU, LeHome's drives, no DR), Ruby's setup.
+  - Record: `outputs/imitation/isaac_anchor/f3/smoke_gpu_id_easy.json`.

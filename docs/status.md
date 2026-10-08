@@ -54,18 +54,19 @@ ported as a comparison profile only (`isaac_anchor`).
   - **Reach:** at LeHome's cloth position the pinch can fold only about ±1.5 cm of cloth offset. MuJoCo's id_hard is
     0/200 reachable, so `isaac_friction` runs LeHome's own task sets (1 cm jitter, the Isaac id_hard ring and knock).
     **The weld (W5) numbers are on MuJoCo's sets, so the two are not directly comparable.**
-- **Where the grasp stands** (F2 attempt I, n = 20, 1 cm jitter): held 20/20 on both arms, placed 19/20 and 20/20,
-  19/20 env successes.
-- **F1 honesty:**
-  - The weld negative control fails every check: 251 pinned steps, the jaw forced open on 496, open-jaw carries up to
-    47 steps.
-  - The friction re-run under the refined release rule is in flight.
+- **Where the grasp stands** (F2 attempt M, n = 40, 1 cm jitter):
+  - held 40/40 on both arms, placed 40/40 and 38/40, 36/40 env successes.
+  - The friction profile's defaults are now: LeHome's gripper drive, closed jaw +0.05, adhesion 0.1, pad friction
+    2.0, and the expert's `ALIGN_TOL` of 8 mm.
+  - Gate 1 (config I, n = 300) held the right arm 93% (`f2_gate1_*`). The cause: the closing jaw swept an off-centre
+    pinch. ALIGN_TOL fixes it.
+- **F1 ✅** (`verify F1` PASS).
 - **In flight** (2 Isaac processes):
-  - F2 gate blocks: A (600100–199) and B (600200–299), then fresh (600300–399), in `outputs/isaac/grasp/f2_*`.
-    `scripts/grasp_bench.ps1` resumes a cut run.
+  - F2 gate 2: block A (600100–199), then fresh (600500–599); block B (600200–299) after the anchor CPU smoke (n = 10).
+  - Re-run any cut bench with the same `scripts/grasp_bench.ps1` command; it resumes.
 - **Next:**
-  1. F3: `scripts/f3_gate.ps1 -Lane eval`, then `-Lane resync`.
-  2. Anchor comparison rows (n = 50, single env).
+  1. `verify F2`.
+  2. F3: `scripts/f3_gate.ps1 -Lane eval`, then `-Lane resync`, plus the anchor rows.
   3. F4: `scripts/f4_retrain.ps1`.
 - **Heat cap** (user, 2026-10-06; keep under 94 °C): ≤ 2 Isaac processes × 4 envs; `scripts/thermal_guard.py`
   alongside.
