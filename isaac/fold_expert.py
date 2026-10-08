@@ -80,6 +80,13 @@ class IsaacArmExpert:
     # descend that never arrived. The post-resync plan was IK-seeded from the knocked arm's joints.
     RESYNC_IK_HOME = 0       # 1: after a resync, plan from the home seed (SEED_Q) and re-approach from above
     DESCEND_RETRY = 0        # n > 0: a descend that times out without arriving re-approaches (home seed), n times
+    # F3b drop traces: a corner dropped mid-carry lands on top of the other half (9-17 mm up) and a top-down pinch closes
+    # on the wrong layer. 1: when a resync finds the corner on the other layer, slide it along the top layer to its goal
+    # with the closed jaw resting on it (a push), then hold / release as after a carry
+    PUSH_ON_LAYER = 0
+    PUSH_Z = 0.008           # a corner this far above a flat one lies on cloth, not the table
+    PUSH_PRESS = 0.002       # fingertip this far above the corner's top while pushing (contact, no gouge)
+    PUSH_BEHIND = 0.015      # start this far behind the corner along the push direction
 
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
 
@@ -153,6 +160,33 @@ class IsaacArmExpert:
             plan["arc_tips"].append(tip)
         q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
         plan["retreat"] = q
+        return plan
+
+    def _on_layer(self, corner):
+        """The corner lies on cloth (PUSH_Z .. 4 cm above a flat corner): settled on the other half, not in the air."""
+        dz = float(corner[2]) - TABLE_TOP_Z - CORNER_REST_DZ
+        return self.PUSH_Z < dz < 0.04
+
+    def _push_plan(self, corner, goal):
+        """Waypoints for a push: above the start, down onto the cloth behind the corner, then a straight slide at the
+        corner's height to the goal (the place pose's xy), and a retreat above the goal."""
+        ik, p = self._ik, self.prefix
+        d = np.r_[goal[:2] - corner[:2], 0.0]
+        d = d / max(np.linalg.norm(d), 1e-6)
+        jaw = self._jaw()
+        z = float(corner[2]) + self.PUSH_PRESS
+        start = np.array([corner[0], corner[1], z]) - self.PUSH_BEHIND * d
+        end = np.array([goal[0], goal[1], z]) - self.PUSH_BEHIND * d
+        q, tips, arc = list(SEED_Q[p]), [], []
+        path = [start + [0, 0, ABOVE], start]
+        n = max(2, int(np.ceil(np.linalg.norm(end - start) / 0.02)))
+        path += [start + (end - start) * s for s in np.linspace(0.0, 1.0, n + 1)[1:]]
+        for tip in path:
+            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05)
+            arc.append(q)
+            tips.append(tip)
+        plan = dict(self.plan or {}, jaw=jaw, arc=arc, arc_tips=tips)
+        plan["retreat"], _ = ik.solve(p, end + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
         return plan
 
     def _arc_from_here(self):
@@ -258,6 +292,13 @@ class IsaacArmExpert:
         patience = self.phase_steps > self.budget    # a pose pressed into the table or cloth may never get closer
         if name in ("approach", "descend"):
             if self._arrived(TRACK_TOL) or patience:
+                if name == "approach" and self.PUSH_ON_LAYER and self._on_layer(self._corner()):
+                    self.plan = self._push_plan(self._corner(), np.asarray(self.goal(), dtype=float))
+                    self.wp = 0
+                    self.phase = self.PHASES.index("carry")     # settled on the other layer: push it home instead
+                    self.phase_steps = 0
+                    self.q_target = None
+                    return
                 if name == "approach":       # re-solve the pinch on the corner as it lies now (closed loop)
                     self.plan = self._make_plan(from_q=self._q())
                 elif (self.DESCEND_RETRY and patience and not self._arrived(TRACK_TOL)
@@ -333,6 +374,10 @@ class IsaacArmExpert:
             self.plan = dict(self.plan or {}, jaw=self._jaw())
             self.plan["retreat"], _ = self._ik.solve(self.prefix, tip + [0, 0, RETREAT], self.plan["jaw"], self._q(),
                                                      orientation_weight=0.02)
+        elif self.PUSH_ON_LAYER and self._on_layer(corner):
+            self.plan = self._push_plan(corner, goal)
+            self.wp = 0
+            name = "carry"                        # follow the push path with the jaw closed, then place / hold / release
         else:
             if self.RESYNC_IK_HOME:               # the knocked joints are a poor IK seed: plan from home, approach
                 self.plan = self._make_plan()
