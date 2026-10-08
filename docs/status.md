@@ -66,11 +66,18 @@ dropped (user, 2026-10-07). The comparison row is now Adam's as-built friction g
   - check_resync is informational.
   - F4 runs one BC seed, with DAgger selection on id_hard + recovery.
   - 2 × 8 envs per process.
-- **In flight:**
-  - F3 expert eval: `scripts/f3_gate.ps1 -Lane eval`, n = 100 × 3, 2 × 8.
-  - F4 (`scripts/f4_retrain.ps1 -WaitF3`) waits for it, then runs collect → BC → DAgger ×≤2 → vision → finals →
-    demos. Log: `outputs/imitation/isaac_friction/f4/f4.log`.
-  - To resume after a stop, re-run the same command; every stage skips its finished output.
+- **F3 (n = 100 per set):** the expert scores 94 / 94 / **27** (id_easy / id_hard / recovery). **F4 is on hold**:
+  the expert caps every student's recovery.
+- **Recovery diagnosis** (3 traced knocked episodes, `outputs/isaac/recovery_friction/base.jsonl`):
+  - Re-grasp descents take 30–85 steps (clean: 4–5).
+  - Re-grasped corners slip.
+  - The 400-step cap runs out.
+  - The cause fits a pinch planned at table height into a corner lying on a fold.
+- **In flight (recovery A/B, n = 100, 1 × 8 each):**
+  - `REGRASP=2` (`f3_regrasp`);
+  - `REGRASP=2,PINCH_FOLLOW_Z=1` (`f3_regrasp_followz`).
+  - The winner becomes the expert default. Then F3 is re-run on all sets, and F4 starts with
+    `scripts/f4_retrain.ps1 -WaitF3`.
 - **Afterwards, in idle Isaac windows:**
   - check_resync;
   - **Adam's as-built row:** `scripts/adam_baseline.ps1`, n = 50 per set. It is one CPU Isaac process, so it runs only
