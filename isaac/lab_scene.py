@@ -155,13 +155,17 @@ def _wrist_camera(robot_path, size):
         data_types=["rgb"], spawn=_pinhole(size, size, WRIST_CAM_FOVY_DEG), width=size, height=size)
 
 
-def rig_camera_cfg(name, size, c=0):
-    """The imitation pipeline's camera rig (imitation.vision.render.CAMERAS): main + one camera per wrist, of copy c."""
+def rig_camera_cfg(name, size, c=0, view_shift=(0.0, 0.0, 0.0)):
+    """The imitation pipeline's camera rig (imitation.vision.render.CAMERAS): main + one camera per wrist, of copy c.
+    view_shift slides the main / demo view (same angle) with the cloth: the friction profile's cloth sits 13.5 cm
+    toward the arms, at the top edge of the MuJoCo-aimed view (Phase F3b)."""
     root = copy_root(c)
     if name in ("main", "demo"):  # demo: the main view at video resolution, for imitation.demo (not a policy input)
         cfg = _camera((size, size), prim_path=f"{root}/rig_{name}", data_types=("rgb",))
-        if c:
-            cfg.offset = cfg.offset.replace(pos=tuple(float(v) for v in np.asarray(CAMERA_POS) + COPY_OFFSETS[c]))
+        shift = np.asarray(view_shift, dtype=float)
+        if c or shift.any():
+            pos = np.asarray(CAMERA_POS) + (COPY_OFFSETS[c] if c else 0.0) + shift
+            cfg.offset = cfg.offset.replace(pos=tuple(float(v) for v in pos))
         return cfg
     if name in ("left_wrist_cam", "right_wrist_cam"):
         return _wrist_camera(f"{root}/Robot/Left_Robot" if name.startswith("left") else f"{root}/Robot/Right_Robot",
@@ -183,10 +187,11 @@ class SceneCfg(DirectRLEnvCfg):
     camera: TiledCameraCfg | None = None
     rig: dict | None = None         # {camera name: square size}, the imitation camera rig (opt-in)
     n_copies: int = 1               # milestone V: independent copies of arms + table + cloth (GPU pipeline)
+    view_shift: tuple = (0.0, 0.0, 0.0)   # main / demo rig camera translation (rig_camera_cfg)
 
 
 def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", arm_drive=None, n_copies=1,
-             gripper_drive=None):
+             gripper_drive=None, view_shift=(0.0, 0.0, 0.0)):
     if not 1 <= n_copies <= MAX_COPIES:
         raise ValueError(f"n_copies must be in 1..{MAX_COPIES}, got {n_copies}")
     if n_copies > 1 and device == "cpu":
@@ -202,6 +207,7 @@ def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", ar
     cfg.sim.device = device
     cfg.sim.use_fabric = device != "cpu"        # the GPU pipeline reads state through fabric / tensor views
     cfg.rig = dict(rig) if rig else None
+    cfg.view_shift = tuple(float(v) for v in view_shift)
     cfg.decimation = decimation
     cfg.sim.dt = physics_dt
     cfg.sim.render_interval = decimation
@@ -292,7 +298,7 @@ class SceneEnv(DirectRLEnv):
                     self.scene.sensors["main"] = self.camera
             cp.rig_cameras = {}
             for name, size in (self.cfg.rig or {}).items():
-                cp.rig_cameras[name] = TiledCamera(rig_camera_cfg(name, size, c))
+                cp.rig_cameras[name] = TiledCamera(rig_camera_cfg(name, size, c, self.cfg.view_shift))
                 self.scene.sensors[f"rig_{name}{suffix}"] = cp.rig_cameras[name]
         if self.camera is not None or self.rig_cameras:
             self._spawn_lights()

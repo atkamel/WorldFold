@@ -108,6 +108,8 @@ LEHOME_GRIPPER_DRIVE    = {"stiffness": 17.8, "damping": 0.6, "effort_limit_sim"
 PROFILES["friction"] = dict(PROFILES["weld"], grasp_mode="friction", weld_tau=None, cloth_center=CLOTH_CENTER,
                             friction_grasp=dict(FRICTION_GRASP, gripper_closed=0.05,
                                                 gripper_drive=LEHOME_GRIPPER_DRIVE, adhesion=0.1, pad_friction=2.0))
+# the rig's main / demo view follows the cloth (policy input and videos): the MuJoCo-aimed view had it at the top edge
+PROFILES["friction"]["view_shift"] = (float(CLOTH_CENTER[0]), float(CLOTH_CENTER[1]), 0.0)
 # friction grasp_active (Phase F): a closed jaw within this of its target counts as settled (track G traces: 0.14-0.21
 # rad mid-close, exactly the target once shut); the held corner rides 1-4 cm from the gripper frame during the carry
 JAW_SETTLED_TOL         = 0.05
@@ -232,7 +234,8 @@ class IsaacClothFoldEnv(gym.Env):
         from isaac.lab_scene import SceneEnv, make_cfg
         cfg = make_cfg(self.physics_dt, self.n_substeps, self.image_size if self._use_image else None, rig=self.rig,
                        device=self.sim_device, arm_drive=self._prof["arm_drive"], n_copies=n_copies,
-                       gripper_drive=self.grasp_knobs.get("gripper_drive"))
+                       gripper_drive=self.grasp_knobs.get("gripper_drive"),
+                       view_shift=self._prof.get("view_shift", (0.0, 0.0, 0.0)))
         lab = SceneEnv(cfg, self._prof["cloth_center"], grasp=self.grasp_knobs)
         lab.weld_tau = self._prof["weld_tau"]
         lab.weld_mass = WELD_MASS
