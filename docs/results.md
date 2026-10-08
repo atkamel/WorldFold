@@ -1862,3 +1862,18 @@ from the traces (`isaac/plot_trace.py` figures in `docs/reports/media/f3b_trace_
 - **2026-10-08, the user's decision: skip the forced-drop set entirely.** It is gone from the F3 gate, the F4 perturbed
   demos and DAgger rollouts (knock_arm only), the DAgger selection (id_hard + knock_arm), the finals and the demos.
   The drop code and seeds stay in place for later work.
+
+### F3 gate with the adopted expert (`isaac_friction`, n = 100 per set, 2 × 8, 2026-10-08, `f3/`)
+
+Expert: RESYNC_IK_HOME + DESCEND_RETRY = 2 + CART_ARRIVE, the code defaults.
+
+| set | success | Wilson 95% | bar |
+|---|---|---|---|
+| id_easy | 92/100 | 85.0–95.9 | ~~95~~ → 90 (user) |
+| id_hard | 94/100 | 87.5–97.2 | 90 |
+| knock_arm | 75/100 | 65.7–82.5 | 60 |
+
+- **id_easy failures:** G2 7, M1 1. The tune set gave 48/50, so the expert's clean rate is about 92–96%.
+- **The user lowered the clean bar to 90** to keep the 6 h plan. The 5–7% jaw-closed slips are a known expert ceiling
+  for the trained policies.
+- **joint_noise and overshoot** are measured in the F4 finals (tune sets: 74% and 86%).

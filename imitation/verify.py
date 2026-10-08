@@ -644,7 +644,9 @@ IG2_BEST = {"left_": {"held": (20, 20)}, "right_": {"held": (19, 20)}}     # tra
 # the legacy all-dims knock is still run and reported
 # 6.5 h budget (user, 2026-10-08): the gate runs id_easy / id_hard / knock_arm; the noise sets are measured in F4's
 # finals (tune sets: joint_noise 74%, overshoot 86% at n = 50, F3b)
-F3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "knock_arm": 60.0}
+# id_easy bar 95 -> 90 (user, 2026-10-08): the gate measured 92/100 (tune set 48/50); the 5-7% jaw-closed slips are a known
+# expert ceiling, carried into F4
+F3_GATE = {"id_easy": 90.0, "id_hard": 90.0, "knock_arm": 60.0}
 # drop: reported, not gated (user's time-box rule, 2026-10-08; five attempts at 38-44% on tune_drop, results.md F3b)
 F3_REPORTED = ("drop", "recovery", "joint_noise", "overshoot")
 
