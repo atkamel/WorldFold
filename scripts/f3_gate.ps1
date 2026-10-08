@@ -1,5 +1,5 @@
 # Phase F, F3: the friction expert's gate on isaac_friction (LeHome's task sets), n = 100 per set, plus the Isaac
-# check_resync (100 seeds x 3 modes, one env, resumable). Lane "eval" runs the three sets vectorised (2 processes x 4
+# check_resync (100 seeds x 3 modes, one env, resumable). Lane "eval" runs the three sets vectorised (2 processes x 8
 # envs, the heat cap); lane "resync" is one more Isaac process, so run it only while "eval" is not running, or alone.
 #   powershell -File scripts/f3_gate.ps1 -Lane eval   [-N 100] [-Out outputs/imitation/isaac_friction/f3] [-Expert "REGRASP=2"]
 #   powershell -File scripts/f3_gate.ps1 -Lane resync
@@ -12,7 +12,7 @@ $ErrorActionPreference = "Stop"
 New-Item -ItemType Directory -Force $Out | Out-Null
 $env:WORLDFOLD_EXPERT_PARAMS = $Expert
 if ($Lane -eq "eval") {
-    $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "4"
+    $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "8"      # user, 2026-10-07: 2 x 8 allowed (thermal guard on)
     foreach ($set in @("id_easy", "id_hard", "recovery")) {
         $json = "$Out/eval_expert_$set.json"
         if (Test-Path $json) { "skip $set (exists)"; continue }

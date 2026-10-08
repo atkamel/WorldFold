@@ -4,13 +4,15 @@
 # Resumable: every stage is skipped when its output exists (collect and DAgger resume inside). Logs to
 # outputs/imitation/isaac_friction/f4/f4.log with STEP / DONE / FAIL markers for a monitor.
 # Differences from W5: 50% knocked demos (recovery is the gap), DAgger 2 rounds at takeover p = 0.6, LeHome's task
-# sets (imitation.seeds.LEHOME_TASK_BACKENDS), demo videos named half_fold_friction_*.
+# sets (imitation.seeds.LEHOME_TASK_BACKENDS), demo videos named half_fold_friction_*. Fast path (user, 2026-10-07):
+# 2 x 8 envs, one BC seed (W5 measured the seed variance), DAgger selection on id_hard + recovery only (id_easy is
+# saturated; the finals measure all three); -WaitF3 starts collection the moment the F3 expert eval finishes.
 #   powershell -ExecutionPolicy Bypass -File scripts\f4_retrain.ps1 [-Phase privileged|vision|final|all]
 #   powershell -ExecutionPolicy Bypass -File scripts\f4_retrain.ps1 -Only <stage>     # one stage (used for overlap)
 # Heat budget (user, 2026-10-06): at most 2 Isaac processes x 4 envs, no overlapping sims, and keep the laptop under
 # 94 C -- run scripts/thermal_guard.py alongside; rollouts and training pause while its flag is set (imitation/thermal.py).
 param([ValidateSet("privileged", "vision", "final", "all")][string]$Phase = "all", [string]$Only = "",
-      [int]$EnvsPerProc = 4)
+      [int]$EnvsPerProc = 8, [switch]$WaitF3)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
@@ -72,30 +74,28 @@ function Best($run) {
 $priv = "$runs\${tag}_dagger"
 $vis = "$runs\${tag}_distill"
 
+if ($WaitF3) {
+    $f3 = "outputs\imitation\$B\f3\eval_expert_recovery.json"
+    Note "WAIT for $f3"
+    while (-not (Test-Path $f3)) { Start-Sleep 30 }
+    Start-Sleep 30       # its Isaac processes exit after the JSON is written
+}
+$sel = @("id_hard", "recovery")
+
 if ($Phase -in "privileged", "all" -or $Only) {
     Stage "collect" "$ds\$tag\manifest.json" {
         & $py -u -m imitation.data.collect --backend $B --episodes 400 --workers 2 --recovery-fraction 0.5 `
             --render --cameras $cams --version $tag --root $ds --resume }
-    # both seeds train at once on the GPU (no Isaac process running)
-    $s1 = Side "train_diff_s1"
     Stage "train_diff_s0" "$runs\${tag}_diff_s0\final.pt" {
         & $py -u -m imitation.train --policy diffusion --dataset $tag --root $ds --run "$runs\${tag}_diff_s0" `
             --steps 30000 --seed 0 }
-    Stage "train_diff_s1" "$runs\${tag}_diff_s1\final.pt" {
-        & $py -u -m imitation.train --policy diffusion --dataset $tag --root $ds --run "$runs\${tag}_diff_s1" `
-            --steps 30000 --seed 1 }
-    Join $s1 "train_diff_s1" "$runs\${tag}_diff_s1\final.pt"
-    # DAgger from seed 0 (its round 0 is the seed-0 BC eval). Seed 1 is the seed-variance check: id_easy / id_hard
-    # finished in eval_diff_s1.log before the heat cap; only its recovery set runs here, alone.
+    # DAgger from seed 0 (its round 0 is the seed-0 BC eval on the selection sets)
     Stage "dagger" "$priv\done.txt" {
         # two rounds at takeover p = 0.6 (W5's one round at 0.3 gave +5 pp recovery on 403 labels)
         & $py -u -m imitation.dagger --backend $B --init "$runs\${tag}_diff_s0\final.pt" --dataset $tag --root $ds `
-            --out $priv --rounds 2 --episodes 128 --train-steps 15000 --eval-n 100 --eval-sets $sets `
-            --score-sets $sets --min-gain-se 1 --workers 2 --labels takeover --takeover-p 0.6 --resume
+            --out $priv --rounds 2 --episodes 128 --train-steps 15000 --eval-n 100 --eval-sets $sel `
+            --score-sets $sel --min-gain-se 1 --workers 2 --labels takeover --takeover-p 0.6 --resume
         if ($LASTEXITCODE -eq 0) { Set-Content "$priv\done.txt" (Get-Date -Format s) } }
-    Stage "eval_diff_s1_recovery" "$out\eval_diff_s1_recovery_r8.json" {
-        & $py -u -m imitation.evaluate --backend $B --ckpt "$runs\${tag}_diff_s1\final.pt" --sets recovery --n 100 `
-            --workers 2 --out "$out\eval_diff_s1_recovery_r8.json" }
     if (-not $Only) { Note "PRIVILEGED COMPLETE best=$(Best $priv)" }
 }
 

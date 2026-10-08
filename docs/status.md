@@ -61,15 +61,21 @@ ported as a comparison profile only (`isaac_anchor`).
   - Gate 1 (config I, n = 300) held the right arm 93% (`f2_gate1_*`). The cause: the closing jaw swept an off-centre
     pinch. ALIGN_TOL fixes it.
 - **F1 ✅** (`verify F1` PASS).
-- **In flight** (2 Isaac processes):
-  - F2 gate 2: block A (600100–199), then fresh (600500–599); block B (600200–299) after the anchor CPU smoke (n = 10).
-  - Re-run any cut bench with the same `scripts/grasp_bench.ps1` command; it resumes.
-- **Next:**
-  1. `verify F2`.
-  2. F3: `scripts/f3_gate.ps1 -Lane eval`, then `-Lane resync`, plus the anchor rows.
-  3. F4: `scripts/f4_retrain.ps1`.
-- **Heat cap** (user, 2026-10-06; keep under 94 °C): ≤ 2 Isaac processes × 4 envs; `scripts/thermal_guard.py`
-  alongside.
+- **Fast path** (user, 2026-10-07 21:10):
+  - F2 gate 2 was stopped; F2 closes on config M plus F3's full-task grasp and slip rates.
+  - check_resync is informational.
+  - F4 runs one BC seed, with DAgger selection on id_hard + recovery.
+  - 2 × 8 envs per process.
+- **In flight:**
+  - F3 expert eval: `scripts/f3_gate.ps1 -Lane eval`, n = 100 × 3, 2 × 8.
+  - F4 (`scripts/f4_retrain.ps1 -WaitF3`) waits for it, then runs collect → BC → DAgger ×≤2 → vision → finals →
+    demos. Log: `outputs/imitation/isaac_friction/f4/f4.log`.
+  - To resume after a stop, re-run the same command; every stage skips its finished output.
+- **Afterwards, in idle Isaac windows:** check_resync; the anchor rows at n = 20 per set (CPU, lehome base).
+- **Heat cap** (keep under 94 °C):
+  - ≤ 2 Isaac processes; `scripts/thermal_guard.py` alongside.
+  - **8 envs per process allowed since 2026-10-07** (user). It was 4.
+  - With cameras, fall back to 6 if VRAM overflows (16 GB).
 - **Watch logs with `scripts/watch_logs.sh`, not `tail -F`.** A tail holds a Windows file handle. That blocks renames
   and the launcher's final `== exit` line.
 

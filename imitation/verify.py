@@ -640,8 +640,6 @@ def _i33() -> Result:
 HONESTY = ROOT / "outputs" / "isaac" / "honesty"
 F0_RUN = "f0_friction_gpu_v2"
 IG2_BEST = {"left_": {"held": (20, 20)}, "right_": {"held": (19, 20)}}     # track G IG.2 attempt 9 (CPU, lehome)
-F2_BLOCKS = ("f2_block_a", "f2_block_b", "f2_fresh")      # gate 1 (config I, right arm 93%) kept as f2_gate1_*
-F2_PLATEAU = {"acquired": 95.0, "held": 95.0, "released": 95.0, "placed": 90.0}
 F3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "recovery": 90.0}
 
 
@@ -684,40 +682,38 @@ def _f1() -> Result:
     return Result("F1", "PASS" if ok else "FAIL", ev)
 
 
-@check("F2", "friction grasp reliability on the friction profile: per arm, n = 100 on two tune blocks plus a fresh block, acquired / held / released >= 98, placed >= 95 (plateau 95 / 90 if recorded), one config")
+F2_RUN = "f2_m_pad2_align8"      # the kept config (M); gate blocks f2_gate1_* (config I) are the record before it
+F2_HELD_MIN = 97.5               # per arm, on M's bench run (n >= 40)
+F2_TASK_GRASP_MIN = 95.0         # F3's full-task expert eval: grasp success, every set
+F2_TASK_SLIP_MAX = 5.0           # ... and G2 (slip with the jaws shut) as a share of episodes, every set
+
+
+@check("F2", "friction grasp reliability (fast path, user 2026-10-07): the kept config's bench run n >= 40 holds >= 97.5% per arm with released = held, and in F3's full-task expert eval (n >= 100 per set) grasp success >= 95% and G2 slips <= 5% on every set")
 def _f2() -> Result:
-    plateau = results_md_has("F2 plateau accepted")
-    bar = F2_PLATEAU if plateau else IG2_BAR
-    ev, ok, configs, seeds = [f"bar {'plateau' if plateau else 'full'}: {bar}"], True, [], []
-    for name in F2_BLOCKS:
-        s, miss = _grasp_summary(name)
-        if s is None:
-            ev += miss
+    s, ev = _grasp_summary(F2_RUN)
+    ok = s is not None
+    if s is not None:
+        ev += _grasp_lines(F2_RUN, s)
+        for p, st in s["arms"].items():
+            ok &= st["held"]["rate"] >= F2_HELD_MIN and st["released"]["k"] == st["held"]["k"]
+        ok &= s["n"] >= 40 and (s.get("config") or {}).get("profile") == "friction"
+        ok &= git_tracked(GRASP / F2_RUN / "summary.json")
+    d = ROOT / "outputs" / "imitation" / "isaac_friction" / "f3"
+    for name in F3_GATE:
+        path = d / f"eval_expert_{name}.json"
+        if not path.exists():
+            ev.append(f"missing artifact: {path}")
             ok = False
             continue
-        good = s["n"] >= 100 and all(TUNE_BLOCK[0] <= x < TUNE_BLOCK[1] for x in s["seeds"])
-        good &= (s.get("config") or {}).get("profile") == "friction"
-        for st in s["arms"].values():
-            good &= all(st[m]["rate"] >= bar[m] for m in GRASP_METRICS)
-        good &= git_tracked(GRASP / name / "summary.json")
-        ev += _grasp_lines(name, s)
-        ev.append(f"{name}: n {s['n']} meets bar={good}")
-        ok &= good
-        c = s.get("config") or {}
-        configs.append(json.dumps(c.get("knobs"), sort_keys=True) + json.dumps(c.get("expert"), sort_keys=True))
-        seeds.append(set(s["seeds"]))
-    if len(seeds) == len(F2_BLOCKS):
-        disjoint = all(not (seeds[i] & seeds[j]) for i in range(3) for j in range(i + 1, 3))
-        others = [json.loads(line)["seed"] for d in GRASP.glob("*/rows.jsonl") if d.parent.name != "f2_fresh"
-                  for line in d.read_text(encoding="utf-8").splitlines() if line.strip()]
-        fresh = not (seeds[2] & set(others))
-        ev.append(f"blocks disjoint={disjoint}, one config={len(set(configs)) == 1}, fresh untouched={fresh}")
-        ok &= disjoint and len(set(configs)) == 1 and fresh
+        r = json.loads(path.read_text(encoding="utf-8"))["results"][name]
+        slips = 100.0 * r["failure_codes"].get("G2", 0) / r["n"]
+        ev.append(f"F3 {name}: n {r['n']}, grasp success {100 * r['grasp_success']:.1f}%, G2 {slips:.1f}%")
+        ok &= r["n"] >= 100 and 100 * r["grasp_success"] >= F2_TASK_GRASP_MIN and slips <= F2_TASK_SLIP_MAX
     ok &= results_md_has("F2")
     return Result("F2", "PASS" if ok else "FAIL", ev)
 
 
-@check("F3", "friction expert gate (isaac_friction): n >= 100 id_easy >= 95, id_hard >= 90, recovery >= 90 (85 if the plateau is recorded), check_resync >= 90")
+@check("F3", "friction expert gate (isaac_friction, LeHome task sets): n >= 100 id_easy >= 95, id_hard >= 90, recovery >= 90 (85 if the plateau is recorded); check_resync informational")
 def _f3() -> Result:
     d = ROOT / "outputs" / "imitation" / "isaac_friction" / "f3"
     gate = dict(F3_GATE, recovery=85.0) if results_md_has("F3 plateau accepted") else F3_GATE
@@ -732,17 +728,15 @@ def _f3() -> Result:
         lo, hi = wilson(k, n)
         ev.append(f"{s}: {k}/{n} = {100.0 * k / n:.1f}% [{lo:.1f}, {hi:.1f}] (bar {bar:.0f})")
         ok &= n >= 100 and 100.0 * k / n >= bar and git_tracked(path)
+    # check_resync is informational (fast path, user 2026-10-07): the recovery set already measures the expert taking
+    # over mid-episode after a knock
     rs = d / "check_resync.json"
     if rs.exists():
         r = json.loads(rs.read_text(encoding="utf-8"))
         for m, v in r["modes"].items():
-            rate = 100.0 * v["success"] / v["n"]
-            ev.append(f"check_resync {m}: {v['success']}/{v['n']} = {rate:.1f}% (bar {IG3_RESYNC:.0f})")
-            ok &= v["n"] >= 100 and rate >= IG3_RESYNC
-        ok &= git_tracked(rs)
+            ev.append(f"check_resync {m} (informational): {v['success']}/{v['n']}")
     else:
-        ev.append(f"missing artifact: {rs}")
-        ok = False
+        ev.append("check_resync: not run (informational)")
     ok &= results_md_has("F3")
     return Result("F3", "PASS" if ok else "FAIL", ev)
 
