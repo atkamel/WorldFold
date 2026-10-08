@@ -642,8 +642,9 @@ F0_RUN = "f0_friction_gpu_v2"
 IG2_BEST = {"left_": {"held": (20, 20)}, "right_": {"held": (19, 20)}}     # track G IG.2 attempt 9 (CPU, lehome)
 # F3b (user, 2026-10-08): the perturbation suite replaces the legacy recovery set in the gate (floor 60% each);
 # the legacy all-dims knock is still run and reported
-F3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "knock_arm": 60.0, "drop": 60.0, "joint_noise": 60.0,
-           "overshoot": 60.0}
+F3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "knock_arm": 60.0, "joint_noise": 60.0, "overshoot": 60.0}
+# drop: reported, not gated (user's time-box rule, 2026-10-08; five attempts at 38-44% on tune_drop, results.md F3b)
+F3_REPORTED = ("drop", "recovery")
 
 
 @check("F0", "friction profile (GPU, weld setup + friction grasp): grasp bench n >= 20 on tune seeds; held per arm within the interval of track G #9, or the delta recorded in results.md")
@@ -716,15 +717,16 @@ def _f2() -> Result:
     return Result("F2", "PASS" if ok else "FAIL", ev)
 
 
-@check("F3", "friction expert gate (isaac_friction, LeHome task sets): n >= 100 id_easy >= 95, id_hard >= 90, each perturbation set (knock_arm, drop, joint_noise, overshoot) >= 60; legacy recovery and check_resync reported only")
+@check("F3", "friction expert gate (isaac_friction, LeHome task sets): n >= 100 id_easy >= 95, id_hard >= 90, knock_arm / joint_noise / overshoot >= 60; drop, legacy recovery and check_resync reported only")
 def _f3() -> Result:
     d = ROOT / "outputs" / "imitation" / "isaac_friction" / "f3"
     gate = F3_GATE
     ev, ok = [], True
-    legacy = d / "eval_expert_recovery.json"
-    if legacy.exists():
-        k, n = eval_counts(legacy)["recovery"]
-        ev.append(f"recovery (legacy all-dims knock, reported only): {k}/{n}")
+    for name in F3_REPORTED:
+        path = d / f"eval_expert_{name}.json"
+        if path.exists():
+            k, n = eval_counts(path)[name]
+            ev.append(f"{name} (reported only): {k}/{n}")
     for s, bar in gate.items():
         path = d / f"eval_expert_{s}.json"
         if not path.exists():
