@@ -1783,3 +1783,21 @@ the first 56 episodes; `isaac_v1_friction_failures`):
   - Pinching the lower layer drags the anchored half (M1 16%).
   - That is PINCH_FOLLOW_Z's case. The legacy knock left most corners on the table, so FOLLOW_Z had nothing to fix
     there.
+
+**Kept fixes (RESYNC_IK_HOME + DESCEND_RETRY = 2) on every tune set** (n = 50 each, `f3b/ikhome_retry`):
+
+| tune set | success | Wilson 95% | failures |
+|---|---|---|---|
+| tune_id_easy | 44/50 = 88% | 76.2–94.4 | G2 5, M1 1 |
+| tune_knock_arm | 42/50 = 84% | 71.5–91.7 | G2 7, M1 1 |
+| tune_drop | 20/50 = 40% | 27.6–53.8 | G2 22, M1 8 |
+| tune_joint_noise | 37/50 = 74% | 60.4–84.1 | G2 9, M1 4 |
+| tune_overshoot | 43/50 = 86% | 73.8–93.0 | G2 5, M1 2 |
+
+- **+ PINCH_FOLLOW_Z on tune_drop: 19/50 = 38%** (G2 26, M1 5). No gain. Drop is flat over three attempts (44, 40,
+  38), so the plateau rule applies.
+- **The user's call (2026-10-08):** a time-boxed (~2 h) dedicated fix for dropped corners, then the gate and F4,
+  whatever drop reaches. If it stays under 60 it is reported, not gated.
+- **The fix tried:** `PUSH_ON_LAYER` slides a corner that has settled on the other half to its goal along the top
+  layer, closed jaw resting on it, instead of pinching it.
+- **Slips (G2) are now the common failure on every set,** including clean starts: 10% on tune_id_easy.
