@@ -1669,3 +1669,10 @@ The scripted expert (ScriptedTeacher, retries on) runs id_easy seeds from 100000
   - The kinematic anchor engaged, but the cloth never followed it.
   - The anchor profile now sits on the lehome base (CPU, LeHome's drives, no DR), Ruby's setup.
   - Record: `outputs/imitation/isaac_anchor/f3/smoke_gpu_id_easy.json`.
+
+- **2026-10-07: the anchor comparison was dropped** (user). The anchor profile and backend were removed from the
+  code. The GPU smoke record stays at `outputs/imitation/isaac_anchor/f3/smoke_gpu_id_easy.json`.
+- **The comparison row is now Adam's Isaac friction grasp as built** (`scripts/adam_baseline.ps1`):
+  - lehome profile: CPU, LeHome's drives, closed jaw −0.1, adhesion 0, no DR;
+  - the I2.1 expert: pinch 1.0 cm, no overshoot, no alignment check.
+  - Its earlier pilot on these sets: id_easy 2/20, recovery 0/10 (I2.1).

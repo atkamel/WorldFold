@@ -43,8 +43,8 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 **Phase F (user, 2026-10-07): replace the weld with a physical grasp on LeHome's physics, retrain, raise both
 benchmarks.** Plan: [superpowers/plans/2026-10-07-physical-grasp.md](superpowers/plans/2026-10-07-physical-grasp.md);
-roadmap Phase F (F0–F6). Rules: friction + adhesion ≤ 0.3, no attachments, pins or welds. Ruby's anchor grasp is
-ported as a comparison profile only (`isaac_anchor`).
+roadmap Phase F (F0–F6). Rules: friction + adhesion ≤ 0.3, no attachments, pins or welds. The anchor comparison is
+dropped (user, 2026-10-07). The comparison row is now Adam's as-built friction grasp (`scripts/adam_baseline.ps1`).
 
 - **Found and fixed:**
   - **Slips:** `MUJOCO_ARM_DRIVE` was applied to the gripper too, at kp 998 and 3.35 N m. With LeHome's gripper drive
@@ -71,7 +71,10 @@ ported as a comparison profile only (`isaac_anchor`).
   - F4 (`scripts/f4_retrain.ps1 -WaitF3`) waits for it, then runs collect → BC → DAgger ×≤2 → vision → finals →
     demos. Log: `outputs/imitation/isaac_friction/f4/f4.log`.
   - To resume after a stop, re-run the same command; every stage skips its finished output.
-- **Afterwards, in idle Isaac windows:** check_resync; the anchor rows at n = 20 per set (CPU, lehome base).
+- **Afterwards, in idle Isaac windows:**
+  - check_resync;
+  - **Adam's as-built row:** `scripts/adam_baseline.ps1`, n = 50 per set. It is one CPU Isaac process, so it runs only
+    while at most one other Isaac process does.
 - **Heat cap** (keep under 94 °C):
   - ≤ 2 Isaac processes; `scripts/thermal_guard.py` alongside.
   - **8 envs per process allowed since 2026-10-07** (user). It was 4.
