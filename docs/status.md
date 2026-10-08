@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-07 · **Branch:** `feature/isaac-imitation` · **Phase:** F4 (retrain, 6 h plan, no vision)
+**Updated:** 2026-10-08 · **Branch:** `feature/isaac-imitation` · **Phase:** F4 finals done (BC only); F4 ☐ until DAgger
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -40,6 +40,16 @@ I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expe
 rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
+
+**2026-10-08, F4 finals (BC only, 3.5 h plan):** privileged diffusion BC on `isaac_v1_friction` scored id_easy
+81 / id_hard 71 / knock_arm 35 (n = 100), joint_noise 26 and overshoot 4 (n = 50). The expert scored 92 / 94 / 75 on the same sets. Stalls (S1) dominate the
+clean and shifted sets; slips (G2) dominate the bumped and noise sets.
+
+**Next:**
+- Run DAgger, the stage that was cut. Resume command:
+  `powershell -ExecutionPolicy Bypass -File scripts4_retrain.ps1 -NoVision -FinalN 100 -NoiseN 50 -Episodes 200 -BCSteps 20000`
+- Test a best-val checkpoint (~6k steps).
+- Then Adam's comparison row (`scripts/adam_baseline.ps1`).
 
 **Phase F (user, 2026-10-07): replace the weld with a physical grasp on LeHome's physics, retrain, raise both
 benchmarks.** Plan: [superpowers/plans/2026-10-07-physical-grasp.md](superpowers/plans/2026-10-07-physical-grasp.md);
@@ -206,6 +216,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-08 · **F4 finals, BC only:** id_easy 81, id_hard 71, knock_arm 35 (n = 100), joint_noise 26, overshoot 4 (n = 50). Docs. Tests: 207 passed, 5 skipped (not slow) · COMMIT
 - 2026-10-07/08 · **Phase F: physical grasp through F3; F4 paused (expert first).**
   - Track G merged. The friction profile has: LeHome gripper drive, jaw +0.05, adhesion 0.1, pad friction 2.0,
     ALIGN_TOL 8 mm, and LeHome's task sets (pinch reach).

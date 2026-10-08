@@ -1889,3 +1889,28 @@ Expert: RESYNC_IK_HOME + DESCEND_RETRY = 2 + CART_ARRIVE, the code defaults.
   - knock_arm-perturbed: 78/99 = 79%.
   - Consistent with the F3 gate's 92 / 75.
 - **Cut to fit the user's 3.5 h target:** 200 episodes instead of 400, BC at 20k steps, no DAgger, no vision.
+
+### F4 — finals, privileged diffusion student, BC only (`isaac_friction`, 2026-10-08, `f4/final_privileged_r4*.json`)
+
+Checkpoint `runs/isaac_v1_friction_diff_s0/final.pt`: diffusion BC on `isaac_v1_friction` (hash `71a993b12a3c`), 20k
+steps, seed 0, no DAgger. Replan 4, 2 × 8. Eval seeds: the standard `EVAL_SEED_BASE` sets.
+
+| set | n | student | Wilson 95% | expert (F3 gate) | failures |
+|---|---|---|---|---|---|
+| id_easy | 100 | 81/100 | 72.2–87.5 | 92 | S1 14, G2 4, M1 1 |
+| id_hard | 100 | 71/100 | 61.5–79.0 | 94 | S1 23, G2 6 |
+| knock_arm | 100 | 35/100 | 26.4–44.7 | 75 | S1 34, G2 27, G1 4 |
+| joint_noise | 50 | 13/50 = 26% | 15.9–39.6 | 74 (tune) | G2 32, S1 5 |
+| overshoot | 50 | 2/50 = 4% | 1.1–13.5 | 86 (tune) | G2 47, S1 1 |
+
+- **Stalls (S1) dominate** the clean and shifted failures: the BC policy parks near the cloth and never re-commits.
+  This is the classic covariate-shift failure that DAgger targets. DAgger was cut to fit the 3.5 h budget.
+- **knock_arm collapses to 35%.** The dataset holds only 78 successful bumped demos, and BC never sees its own
+  post-bump states. Slips (G2 27) mean it re-grasps badly aligned.
+- **Overfitting:** val loss (ema) was best at about 6k steps (~0.021) and ended at 0.042 at 20k. The final checkpoint
+  was used, not the best one.
+- **joint_noise and overshoot fail on slips (G2 32 / 47).** The expert's data holds no noisy or overshot
+  trajectories, and the student copies the expert's grip timing on a misplaced jaw.
+  - DAgger on these kinds, or noise-injected demos (DART-style), is the targeted fix.
+  - The expert itself is weaker here too: 74 / 86 on the tune sets.
+- **Cuts behind these numbers:** 200 episodes, BC 20k, no DAgger, a single seed, n = 100 / 50, no vision student.
