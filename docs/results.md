@@ -1738,3 +1738,27 @@ the first 56 episodes; `isaac_v1_friction_failures`):
   - If it doesn't: open, re-plan on the corner's current position, approach from above it.
   - Plus per-step phase traces to confirm.
 - **4 of the first 28 clean episodes truncated at 400** (seeds 9, 13, 27, 51). Unexplained so far.
+
+### F3b — expert recovery diagnosis from traces (2026-10-08)
+
+`isaac/recovery_replay.py --backend isaac_friction --trace-dir` on tune seeds 610000–013, legacy knock, base expert.
+8 episodes were traced; `isaac/recovery_diagnose.py` classified every close after the knock.
+(An earlier run traced the wrong vertex, an average of all of an arm's corners across both stages. It is kept as
+`diag_wrongcorner` and not used.)
+
+| mechanism of the 18 post-knock closes | n |
+|---|---|
+| good grip (the corner rose with the jaw) | 9 |
+| **closed 5–12 cm off the corner** | **6** |
+| corner under a fold | 2 |
+| near the corner, but it did not rise | 1 |
+
+- **Every off-corner close came after a 44–60-step descend that never arrived** (clean descends: 4–15). The
+  patience budget ran out and the jaw closed wherever it was.
+- **Cause, hypothesised:** after a resync, `infer_phase` plans with the IK seeded from the knocked arm's joints. That
+  puts the solver on a poor branch, so the pinch pose is unreachable from there.
+- **Candidate fixes (expert knobs):**
+  - `RESYNC_IK_HOME`: plan from the home seed and re-approach from above.
+  - `DESCEND_RETRY`: back up and re-approach instead of closing after a non-arriving descend.
+- **Tuning sets** (`imitation.seeds.TUNE_SET_BASE`): `tune_knock_arm` 620000+, `tune_drop` 630000+, etc. They are
+  copies of the suite in the tune block, so tuning never touches eval seeds.
