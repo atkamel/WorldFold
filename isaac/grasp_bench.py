@@ -109,7 +109,8 @@ def run(args):
     qf = teacher.expert
     config = {"jitter": jitter, "profile": args.profile, "device": base.sim_device, "dr": not args.no_dr, "knobs": base.grasp_knobs, "expert": {k: getattr(IsaacArmExpert, k) for k in
                                                     ("PINCH_HEIGHT", "PINCH_INSET", "PLACE_HEIGHT", "ARC_HEIGHT",
-                                                     "CLOSE_DWELL", "OPEN_DWELL")},
+                                                     "CLOSE_DWELL", "OPEN_DWELL", "ALIGN_TOL", "SETTLE_LIFT",
+                                                     "REGRASP", "CARRY_SPEED")},
               "overshoot": {f"{s}{p}": np.round(v, 4).tolist() for (s, p), v in OVERSHOOT_FRICTION.items() if s == 0},
               "code": str(Path(__file__).resolve())}
     print("CONFIG", json.dumps(config), flush=True)

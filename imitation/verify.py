@@ -640,7 +640,7 @@ def _i33() -> Result:
 HONESTY = ROOT / "outputs" / "isaac" / "honesty"
 F0_RUN = "f0_friction_gpu_v2"
 IG2_BEST = {"left_": {"held": (20, 20)}, "right_": {"held": (19, 20)}}     # track G IG.2 attempt 9 (CPU, lehome)
-F2_BLOCKS = ("f2_block_a", "f2_block_b", "f2_fresh")
+F2_BLOCKS = ("f2_block_a", "f2_block_b", "f2_fresh")      # gate 1 (config I, right arm 93%) kept as f2_gate1_*
 F2_PLATEAU = {"acquired": 95.0, "held": 95.0, "released": 95.0, "placed": 90.0}
 F3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "recovery": 90.0}
 

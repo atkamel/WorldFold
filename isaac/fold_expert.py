@@ -68,7 +68,7 @@ class IsaacArmExpert:
     # m > 0: close only once the gripper frame is within this (horizontally) of the pinch point re-solved on the corner
     # as it lies now; otherwise re-plan and descend again (at most ALIGN_TRIES times). F2: right-arm slips start as a
     # pinch ~1 cm off that the closing jaw sweeps 3.5 cm across the pinch (shallow grip, 2.8 vs 1.4 cm deep)
-    ALIGN_TOL = 0.0
+    ALIGN_TOL = 0.008        # F2 L / M: every acquired right-arm corner held (40/40; 93% over n = 300 without it)
     ALIGN_TRIES = 2
 
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
