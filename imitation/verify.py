@@ -642,9 +642,11 @@ F0_RUN = "f0_friction_gpu_v2"
 IG2_BEST = {"left_": {"held": (20, 20)}, "right_": {"held": (19, 20)}}     # track G IG.2 attempt 9 (CPU, lehome)
 # F3b (user, 2026-10-08): the perturbation suite replaces the legacy recovery set in the gate (floor 60% each);
 # the legacy all-dims knock is still run and reported
-F3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "knock_arm": 60.0, "joint_noise": 60.0, "overshoot": 60.0}
+# 6.5 h budget (user, 2026-10-08): the gate runs id_easy / id_hard / knock_arm; the noise sets are measured in F4's
+# finals (tune sets: joint_noise 74%, overshoot 86% at n = 50, F3b)
+F3_GATE = {"id_easy": 95.0, "id_hard": 90.0, "knock_arm": 60.0}
 # drop: reported, not gated (user's time-box rule, 2026-10-08; five attempts at 38-44% on tune_drop, results.md F3b)
-F3_REPORTED = ("drop", "recovery")
+F3_REPORTED = ("drop", "recovery", "joint_noise", "overshoot")
 
 
 @check("F0", "friction profile (GPU, weld setup + friction grasp): grasp bench n >= 20 on tune seeds; held per arm within the interval of track G #9, or the delta recorded in results.md")

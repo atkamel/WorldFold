@@ -17,5 +17,5 @@ if ($Expert) { $ex = @("-Expert", $Expert) }          # an empty -Expert "" arri
 $verdict | ForEach-Object { Note "  $_" }
 if (-not ($verdict -match "^PASS F3")) { Note "GATE FAIL: F4 not started"; exit 1 }
 Note "GATE PASS: F4 starting"
-& powershell -ExecutionPolicy Bypass -File scripts\f4_retrain.ps1 -NoVision -Rounds 1 @ex     # the 9 h budget (user)
+& powershell -ExecutionPolicy Bypass -File scripts\f4_retrain.ps1 -NoVision -Rounds 1 -FinalN 100 -SelN 50 -Episodes 300 -DaggerEpisodes 96 @ex     # the 6 h budget (user)
 Note "F4 exit $LASTEXITCODE"

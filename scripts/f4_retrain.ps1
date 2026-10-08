@@ -13,7 +13,8 @@
 # 94 C -- run scripts/thermal_guard.py alongside; rollouts and training pause while its flag is set (imitation/thermal.py).
 param([ValidateSet("privileged", "vision", "final", "all")][string]$Phase = "all", [string]$Only = "",
       [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [switch]$WaitF3, [string]$Expert = "",
-      [switch]$NoVision, [int]$Rounds = 2)
+      [switch]$NoVision, [int]$Rounds = 2, [int]$FinalN = 200, [int]$SelN = 100, [int]$Episodes = 400,
+      [int]$DaggerEpisodes = 128)
 # -NoVision (user, 2026-10-08: the 9 h budget): state-only demos at the full envs per process, no vision student,
 # detector, vision finals or sensor demos; the privileged demos run after the finals (never 3 Isaac processes)
 $ErrorActionPreference = "Stop"
@@ -94,11 +95,11 @@ $env:WORLDFOLD_EXPERT_PARAMS = $Expert       # the expert config F3b kept (Isaac
 if ($Phase -in "privileged", "all" -or $Only) {
     Stage "collect" "$ds\$tag\manifest.json" {
         if ($NoVision) {
-            & $py -u -m imitation.data.collect --backend $B --episodes 400 --workers 2 --recovery-fraction 0.5 `
+            & $py -u -m imitation.data.collect --backend $B --episodes $Episodes --workers 2 --recovery-fraction 0.5 `
                 --perturb-kinds $kinds --version $tag --root $ds --resume
         } else {
             $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "$CameraEnvsPerProc"     # rig cameras: 2 x 8 state-only uses 14 GB
-            & $py -u -m imitation.data.collect --backend $B --episodes 400 --workers 2 --recovery-fraction 0.5 `
+            & $py -u -m imitation.data.collect --backend $B --episodes $Episodes --workers 2 --recovery-fraction 0.5 `
                 --perturb-kinds $kinds --render --cameras $cams --version $tag --root $ds --resume
         } }
     Stage "train_diff_s0" "$runs\${tag}_diff_s0\final.pt" {
@@ -108,7 +109,7 @@ if ($Phase -in "privileged", "all" -or $Only) {
     Stage "dagger" "$priv\done.txt" {
         # two rounds at takeover p = 0.6 (W5's one round at 0.3 gave +5 pp recovery on 403 labels)
         & $py -u -m imitation.dagger --backend $B --init "$runs\${tag}_diff_s0\final.pt" --dataset $tag --root $ds `
-            --out $priv --rounds $Rounds --episodes 128 --train-steps 15000 --eval-n 100 --eval-sets $sel `
+            --out $priv --rounds $Rounds --episodes $DaggerEpisodes --train-steps 15000 --eval-n $SelN --eval-sets $sel `
             --score-sets $sel --min-gain-se 1 --workers 2 --labels takeover --takeover-p 0.6 --resume `
             --recovery-fraction 0.5 --perturb-kinds $kinds
         if ($LASTEXITCODE -eq 0) { Set-Content "$priv\done.txt" (Get-Date -Format s) } }
@@ -142,7 +143,7 @@ if ($Phase -in "vision", "all" -or $Only) {
     Join $dp "demos_privileged" "docs\reports\media\half_fold_friction_privileged_knock_arm.mp4"
     }
     Stage "final_privileged" "$out\final_privileged_r4.done" {
-        & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets --n 200 --replan-every 4 --workers 2 `
+        & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets --n $FinalN --replan-every 4 --workers 2 `
             --out "$out\final_privileged_r4.json" --resume
         if ($LASTEXITCODE -ne 0) { return }
         & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets100 --n 100 --replan-every 4 --workers 2 `
