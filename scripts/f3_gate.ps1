@@ -10,6 +10,7 @@ param([ValidateSet("eval", "resync")][string]$Lane = "eval", [int]$N = 100,
       [string[]]$Sets = @("id_easy", "id_hard", "knock_arm", "drop", "joint_noise", "overshoot", "recovery"),
       [int]$Workers = 2)
 $ErrorActionPreference = "Stop"
+$Sets = @($Sets | ForEach-Object { $_ -split "," } | Where-Object { $_ })     # -File passes "a,b" as one string
 . ./isaac/env_windows.ps1
 New-Item -ItemType Directory -Force $Out | Out-Null
 $env:WORLDFOLD_EXPERT_PARAMS = $Expert
