@@ -12,7 +12,7 @@
 # Heat budget (user, 2026-10-06): at most 2 Isaac processes x 4 envs, no overlapping sims, and keep the laptop under
 # 94 C -- run scripts/thermal_guard.py alongside; rollouts and training pause while its flag is set (imitation/thermal.py).
 param([ValidateSet("privileged", "vision", "final", "all")][string]$Phase = "all", [string]$Only = "",
-      [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [switch]$WaitF3)
+      [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [switch]$WaitF3, [string]$Expert = "")
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
@@ -27,7 +27,11 @@ $ds = "outputs\imitation\datasets"
 New-Item -ItemType Directory -Force $out | Out-Null
 $log = Join-Path $out "f4.log"
 $cams = "main=128,left_wrist_cam=64,right_wrist_cam=64"
-$sets = @("id_easy", "id_hard", "recovery")
+# F3b (2026-10-08): the perturbation suite replaces the legacy recovery set; finals at n = 200 on the clean, shifted
+# and re-grasp sets, n = 100 on the noise sets and the legacy knock (reported only)
+$sets = @("id_easy", "id_hard", "knock_arm", "drop")
+$sets100 = @("joint_noise", "overshoot", "recovery")
+$kinds = @("knock_arm", "drop")             # perturbed demos and DAgger rollouts (noise kinds need DART labels)
 
 function Note($msg) {     # a reader holding the log open must not end the run: retry, then give up on this line
     $msg
@@ -81,13 +85,14 @@ if ($WaitF3) {
     while (-not (Test-Path $f3)) { Start-Sleep 30 }
     Start-Sleep 30       # its Isaac processes exit after the JSON is written
 }
-$sel = @("id_hard", "recovery")
+$sel = @("id_hard", "drop")
+$env:WORLDFOLD_EXPERT_PARAMS = $Expert       # the expert config F3b kept (IsaacArmExpert attributes), for every stage
 
 if ($Phase -in "privileged", "all" -or $Only) {
     Stage "collect" "$ds\$tag\manifest.json" {
         $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "$CameraEnvsPerProc"     # rig cameras: 2 x 8 state-only already uses 14 GB
         & $py -u -m imitation.data.collect --backend $B --episodes 400 --workers 2 --recovery-fraction 0.5 `
-            --render --cameras $cams --version $tag --root $ds --resume }
+            --perturb-kinds $kinds --render --cameras $cams --version $tag --root $ds --resume }
     Stage "train_diff_s0" "$runs\${tag}_diff_s0\final.pt" {
         & $py -u -m imitation.train --policy diffusion --dataset $tag --root $ds --run "$runs\${tag}_diff_s0" `
             --steps 30000 --seed 0 }
@@ -96,7 +101,8 @@ if ($Phase -in "privileged", "all" -or $Only) {
         # two rounds at takeover p = 0.6 (W5's one round at 0.3 gave +5 pp recovery on 403 labels)
         & $py -u -m imitation.dagger --backend $B --init "$runs\${tag}_diff_s0\final.pt" --dataset $tag --root $ds `
             --out $priv --rounds 2 --episodes 128 --train-steps 15000 --eval-n 100 --eval-sets $sel `
-            --score-sets $sel --min-gain-se 1 --workers 2 --labels takeover --takeover-p 0.6 --resume
+            --score-sets $sel --min-gain-se 1 --workers 2 --labels takeover --takeover-p 0.6 --resume `
+            --recovery-fraction 0.5 --perturb-kinds $kinds
         if ($LASTEXITCODE -eq 0) { Set-Content "$priv\done.txt" (Get-Date -Format s) } }
     if (-not $Only) { Note "PRIVILEGED COMPLETE best=$(Best $priv)" }
 }
@@ -119,14 +125,18 @@ $bv = "$runs\${tag}_vision_t0\final.pt"     # fast track: the teacher-relabelled
 if ($Phase -in "vision", "all" -or $Only) {
     # the vision student trains on the GPU while the privileged demos run (1 CPU-pipeline sim): 2 jobs at once
     $dp = Side "demos_privileged"
-    Stage "demos_privileged" "docs\reports\media\half_fold_friction_privileged_recovery.mp4" { Demos "privileged" $bp 4 }
+    Stage "demos_privileged" "docs\reports\media\half_fold_friction_privileged_drop.mp4" { Demos "privileged" $bp 4 }
     Stage "train_vision_t0" "$runs\${tag}_vision_t0\final.pt" {
         & $py -u -m imitation.train --policy vision --dataset $tag --root $ds --run "$runs\${tag}_vision_t0" `
             --steps 30000 --batch 256 --seed 0 --teacher $bp }
-    Join $dp "demos_privileged" "docs\reports\media\half_fold_friction_privileged_recovery.mp4"
-    Stage "final_privileged" "$out\final_privileged_r4.json" {
+    Join $dp "demos_privileged" "docs\reports\media\half_fold_friction_privileged_drop.mp4"
+    Stage "final_privileged" "$out\final_privileged_r4.done" {
         & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets --n 200 --replan-every 4 --workers 2 `
-            --out "$out\final_privileged_r4.json" }
+            --out "$out\final_privileged_r4.json" --resume
+        if ($LASTEXITCODE -ne 0) { return }
+        & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets100 --n 100 --replan-every 4 --workers 2 `
+            --out "$out\final_privileged_r4_n100.json" --resume
+        if ($LASTEXITCODE -eq 0) { Set-Content "$out\final_privileged_r4.done" (Get-Date -Format s) } }
     Stage "detector_train" "$runs\${tag}_detector\detector.pt" {
         & $py -u -m imitation.vision.success train --versions $tag "${tag}_failures" --root $ds `
             --out "$runs\${tag}_detector" --steps 2000 }
@@ -143,7 +153,10 @@ if ($Phase -in "final", "all" -or $Only) {
         $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "$CameraEnvsPerProc"
         & $py -u -m imitation.evaluate --backend $B --ckpt $bv --sets $sets --n 200 --replan-every 2 --workers 2 `
             --out "$out\final_vision_r2.json" --resume
+        if ($LASTEXITCODE -ne 0) { return }
+        & $py -u -m imitation.evaluate --backend $B --ckpt $bv --sets $sets100 --n 100 --replan-every 2 --workers 2 `
+            --out "$out\final_vision_r2_n100.json" --resume
         if ($LASTEXITCODE -eq 0) { Set-Content "$out\final_vision_r2.done" (Get-Date -Format s) } }
-    Stage "demos_sensor" "docs\reports\media\half_fold_friction_sensor_recovery.mp4" { Demos "sensor" $bv 2 }
+    Stage "demos_sensor" "docs\reports\media\half_fold_friction_sensor_drop.mp4" { Demos "sensor" $bv 2 }
     if (-not $Only) { Note "F4 COMPLETE" }
 }
