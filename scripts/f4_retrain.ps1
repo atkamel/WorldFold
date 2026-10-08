@@ -12,7 +12,10 @@
 # Heat budget (user, 2026-10-06): at most 2 Isaac processes x 4 envs, no overlapping sims, and keep the laptop under
 # 94 C -- run scripts/thermal_guard.py alongside; rollouts and training pause while its flag is set (imitation/thermal.py).
 param([ValidateSet("privileged", "vision", "final", "all")][string]$Phase = "all", [string]$Only = "",
-      [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [switch]$WaitF3, [string]$Expert = "")
+      [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [switch]$WaitF3, [string]$Expert = "",
+      [switch]$NoVision, [int]$Rounds = 2)
+# -NoVision (user, 2026-10-08: the 9 h budget): state-only demos at the full envs per process, no vision student,
+# detector, vision finals or sensor demos; the privileged demos run after the finals (never 3 Isaac processes)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
@@ -30,7 +33,7 @@ $cams = "main=128,left_wrist_cam=64,right_wrist_cam=64"
 # F3b (2026-10-08): the perturbation suite replaces the legacy recovery set; finals at n = 200 on the clean, shifted
 # and re-grasp sets, n = 100 on the noise sets and the legacy knock (reported only)
 $sets = @("id_easy", "id_hard", "knock_arm")         # forced drop skipped (user, 2026-10-08)
-$sets100 = @("joint_noise", "overshoot", "recovery")
+$sets100 = @("joint_noise", "overshoot")       # the legacy all-dims knock (recovery) is no longer run
 $kinds = @("knock_arm")                     # perturbed demos and DAgger rollouts (noise kinds need DART labels)
 
 function Note($msg) {     # a reader holding the log open must not end the run: retry, then give up on this line
@@ -90,9 +93,14 @@ $env:WORLDFOLD_EXPERT_PARAMS = $Expert       # the expert config F3b kept (Isaac
 
 if ($Phase -in "privileged", "all" -or $Only) {
     Stage "collect" "$ds\$tag\manifest.json" {
-        $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "$CameraEnvsPerProc"     # rig cameras: 2 x 8 state-only already uses 14 GB
-        & $py -u -m imitation.data.collect --backend $B --episodes 400 --workers 2 --recovery-fraction 0.5 `
-            --perturb-kinds $kinds --render --cameras $cams --version $tag --root $ds --resume }
+        if ($NoVision) {
+            & $py -u -m imitation.data.collect --backend $B --episodes 400 --workers 2 --recovery-fraction 0.5 `
+                --perturb-kinds $kinds --version $tag --root $ds --resume
+        } else {
+            $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "$CameraEnvsPerProc"     # rig cameras: 2 x 8 state-only uses 14 GB
+            & $py -u -m imitation.data.collect --backend $B --episodes 400 --workers 2 --recovery-fraction 0.5 `
+                --perturb-kinds $kinds --render --cameras $cams --version $tag --root $ds --resume
+        } }
     Stage "train_diff_s0" "$runs\${tag}_diff_s0\final.pt" {
         & $py -u -m imitation.train --policy diffusion --dataset $tag --root $ds --run "$runs\${tag}_diff_s0" `
             --steps 30000 --seed 0 }
@@ -100,7 +108,7 @@ if ($Phase -in "privileged", "all" -or $Only) {
     Stage "dagger" "$priv\done.txt" {
         # two rounds at takeover p = 0.6 (W5's one round at 0.3 gave +5 pp recovery on 403 labels)
         & $py -u -m imitation.dagger --backend $B --init "$runs\${tag}_diff_s0\final.pt" --dataset $tag --root $ds `
-            --out $priv --rounds 2 --episodes 128 --train-steps 15000 --eval-n 100 --eval-sets $sel `
+            --out $priv --rounds $Rounds --episodes 128 --train-steps 15000 --eval-n 100 --eval-sets $sel `
             --score-sets $sel --min-gain-se 1 --workers 2 --labels takeover --takeover-p 0.6 --resume `
             --recovery-fraction 0.5 --perturb-kinds $kinds
         if ($LASTEXITCODE -eq 0) { Set-Content "$priv\done.txt" (Get-Date -Format s) } }
@@ -124,12 +132,15 @@ $bv = "$runs\${tag}_vision_t0\final.pt"     # fast track: the teacher-relabelled
 
 if ($Phase -in "vision", "all" -or $Only) {
     # the vision student trains on the GPU while the privileged demos run (1 CPU-pipeline sim): 2 jobs at once
-    $dp = Side "demos_privileged"
+    $dp = if ($NoVision) { $null } else { Side "demos_privileged" }
+    if ($NoVision) { $script:sideStages += "demos_privileged" }       # runs after the finals instead
     Stage "demos_privileged" "docs\reports\media\half_fold_friction_privileged_knock_arm.mp4" { Demos "privileged" $bp 4 }
+    if (-not $NoVision) {
     Stage "train_vision_t0" "$runs\${tag}_vision_t0\final.pt" {
         & $py -u -m imitation.train --policy vision --dataset $tag --root $ds --run "$runs\${tag}_vision_t0" `
             --steps 30000 --batch 256 --seed 0 --teacher $bp }
     Join $dp "demos_privileged" "docs\reports\media\half_fold_friction_privileged_knock_arm.mp4"
+    }
     Stage "final_privileged" "$out\final_privileged_r4.done" {
         & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets --n 200 --replan-every 4 --workers 2 `
             --out "$out\final_privileged_r4.json" --resume
@@ -137,6 +148,13 @@ if ($Phase -in "vision", "all" -or $Only) {
         & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets100 --n 100 --replan-every 4 --workers 2 `
             --out "$out\final_privileged_r4_n100.json" --resume
         if ($LASTEXITCODE -eq 0) { Set-Content "$out\final_privileged_r4.done" (Get-Date -Format s) } }
+    if ($NoVision) {
+        $script:sideStages = @($script:sideStages | Where-Object { $_ -ne "demos_privileged" })
+        Stage "demos_privileged" "docs\reports\media\half_fold_friction_privileged_knock_arm.mp4" {
+            Demos "privileged" $bp 4 }
+        if (-not $Only) { Note "F4 COMPLETE (no vision)" }
+        exit 0
+    }
     Stage "detector_train" "$runs\${tag}_detector\detector.pt" {
         & $py -u -m imitation.vision.success train --versions $tag "${tag}_failures" --root $ds `
             --out "$runs\${tag}_detector" --steps 2000 }

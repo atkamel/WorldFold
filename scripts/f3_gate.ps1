@@ -7,7 +7,7 @@
 # -Expert sets IsaacArmExpert class attributes through WORLDFOLD_EXPERT_PARAMS (k=v,...), read by the teacher.
 param([ValidateSet("eval", "resync")][string]$Lane = "eval", [int]$N = 100,
       [string]$Out = "outputs/imitation/isaac_friction/f3", [string]$Expert = "",
-      [string[]]$Sets = @("id_easy", "id_hard", "knock_arm", "joint_noise", "overshoot", "recovery"),   # no drop (user)
+      [string[]]$Sets = @("id_easy", "id_hard", "knock_arm", "joint_noise", "overshoot"),   # no drop, no legacy knock (user)
       [int]$Workers = 2)
 $ErrorActionPreference = "Stop"
 $Sets = @($Sets | ForEach-Object { $_ -split "," } | Where-Object { $_ })     # -File passes "a,b" as one string
