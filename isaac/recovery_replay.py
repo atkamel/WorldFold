@@ -92,7 +92,8 @@ def main():
             if args.trace_dir:
                 cloth = base.cloth_positions()
                 for pr in base.prefixes:
-                    c = np.mean([cloth[v] for v in base.grasp_corners[pr]], axis=0)
+                    # the corner this arm carries in stage 0 (grasp_corners lists every corner it may take, both stages)
+                    c = np.mean([cloth[v] for v in expert.experts[(0, pr)].corners], axis=0)
                     site = np.asarray(base.gripper_position(pr), dtype=float)
                     near = np.linalg.norm(cloth[:, :2] - c[:2], axis=1) < 0.015
                     trace[pr]["phase"].append(("K" if p.active(t) else "") + ph[pr])
