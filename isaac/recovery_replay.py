@@ -25,7 +25,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", default=f"{RECOVERY_TUNE_BASE}:{RECOVERY_TUNE_BASE + 20}")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--max-steps", type=int, default=None, help="episode cap (default: isaac_weld's, 250)")
+    ap.add_argument("--backend", default="isaac_weld", choices=("isaac_weld", "isaac_friction"))
+    ap.add_argument("--max-steps", type=int, default=None, help="episode cap (default: the backend's)")
     ap.add_argument("--retries", type=int, default=None, help="QuarterFoldExpert.MAX_RETRIES override (default 2)")
     ap.add_argument("--set", action="append", default=[], metavar="ATTR=VALUE",
                     help="override an IsaacFoldExpert class attribute for this run, e.g. REGRASP_OFFSET=none")
@@ -60,8 +61,8 @@ def main():
             retry_log.append({"t": int(self.base._step_count), "arm": key[1], "n": self.retries[key],
                               "miss": [round(float(v), 4) for v in self.correction[key]]})
     qfe.QuarterFoldExpert._maybe_retry = logged_retry
-    _, _, knock = eval_set("recovery", 1, "isaac_weld")
-    env = make_env("isaac_weld", **({"max_episode_steps": args.max_steps} if args.max_steps else {}))
+    _, _, knock = eval_set("recovery", 1, args.backend)
+    env = make_env(args.backend, **({"max_episode_steps": args.max_steps} if args.max_steps else {}))
     expert = ScriptedTeacher(env, seed=0).expert
     base = env.unwrapped
     for seed in range(a, b):

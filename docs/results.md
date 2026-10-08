@@ -1676,3 +1676,27 @@ The scripted expert (ScriptedTeacher, retries on) runs id_easy seeds from 100000
   - lehome profile: CPU, LeHome's drives, closed jaw −0.1, adhesion 0, no DR;
   - the I2.1 expert: pinch 1.0 cm, no overshoot, no alignment check.
   - Its earlier pilot on these sets: id_easy 2/20, recovery 0/10 (I2.1).
+
+### F3 — friction expert, full task (`isaac_friction`, LeHome task sets, n = 100 per set, 2 × 8 envs, 2026-10-07)
+
+`imitation.evaluate --ckpt expert` with config M: ScriptedTeacher, retries on, `ALIGN_TOL` 8 mm, REGRASP off.
+
+| set | success | Wilson 95% | grasp | failures | wall |
+|---|---|---|---|---|---|
+| id_easy | 94/100 | 87.5–97.2 | 100% | G2 5, M1 1 | 1311 s |
+| id_hard (Isaac 1 cm ring) | 94/100 | 87.5–97.2 | 100% | G2 6 | 1374 s |
+| **recovery** | **27/100** | 19.3–36.4 | 100% | **G2 53, M1 20** | 2810 s |
+
+- **Clean and shifted starts are close to the bar:**
+  - id_easy is 1 short of 95.
+  - id_hard clears 90.
+  - The slip rate is 5–6%, at or over the 5% F2 limit.
+- **Recovery is the blocker.** At 27% against the weld expert's 81.7%, the expert caps every student's recovery. F4
+  is on hold until it improves.
+- **What the failure codes say:**
+  - G2 means a corner was lost with the jaw shut, never re-acquired, and the episode truncated.
+  - M1: the knock dragged the cloth.
+  - G2 is coarse: the knock itself drops a held corner.
+- **Diagnosis in flight:**
+  - The REGRASP = 2 expert on the recovery set (`f3_regrasp`).
+  - Traced knocked episodes on tune seeds 610000–019 (`outputs/isaac/recovery_friction/base.jsonl`).
