@@ -1700,3 +1700,23 @@ The scripted expert (ScriptedTeacher, retries on) runs id_easy seeds from 100000
 - **Diagnosis in flight:**
   - The REGRASP = 2 expert on the recovery set (`f3_regrasp`).
   - Traced knocked episodes on tune seeds 610000–019 (`outputs/isaac/recovery_friction/base.jsonl`).
+
+**Recovery A/B** (expert, recovery set seeds 300000–099, n = 100 each, 1 × 8 envs):
+
+| expert | success | Wilson 95% | failures |
+|---|---|---|---|
+| base (config M) | 27/100 | 19.3–36.4 | G2 53, M1 20 |
+| + REGRASP = 2 | 26/100 | 18.4–35.4 | G2 54, M1 20 |
+| + REGRASP = 2, PINCH_FOLLOW_Z = 1 | 29/100 | 21.0–38.5 | G2 51, M1 20 |
+
+- **Neither change helps.** Both hypotheses are rejected: a mid-carry slip re-grasp, and a pinch planned at table height
+  into a corner lying on a fold.
+- **M1 = 20 in all three.** `cloth_dragged` fires when the anchored half drifts past `DRAG_LIMIT`. The knock's random
+  actions do that with the jaws shut on the cloth, before any expert acts. So about 80% is the practical recovery
+  ceiling on this set for any policy.
+- **Decision (lead, 2026-10-08 00:45; the user asked for speed):**
+  - F4 starts on the base expert. id_easy and id_hard are at 94%, and nothing in F4's early stages depends on
+    recovery.
+  - Recovery diagnosis continues with per-episode traces in the GPU-only windows.
+  - An improved expert re-runs only the DAgger rounds, since takeover labels come from the expert.
+- `verify F2` fails as specified: G2 is 6% on id_hard against the 5% limit. It is recorded, not waived.
