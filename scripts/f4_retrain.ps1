@@ -29,9 +29,9 @@ $log = Join-Path $out "f4.log"
 $cams = "main=128,left_wrist_cam=64,right_wrist_cam=64"
 # F3b (2026-10-08): the perturbation suite replaces the legacy recovery set; finals at n = 200 on the clean, shifted
 # and re-grasp sets, n = 100 on the noise sets and the legacy knock (reported only)
-$sets = @("id_easy", "id_hard", "knock_arm", "drop")
+$sets = @("id_easy", "id_hard", "knock_arm")         # forced drop skipped (user, 2026-10-08)
 $sets100 = @("joint_noise", "overshoot", "recovery")
-$kinds = @("knock_arm", "drop")             # perturbed demos and DAgger rollouts (noise kinds need DART labels)
+$kinds = @("knock_arm")                     # perturbed demos and DAgger rollouts (noise kinds need DART labels)
 
 function Note($msg) {     # a reader holding the log open must not end the run: retry, then give up on this line
     $msg
@@ -85,7 +85,7 @@ if ($WaitF3) {
     while (-not (Test-Path $f3)) { Start-Sleep 30 }
     Start-Sleep 30       # its Isaac processes exit after the JSON is written
 }
-$sel = @("id_hard", "drop")
+$sel = @("id_hard", "knock_arm")
 $env:WORLDFOLD_EXPERT_PARAMS = $Expert       # the expert config F3b kept (IsaacArmExpert attributes), for every stage
 
 if ($Phase -in "privileged", "all" -or $Only) {
@@ -125,11 +125,11 @@ $bv = "$runs\${tag}_vision_t0\final.pt"     # fast track: the teacher-relabelled
 if ($Phase -in "vision", "all" -or $Only) {
     # the vision student trains on the GPU while the privileged demos run (1 CPU-pipeline sim): 2 jobs at once
     $dp = Side "demos_privileged"
-    Stage "demos_privileged" "docs\reports\media\half_fold_friction_privileged_drop.mp4" { Demos "privileged" $bp 4 }
+    Stage "demos_privileged" "docs\reports\media\half_fold_friction_privileged_knock_arm.mp4" { Demos "privileged" $bp 4 }
     Stage "train_vision_t0" "$runs\${tag}_vision_t0\final.pt" {
         & $py -u -m imitation.train --policy vision --dataset $tag --root $ds --run "$runs\${tag}_vision_t0" `
             --steps 30000 --batch 256 --seed 0 --teacher $bp }
-    Join $dp "demos_privileged" "docs\reports\media\half_fold_friction_privileged_drop.mp4"
+    Join $dp "demos_privileged" "docs\reports\media\half_fold_friction_privileged_knock_arm.mp4"
     Stage "final_privileged" "$out\final_privileged_r4.done" {
         & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets --n 200 --replan-every 4 --workers 2 `
             --out "$out\final_privileged_r4.json" --resume
@@ -157,6 +157,6 @@ if ($Phase -in "final", "all" -or $Only) {
         & $py -u -m imitation.evaluate --backend $B --ckpt $bv --sets $sets100 --n 100 --replan-every 2 --workers 2 `
             --out "$out\final_vision_r2_n100.json" --resume
         if ($LASTEXITCODE -eq 0) { Set-Content "$out\final_vision_r2.done" (Get-Date -Format s) } }
-    Stage "demos_sensor" "docs\reports\media\half_fold_friction_sensor_drop.mp4" { Demos "sensor" $bv 2 }
+    Stage "demos_sensor" "docs\reports\media\half_fold_friction_sensor_knock_arm.mp4" { Demos "sensor" $bv 2 }
     if (-not $Only) { Note "F4 COMPLETE" }
 }
