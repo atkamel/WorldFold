@@ -33,12 +33,17 @@ SERVO_PHASES = ("approach", "descend", "close", "lift", "carry", "place")
 
 class IsaacServoExpert(IsaacArmExpert):
     OVERSHOOT_SCALE = 0.0    # the corner is steered onto its goal: no spring-back table
-    ARRIVE_XY = 0.006        # descend -> close: site this close (horizontally) to the pinch point ...
-    ARRIVE_Z = 0.005         # ... and vertically
+    # descend -> close: the site is within ARRIVE_XY (horizontally) of the pinch point and has stopped closing in
+    # (moved < STALL_MOVE over STALL_STEPS steps). The fingertip meets the table and cloth 1-1.5 cm short of the
+    # nominal pinch point (first servo run: descends parked at 1.4-1.5 cm, never met a 6 mm test, and dragged the
+    # cloth); the 4.3 cm pads grip from there, which is what the open-loop expert's patience close relied on
+    ARRIVE_XY = 0.02
+    STALL_MOVE = 0.002
+    STALL_STEPS = 4
     APPROACH_TOL = 0.012     # approach -> descend
     IK_ITERS = 20            # per step, warm-started from the current joints
-    ESCALATE_STEPS = 40      # a descend this long without arriving re-aims the jaw (then lets it tilt)
-    GIVE_UP_STEPS = 120      # ... and after this many it closes where it is
+    ESCALATE_STEPS = 25      # a descend this long without arriving re-aims the jaw (then lets it tilt)
+    GIVE_UP_STEPS = 40       # ... and after this many it closes where it is
     LIFT_RISE = 0.04
     PINCH_CHECK = 6          # lift steps before judging "did the corner rise with the jaw"
     MAX_REGRASPS = 3
@@ -55,7 +60,7 @@ class IsaacServoExpert(IsaacArmExpert):
 
     def reset(self):
         super().reset()
-        self.sv = {"aim": 0, "regrasps": 0, "lift0": None, "path": None, "k": 0, "k_steps": 0, "slip": 0}
+        self.sv = {"aim": 0, "regrasps": 0, "lift0": None, "path": None, "k": 0, "k_steps": 0, "slip": 0, "hist": []}
 
     # ---- geometry ---------------------------------------------------------------------------------------------------
     def _site(self):
@@ -103,6 +108,7 @@ class IsaacServoExpert(IsaacArmExpert):
 
     # ---- phase control ------------------------------------------------------------------------------------------------
     def _go(self, name):
+        self.sv["hist"] = []
         self.phase = self.PHASES.index(name)
         self.phase_steps = 0
         self.q_target = None
@@ -144,7 +150,10 @@ class IsaacServoExpert(IsaacArmExpert):
                 self._go("descend")
         elif name == "descend":
             action[0:5], err = self._toward(pinch, jaw)
-            arrived = (np.linalg.norm(site[:2] - pinch[:2]) < self.ARRIVE_XY and abs(site[2] - pinch[2]) < self.ARRIVE_Z)
+            hist = self.sv["hist"] = (self.sv["hist"] + [site.copy()])[-(self.STALL_STEPS + 1):]
+            stalled = len(hist) > self.STALL_STEPS and np.linalg.norm(hist[-1] - hist[0]) < self.STALL_MOVE
+            low = site[2] - pinch[2] < 0.02
+            arrived = np.linalg.norm(site[:2] - pinch[:2]) < self.ARRIVE_XY and low and stalled
             if arrived:
                 self._go("close")
             elif self.phase_steps >= self.ESCALATE_STEPS and self.sv["aim"] < 2:

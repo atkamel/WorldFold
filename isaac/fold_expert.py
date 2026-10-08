@@ -53,7 +53,8 @@ class IsaacArmExpert:
     OPEN_PHASES = ("approach", "descend", "release", "retreat", "done")
     # everything that changes while it acts: ScriptedTeacher saves / restores these around a label
     PHASE_FIELDS = ("phase", "q_target", "phase_steps", "retreat_target", "release_allowed", "rng", "plan", "wp",
-                    "budget", "regrasps", "miss_steps", "last_jaw", "align_tries", "descend_retries", "resynced")
+                    "budget", "regrasps", "miss_steps", "last_jaw", "align_tries", "descend_retries", "resynced",
+                    "site_hist")
 
     # the pinch / place geometry and dwells, as class attributes so the grasp bench can try candidates (track G)
     PINCH_HEIGHT = 0.005             # fingertip above the table at the pinch (IG.2 #9; half_fold_demo / weld: 0.010)
@@ -76,6 +77,15 @@ class IsaacArmExpert:
     ALIGN_TRIES = 2
     OVERSHOOT_SCALE = 1.0    # scales the profile's placement overshoot table (0: none, Adam's as-built expert)
     SERVO = 0                # 1: ScriptedTeacher uses isaac.servo_expert.IsaacServoExpert (closed-loop, Phase F3b)
+    # F3b drop traces: descends parked 1-2 cm from the corner (the fingertip meets the table / cloth there) for 30-60
+    # steps because the joint-space arrival test (TRACK_TOL) never fires with the arm folded near its base; then the
+    # retry knobs sent it back up. 1: a descend has arrived when the gripper site is within CART_XY of the pinch point,
+    # within CART_Z above it, and has stopped moving (< CART_STILL over CART_STEPS steps)
+    CART_ARRIVE = 0
+    CART_XY = 0.02
+    CART_Z = 0.02
+    CART_STILL = 0.003
+    CART_STEPS = 3
     # 1: the pinch height follows the corner (its height above a flat corner's), not the table. F3 recovery traces: after
     # a knock, re-grasp descents took 30-85 steps (clean: 4-5) and the re-grasped corners slipped -- consistent with a
     # pinch planned into a corner that lies on a fold
@@ -130,6 +140,7 @@ class IsaacArmExpert:
         self.last_jaw = None
         self.align_tries = 0
         self.descend_retries = 0
+        self.site_hist = []
         self.resynced = False     # a resync happened this episode: re-grasp plans use REGRASP_JAW / REGRASP_TILT
 
     def _corner(self):
@@ -280,6 +291,18 @@ class IsaacArmExpert:
         closed_q = getattr(self.base, "_closed_q", jaw)
         return jaw <= closed_q + JAW_SHUT_TOL and last is not None and abs(jaw - last) < JAW_STILL
 
+    def _cart_arrived(self):
+        """CART_ARRIVE: near the pinch point on the corner as it lies now, low, and no longer moving."""
+        site = np.asarray(self.base.gripper_position(self.prefix), dtype=float)
+        self.site_hist = (self.site_hist + [site])[-(self.CART_STEPS + 1):]
+        corner, jaw = self._corner(), self.plan["jaw"]
+        pinch = corner[:2] - self.PINCH_INSET * jaw[:2]
+        near = float(np.linalg.norm(site[:2] - pinch)) < self.CART_XY
+        low = site[2] - (TABLE_TOP_Z + self.PINCH_HEIGHT) < self.CART_Z
+        still = (len(self.site_hist) > self.CART_STEPS
+                 and float(np.linalg.norm(self.site_hist[-1] - self.site_hist[0])) < self.CART_STILL)
+        return near and low and still
+
     def _misaligned(self):
         """The gripper frame is more than ALIGN_TOL (horizontally) from the pinch point on the corner as it lies now."""
         corner = self._corner()
@@ -312,6 +335,10 @@ class IsaacArmExpert:
                 self.plan = self._make_plan(from_q=self._q())
                 self.phase_steps = 0
         patience = self.phase_steps > self.budget    # a pose pressed into the table or cloth may never get closer
+        if self.CART_ARRIVE and name == "descend" and self._cart_arrived():
+            self.site_hist = []
+            self._next()                             # close: the pads (4.3 cm) grip from here
+            return
         if name in ("approach", "descend"):
             if self._arrived(TRACK_TOL) or patience:
                 if name == "approach" and self.PUSH_ON_LAYER and self._on_layer(self._corner()):
