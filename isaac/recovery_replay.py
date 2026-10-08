@@ -28,6 +28,8 @@ def main():
     ap.add_argument("--backend", default="isaac_weld", choices=("isaac_weld", "isaac_friction"))
     ap.add_argument("--max-steps", type=int, default=None, help="episode cap (default: the backend's)")
     ap.add_argument("--retries", type=int, default=None, help="QuarterFoldExpert.MAX_RETRIES override (default 2)")
+    ap.add_argument("--trace-dir", default=None, help="write a per-step trace per episode (F3b diagnosis)")
+    ap.add_argument("--no-knock", action="store_true", help="clean episodes (re-run a clean truncation with traces)")
     ap.add_argument("--set", action="append", default=[], metavar="ATTR=VALUE",
                     help="override an IsaacFoldExpert class attribute for this run, e.g. REGRASP_OFFSET=none")
     args = ap.parse_args()
@@ -70,6 +72,9 @@ def main():
             continue
         rng = np.random.default_rng([seed, 7919])
         p = knock(seed, rng)
+        if args.no_knock:
+            p.t = 10 ** 9
+        trace = {pr: {k: [] for k in ("phase", "jaw", "site", "corner", "dist", "fold", "g")} for pr in base.prefixes}
         env.reset(seed=seed)
         expert.reset()
         stale, timeline, prev = False, [], None
@@ -84,6 +89,20 @@ def main():
                 act, tag = expert.act(), ""
             ph = expert.phases()
             g = "".join(str(int(base.grasp_active(x))) for x in ("left_", "right_"))
+            if args.trace_dir:
+                cloth = base.cloth_positions()
+                for pr in base.prefixes:
+                    c = np.mean([cloth[v] for v in base.grasp_corners[pr]], axis=0)
+                    site = np.asarray(base.gripper_position(pr), dtype=float)
+                    near = np.linalg.norm(cloth[:, :2] - c[:2], axis=1) < 0.015
+                    trace[pr]["phase"].append(("K" if p.active(t) else "") + ph[pr])
+                    trace[pr]["jaw"].append(round(float(base.joint_positions(pr)[5]), 3))
+                    trace[pr]["site"].append(np.round(site, 4).tolist())
+                    trace[pr]["corner"].append(np.round(c, 4).tolist())
+                    trace[pr]["dist"].append(round(float(np.linalg.norm(c - site)), 4))
+                    # a fold over the corner: cloth within 1.5 cm (xy) lying more than 5 mm above it
+                    trace[pr]["fold"].append(int(bool((cloth[near, 2] > c[2] + 0.005).any())))
+                    trace[pr]["g"].append(int(base.grasp_active(pr)))
             cz = base.cloth_positions()
             zc = "/".join(f"{1000 * (cz[v][2] - 0.42):.0f}" for v in (10, 120))     # stage-0 corners, mm above the table
             cur = f"{tag}{ph['left_'][:4]}/{ph['right_'][:4]} g{g}"
@@ -99,6 +118,10 @@ def main():
                "knobs": args.set, "max_steps": base.max_episode_steps, "max_retries": qfe.MAX_RETRIES,
                "retry_log": list(retry_log),
                "timeline": timeline}
+        if args.trace_dir:
+            Path(args.trace_dir).mkdir(parents=True, exist_ok=True)
+            (Path(args.trace_dir) / f"{seed}.json").write_text(json.dumps({"seed": seed, "knock": row["knock"],
+                                                                           "arms": trace}), encoding="utf-8")
         with out.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
         print("EP", json.dumps({k: v for k, v in row.items() if k != "timeline"}), flush=True)
