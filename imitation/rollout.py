@@ -110,12 +110,17 @@ class _SlotServer:
                         "start_corners": env._start[[0, 10, 110, 120]].round(5).tolist(),
                         "max_steps": env.unwrapped.max_episode_steps}
                 return "ok", (obs, _info_small(info, images), meta), False
-            if cmd == "step":          # arg None -> the teacher acts
+            if cmd == "step":          # arg None -> the teacher acts; {"spec": ...} -> the teacher acts, perturbed
                 t0 = time.perf_counter()
+                spec = arg.get("spec") if isinstance(arg, dict) else None
+                if isinstance(arg, dict):
+                    arg = None
                 teacher = lazy.get() if (arg is None or self.shadow or lazy.built) else None
                 if arg is not None and self.shadow:    # someone else acts: the labelling teacher shadows
                     teacher.observe()
                 action = teacher.act() if arg is None else np.asarray(arg, dtype=np.float32)
+                if spec is not None:
+                    action = apply_perturbation(action, spec)
                 t1 = time.perf_counter()
                 obs, r, term, trunc, info = env.step(action)
                 t2 = time.perf_counter()
@@ -483,12 +488,39 @@ class PolicyController(Controller):
 
 @dataclass
 class Perturbation:
-    """k uniform-random actions starting at step t (recovery data / recovery eval)."""
+    """A disturbance of one episode (recovery data / eval). kind (Phase F3b, docs/imitation.md section 4):
+      knock        k uniform-random actions on all 12 dims from step t, grippers included (the legacy recovery set)
+      knock_arm    k random arm-joint actions from step t; each jaw keeps the command it last executed
+      drop         the first step >= t at which a corner is held, the holding jaws are forced open for k steps
+      joint_noise  N(0, sigma) added to every executed arm action, the whole episode
+      overshoot    every executed arm action scaled by gain, the whole episode
+    """
     t: int
     k: int
+    kind: str = "knock"
+    sigma: float = 0.0
+    gain: float = 1.0
 
     def active(self, t):
         return self.t <= t < self.t + self.k
+
+
+ARM_DIMS = [0, 1, 2, 3, 4, 6, 7, 8, 9, 10]
+GRIPPER_DIMS = (5, 11)
+WINDOW_KINDS = ("knock", "knock_arm", "drop")     # the policy is not in control: perturbation actor, resync after
+
+
+def apply_perturbation(action, spec):
+    """action with a perturbation spec applied: {"mul": arm-dim scale, "add": arm-dim offsets (10,), "set": {dim: v}}.
+    Pure, so the worker (teacher steps) and the parent (policy steps) apply the same thing."""
+    a = np.array(action, dtype=np.float32)
+    if spec.get("mul") is not None:
+        a[ARM_DIMS] *= np.float32(spec["mul"])
+    if spec.get("add") is not None:
+        a[ARM_DIMS] += np.asarray(spec["add"], dtype=np.float32)
+    for d, v in (spec.get("set") or {}).items():
+        a[int(d)] = v
+    return np.clip(a, -1.0, 1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +533,10 @@ class _Slot:
     hist: deque
     perturb: Perturbation | None
     info: dict
+    last_grip: np.ndarray = field(default_factory=lambda: np.ones(2, dtype=np.float32))   # executed jaw commands
+    drop_at: int | None = None       # drop: the step the jaws were forced open (None: not yet)
+    drop_arms: tuple = ()
+    in_window: bool = False          # a window perturbation is acting (resync the teacher when it ends)
     rows: dict = field(default_factory=lambda: {k: [] for k in
                                                 ("obs", "actions", "rewards", "stage", "fold_score", "grasped", "actor",
                                                  "terminated", "truncated")})
@@ -572,24 +608,61 @@ def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_
         rngs[i] = np.random.default_rng([seed, 7919])
         send(i, "reset", (seed, reset_options(seed) if reset_options else None, controller.needs_labels))
 
+    def perturb_step(s, i):
+        """-> (replacement action or None, spec or None, in_window) for slot s at its step s.t."""
+        p = s.perturb
+        if p is None:
+            return None, None, False
+        if p.kind == "knock":
+            if p.active(s.t):
+                return rngs[i].uniform(-1, 1, ACTION_DIM).astype(np.float32), None, True
+            return None, None, False
+        if p.kind == "knock_arm":
+            if p.active(s.t):
+                a = np.random.default_rng([s.seed, 4243, s.t]).uniform(-1, 1, ACTION_DIM).astype(np.float32)
+                a[list(GRIPPER_DIMS)] = s.last_grip
+                return a, None, True
+            return None, None, False
+        if p.kind == "drop":
+            g = s.info.get("grasped") or (False, False)      # (left, right) after _info_small
+            g = (g.get("left_"), g.get("right_")) if isinstance(g, dict) else g
+            held = [j for j in range(2) if g[j]]
+            if s.drop_at is None and s.t >= p.t and held:
+                s.drop_at, s.drop_arms = s.t, tuple(held)
+            if s.drop_at is not None and s.drop_at <= s.t < s.drop_at + p.k:
+                return None, {"set": {GRIPPER_DIMS[j]: 1.0 for j in s.drop_arms}}, True
+            return None, None, False
+        rng = np.random.default_rng([s.seed, 4244, s.t])
+        if p.kind == "joint_noise":
+            return None, {"add": rng.normal(0.0, p.sigma, len(ARM_DIMS)).astype(np.float32).tolist()}, False
+        if p.kind == "overshoot":
+            return None, {"mul": float(p.gain)}, False
+        raise ValueError(p.kind)
+
     def advance(i):
         """Send env i its next command (or park it until the next batched plan)."""
         s = active[i]
-        if s.perturb is not None and s.perturb.active(s.t):
+        replace, spec, window = perturb_step(s, i)
+        if s.in_window and not window:        # a window perturbation just ended: the teacher must resync first
+            s.teacher_stale = True
+        s.in_window = window
+        if replace is not None:
             s.queue.clear()
             s.teacher_stale = True
             step_actor[i] = ACTOR_PERTURB
-            send(i, "step", rngs[i].uniform(-1, 1, ACTION_DIM).astype(np.float32))
+            send(i, "step", replace)
         elif s.teacher_live:
             if s.teacher_stale:
                 s.teacher_stale = False
+                s.in_window = False
                 send(i, "resync")
             else:
-                step_actor[i] = ACTOR_TEACHER
-                send(i, "step", None)
+                step_actor[i] = ACTOR_PERTURB if window else ACTOR_TEACHER
+                send(i, "step", None if spec is None else {"spec": spec})
         elif s.queue:
-            step_actor[i] = s.queue_actor
-            send(i, "step", s.queue.popleft())
+            step_actor[i] = ACTOR_PERTURB if window else s.queue_actor
+            action = s.queue.popleft()
+            send(i, "step", action if spec is None else apply_perturbation(action, spec))
         elif controller.needs_labels:
             send(i, "label", controller.label_horizon)
         else:
@@ -676,6 +749,7 @@ def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_
                     s.rows[key].append(val)
                 s.hist.append(obs)
                 s.info = info
+                s.last_grip = np.asarray(executed, dtype=np.float32)[list(GRIPPER_DIMS)]
                 if s.takeover_left > 0 and step_actor[i] == ACTOR_TEACHER:
                     s.takeover_acts.append(np.asarray(executed, dtype=np.float32))
                     s.takeover_left -= 1
@@ -719,6 +793,7 @@ def _finish(s: _Slot, final_obs, controller, meta_extra) -> Episode:
             "final_move_distance": [float(d) for d in info["move_distance"]],
             "final_anchor_drift": float(info["anchor_drift"]),
             "perturb": None if s.perturb is None else [s.perturb.t, s.perturb.k],
+            "perturb_kind": None if s.perturb is None else s.perturb.kind,
             **s.meta, **(meta_extra or {})}
     rows = s.rows
     labels = np.stack(s.labels).astype(np.float32) if s.labels else np.zeros((0, 0, 0), dtype=np.float32)

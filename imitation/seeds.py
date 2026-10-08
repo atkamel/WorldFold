@@ -18,13 +18,21 @@ DISTILL_SEED_BASE = 70_000     # sensor-only distillation rollouts (Phase 4): 70
 HARVEST_SEED_BASE = 400_000    # student rollout harvest for offline RL (Phase 5): 400_000 ..
 SHIFT_SEED_BASE = 500_000      # shifted-pose training rollouts (M5b.2): 500_000 + 1000 * round ..
 TUNE_SEED_BASE = 600_000       # Isaac grasp-tuning blocks: 600_000 ..
-EVAL_SEED_BASE = {"id_easy": 100_000, "id_hard": 200_000, "recovery": 300_000}
+# the perturbation suite (Phase F3b, docs/imitation.md section 4) shares the old recovery block, 10k seeds each
+EVAL_SEED_BASE = {"id_easy": 100_000, "id_hard": 200_000, "recovery": 300_000, "knock_arm": 310_000,
+                  "drop": 320_000, "joint_noise": 330_000, "overshoot": 340_000}
+PERTURB_SETS = ("knock_arm", "drop", "joint_noise", "overshoot")
+JOINT_NOISE_SIGMA = 0.15         # of the max joint delta (actions are normalised to [-1, 1])
+OVERSHOOT_GAIN = (1.2, 1.4)
+DROP_K = 3
 HARD_JITTER = 0.04
 
 # [start, end) of every seed range; tests/imitation/test_seeds.py checks they never overlap
 SEED_RANGES = {"train": (TRAIN_SEED_BASE, 10_000), "dagger": (DAGGER_SEED_BASE, 70_000),
                "distill": (DISTILL_SEED_BASE, 100_000), "id_easy": (100_000, 200_000),
-               "id_hard": (200_000, 300_000), "recovery": (300_000, 400_000),
+               "id_hard": (200_000, 300_000), "recovery": (300_000, 310_000),
+               "knock_arm": (310_000, 320_000), "drop": (320_000, 330_000), "joint_noise": (330_000, 340_000),
+               "overshoot": (340_000, 350_000),
                "harvest": (HARVEST_SEED_BASE, 500_000), "shift": (SHIFT_SEED_BASE, 600_000),
                "tune": (TUNE_SEED_BASE, 700_000)}
 
@@ -63,6 +71,27 @@ def shifted_pose_isaac(seed):
 LEHOME_TASK_BACKENDS = ("isaac", "isaac_friction")
 
 
+def perturbation_fn(kind, backend="mujoco"):
+    """perturb_fn(seed, rng) -> Perturbation for one kind of the suite; draws from its own seeded rng, so a seed's
+    perturbation is the same in eval, demos and collection."""
+    isaac = backend in LEHOME_TASK_BACKENDS
+    lo, hi = ISAAC_RECOVERY_T if isaac else (15, 60)
+
+    def fn(seed, rng):
+        r = np.random.default_rng([seed, 31337])
+        t = int(r.integers(lo, hi))
+        if kind == "knock_arm":
+            return Perturbation(t=t, k=int(r.integers(8, 16)), kind=kind)
+        if kind == "drop":
+            return Perturbation(t=t, k=DROP_K, kind=kind)
+        if kind == "joint_noise":
+            return Perturbation(t=0, k=0, kind=kind, sigma=JOINT_NOISE_SIGMA)
+        if kind == "overshoot":
+            return Perturbation(t=0, k=0, kind=kind, gain=float(r.uniform(*OVERSHOOT_GAIN)))
+        raise ValueError(kind)
+    return fn
+
+
 def eval_set(name, n, backend="mujoco"):
     """(seeds, reset_options fn or None, perturb_fn or None) for a named evaluation set."""
     seeds = list(range(EVAL_SEED_BASE[name], EVAL_SEED_BASE[name] + n))
@@ -77,4 +106,6 @@ def eval_set(name, n, backend="mujoco"):
         def knock(seed, rng):
             return Perturbation(t=int(rng.integers(lo, hi)), k=int(rng.integers(8, 16)))
         return seeds, None, knock
+    if name in PERTURB_SETS:
+        return seeds, None, perturbation_fn(name, backend)
     raise KeyError(name)

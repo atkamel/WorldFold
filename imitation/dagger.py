@@ -104,6 +104,8 @@ def build_parser():
     ap.add_argument("--beta0", type=float, default=0.3)
     ap.add_argument("--beta-decay", type=float, default=0.5)
     ap.add_argument("--recovery-fraction", type=float, default=0.3)
+    ap.add_argument("--perturb-kinds", nargs="+", default=None, choices=("knock_arm", "drop"),
+                    help="suite kinds for the perturbed rollouts (default: the legacy all-dims knock)")
     ap.add_argument("--replan-every", type=int, default=8)
     ap.add_argument("--train-steps", type=int, default=15_000)
     ap.add_argument("--dagger-weight", type=float, default=4.0)
@@ -199,7 +201,8 @@ def main():
                 all_seeds, reset_options = round_seeds(r, args.episodes, args.shift_fraction)
                 seeds = [s for s in all_seeds if s not in writer.done_seeds]
                 rollout(pool, seeds, controller, reset_options=reset_options,
-                        perturb_fn=recovery_perturbation_for(args.backend, args.recovery_fraction),
+                        perturb_fn=recovery_perturbation_for(args.backend, args.recovery_fraction,
+                                                             args.perturb_kinds),
                         meta_extra={"round": r, "beta": beta, "policy": str(best_ckpt)},
                         on_done=lambda e: writer.add(e, obs_dim=OBS_DIM, action_dim=ACTION_DIM))
                 m = writer.freeze()

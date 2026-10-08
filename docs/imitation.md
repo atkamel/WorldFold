@@ -269,7 +269,8 @@ Disjoint ranges, so training data never shares a cloth start with evaluation
 | 50 000 + 1000·round .. | DAgger rollouts |
 | 100 000 .. | `id_easy` |
 | 200 000 .. | `id_hard` |
-| 300 000 .. | `recovery` |
+| 300 000 .. | `recovery` (the legacy knock; 300 000–309 999) |
+| 310 000 / 320 000 / 330 000 / 340 000 .. | `knock_arm` / `drop` / `joint_noise` / `overshoot` (Phase F3b) |
 
 - **`id_easy`** — same start distribution as the demos.
 - **`id_hard`** — cloth offset on a ring outside the training jitter (≥2.5 cm, up to 4 cm
@@ -277,6 +278,31 @@ Disjoint ranges, so training data never shares a cloth start with evaluation
   damping randomization (±30%) is unchanged, so it is not an OOD-dynamics test.
 - **`recovery`** — `id_easy` starts, knocked off course mid-episode (random joint
   perturbation of 8-16 steps, starting between steps 15 and 60).
+  - The knock samples all 12 action dims, the gripper commands included, so it opens and closes the jaws at random.
+  - On the physical (friction) grasp, about 20% of episodes end right at the knock as `cloth_dragged`, because the
+    jaws clamp on the cloth while the arm jerks.
+  - Since Phase F3b (2026-10-08) it is reported for continuity only, not gated.
+
+**The perturbation suite** (Phase F3b, user 2026-10-08: "choose something more realistic"). Each set is `id_easy`
+starts with one disturbance, drawn per seed from its own seeded rng (`imitation.seeds.perturbation_fn`), so a seed's
+disturbance is the same in eval, demos and collection. Onsets use the backend's knock window: Isaac (35, 140),
+MuJoCo (15, 60).
+
+| set | disturbance | analogue |
+|---|---|---|
+| `knock_arm` | k = 8–15 random arm-joint actions; each jaw keeps the command it last executed | the arm is bumped |
+| `drop` | at the first step ≥ the onset with a corner held, the holding jaw(s) are forced open for 3 steps | the cloth slips out |
+| `joint_noise` | N(0, 0.15) added to every executed arm action (normalised units), the whole episode | servo noise |
+| `overshoot` | every executed arm action × a per-episode gain U(1.2, 1.4) | miscalibrated gains |
+
+- **Implementation:** `imitation.rollout.Perturbation(kind, ...)` and the pure `apply_perturbation`.
+  - On teacher steps, the worker applies it (`step` with `{"spec": ...}`).
+  - On policy steps, the driver applies it to the queued action.
+- **Who is in control:**
+  - `knock_arm` and `drop` steps are recorded as the perturbation actor, and the teacher resyncs when the window ends.
+  - Under the noise kinds the teacher or policy stays in control, and the executed (noisy) action is recorded.
+- **Collection** (`--perturb-kinds`) uses only the window kinds for now. Noise kinds need clean labels for the noisy
+  executed actions (DART) before they can feed BC.
 
 **Any number measured on seeds 0-49 is a training-set number** and cannot be compared to a
 student. The existing 48/50 expert benchmark is one of these; establishing the expert

@@ -37,9 +37,21 @@ def recovery_perturbation(fraction, t_range=(10, 70), k_range=(5, 15)):
     return fn
 
 
-def recovery_perturbation_for(backend, fraction):
-    """MuJoCo's (10, 70) onset window scaled by 230/97 for the longer Isaac fold."""
-    from imitation.seeds import LEHOME_TASK_BACKENDS
+def recovery_perturbation_for(backend, fraction, kinds=None):
+    """MuJoCo's (10, 70) onset window scaled by 230/97 for the longer Isaac fold. kinds (Phase F3b): perturbed episodes
+    draw one of these suite kinds per seed (imitation.seeds.perturbation_fn) instead of the legacy all-dims knock.
+    The noise kinds (joint_noise, overshoot) need clean labels for the executed noisy actions before they can feed BC,
+    so collection uses the window kinds (knock_arm, drop) for now."""
+    from imitation.seeds import LEHOME_TASK_BACKENDS, perturbation_fn
+    if kinds:
+        fns = {k: perturbation_fn(k, backend) for k in kinds}
+
+        def mix(seed, rng):
+            if rng.random() >= fraction:
+                return None
+            kind = kinds[int(np.random.default_rng([seed, 999]).integers(len(kinds)))]
+            return fns[kind](seed, rng)
+        return mix
     if backend not in LEHOME_TASK_BACKENDS:      # mujoco and isaac_weld share MuJoCo's episode timing
         return recovery_perturbation(fraction)
     return recovery_perturbation(fraction, t_range=(24, 166), k_range=(5, 15))
@@ -87,6 +99,8 @@ def build_parser():
     ap.add_argument("--root", default=DEFAULT_ROOT)
     ap.add_argument("--seed-base", type=int, default=TRAIN_SEED_BASE)
     ap.add_argument("--recovery-fraction", type=float, default=0.3)
+    ap.add_argument("--perturb-kinds", nargs="+", default=None, choices=("knock_arm", "drop"),
+                    help="suite kinds for the perturbed episodes (default: the legacy all-dims knock)")
     ap.add_argument("--mixed", action="store_true", help="keep failures in the demo version")
     ap.add_argument("--resume", action="store_true", help="continue an unfrozen version")
     return ap
@@ -115,7 +129,8 @@ def main():
         kw["render"] = True
         kw["cameras"] = parse_cameras(args.cameras)
     with EnvPool(args.workers, kw or None) as pool:
-        rollout(pool, seeds, ExpertController(), perturb_fn=recovery_perturbation_for(args.backend, args.recovery_fraction),
+        rollout(pool, seeds, ExpertController(), perturb_fn=recovery_perturbation_for(args.backend, args.recovery_fraction,
+                                                                                 args.perturb_kinds),
                 progress=printer(t0), on_done=save)
     for w in dict.fromkeys((writer, fail_writer)):
         m = w.freeze()
