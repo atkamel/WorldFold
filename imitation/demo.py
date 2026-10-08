@@ -122,7 +122,9 @@ def main():
     ap.add_argument("--fps", type=int, default=20)   # control_dt = 0.05 s -> real time
     ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
     ap.add_argument("--demo-size", type=int, default=512, help="isaac: square size of the demo camera")
-    ap.add_argument("--set", default=None, choices=("id_easy", "id_hard", "recovery", "knock_arm", "drop", "joint_noise", "overshoot"),
+    ap.add_argument("--set", default=None, choices=("id_easy", "id_hard", "recovery", "knock_arm", "drop", "joint_noise",
+                                                   "overshoot", "tune_recovery", "tune_knock_arm", "tune_drop",
+                                                   "tune_joint_noise", "tune_overshoot", "tune_id_easy"),
                     help="isaac: play episodes of this eval set (its seeds unless --seeds is given, its shifted "
                          "poses and its knock), labelled in the video")
     ap.add_argument("--n", type=int, default=3, help="with --set and no --seeds: the set's first n seeds")
@@ -198,13 +200,24 @@ def isaac_main(args):
             teacher.reset()
         hist, queue = deque([obs["state"]] * (policy.obs_horizon if policy else 1), maxlen=policy.obs_horizon
                             if policy else 1), deque()
+        from imitation.rollout import GRIPPER_DIMS, apply_perturbation, perturb_decision
+        last_grip, drop, stale, info = np.ones(2, dtype=np.float32), {}, False, {}
         for t in range(env.unwrapped.max_episode_steps):
-            knocked = knock is not None and knock.active(t)
-            if knocked:                                       # k uniform-random actions, then the policy replans
-                action = rng.uniform(-1, 1, len(env.action_space.low)).astype(np.float32)
+            g = info.get("grasped", {})
+            replace, spec, knocked = perturb_decision(knock, t, seed, rng, last_grip,
+                                                      (bool(g.get("left_")), bool(g.get("right_"))), drop)
+            if replace is not None:                           # the disturbance acts; the policy replans after it
+                action = replace
                 queue.clear()
+                stale = True
             elif teacher:
+                if stale and not knocked:                     # the expert takes back over from the live state
+                    teacher.expert.resync()
+                    stale = False
                 action = teacher.act()
+                if spec is not None:
+                    action = apply_perturbation(action, spec)
+                    stale = stale or knocked
             else:
                 if not queue:
                     from imitation.rollout import padded_predict
@@ -212,6 +225,9 @@ def isaac_main(args):
                     chunk = padded_predict(policy, np.stack(hist)[None].astype(np.float32), images)[0]
                     queue.extend(chunk[:args.replan_every])
                 action = queue.popleft()
+                if spec is not None:
+                    action = apply_perturbation(action, spec)
+            last_grip = np.asarray(action, dtype=np.float32)[list(GRIPPER_DIMS)]
             prev = dict(info.get("grasped", {})) if t else {}
             obs, _, term, trunc, info = env.step(action)
             hist.append(obs["state"])

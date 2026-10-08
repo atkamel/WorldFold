@@ -75,6 +75,7 @@ class IsaacArmExpert:
     ALIGN_TOL = 0.008        # F2 L / M: every acquired right-arm corner held (40/40; 93% over n = 300 without it)
     ALIGN_TRIES = 2
     OVERSHOOT_SCALE = 1.0    # scales the profile's placement overshoot table (0: none, Adam's as-built expert)
+    SERVO = 0                # 1: ScriptedTeacher uses isaac.servo_expert.IsaacServoExpert (closed-loop, Phase F3b)
     # 1: the pinch height follows the corner (its height above a flat corner's), not the table. F3 recovery traces: after
     # a knock, re-grasp descents took 30-85 steps (clean: 4-5) and the re-grasped corners slipped -- consistent with a
     # pinch planned into a corner that lies on a fold

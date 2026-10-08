@@ -50,9 +50,12 @@ class ScriptedTeacher(Teacher):
             self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=IsaacFoldExpert, overshoot=OVERSHOOT_ISAAC)
         elif hasattr(env.unwrapped, "lab"):     # Isaac friction-grasp profiles: the friction-pinch expert, the profile's overshoot
             from isaac.fold_expert import OVERSHOOTS, IsaacArmExpert
+            cls = IsaacArmExpert
+            if IsaacArmExpert.SERVO:          # Phase F3b: the closed-loop expert on the live cloth state
+                from isaac.servo_expert import IsaacServoExpert as cls
             table = OVERSHOOTS[getattr(env.unwrapped, "profile", "lehome")]
-            scale = float(IsaacArmExpert.OVERSHOOT_SCALE)
-            self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=IsaacArmExpert,
+            scale = float(cls.OVERSHOOT_SCALE)
+            self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=cls,
                                             overshoot={k: scale * v for k, v in table.items()})
         else:
             self.expert = QuarterFoldExpert(env, seed=seed)

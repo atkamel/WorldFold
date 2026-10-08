@@ -510,6 +510,38 @@ GRIPPER_DIMS = (5, 11)
 WINDOW_KINDS = ("knock", "knock_arm", "drop")     # the policy is not in control: perturbation actor, resync after
 
 
+def perturb_decision(p, t, seed, rng, last_grip, grasped, drop):
+    """One step of a perturbation: -> (replacement action or None, spec or None, in_window). Shared by the rollout
+    driver and imitation.demo so both apply exactly the same disturbance. `grasped`: (left, right) bools now;
+    `last_grip`: the jaw commands executed last step; `drop`: {"at", "arms"} state, updated in place; `rng`: the
+    episode's [seed, 7919] stream (the legacy knock draws from it)."""
+    if p is None:
+        return None, None, False
+    if p.kind == "knock":
+        if p.active(t):
+            return rng.uniform(-1, 1, ACTION_DIM).astype(np.float32), None, True
+        return None, None, False
+    if p.kind == "knock_arm":
+        if p.active(t):
+            a = np.random.default_rng([seed, 4243, t]).uniform(-1, 1, ACTION_DIM).astype(np.float32)
+            a[list(GRIPPER_DIMS)] = last_grip
+            return a, None, True
+        return None, None, False
+    if p.kind == "drop":
+        held = [j for j in range(2) if grasped[j]]
+        if drop.get("at") is None and t >= p.t and held:
+            drop["at"], drop["arms"] = t, tuple(held)
+        if drop.get("at") is not None and drop["at"] <= t < drop["at"] + p.k:
+            return None, {"set": {GRIPPER_DIMS[j]: 1.0 for j in drop["arms"]}}, True
+        return None, None, False
+    step_rng = np.random.default_rng([seed, 4244, t])
+    if p.kind == "joint_noise":
+        return None, {"add": step_rng.normal(0.0, p.sigma, len(ARM_DIMS)).astype(np.float32).tolist()}, False
+    if p.kind == "overshoot":
+        return None, {"mul": float(p.gain)}, False
+    raise ValueError(p.kind)
+
+
 def apply_perturbation(action, spec):
     """action with a perturbation spec applied: {"mul": arm-dim scale, "add": arm-dim offsets (10,), "set": {dim: v}}.
     Pure, so the worker (teacher steps) and the parent (policy steps) apply the same thing."""
@@ -610,34 +642,12 @@ def _rollout(pool, seeds, controller, reset_options=None, perturb_fn=None, meta_
 
     def perturb_step(s, i):
         """-> (replacement action or None, spec or None, in_window) for slot s at its step s.t."""
-        p = s.perturb
-        if p is None:
-            return None, None, False
-        if p.kind == "knock":
-            if p.active(s.t):
-                return rngs[i].uniform(-1, 1, ACTION_DIM).astype(np.float32), None, True
-            return None, None, False
-        if p.kind == "knock_arm":
-            if p.active(s.t):
-                a = np.random.default_rng([s.seed, 4243, s.t]).uniform(-1, 1, ACTION_DIM).astype(np.float32)
-                a[list(GRIPPER_DIMS)] = s.last_grip
-                return a, None, True
-            return None, None, False
-        if p.kind == "drop":
-            g = s.info.get("grasped") or (False, False)      # (left, right) after _info_small
-            g = (g.get("left_"), g.get("right_")) if isinstance(g, dict) else g
-            held = [j for j in range(2) if g[j]]
-            if s.drop_at is None and s.t >= p.t and held:
-                s.drop_at, s.drop_arms = s.t, tuple(held)
-            if s.drop_at is not None and s.drop_at <= s.t < s.drop_at + p.k:
-                return None, {"set": {GRIPPER_DIMS[j]: 1.0 for j in s.drop_arms}}, True
-            return None, None, False
-        rng = np.random.default_rng([s.seed, 4244, s.t])
-        if p.kind == "joint_noise":
-            return None, {"add": rng.normal(0.0, p.sigma, len(ARM_DIMS)).astype(np.float32).tolist()}, False
-        if p.kind == "overshoot":
-            return None, {"mul": float(p.gain)}, False
-        raise ValueError(p.kind)
+        g = s.info.get("grasped") or (False, False)      # (left, right) after _info_small
+        g = (g.get("left_"), g.get("right_")) if isinstance(g, dict) else g
+        drop = {"at": s.drop_at, "arms": s.drop_arms}
+        out = perturb_decision(s.perturb, s.t, s.seed, rngs[i], s.last_grip, g, drop)
+        s.drop_at, s.drop_arms = drop["at"], drop["arms"]
+        return out
 
     def advance(i):
         """Send env i its next command (or park it until the next batched plan)."""
