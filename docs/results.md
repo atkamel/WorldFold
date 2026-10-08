@@ -1841,3 +1841,21 @@ from the traces (`isaac/plot_trace.py` figures in `docs/reports/media/f3b_trace_
 - **Not adopted.** A from-scratch controller needs more tuning than the time-box allows.
 - **The same insight, targeted:** `CART_ARRIVE` gives the proven open-loop expert a Cartesian arrival test (within
   2 cm, low, and still). A/B running.
+
+**CART_ARRIVE A/B** (tune sets, n = 50, with RESYNC_IK_HOME and DESCEND_RETRY = 2; `f3b/cart`):
+
+| tune set | without CART_ARRIVE | with CART_ARRIVE |
+|---|---|---|
+| tune_id_easy | 44/50 = 88% | **48/50 = 96%** [86.5, 98.9] (G2 2) |
+| tune_drop | 20/50 = 40% | 21/50 = 42% [29.4, 55.8] (G2 22, M1 7) |
+
+- **Adopted as the expert default**, for the clean-start gain.
+- **Drop is unchanged.**
+- **The video with the camera centred** (`f3b_drop_cart_expert.mp4`, friction-profile `view_shift`) shows the
+  mechanism:
+  - The drop opens BOTH jaws mid-carry, so the cloth falls half-folded and crumpled between the arms.
+  - Each arm re-grasps a fold near its corner. The first to grip pulls while the other searches, and the cloth is
+    dragged and twisted between them.
+  - Arm reach and arrival are no longer the limit. The crumpled double-drop state defeats a grasp-the-corner strategy.
+- **Fifth attempt on drop without a gain.** The user's time-box rule applies: drop is reported, not gated, and the F3
+  gate and F4 proceed.
