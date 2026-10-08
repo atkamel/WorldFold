@@ -14,7 +14,7 @@
 param([ValidateSet("privileged", "vision", "final", "all")][string]$Phase = "all", [string]$Only = "",
       [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [switch]$WaitF3, [string]$Expert = "",
       [switch]$NoVision, [int]$Rounds = 2, [int]$FinalN = 200, [int]$SelN = 100, [int]$Episodes = 400,
-      [int]$DaggerEpisodes = 128, [switch]$SkipDagger, [switch]$NoDemos)
+      [int]$DaggerEpisodes = 128, [switch]$SkipDagger, [switch]$NoDemos, [int]$BCSteps = 30000, [int]$NoiseN = 100)
 # -SkipDagger / -NoDemos (user, 2026-10-08: done within 3.5 h): the BC policy goes straight to the finals
 # -NoVision (user, 2026-10-08: the 9 h budget): state-only demos at the full envs per process, no vision student,
 # detector, vision finals or sensor demos; the privileged demos run after the finals (never 3 Isaac processes)
@@ -104,8 +104,8 @@ if ($Phase -in "privileged", "all" -or $Only) {
                 --perturb-kinds $kinds --render --cameras $cams --version $tag --root $ds --resume
         } }
     Stage "train_diff_s0" "$runs\${tag}_diff_s0\final.pt" {
-        & $py -u -m imitation.train --policy diffusion --dataset $tag --root $ds --run "$runs\${tag}_diff_s0" `
-            --steps 30000 --seed 0 }
+        & $py -u -m imitation.train --policy diffusion --dataset $tag --root $ds --run "$runs${tag}_diff_s0" `
+            --steps $BCSteps --seed 0 }
     # DAgger from seed 0 (its round 0 is the seed-0 BC eval on the selection sets)
     if (-not $SkipDagger) {
     Stage "dagger" "$priv\done.txt" {
@@ -149,7 +149,7 @@ if ($Phase -in "vision", "all" -or $Only) {
         & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets --n $FinalN --replan-every 4 --workers 2 `
             --out "$out\final_privileged_r4.json" --resume
         if ($LASTEXITCODE -ne 0) { return }
-        & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets100 --n 100 --replan-every 4 --workers 2 `
+        & $py -u -m imitation.evaluate --backend $B --ckpt $bp --sets $sets100 --n $NoiseN --replan-every 4 --workers 2 `
             --out "$out\final_privileged_r4_n100.json" --resume
         if ($LASTEXITCODE -eq 0) { Set-Content "$out\final_privileged_r4.done" (Get-Date -Format s) } }
     if ($NoVision) {
