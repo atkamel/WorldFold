@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-07 · **Branch:** `feature/isaac-imitation` · **Phase:** F (physical grasp) — F0 run, F2 knob loop in flight
+**Updated:** 2026-10-07 · **Branch:** `feature/isaac-imitation` · **Phase:** F3b (expert first; F4 paused)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -75,13 +75,18 @@ dropped (user, 2026-10-07). The comparison row is now Adam's as-built friction g
   - The cause fits a pinch planned at table height into a corner lying on a fold.
 - **Recovery A/B, done:** neither REGRASP (26/100) nor PINCH_FOLLOW_Z (29/100) helps. M1 = 20% is the knock itself
   dragging the cloth, so ~80% is the practical ceiling.
-- **F4 started 2026-10-08 00:48 on the base expert** (`scripts/f4_retrain.ps1`; log
-  `outputs/imitation/isaac_friction/f4/f4.log`).
-  - Collect runs at 2 × 6 with cameras (VRAM 15.4 / 16 GB), then BC → DAgger ×≤2 → vision → finals → demos.
-  - Resume by re-running the same command.
-- **Next for recovery:**
-  - Diagnose offline from the collection's knocked episodes (`isaac_v1_friction` + `_failures`); no Isaac lane needed.
-  - A better expert then re-runs the DAgger rounds.
+- **F4 paused at 01:45, 2026-10-08** (user: "we're getting ahead of ourselves if the expert is failing at
+  recovery").
+  - The partial collection (281/400, base expert) was discarded.
+  - Its journals, the failure episodes and the logs are archived in `outputs/imitation/isaac_friction/f4_aborted/` as
+    diagnosis evidence.
+- **Now: F3b** (plan `superpowers/plans/2026-10-08-expert-first.md`):
+  1. A realistic perturbation suite (`knock_arm`, `drop`, `joint_noise`, `overshoot`). The legacy knock is reported
+     only.
+  2. Per-step recovery traces, then a mechanism diagnosis.
+  3. One fix per attempt on tune seeds.
+  4. F3 re-gate. Floor: each perturbation set ≥ 60%.
+  5. Then F4 from scratch.
 - **Afterwards, in idle Isaac windows:**
   - check_resync;
   - **Adam's as-built row:** `scripts/adam_baseline.ps1`, n = 50 per set. It is one CPU Isaac process, so it runs only
@@ -181,6 +186,16 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-07/08 · **Phase F: physical grasp through F3; F4 paused (expert first).**
+  - Track G merged. The friction profile has: LeHome gripper drive, jaw +0.05, adhesion 0.1, pad friction 2.0,
+    ALIGN_TOL 8 mm, and LeHome's task sets (pinch reach).
+  - F1 ✅ (honesty).
+  - F2 config M: held 40/40 per arm.
+  - F3 expert: 94 / 94 / 27.
+  - REGRASP and PINCH_FOLLOW_Z: no recovery gain.
+  - The anchor comparison was dropped; Adam's as-built row was added.
+  - F4 paused by the user; its partial data was discarded.
+  - Fast tests: 198 passed. (this commit)
 - 2026-10-07 · **Repo state and PR prep.**
   - Fetched: 0 behind `origin/main` (still `ce02b44`, PR #15). W5 ran on that sim.
   - New remote `feat/isaac-half-fold` (Ruby Zhou) overlaps; trial merge conflicts in 9 files.
