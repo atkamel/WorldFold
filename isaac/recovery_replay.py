@@ -84,9 +84,11 @@ def main():
                 act, tag = expert.act(), ""
             ph = expert.phases()
             g = "".join(str(int(base.grasp_active(x))) for x in ("left_", "right_"))
+            cz = base.cloth_positions()
+            zc = "/".join(f"{1000 * (cz[v][2] - 0.42):.0f}" for v in (10, 120))     # stage-0 corners, mm above the table
             cur = f"{tag}{ph['left_'][:4]}/{ph['right_'][:4]} g{g}"
             if cur != prev:
-                timeline.append(f"t{t}:{cur}")
+                timeline.append(f"t{t}:{cur} z{zc}")
             prev = cur
             _, _, term, trunc, info = env.step(act)
             if term or trunc:

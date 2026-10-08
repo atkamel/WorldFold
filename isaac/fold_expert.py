@@ -39,6 +39,7 @@ OVERSHOOT_FRICTION_PROFILE = {key: v.copy() for key, v in OVERSHOOT_FRICTION.ite
 OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE}
 
 
+CORNER_REST_DZ = 0.004       # a flat corner's height above the table top (the particle rest offset)
 JAW_SHUT_TOL = 0.05          # = isaac_env.JAW_SETTLED_TOL
 JAW_STILL = 0.01             # rad per control step
 
@@ -71,6 +72,10 @@ class IsaacArmExpert:
     ALIGN_TOL = 0.008        # F2 L / M: every acquired right-arm corner held (40/40; 93% over n = 300 without it)
     ALIGN_TRIES = 2
     OVERSHOOT_SCALE = 1.0    # scales the profile's placement overshoot table (0: none, Adam's as-built expert)
+    # 1: the pinch height follows the corner (its height above a flat corner's), not the table. F3 recovery traces: after
+    # a knock, re-grasp descents took 30-85 steps (clean: 4-5) and the re-grasped corners slipped -- consistent with a
+    # pinch planned into a corner that lies on a fold
+    PINCH_FOLLOW_Z = 0
 
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
 
@@ -121,7 +126,10 @@ class IsaacArmExpert:
         jaw = np.r_[center[:2] - corner[:2], 0.0]
         jaw /= np.linalg.norm(jaw)
         offset = -self.PINCH_INSET * jaw[:2]
-        pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], TABLE_TOP_Z + self.PINCH_HEIGHT])
+        z = TABLE_TOP_Z + self.PINCH_HEIGHT
+        if self.PINCH_FOLLOW_Z:      # a knocked corner may lie on a fold: pinch at its height, not the table's
+            z = max(z, float(corner[2]) - CORNER_REST_DZ + self.PINCH_HEIGHT)
+        pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], z])
         # the held point's mirror image across the fold line, so the corner lands on the goal
         place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
         q = list(SEED_Q[p]) if from_q is None else list(from_q)
