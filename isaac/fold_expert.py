@@ -16,6 +16,7 @@ import math
 
 import numpy as np
 
+from mujuco.cloth_params import ARM_BASE_LEFT, ARM_BASE_RIGHT
 from isaac.half_fold_demo import (ARC_HEIGHT, ARC_WAYPOINTS, PINCH_HEIGHT, PLACE_HEIGHT, POSE_SETTLE_STEPS, SEED_Q,
                                   TRACK_TOL, WAYPOINT_TOL)
 from mujuco.cloth_params import JOINT_DELTA_SCALE, TABLE_TOP_Z
@@ -39,6 +40,8 @@ OVERSHOOT_FRICTION_PROFILE = {key: v.copy() for key, v in OVERSHOOT_FRICTION.ite
 OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE}
 
 
+ORIENTATION_WEIGHT = 0.1     # = isaac.pinch.ORIENTATION_WEIGHT (not imported: isaac.pinch needs LeHome)
+TILT_WEIGHT = 0.03            # REGRASP_TILT's IK orientation weight
 CORNER_REST_DZ = 0.004       # a flat corner's height above the table top (the particle rest offset)
 JAW_SHUT_TOL = 0.05          # = isaac_env.JAW_SETTLED_TOL
 JAW_STILL = 0.01             # rad per control step
@@ -50,7 +53,7 @@ class IsaacArmExpert:
     OPEN_PHASES = ("approach", "descend", "release", "retreat", "done")
     # everything that changes while it acts: ScriptedTeacher saves / restores these around a label
     PHASE_FIELDS = ("phase", "q_target", "phase_steps", "retreat_target", "release_allowed", "rng", "plan", "wp",
-                    "budget", "regrasps", "miss_steps", "last_jaw", "align_tries", "descend_retries")
+                    "budget", "regrasps", "miss_steps", "last_jaw", "align_tries", "descend_retries", "resynced")
 
     # the pinch / place geometry and dwells, as class attributes so the grasp bench can try candidates (track G)
     PINCH_HEIGHT = 0.005             # fingertip above the table at the pinch (IG.2 #9; half_fold_demo / weld: 0.010)
@@ -84,6 +87,12 @@ class IsaacArmExpert:
     # on the wrong layer. 1: when a resync finds the corner on the other layer, slide it along the top layer to its goal
     # with the closed jaw resting on it (a push), then hold / release as after a carry
     PUSH_ON_LAYER = 0
+    # F3b drop traces (2): a dropped corner lies flat but 10-25 cm from where it started, outside the top-down pinch's
+    # reach with the jaw aimed from the cloth centre (offline IK at 22 landing spots: 12/22 within 5 mm). After a
+    # resync, aim the jaw along the arm's own reach (base -> corner: 16/22) and, if still short, let it tilt (20/22).
+    REGRASP_JAW = 0
+    REGRASP_TILT = 0
+    REACH_TOL = 0.005
     PUSH_Z = 0.008           # a corner this far above a flat one lies on cloth, not the table
     PUSH_PRESS = 0.002       # fingertip this far above the corner's top while pushing (contact, no gouge)
     PUSH_BEHIND = 0.015      # start this far behind the corner along the push direction
@@ -120,6 +129,7 @@ class IsaacArmExpert:
         self.last_jaw = None
         self.align_tries = 0
         self.descend_retries = 0
+        self.resynced = False     # a resync happened this episode: re-grasp plans use REGRASP_JAW / REGRASP_TILT
 
     def _corner(self):
         cloth = self.base.cloth_positions()
@@ -136,6 +146,9 @@ class IsaacArmExpert:
         corner = self._corner()
         goal = np.asarray(self.goal(), dtype=float)
         jaw = np.r_[center[:2] - corner[:2], 0.0]
+        if self.REGRASP_JAW and self.resynced:      # along the arm's reach: base -> corner, pointing back at the base
+            base = np.asarray(ARM_BASE_LEFT if self.prefix == "left_" else ARM_BASE_RIGHT, dtype=float)
+            jaw = np.r_[base[:2] - corner[:2], 0.0]
         jaw /= np.linalg.norm(jaw)
         offset = -self.PINCH_INSET * jaw[:2]
         z = TABLE_TOP_Z + self.PINCH_HEIGHT
@@ -146,9 +159,17 @@ class IsaacArmExpert:
         place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
         q = list(SEED_Q[p]) if from_q is None else list(from_q)
         plan = {"jaw": jaw, "corner": corner.copy()}
-        q, _ = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q)
-        plan["above"] = q
-        q, _ = ik.solve(p, pinch, jaw, q)
+        w = ORIENTATION_WEIGHT
+        q0 = q
+        q, e_above = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q, orientation_weight=w)
+        q_above = q
+        q, e_pinch = ik.solve(p, pinch, jaw, q, orientation_weight=w)
+        if self.REGRASP_TILT and self.resynced and max(e_above, e_pinch) > self.REACH_TOL:
+            w = TILT_WEIGHT                         # out of reach upright: let the jaw tilt
+            q, _ = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q0, orientation_weight=w)
+            q_above = q
+            q, _ = ik.solve(p, pinch, jaw, q, orientation_weight=w)
+        plan["above"] = q_above
         plan["pinch"] = q
         plan["arc"], plan["arc_tips"] = [], []
         start = pinch
@@ -379,6 +400,7 @@ class IsaacArmExpert:
             self.wp = 0
             name = "carry"                        # follow the push path with the jaw closed, then place / hold / release
         else:
+            self.resynced = True
             if self.RESYNC_IK_HOME:               # the knocked joints are a poor IK seed: plan from home, approach
                 self.plan = self._make_plan()
                 name = "approach"
