@@ -216,7 +216,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
-- 2026-10-08 · **Phase F report:** `docs/reports/2026-10-08-physical-grasp.md` (+ HTML, shareable https://claude.ai/artifact/Jj6aJ5aTKBNQEFzLkU9uuF), 4 videos (student clean 2/3, shifted 2/3, arm bump 1/3; expert arm bump 3/3) · tests unchanged (207 fast) · COMMIT
+- 2026-10-08 · **Phase F report:** `docs/reports/2026-10-08-physical-grasp.md` (+ HTML, shareable https://claude.ai/artifact/Jj6aJ5aTKBNQEFzLkU9uuF), 4 videos (student clean 2/3, shifted 2/3, arm bump 1/3; expert arm bump 3/3) · tests unchanged (207 fast) · 43a4d8b
 - 2026-10-08 · **F4 finals, BC only:** id_easy 81, id_hard 71, knock_arm 35 (n = 100), joint_noise 26, overshoot 4 (n = 50). Docs. Tests: 207 passed, 5 skipped (not slow) · 5f7e931
 - 2026-10-07/08 · **Phase F: physical grasp through F3; F4 paused (expert first).**
   - Track G merged. The friction profile has: LeHome gripper drive, jaw +0.05, adhesion 0.1, pad friction 2.0,
