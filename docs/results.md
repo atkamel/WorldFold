@@ -1914,3 +1914,12 @@ steps, seed 0, no DAgger. Replan 4, 2 × 8. Eval seeds: the standard `EVAL_SEED_
   - DAgger on these kinds, or noise-injected demos (DART-style), is the targeted fix.
   - The expert itself is weaker here too: 74 / 86 on the tune sets.
 - **Cuts behind these numbers:** 200 episodes, BC 20k, no DAgger, a single seed, n = 100 / 50, no vision student.
+
+### Phase F report videos (2026-10-08, `docs/reports/media/half_fold_friction_*`)
+
+Demos only, not a measurement: the first 3 seeds of each set, 1 env, `imitation.demo`.
+- **Student** (`isaac_v1_friction_diff_s0`, replan 4):
+  - id_easy 2/3: 100000 times out at 400 steps;
+  - id_hard 2/3: 200001 times out at 400 steps;
+  - knock_arm 1/3: 310000 and 310002 time out.
+- **Expert:** knock_arm 3/3, in 183 / 175 / 185 steps.

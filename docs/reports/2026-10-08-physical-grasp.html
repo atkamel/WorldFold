@@ -1,0 +1,284 @@
+<title>Physical Grasp Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one 1040px lab-notebook column (same system as the W5 report); expert vs student interval chart up top, 2x2 video grid, then how the grasp and the expert were fixed. */
+:root {
+  --bg: #f6f5f3;
+  --surface: #ffffff;
+  --fg: #1d2127;
+  --muted: #5d6470;
+  --rule: #d9d6d1;
+  --cloth: #d9576f;        /* the sim's pink cloth */
+  --cloth-soft: #f6d9df;
+  --steel: #3b6e8f;        /* sensor-only policy */
+  --steel-soft: #d6e5ef;
+  --ref: #8b8f96;          /* reference marks (expert, MuJoCo) */
+  --good: #2f7d4f;
+  --warn: #a8611a;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15181c; --surface: #1d2127; --fg: #e8e6e2; --muted: #a2a7b0; --rule: #343a43;
+  --cloth: #ef7a90; --cloth-soft: #4a2730; --steel: #7fb0d1; --steel-soft: #23384a; --ref: #8f949c;
+  --good: #6cc08f; --warn: #e2a25e; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15181c; --surface: #1d2127; --fg: #e8e6e2; --muted: #a2a7b0; --rule: #343a43;
+  --cloth: #ef7a90; --cloth-soft: #4a2730; --steel: #7fb0d1; --steel-soft: #23384a; --ref: #8f949c;
+  --good: #6cc08f; --warn: #e2a25e; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px; display: grid; gap: 44px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(30px, 5vw, 46px); font-weight: 800; line-height: 1.05; }
+h2 { font-size: 22px; font-weight: 700; }
+h3 { font-size: 15px; font-weight: 700; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+section { display: grid; gap: 16px; min-width: 0; }
+header { display: grid; gap: 14px; border-bottom: 2px solid var(--fg); padding-bottom: 22px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+.lede { font-size: 18px; }
+
+/* headline numbers */
+.score { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.policy { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
+.policy.priv { border-top: 4px solid var(--cloth); }
+.policy.sens { border-top: 4px solid var(--steel); }
+.policy.ref { border-top: 4px solid var(--ref); }
+.trio.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.pill.ref { background: var(--rule); color: var(--fg); }
+.bar.ref { background: var(--ref); opacity: 0.45; }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.trio div { display: grid; gap: 2px; }
+.trio .n { font-family: var(--display); font-weight: 800; font-size: clamp(24px, 4vw, 34px); font-variant-numeric: tabular-nums; line-height: 1; }
+.trio .l { font-family: var(--mono); font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.trio .ci { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.policy p.small { font-size: 14px; color: var(--muted); }
+
+/* interval chart */
+.chart { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 18px; display: grid; gap: 18px; overflow-x: auto; }
+.set { display: grid; gap: 6px; min-width: 520px; }
+.row { display: grid; grid-template-columns: 170px 1fr 120px; align-items: center; gap: 12px; font-size: 13.5px; }
+.row .name { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.row .val { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; text-align: right; }
+.track { position: relative; height: 18px; background: linear-gradient(to right, var(--rule) 1px, transparent 1px) 0 0 / 10% 100%; border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); }
+.bar { position: absolute; top: 4px; height: 10px; left: 0; border-radius: 0 2px 2px 0; }
+.bar.priv { background: var(--cloth); }
+.bar.sens { background: var(--steel); }
+.ci-line { position: absolute; top: 8px; height: 2px; background: var(--fg); opacity: 0.55; }
+.tick { position: absolute; top: 1px; width: 2px; height: 16px; background: var(--ref); }
+.tick.mj { background: transparent; border-left: 2px dashed var(--ref); width: 0; }
+.axis { display: grid; grid-template-columns: 170px 1fr 120px; gap: 12px; min-width: 520px; }
+.axis .scale { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.key { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 14px; height: 8px; border-radius: 1px; }
+
+/* tables */
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-family: var(--mono); font-size: 11.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.up { color: var(--good); } .down { color: var(--warn); }
+
+/* videos */
+.vids { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.vids figure { margin: 0; display: grid; gap: 8px; min-width: 0; }
+.vids video { width: 100%; max-width: 100%; aspect-ratio: 1 / 1; background: #000; border-radius: 4px; display: block; }
+figcaption { display: grid; gap: 2px; font-size: 13.5px; }
+figcaption b { font-family: var(--display); font-size: 14px; }
+figcaption span { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.vlabel { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.pill { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+.pill.priv { background: var(--cloth-soft); color: var(--fg); }
+.pill.sens { background: var(--steel-soft); color: var(--fg); }
+
+ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72ch; }
+.note { font-size: 14px; color: var(--muted); }
+footer { border-top: 1px solid var(--rule); padding-top: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); display: grid; gap: 4px; }
+
+@media (max-width: 760px) {
+  .score { grid-template-columns: 1fr; }
+  .trio.five { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vids { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .vids { grid-template-columns: 1fr; }
+  .row, .axis { grid-template-columns: 120px 1fr 96px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+.vids video { aspect-ratio: auto; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">WorldFold · Phase F · physical grasp · 8 Oct 2026</div>
+    <h1>The weld is gone: folding with a real grasp</h1>
+    <p class="lede">The W5 policies folded the cloth through a weld: particles under the jaw were pinned to the gripper while the jaws hovered open. Phase F replaces it with LeHome's own physics, a friction-plus-adhesion pinch with no pins, welds or attachments. On that physics it re-tunes the grasp, fixes the expert's recovery and retrains the student from scratch.</p>
+    <div class="meta">
+      <span>branch feature/isaac-imitation</span><span>Isaac Sim 5.1 · isaac_friction profile</span><span>held-out seeds · Wilson 95% intervals</span>
+    </div>
+  </header>
+
+  <section aria-labelledby="h-results">
+    <div class="eyebrow">Final results</div>
+    <h2 id="h-results">Expert and student on five held-out benchmarks</h2>
+    <p class="note">Clean: nominal starts. Shifted: the cloth on LeHome's shifted ring. Arm bump: the arm joints are knocked mid-carry, gripper untouched. Joint noise: σ 0.15 on the joints. Overshoot: action gain ×1.2–1.4. Deterministic inference.</p>
+    <div class="score">
+      <div class="policy ref">
+        <div class="vlabel"><h3>Scripted expert</h3><span class="pill ref">privileged · n = 100</span></div>
+        <div class="trio five">
+          <div><span class="l">clean</span><span class="n">92%</span><span class="ci">85.0–95.9</span></div>
+          <div><span class="l">shifted</span><span class="n">94%</span><span class="ci">87.5–97.2</span></div>
+          <div><span class="l">arm bump</span><span class="n">75%</span><span class="ci">65.7–82.5</span></div>
+          <div><span class="l">noise</span><span class="n">74%</span><span class="ci">tune, n = 50</span></div>
+          <div><span class="l">overshoot</span><span class="n">86%</span><span class="ci">tune, n = 50</span></div>
+        </div>
+        <p class="small">Plans grasps from the true cloth corners. Every demo the student learns from comes from it.</p>
+      </div>
+      <div class="policy priv">
+        <div class="vlabel"><h3>Diffusion student</h3><span class="pill priv">BC only · replan 4</span></div>
+        <div class="trio five">
+          <div><span class="l">clean</span><span class="n">81%</span><span class="ci">81/100 · 72.2–87.5</span></div>
+          <div><span class="l">shifted</span><span class="n">71%</span><span class="ci">71/100 · 61.5–79.0</span></div>
+          <div><span class="l">arm bump</span><span class="n">35%</span><span class="ci">35/100 · 26.4–44.7</span></div>
+          <div><span class="l">noise</span><span class="n">26%</span><span class="ci">13/50 · 15.9–39.6</span></div>
+          <div><span class="l">overshoot</span><span class="n">4%</span><span class="ci">2/50 · 1.1–13.5</span></div>
+        </div>
+        <p class="small">Reads the 139-D simulator state. 200 demos, 20k steps, no DAgger: a first cut sized to a 3.5 h budget.</p>
+      </div>
+    </div>
+
+    <div class="chart" role="img" aria-label="Student success rate with 95% intervals per benchmark, with the expert's rate marked">
+      <div class="legend">
+        <span class="key"><span class="sw" style="background:var(--cloth)"></span>student</span>
+        <span class="key"><span class="sw" style="background:var(--fg);opacity:.55;height:2px"></span>95% interval</span>
+        <span class="key"><span class="sw" style="background:var(--ref);width:2px;height:12px"></span>scripted expert</span>
+      </div>
+      <div id="bars"></div>
+      <div class="axis"><span></span><div class="scale"><span>0</span><span>25</span><span>50</span><span>75</span><span>100%</span></div><span></span></div>
+    </div>
+    <p class="note">The W5 weld numbers (99 / 97.5 / 54.5) are not directly comparable. They were run on MuJoCo's task sets, and the friction pinch can only reach about ±1.5 cm of cloth offset at LeHome's cloth position, so <span class="mono">isaac_friction</span> runs LeHome's own sets.</p>
+  </section>
+
+  <section aria-labelledby="h-videos">
+    <div class="eyebrow">Video evidence</div>
+    <h2 id="h-videos">The jaws close on the cloth now</h2>
+    <p class="note">The first three seeds of each held-out set, at real time (20 fps), played exactly as evaluated. Failures are shown as they happened.</p>
+    <div class="vids">
+      <figure><video controls muted playsinline preload="metadata" src="media/half_fold_friction_privileged_id_easy.mp4"></video>
+        <figcaption><b>Student · clean · 2/3</b><span>seeds 100000–2 · 100000 times out at 400 steps (fold 0.77) · 100001 / 100002 fold in 167 / 180 steps</span></figcaption></figure>
+      <figure><video controls muted playsinline preload="metadata" src="media/half_fold_friction_privileged_id_hard.mp4"></video>
+        <figcaption><b>Student · shifted · 2/3</b><span>seeds 200000–2 · 167 / 154 steps for 200000 / 200002 · 200001 times out at 400 (fold 0.76)</span></figcaption></figure>
+      <figure><video controls muted playsinline preload="metadata" src="media/half_fold_friction_privileged_knock_arm.mp4"></video>
+        <figcaption><b>Student · arm bump · 1/3</b><span>seeds 310000–2 · 310001 recovers in 179 steps · 310000 and 310002 time out (fold 0.74, 0.38)</span></figcaption></figure>
+      <figure><video controls muted playsinline preload="metadata" src="media/half_fold_friction_expert_knock_arm.mp4"></video>
+        <figcaption><b>Expert · arm bump · 3/3</b><span>same seeds 310000–2 · recovers in 183 / 175 / 185 steps · fold 0.94 / 0.87 / 0.91</span></figcaption></figure>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-honest">
+    <div class="eyebrow">Grasp honesty</div>
+    <h2 id="h-honest">Checked every step for a hidden weld</h2>
+    <p class="note">Twenty expert episodes on clean starts, checked at every step. The weld profile, run under the same check, is the negative control.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>profile</th><th>pinned particles</th><th>attachments</th><th>jaw forced open</th><th>longest open-jaw carry</th><th>successes</th></tr></thead>
+      <tbody>
+        <tr><td><b>friction</b> (this report)</td><td class="num up">0</td><td class="num up">0</td><td class="num up">0</td><td class="num">3 steps (release)</td><td class="num">18/20</td></tr>
+        <tr><td>weld (W5)</td><td class="num down">251</td><td class="num">0</td><td class="num down">496</td><td class="num down">47 steps</td><td class="num">5/5</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="h-grasp">
+    <div class="eyebrow">How the grasp was made real</div>
+    <h2 id="h-grasp">From corners slipping out to 40 of 40 held</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>step</th><th>change</th><th>held, left · right</th></tr></thead>
+      <tbody>
+        <tr><td>F0</td><td>friction profile on the GPU pipeline, cloth at LeHome's position</td><td class="num down">8/20 · 10/20</td></tr>
+        <tr><td>F2</td><td>The gripper had been driven like an arm joint (kp 998, 3.35 N m). Switched to LeHome's gripper drive (kp 17.8, 10 N m), closed target +0.05, adhesion 0.1</td><td class="num">99 · 89–96 of 100</td></tr>
+        <tr><td>F2 · M</td><td>pad friction 2.0, and a re-descend when the pinch is more than 8 mm off before closing (the right jaw was sweeping its corner sideways)</td><td class="num up">40/40 · 40/40</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="h-expert">
+    <div class="eyebrow">How the expert learned to recover</div>
+    <h2 id="h-expert">The arm could reach the corner. It never knew it had arrived.</h2>
+    <ul>
+      <li><b>Traces of failing recoveries</b> showed the gripper getting within 1–5 cm of the dropped corner, 7–20 cm from the base. The open-loop expert's joint-space arrival test never fired that close to the base, so it parked and timed out.</li>
+      <li><b>Three fixes, now code defaults:</b> plan from the home IK seed after a disturbance; back up and re-approach instead of closing off-corner; and arrive when the gripper is within 2 cm of the pinch point and still.</li>
+      <li><b>Effect on the tune seeds:</b> arm bump 70% → 84%, clean 88% → 96%.</li>
+      <li><b>Benchmarks redefined for realism</b>: arm bump, joint noise and overshoot replace the old all-dims knock, which toggled the jaws. The expert had scored 27% under that knock. A forced-drop set was tried and then skipped by decision: a double drop crumples the cloth beyond a grasp-the-corner strategy.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="h-train">
+    <div class="eyebrow">How the student was trained</div>
+    <h2 id="h-train">A 3.5-hour pipeline</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>stage</th><th>data and setting</th><th>result</th></tr></thead>
+      <tbody>
+        <tr><td>Expert demos</td><td>200 seeds, half arm-bumped, 2 processes × 8 envs, 39 min</td><td class="num">171 kept · 31,117 steps</td></tr>
+        <tr><td>Diffusion BC</td><td>20k steps, seed 0, 14 min</td><td class="num">val best at ~6k steps</td></tr>
+        <tr><td>DAgger, vision student, detector</td><td>cut to fit the time budget</td><td class="num">—</td></tr>
+        <tr><td>Finals</td><td>replan 4, n = 100 / 100 / 100 / 50 / 50, about 2 h</td><td class="num">table above</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="h-open">
+    <div class="eyebrow">What fails, and what fixes it</div>
+    <h2 id="h-open">Where the student loses to the expert</h2>
+    <ul>
+      <li><b>Stalls on clean and shifted starts</b> (14 and 23 of 100). The policy parks near the cloth and never commits to the descent: covariate shift. DAgger is the targeted fix; on the weld it lifted shifted 85 → 88 in one round, and on MuJoCo recovery about 60 → 79.5.</li>
+      <li><b>Slips after a bump, noise or overshoot</b> (27 / 32 / 47). The demos never show an off-course gripper, so the student closes on a misplaced jaw. The fix is DAgger rollouts on those kinds, or noise-injected demos.</li>
+      <li><b>Overfitting:</b> the 6k-step checkpoint had half the final validation loss. It is a 20-minute test before any retraining.</li>
+      <li><b>Next:</b> test the best-val checkpoint. Then DAgger on arm bump, noise and overshoot (about 2–3 h). Then Adam's as-built friction grasp as a comparison row.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>Source of truth: docs/results.md · Report in repo: docs/reports/2026-10-08-physical-grasp.md</span>
+    <span>Dataset isaac_v1_friction 71a993b12a3c · verify F3 → PASS · tests: 207 fast passing</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  // [label, k, n, lo, hi, expert]
+  const rows = [
+    ["clean", 81, 100, 72.2, 87.5, 92],
+    ["shifted", 71, 100, 61.5, 79.0, 94],
+    ["arm bump", 35, 100, 26.4, 44.7, 75],
+    ["joint noise", 13, 50, 15.9, 39.6, 74],
+    ["overshoot", 2, 50, 1.1, 13.5, 86],
+  ];
+  const set = document.createElement("div");
+  set.className = "set";
+  for (const [name, k, n, lo, hi, ex] of rows) {
+    const p = 100 * k / n;
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML =
+      '<span class="name">' + name + '</span>' +
+      '<div class="track">' +
+        '<div class="bar priv" style="width:' + p + '%"></div>' +
+        '<div class="ci-line" style="left:' + lo + '%;width:' + (hi - lo) + '%"></div>' +
+        '<div class="tick" style="left:calc(' + ex + '% - 1px)" title="scripted expert ' + ex + '%"></div>' +
+      '</div>' +
+      '<span class="val">' + p.toFixed(0) + '% · ' + k + '/' + n + '</span>';
+    set.appendChild(row);
+  }
+  document.getElementById("bars").appendChild(set);
+})();
+</script>
