@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-07 · **Branch:** `feature/isaac-imitation` · **Phase:** F3b (expert first; F4 paused)
+**Updated:** 2026-10-07 · **Branch:** `feature/isaac-imitation` · **Phase:** F4 (retrain, 6 h plan, no vision)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -96,7 +96,8 @@ dropped (user, 2026-10-07). The comparison row is now Adam's as-built friction g
   - **The user skipped the forced-drop set entirely (2026-10-08).** It is not in the gate, the F4 data, the selection
     or the finals.
   - The servo expert (`isaac/servo_expert.py`) was not adopted.
-- **In flight (6 h budget, user 2026-10-08):** `scripts/f3_then_f4.ps1`, restarted when F3's id_easy finished.
+- **In flight (6 h budget, user 2026-10-08):** `scripts/f3_then_f4.ps1`. The F3 gate passed and **F4 started 14:52**;
+  ETA ~19:50.
   1. **F3 gate:** id_easy, id_hard and knock_arm at n = 100. The noise sets are measured in the finals. Results go to
      `outputs/imitation/isaac_friction/f3/`.
   2. **`verify F3`, then F4 on PASS:** `-NoVision -Rounds 1 -FinalN 100 -SelN 50 -Episodes 300 -DaggerEpisodes 96`.
