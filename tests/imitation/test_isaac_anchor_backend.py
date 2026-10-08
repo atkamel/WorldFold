@@ -9,13 +9,13 @@ _CLI_ARGS = {"imitation.data.collect": [], "imitation.evaluate": ["--ckpt", "exp
              "imitation.benchmark_expert": []}
 
 
-def test_anchor_profile_is_the_friction_profile_with_the_anchor_grasp():
+def test_anchor_profile_is_the_lehome_profile_with_the_anchor_grasp():
     from isaac.isaac_env import PROFILES
-    anchor, friction = PROFILES["anchor"], PROFILES["friction"]
-    assert anchor["grasp_mode"] == "anchor"
+    anchor, lehome = PROFILES["anchor"], PROFILES["lehome"]
+    assert anchor["grasp_mode"] == "anchor" and anchor["device"] == "cpu"
     assert ({k: v for k, v in anchor.items() if k != "grasp_mode"}
-            == {k: v for k, v in friction.items() if k != "grasp_mode"})
-    assert friction["grasp_mode"] == "friction" and PROFILES["weld"]["grasp_mode"] == "weld"
+            == {k: v for k, v in lehome.items() if k != "grasp_mode"})
+    assert PROFILES["friction"]["grasp_mode"] == "friction" and PROFILES["weld"]["grasp_mode"] == "weld"
 
 
 def test_backend_maps_to_the_anchor_profile_and_is_not_vectorised():

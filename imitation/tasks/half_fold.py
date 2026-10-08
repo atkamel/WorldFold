@@ -76,7 +76,7 @@ BACKENDS = ("mujoco", "isaac", "isaac_weld", "isaac_friction", "isaac_anchor")
 
 
 # the GPU-pipeline Isaac profiles: MuJoCo's eval sets, jitter and DR; vectorised (milestone V)
-GPU_BACKENDS = ("isaac_weld", "isaac_friction")      # isaac_anchor is GPU-pipeline too but single-env only: not listed
+GPU_BACKENDS = ("isaac_weld", "isaac_friction")      # isaac_anchor is single-env on the CPU device (lehome-based): not listed
 
 
 def _gpu_cap(backend):

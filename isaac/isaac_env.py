@@ -112,7 +112,9 @@ PROFILES["friction"] = dict(PROFILES["weld"], grasp_mode="friction", weld_tau=No
 # kinematic attachment: a 4 mm sphere per arm is attached to the cloth particles at the arm's first grasp corner; it is
 # engaged when the jaw is commanded closed with that corner within grasp_radius of the gripper frame, teleported with
 # the gripper before every physics substep while held, and released when the jaw opens. Single env, copy 0 only.
-PROFILES["anchor"] = dict(PROFILES["friction"], grasp_mode="anchor")
+# Built on "lehome" (CPU device, LeHome's drives, no DR), the setup Ruby measured it on: on the GPU pipeline the
+# attachment never moved the cloth (F3 smoke, isaac_friction-based: 0/10, fold score 0.01, every episode G2).
+PROFILES["anchor"] = dict(PROFILES["lehome"], grasp_mode="anchor")
 ANCHOR_RADIUS           = 0.004       # m: grips the corner particle and its nearest neighbours, so it acts as a pivot (Ruby: 8 mm held a whole patch rigid and the fold sprang back on release; expert 3/4 at 4 mm, 1/7 at 8 mm)
 ANCHOR_MASS             = 0.002
 # friction grasp_active (Phase F): a closed jaw within this of its target counts as settled (track G traces: 0.14-0.21
