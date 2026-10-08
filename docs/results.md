@@ -1720,3 +1720,21 @@ The scripted expert (ScriptedTeacher, retries on) runs id_easy seeds from 100000
   - Recovery diagnosis continues with per-episode traces in the GPU-only windows.
   - An improved expert re-runs only the DAgger rounds, since takeover labels come from the expert.
 - `verify F2` fails as specified: G2 is 6% on id_hard against the 5% limit. It is recorded, not waived.
+
+**Recovery diagnosis, offline** (F4 collection's knocked failures so far: 18 knocked plus 4 clean truncations, out of
+the first 56 episodes; `isaac_v1_friction_failures`):
+- **All 50 corner losses after a knock happened with the jaw commanded closed; none were releases.**
+- **Re-grasps do happen, slowly:** the first grasp after the knock comes a median 45 steps later (quartiles 15–84).
+  Then the corner is lost again 2–160 steps later.
+- **Some `cloth_dragged` endings come long after the knock** (seed 3 at step 247, seed 11 at 343). That is the
+  expert's own re-carry dragging the cloth, not the knock.
+- **The reading that fits:**
+  - On a crumpled cloth, the re-grasp pinches a fold near the displaced corner rather than the corner tip.
+  - The corner then rides more than 5 cm from the jaw, which reads as lost.
+  - Carrying the wrong point drags the anchored half.
+  - This is why REGRASP and PINCH_FOLLOW_Z could not help.
+- **Candidate fix, for the next expert pass:**
+  - After the lift starts, check that the corner follows the jaw (rises with it, stays within HOLD_DIST).
+  - If it doesn't: open, re-plan on the corner's current position, approach from above it.
+  - Plus per-step phase traces to confirm.
+- **4 of the first 28 clean episodes truncated at 400** (seeds 9, 13, 27, 51). Unexplained so far.
