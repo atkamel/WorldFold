@@ -1877,3 +1877,15 @@ Expert: RESYNC_IK_HOME + DESCEND_RETRY = 2 + CART_ARRIVE, the code defaults.
 - **The user lowered the clean bar to 90** to keep the 6 h plan. The 5–7% jaw-closed slips are a known expert ceiling
   for the trained policies.
 - **joint_noise and overshoot** are measured in the F4 finals (tune sets: 74% and 86%).
+
+### F4 — `isaac_v1_friction` collection (2026-10-08, 3.5 h plan)
+
+- 200 expert episodes on `isaac_friction`: seeds 0–199, 50% knock_arm-perturbed, state-only, 2 × 8, 2322 s.
+- **Frozen:**
+  - `isaac_v1_friction`: 171 successes (31,117 steps), hash `71a993b12a3c`.
+  - `isaac_v1_friction_failures`: 29 failures, hash `be7f7e50083b`.
+- **Expert success during collection:**
+  - clean: 93/101 = 92%;
+  - knock_arm-perturbed: 78/99 = 79%.
+  - Consistent with the F3 gate's 92 / 75.
+- **Cut to fit the user's 3.5 h target:** 200 episodes instead of 400, BC at 20k steps, no DAgger, no vision.
