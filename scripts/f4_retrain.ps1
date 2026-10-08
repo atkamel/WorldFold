@@ -12,7 +12,7 @@
 # Heat budget (user, 2026-10-06): at most 2 Isaac processes x 4 envs, no overlapping sims, and keep the laptop under
 # 94 C -- run scripts/thermal_guard.py alongside; rollouts and training pause while its flag is set (imitation/thermal.py).
 param([ValidateSet("privileged", "vision", "final", "all")][string]$Phase = "all", [string]$Only = "",
-      [int]$EnvsPerProc = 8, [switch]$WaitF3)
+      [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [switch]$WaitF3)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
@@ -43,6 +43,7 @@ function Stage($name, $done, [scriptblock]$body) {
     if ($done -and (Test-Path $done)) { Note "SKIP $name (have $done)"; return }
     Note "STEP $name $(Get-Date -Format s)"
     $t0 = Get-Date
+    $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "$EnvsPerProc"     # each stage starts at the default; camera stages lower it
     $ErrorActionPreference = "Continue"     # Kit warnings on stderr must not end the script; the exit code decides
     & $body *>&1 | Out-File -Append -Encoding utf8 (Join-Path $out "$name.log")
     $ErrorActionPreference = "Stop"
@@ -84,6 +85,7 @@ $sel = @("id_hard", "recovery")
 
 if ($Phase -in "privileged", "all" -or $Only) {
     Stage "collect" "$ds\$tag\manifest.json" {
+        $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "$CameraEnvsPerProc"     # rig cameras: 2 x 8 state-only already uses 14 GB
         & $py -u -m imitation.data.collect --backend $B --episodes 400 --workers 2 --recovery-fraction 0.5 `
             --render --cameras $cams --version $tag --root $ds --resume }
     Stage "train_diff_s0" "$runs\${tag}_diff_s0\final.pt" {
@@ -138,6 +140,7 @@ if ($Phase -in "final", "all" -or $Only) {
     # over 2 h in all (camera rendering at replan 2): each set is saved as it finishes and --resume skips it,
     # so a job-limit cut costs at most one set; the .done marker says all three are in
     Stage "final_vision" "$out\final_vision_r2.done" {
+        $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "$CameraEnvsPerProc"
         & $py -u -m imitation.evaluate --backend $B --ckpt $bv --sets $sets --n 200 --replan-every 2 --workers 2 `
             --out "$out\final_vision_r2.json" --resume
         if ($LASTEXITCODE -eq 0) { Set-Content "$out\final_vision_r2.done" (Get-Date -Format s) } }
