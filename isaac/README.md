@@ -11,7 +11,7 @@ dynamics, LeHome's SO101 robot, and LeHome's particle-cloth machinery.
 
 ```bash
 pip install modal && modal setup                      # once
-modal run isaac/modal_isaac.py                        # smoke test, state and hybrid in parallel, L40S
+modal run isaac/modal_isaac.py::main                  # smoke test, state and hybrid in parallel, A10G
 modal run isaac/modal_isaac.py::half_fold --episodes 3   # scripted friction half fold, a video per episode
 modal volume get worldfold-isaac smoke/<stamp> .      # logs
 modal volume get worldfold-isaac half_fold/<stamp> .  # half fold videos
@@ -25,6 +25,44 @@ the last release with PhysX particle cloth (6.0 replaced the cloth prims with
 error stubs), so stay on 5.1. The earlier Isaac Sim 4.5 version of this env
 (MJCF arms, weld grasp, WATcloud container) is in git history on
 `feat/isaac-sim` and `feat/isaac-half-fold`.
+
+## Running the imitation pipeline in the cloud
+
+`imitation/` (the expert → BC → DAgger → student pipeline) runs on Linux as is. Only its drivers
+(`scripts/*.ps1`) and install (`isaac/setup_windows.ps1`) are Windows-only. `scripts/f4_retrain.py`
+is `scripts/f4_retrain.ps1` in Python: same stages, outputs and skip-if-done markers, so a run
+started by either driver resumes in the other. `isaac/install_lehome.sh` builds the Isaac stack for
+both cloud targets.
+
+**Modal**: one command per job. `outputs/` and `docs/reports/media/` live on the volume under
+`pipeline/`, so datasets and checkpoints persist and a rerun resumes.
+
+```bash
+modal run isaac/modal_isaac.py::pipeline --cmd "-m imitation.evaluate --backend isaac_friction ..."
+modal run --detach isaac/modal_isaac.py::pipeline --background --timeout-min 720 \
+    --cmd "scripts/f4_retrain.py --no-vision --final-n 100 --noise-n 50 --episodes 200 --bc-steps 20000"
+modal volume get worldfold-isaac pipeline/logs/<tag>.log .
+modal volume get worldfold-isaac pipeline/outputs .
+```
+
+A job runs on an A10G with 8 CPUs and 64 GB; `--timeout-min` (default 360) bounds what it can cost,
+since the command is killed then. Isaac Sim 5.1 segfaults on NVIDIA's 610 driver branch, which some
+L40S hosts run (A10G hosts were all on 580 in Ruby's probe), so a job on a 610 host stops at once with
+`unsupported_driver`. The smoke test runs on an A10G too.
+
+**WATcloud**: `isaac/watcloud.sbatch` builds `isaac/Dockerfile` once, saves it under `~/docker`,
+and runs the command in it with the repo mounted:
+
+```bash
+sbatch --gres=shard:<gpu>:<MiB>,tmpdisk:61440 isaac/watcloud.sbatch scripts/f4_retrain.py --no-vision
+```
+
+Isaac Sim 5.1 lists an RTX 4080 with 16 GB as its minimum, so the 2080 Ti nodes used for Isaac
+Sim 4.5 fall short. The job also stops unless the node's driver is on the 580 branch, the only one
+seen working (`ISAAC_ANY_DRIVER=1` overrides).
+
+Neither target has run the pipeline yet. #17's datasets and checkpoints are gitignored, so a
+cloud run starts from collection unless they are uploaded to `pipeline/outputs/imitation/`.
 
 ## Using the env
 

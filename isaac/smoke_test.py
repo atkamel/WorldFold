@@ -1,4 +1,4 @@
-"""Runnable check for IsaacClothFoldEnv on Isaac Sim 5.1; on Modal: modal run isaac/modal_isaac.py
+"""Runnable check for IsaacClothFoldEnv on Isaac Sim 5.1; on Modal: modal run isaac/modal_isaac.py::main
 
 Exits non-zero if the observation contract drifts, the scripted friction half fold (isaac/half_fold_demo.py) leaves
 the cloth mostly unfolded, or the fold / half-fold wrappers cannot run on the env. State mode runs
