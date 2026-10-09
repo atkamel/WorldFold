@@ -13,6 +13,8 @@ import time
 import numpy as np
 import gymnasium as gym
 
+from imitation.lockstep import BatchBase
+
 from mujuco.cloth_params import (
     CLOTH_COUNT, CLOTH_SPACING, CLOTH_MASS, ARM_JOINTS, GRIPPER_OPEN, GRIPPER_CLOSED, JOINT_DELTA_SCALE,
     GRASP_CORNERS, GRASP_RADIUS, HOLD_STEPS, SETTLE_STEPS, ARM_TIMESTEP, WORKSPACE_XY, SUCCESS_FOLD_SCORE,
@@ -53,6 +55,66 @@ USD_ROOT_YAW            = np.array([np.cos(np.pi / 4), 0.0, 0.0, np.sin(np.pi / 
 # gripperframe site in the gripper link frame: the so101_new_calib MJCF's site (LeHome's URDF gripper_frame_link)
 GRIPPERFRAME_POS        = np.array([-0.0079, -0.000218121, -0.0981274])
 GRIPPERFRAME_QUAT       = np.array([0.0, 0.0, 1.0, 0.0])
+# weld grasp (grasp_mode="weld", Phase W): particles within this distance of a welded grid vertex are pinned with it.
+# MuJoCo's grid vertex is one body standing for a 3 cm cell; one 3 mm particle alone would tear out of the sheet.
+WELD_PATCH              = 0.012
+# MuJoCo's weld is an equality constraint at the default solref (0.02 s, damping ratio 1): soft. The Isaac weld steers
+# the patch with that time constant (lab_scene._drive_pins); a rigid zero-mass pin (None) stored the fold's tension and
+# snapped the corner back up to 12 cm on release (W3).
+WELD_TAU                = 0.02
+WELD_MASS               = 10.0                # soft weld: the pinned patch's mass multiple, calibrated so weld_check matches MuJoCo's weld (lag 27 vs 23-27 mm, rise 8.8 vs 9.0 cm)
+# The so101_new_calib MJCF's sts3215 class, which MuJoCo used for every joint: position actuator kp 998.22, kv 2.731,
+# plus joint damping 0.60 (both damp joint velocity, so they add), armature 0.028, forcerange 3.35 on each
+# actuator. LeHome's SO101 drives are kp 17.8 / kd 0.60 / 10 N m, about 56x softer, so the arm lags its targets.
+# The MJCF's frictionloss (0.052 N m) has no equivalent: PhysX joint friction is a coefficient, not a torque.
+MUJOCO_ARM_DRIVE        = {"stiffness": 998.22, "damping": 2.731 + 0.60, "effort_limit_sim": 3.35, "armature": 0.028}
+# Scene profiles. "lehome" is this env as ported from LeHome (friction grasp on the CPU device, cloth toward the arms,
+# tilted drop). "weld" carries over the MuJoCo setup the imitation pipeline was built on (Phase W): the weld grasp
+# (GPU pipeline), the cloth centred, a flat drop, MuJoCo's arm drives and its dynamics DR (reset, ×U(0.7, 1.3) on
+# cloth mass, cloth-table friction and cloth damping while domain_randomization is on).
+PROFILES = {
+    "lehome": {"cloth_center": CLOTH_CENTER, "drop_height": DROP_HEIGHT, "drop_tilt_deg": DROP_TILT_DEG,
+               "arm_drive": None, "dynamics_dr": False, "grasp_mode": "friction", "device": "cpu", "weld_tau": None},
+    "weld": {"cloth_center": (0.0, 0.0), "drop_height": 0.005, "drop_tilt_deg": 0.0,
+               "arm_drive": MUJOCO_ARM_DRIVE, "dynamics_dr": True, "grasp_mode": "weld", "device": "cuda:0",
+               "weld_tau": WELD_TAU},
+}
+# Friction-grasp knobs (track G, roadmap IG.2), read only on the "lehome" profile with grasp_mode="friction"; None keeps
+# the scene as ported in Phase I. particle_friction: the cloth particle material's friction, which PhysX applies to the
+# cloth against every rigid body (table and jaws alike; LeHome 0.5). pad_friction / pad_thickness: the finger lining
+# (PAD_LINING_*). gripper_drive: {ImplicitActuatorCfg field: value} for the gripper actuator only (LeHome kp 17.8,
+# kd 0.6, 10 N m). gripper_closed: the closed jaw target (rad, GRIPPER_CLOSED; the joint's limit is -0.1745).
+# jaw_open_rate: opening moves the jaw target at most this many rad per control step (None: straight to GRIPPER_OPEN)
+# Phase F (F2), the rest of LeHome's particle material and the physics rate: adhesion (LeHome 0.1, we spawn 0; the
+# user's cap is ADHESION_MAX), adhesion_offset_scale (LeHome 0: adhesion acts in contact only), gravity_scale (LeHome
+# 2, we spawn 1), physics_hz (100; a multiple of 20 so it divides the 0.05 s control step).
+FRICTION_GRASP          = {"particle_friction": None, "pad_friction": None, "pad_thickness": None,
+                           "gripper_drive": None, "gripper_closed": None, "jaw_open_rate": None,
+                           "adhesion": None, "adhesion_offset_scale": None, "gravity_scale": None, "physics_hz": None}
+ADHESION_MAX            = 0.3                 # user rule (2026-10-07): friction + adhesion only, adhesion <= 0.3
+PROFILES["lehome"]["friction_grasp"] = FRICTION_GRASP
+# "friction" (Phase F): the weld profile's setup (cloth pose, flat drop, MuJoCo arm drives, dynamics DR, GPU pipeline,
+# so it vectorises) with the friction grasp instead of the weld: the jaws close and only contact moves the cloth. Its
+# knobs start at track G's IG.2 attempt 9 (closed jaw +0.05 rad: at -0.1 the jaw overlaps the fixed pad and squeezes
+# the cloth out). Track G's 6c8c5af said this became the lehome default, but FRICTION_GRASP stayed all None.
+# The cloth sits where LeHome puts it (CLOTH_CENTER, 13.5 cm toward the arms), not at the weld profile's (0, 0): the
+# pinch needs a near-vertical jaw, which the SO101 cannot reach at (0, 0) (F0: descend ended 7-11 cm short).
+# The gripper keeps LeHome's own drive (kp 17.8, kd 0.6, 10 N m): MUJOCO_ARM_DRIVE is applied to every actuator group,
+# and with it on the jaw (kp 998, 3.35 N m) the corners slipped out mid-carry (F0: held 8/20 and 10/20 per arm; F2
+# candidate A, LeHome's gripper drive: see results.md). Adhesion 0.1 is LeHome's own particle-material value (we spawn 0);
+# F2 E and I, paired against A and H, gained in both (each < 1 SE) and never stuck the cloth to the pads. Pad friction
+# 2.0 (lining 1.5): F2 J / M, with the expert's ALIGN_TOL, held 40/40 on both arms (right arm 93% before).
+LEHOME_GRIPPER_DRIVE    = {"stiffness": 17.8, "damping": 0.6, "effort_limit_sim": 10.0}
+PROFILES["friction"] = dict(PROFILES["weld"], grasp_mode="friction", weld_tau=None, cloth_center=CLOTH_CENTER,
+                            friction_grasp=dict(FRICTION_GRASP, gripper_closed=0.05,
+                                                gripper_drive=LEHOME_GRIPPER_DRIVE, adhesion=0.1, pad_friction=2.0))
+# the rig's main / demo view follows the cloth (policy input and videos): the MuJoCo-aimed view had it at the top edge
+PROFILES["friction"]["view_shift"] = (float(CLOTH_CENTER[0]), float(CLOTH_CENTER[1]), 0.0)
+# friction grasp_active (Phase F): a closed jaw within this of its target counts as settled (track G traces: 0.14-0.21
+# rad mid-close, exactly the target once shut); the held corner rides 1-4 cm from the gripper frame during the carry
+JAW_SETTLED_TOL         = 0.05
+HOLD_DIST               = 0.05                # = isaac.grasp_metrics.HOLD_DIST
+DR_RANGE                = (0.7, 1.3)          # mujuco/sim_main.py reset
 CLOTH_SPEED_LIMIT       = 20.0                # m/s; replaces MuJoCo's qacc explosion check
 KIT_TICK_PERIOD_S       = 30.0                # state mode ticks Kit this often; its hang detector allows 120 s
 CAMERA_CLIP             = (0.05, 10.0)
@@ -70,12 +132,16 @@ GRIPPER_JOINT = "gripper"
 _app = None
 
 
-def start_app(headless=True, cameras=False):
+def start_app(headless=True, cameras=False, device="cpu"):
     """Launches Isaac Sim once through IsaacLab's AppLauncher on the CPU device, as LeHome's scripts do."""
     global _app
     if _app is None:
+        import os
         from isaaclab.app import AppLauncher
-        _app = AppLauncher(headless=headless, enable_cameras=cameras, device="cpu").app
+        # extra Kit settings, e.g. the local install's telemetry-off / no-registry / portable-root flags
+        # (isaac/env_windows.ps1); unset on Modal
+        kit_args = os.environ.get("WORLDFOLD_KIT_ARGS", "")
+        _app = AppLauncher(headless=headless, enable_cameras=cameras, device=device, kit_args=kit_args).app
     return _app
 
 
@@ -159,21 +225,90 @@ class IsaacClothFoldEnv(gym.Env):
 
     def __init__(self, control_dt=0.05, max_episode_steps=200, observation_mode="state", image_size=(84, 84),
                  camera_names=None, n_cloth_samples=9, n_tasks=4, grasp_corners=None, grasp_radius=GRASP_RADIUS,
-                 headless=True):
+                 headless=True, cameras=None, grasp_mode=None, device=None, profile="lehome", grasp_knobs=None):
+        self._configure(control_dt, max_episode_steps, observation_mode, image_size, camera_names, n_cloth_samples,
+                        n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile, grasp_knobs)
+        self._attach(self._build_scene(1), 0)
+
+    def _build_scene(self, n_copies):
+        from isaac.lab_scene import SceneEnv, make_cfg
+        cfg = make_cfg(self.physics_dt, self.n_substeps, self.image_size if self._use_image else None, rig=self.rig,
+                       device=self.sim_device, arm_drive=self._prof["arm_drive"], n_copies=n_copies,
+                       gripper_drive=self.grasp_knobs.get("gripper_drive"),
+                       view_shift=self._prof.get("view_shift", (0.0, 0.0, 0.0)))
+        lab = SceneEnv(cfg, self._prof["cloth_center"], grasp=self.grasp_knobs)
+        lab.weld_tau = self._prof["weld_tau"]
+        lab.weld_mass = WELD_MASS
+        return lab
+
+    def _attach(self, lab, c):
+        """Bind this env to copy c of the scene (milestone V; a standalone env is copy 0 of its own scene)."""
+        self.lab = lab
+        self._copy = c
+        self._cp = lab.copies[c]
+        self._origin = self._cp.offset if c else None    # copy frame -> world (None: they coincide)
+        self.arms = self._cp.arms
+        left = self.arms["left_"]
+        self._dof_limits = _npy(left.data.soft_joint_pos_limits[0, self._cp.joint_ids["left_"]])   # (6, 2), both arms
+        self._particles = self._cp.cloth_rest.copy() if not c else self._cp.cloth_rest - self._origin
+        self._kit_ticked = time.time()
+        self._particle_vel = np.zeros_like(self._particles)
+
+    def _configure(self, control_dt, max_episode_steps, observation_mode, image_size, camera_names, n_cloth_samples,
+                   n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile, grasp_knobs=None):
+        # profile: a PROFILES key; grasp_mode and device default to the profile's
+        # device: "cpu" (LeHome's choice: on the CUDA device the grippers pass through the cloth) or "cuda:0", whose
+        # particle tensor view the weld grasp needs to pin particles exactly (zero mass + set positions, Phase W)
+        # grasp_mode: "friction" (the jaws hold the cloth, LeHome's way) or "weld" (MuJoCo's: on close, every allowed
+        # grasp corner within grasp_radius attaches to the gripper until it opens -- the Phase W baseline)
+        self.profile = profile
+        self._prof = PROFILES[profile]
+        grasp_mode = grasp_mode or self._prof["grasp_mode"]
+        device = device or self._prof["device"]
+        if self._prof["dynamics_dr"] and device == "cpu":
+            raise ValueError("the dynamics DR needs the GPU pipeline (device='cuda:0')")
+        # MuJoCo's switch (ClothFoldEnv.domain_randomization; HalfFoldEnv sets it): only the "weld" profile has DR
+        self.domain_randomization = False
+        if grasp_mode not in ("friction", "weld"):
+            raise ValueError(grasp_mode)
+        if grasp_mode == "weld" and device == "cpu":
+            raise ValueError("grasp_mode='weld' needs the GPU pipeline (device='cuda:0'); see lab_scene.site_pose")
+        self.grasp_mode = grasp_mode
+        # friction-grasp knobs (FRICTION_GRASP): the profile's values, then grasp_knobs on top (a bench's candidate)
+        self.grasp_knobs = dict(self._prof.get("friction_grasp", {}))
+        if grasp_knobs:
+            if grasp_mode != "friction" or "friction_grasp" not in self._prof:
+                raise ValueError("grasp_knobs apply to a friction-grasp profile only (lehome, friction)")
+            unknown = set(grasp_knobs) - set(FRICTION_GRASP)
+            if unknown:
+                raise ValueError(f"unknown grasp knobs {sorted(unknown)}")
+            self.grasp_knobs.update(grasp_knobs)
+        if (self.grasp_knobs.get("adhesion") or 0.0) > ADHESION_MAX:
+            raise ValueError(f"adhesion {self.grasp_knobs['adhesion']} is over the cap {ADHESION_MAX}")
+        hz = self.grasp_knobs.get("physics_hz")
+        self.physics_dt = PHYSICS_DT if hz is None else 1.0 / float(hz)
+        closed = self.grasp_knobs.get("gripper_closed")
+        self._closed_q = GRIPPER_CLOSED if closed is None else float(closed)
+        self._pinned = {"left_": {}, "right_": {}}    # weld: {grid vertex: (particle idx, offsets)}
+        # cameras: {name: square size} -- the imitation pipeline's camera rig (main + wrists), read with render_rig();
+        # independent of observation_mode's own 84x84 main image
+        self.rig = dict(cameras) if cameras else {}
         if camera_names is not None and list(camera_names) != ["main"]:
             raise NotImplementedError("only the shared 'main' camera is ported")
         self.observation_mode = observation_mode
         self.image_size = image_size
         self._use_image = observation_mode in ("pixels", "hybrid")
         self._use_cloth = observation_mode in ("state", "hybrid")
-        start_app(headless, cameras=self._use_image)
+        self.sim_device = device
+        start_app(headless, cameras=self._use_image or bool(self.rig), device=device)
         import torch
-        from isaac.lab_scene import SceneEnv, make_cfg
         self._torch = torch
 
         self.control_dt = control_dt
         self.max_episode_steps = max_episode_steps
-        self.n_substeps = int(round(control_dt / PHYSICS_DT))
+        self.n_substeps = int(round(control_dt / self.physics_dt))
+        if abs(self.n_substeps * self.physics_dt - control_dt) > 1e-9:
+            raise ValueError(f"physics dt {self.physics_dt} does not divide the control step {control_dt}")
         self.settle_steps = int(round(SETTLE_STEPS * ARM_TIMESTEP / control_dt))
         self.grasp_corners = dict(GRASP_CORNERS if grasp_corners is None else grasp_corners)
         self.grasp_radius = grasp_radius
@@ -207,15 +342,6 @@ class IsaacClothFoldEnv(gym.Env):
         self._grid = grid_particles(CLOTH_SUBDIV)
         self.weld_mask = {p: None for p in self.prefixes}
 
-        cfg = make_cfg(PHYSICS_DT, self.n_substeps, image_size if self._use_image else None)
-        self.lab = SceneEnv(cfg, CLOTH_CENTER)
-        self.arms = self.lab.arms
-        left = self.arms["left_"]
-        self._dof_limits = _npy(left.data.soft_joint_pos_limits[0, self.lab.joint_ids["left_"]])   # (6, 2), both arms
-        self._particles = self.lab.cloth_rest.copy()
-        self._kit_ticked = time.time()
-        self._particle_vel = np.zeros_like(self._particles)
-
         self._joint_targets = {p: self._home() for p in self.prefixes}
         self._gripper_closed = {p: False for p in self.prefixes}
         self._step_count = 0
@@ -235,7 +361,7 @@ class IsaacClothFoldEnv(gym.Env):
     # ---- state readers ----
     def _refresh_cloth(self):
         # particle velocities as the mean over the last control step (the CPU device has no particle velocity view)
-        positions = self.lab.particle_positions()
+        positions = self.lab.particle_positions(self._copy)
         self._particle_vel = (positions - self._particles) / self.control_dt
         self._particles = positions
 
@@ -254,8 +380,11 @@ class IsaacClothFoldEnv(gym.Env):
 
     def _gripper_link(self, prefix):
         data = self.arms[prefix].data
-        b = self.lab.gripper_body[prefix]
-        return data, b, _npy(data.body_link_pos_w[0, b]), _matrix_from_quat(_npy(data.body_link_quat_w[0, b]))
+        b = self._cp.gripper_body[prefix]
+        link_pos = _npy(data.body_link_pos_w[0, b])
+        if self._origin is not None:        # copy frame (milestone V); copy 0's is the world
+            link_pos = link_pos - self._origin
+        return data, b, link_pos, _matrix_from_quat(_npy(data.body_link_quat_w[0, b]))
 
     def gripper_pose(self, prefix):
         # gripperframe site = gripper link pose composed with the site offset. The quaternion goes through a
@@ -276,20 +405,26 @@ class IsaacClothFoldEnv(gym.Env):
         return self.gripper_pose(prefix)[0]
 
     def joint_positions(self, prefix):
-        return _npy(self.arms[prefix].data.joint_pos[0, self.lab.joint_ids[prefix]])
+        return _npy(self.arms[prefix].data.joint_pos[0, self._cp.joint_ids[prefix]])
 
     def joint_velocities(self, prefix):
-        return _npy(self.arms[prefix].data.joint_vel[0, self.lab.joint_ids[prefix]])
+        return _npy(self.arms[prefix].data.joint_vel[0, self._cp.joint_ids[prefix]])
 
     def grasp_active(self, prefix):
-        # nothing attaches the cloth, so this reports what the wrappers ask: the gripper is closed with one of its
-        # corners (grasp_corners, filtered by weld_mask) within grasp_radius of the gripper frame
+        if self.grasp_mode == "weld":
+            return bool(self._pinned[prefix])
+        # Nothing attaches the cloth, so this reads the physical state (Phase F): the jaw is commanded closed AND has
+        # settled at its closed target (still closing, or held open by something, is not a grasp), AND one of the
+        # arm's corners (grasp_corners, filtered by weld_mask) is within HOLD_DIST of the gripper frame. A corner
+        # that slips out falls away from the jaws, so this goes False with the jaws still shut (failure code G2).
         if not self._gripper_closed[prefix]:
+            return False
+        if self.joint_positions(prefix)[5] > self._closed_q + JAW_SETTLED_TOL:
             return False
         pos = self.gripper_position(prefix)
         allc = self.cloth_positions()
         allowed = self.weld_mask.get(prefix)
-        return any(np.linalg.norm(allc[vtx] - pos) < self.grasp_radius for vtx in self.grasp_corners[prefix]
+        return any(np.linalg.norm(allc[vtx] - pos) < HOLD_DIST for vtx in self.grasp_corners[prefix]
                    if allowed is None or vtx in allowed)
 
     # ---- task helpers (mirror ClothFoldEnv) ----
@@ -401,12 +536,77 @@ class IsaacClothFoldEnv(gym.Env):
             self._gripper_closed[prefix] = True
         elif command > 0.3:
             self._gripper_closed[prefix] = False
-        self._joint_targets[prefix][5] = GRIPPER_CLOSED if self._gripper_closed[prefix] else GRIPPER_OPEN
+        target = self._closed_q if self._gripper_closed[prefix] else GRIPPER_OPEN
+        rate = self.grasp_knobs.get("jaw_open_rate")
+        if rate and self.grasp_mode == "friction" and not self._gripper_closed[prefix]:
+            target = min(target, self._joint_targets[prefix][5] + float(rate))     # open gradually (track G)
+        self._joint_targets[prefix][5] = target
+        if self.grasp_mode == "weld":
+            if self._gripper_closed[prefix]:
+                self._try_weld(prefix)
+            elif self._pinned[prefix]:
+                self._pinned[prefix] = {}
+                self._push_pins()
+
+    def _try_weld(self, prefix):
+        # MuJoCo's set_gripper: while closed, every allowed grasp corner not yet welded that is within grasp_radius of
+        # the gripperframe attaches with its current offset (a corner can join later while already holding another).
+        # A grid vertex stands for a WELD_PATCH-radius patch of the denser particle mesh, each with its own offset.
+        # Offsets are held in world axes: the patch translates with the gripperframe but doesn't turn with the wrist.
+        # MuJoCo's weld is soft and lets the held corner hang under the gripper (W3 trace: its offset stays within
+        # 2 cm of vertical through lift and carry); a zero-mass pin turning with the free wrist swung the corner 4 cm
+        # sideways, out from under the gripper, and FoldExpert's lift-above-the-corner target was never reached.
+        site, _ = self.gripper_pose(prefix)
+        grid = self.cloth_positions()
+        allowed = self.weld_mask.get(prefix)
+        added = False
+        for vtx in self.grasp_corners[prefix]:
+            if vtx in self._pinned[prefix] or (allowed is not None and vtx not in allowed):
+                continue
+            if np.linalg.norm(grid[vtx] - site) >= self.grasp_radius:
+                continue
+            near = np.flatnonzero(np.linalg.norm(self._particles - self._particles[self._grid[vtx]], axis=1)
+                                  < WELD_PATCH)
+            self._pinned[prefix][vtx] = (near, self._particles[near] - site)
+            added = True
+        if added:
+            self._push_pins()
+
+    def _push_pins(self):
+        self._cp.pins = {p: (np.concatenate([v[0] for v in pins.values()]).astype(np.int64),
+                             np.concatenate([v[1] for v in pins.values()]))
+                         for p, pins in self._pinned.items() if pins}
+        self.lab.set_pinned_masses(self._copy)
 
     def _advance(self):
         # one control step: the scene holds both arms' joint targets for n_substeps physics steps
+        self._submit_targets()
+        self._physics()
+        self._refresh_cloth()
+
+    def _targets(self):
         targets = np.concatenate([self._joint_targets["left_"], self._joint_targets["right_"]])[None, :]
-        self.lab.step(self._torch.as_tensor(targets, dtype=self._torch.float32, device=self.lab.device))
+        if self.grasp_mode == "weld":
+            # the weld holds the cloth, not the jaws, so they stay open (the observation keeps the commanded target).
+            # A jaw opening at release swings ~1.2 rad through the flap hanging under it and flung the corner up to
+            # 9 cm (W3 trace, worse with the friction DR high); MuJoCo's 3 cm flex grid seldom catches a jaw, the
+            # 3 mm particle cloth always does
+            targets[0, [5, 11]] = GRIPPER_OPEN
+        return self._torch.as_tensor(targets, dtype=self._torch.float32, device=self.lab.device)
+
+    # The hooks a batched sub-env (IsaacSubEnv) overrides: where targets go (_submit_targets), who steps physics
+    # (_physics), how the scene is reset (_reset_scene) and which thread runs USD-writing scene calls (_scene_call).
+    def _submit_targets(self):
+        self._pending_targets = self._targets()
+
+    def _scene_call(self, fn, *args):
+        return fn(*args)
+
+    def _reset_scene(self):
+        self.lab.reset()
+
+    def _physics(self):
+        self.lab.step(self._pending_targets)
         if not self._use_image and time.time() - self._kit_ticked > KIT_TICK_PERIOD_S:
             # state mode only steps physics, which never ticks Kit's main loop, and Kit's hang detector aborts the app
             # after 120 s without a tick. Tick it the way IsaacLab's SimulationContext.render does when it renders
@@ -415,29 +615,58 @@ class IsaacClothFoldEnv(gym.Env):
             _app.update()
             self.lab.sim.set_setting("/app/player/playSimulations", True)
             self._kit_ticked = time.time()
-        self._refresh_cloth()
+
+    def render_rig(self):
+        """The camera rig's latest frames, {name: uint8 [3, H, W]} (rendered once per control step)."""
+        return {name: np.ascontiguousarray(np.transpose(_npy(cam.data.output["rgb"][0])[:, :, :3], (2, 0, 1)))
+                .astype(np.uint8) for name, cam in self._cp.rig_cameras.items()}
+
+    def keep_alive(self):
+        """Tick Kit without stepping physics, for a process that sits idle (e.g. a rollout worker waiting while
+        the parent trains): Kit's hang detector aborts the app after 120 s without a tick."""
+        self.lab.sim.set_setting("/app/player/playSimulations", False)
+        _app.update()
+        self.lab.sim.set_setting("/app/player/playSimulations", True)
+        self._kit_ticked = time.time()
 
     # ---- gym API ----
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         opts = options or {}
         self._domain_params = {}
-        self.lab.reset()
+        self._reset_scene()
+        self._pinned = {p: {} for p in self.prefixes}
+        self._cp.pins = {}
+        if self.grasp_mode == "weld":
+            self.lab.set_pinned_masses(self._copy)
         for prefix in self.prefixes:
             self._gripper_closed[prefix] = False
             self._joint_targets[prefix] = self._home()
+
+        scales = None
+        if self._prof["dynamics_dr"]:
+            # MuJoCo's draw order and keys (sim_main.reset); unrandomized episodes restore the spawned values
+            scales = {"cloth_mass_scale": 1.0, "table_friction_scale": 1.0, "cloth_damping_scale": 1.0}
+            if bool(opts.get("randomization", self.domain_randomization)):
+                scales = {k: float(self.np_random.uniform(*DR_RANGE)) for k in scales}
+                self._domain_params = dict(scales)
 
         offset = np.zeros(2)
         if "cloth_pose" in opts:
             pose = np.asarray(opts["cloth_pose"], dtype=float).ravel()
             offset = pose[:2]
-        tilt = self.np_random.uniform(-DROP_TILT_DEG, DROP_TILT_DEG, size=2)
-        self.lab.reset_cloth(offset, DROP_HEIGHT, (tilt[0], tilt[1], 0.0))
-        self._particles = self.lab.particle_positions()
+        tilt_deg = self._prof["drop_tilt_deg"]
+        tilt = self.np_random.uniform(-tilt_deg, tilt_deg, size=2) if tilt_deg else np.zeros(2)
+        self._scene_call(self.lab.reset_cloth, offset, self._prof["drop_height"], (tilt[0], tilt[1], 0.0),
+                         self._copy)
+        self._particles = self.lab.particle_positions(self._copy)
         self._particle_vel = np.zeros_like(self._particles)
 
-        for _ in range(self.settle_steps):
+        for k in range(self.settle_steps):
             self._advance()
+            if k == 0 and scales is not None:
+                # after the first step: the soft reset's USD writes are parsed there and restore the spawned masses
+                self._scene_call(self.lab.set_dynamics, *scales.values(), self._copy)
 
         self._task_id = int(opts.get("task", self.np_random.integers(self.n_tasks)))
         corners0 = self.corner_positions().copy()
@@ -460,6 +689,12 @@ class IsaacClothFoldEnv(gym.Env):
         return self._get_obs(), info
 
     def step(self, action):
+        self.step_submit(action)
+        self._physics()
+        return self.step_collect()
+
+    def step_submit(self, action):
+        """step() up to the physics: the action becomes this env's joint targets (and weld changes)."""
         raw = np.asarray(action, dtype=np.float32).reshape(14)
         clipped = np.clip(raw, -1.0, 1.0)
         self._action_clipped = bool(np.any(raw != clipped))
@@ -468,8 +703,11 @@ class IsaacClothFoldEnv(gym.Env):
         self.set_gripper("right_", float(clipped[13]))
         self.apply_joint_delta("left_", clipped[0:5])
         self.apply_joint_delta("right_", clipped[7:12])
-        self._advance()
+        self._submit_targets()
 
+    def step_collect(self):
+        """step() after the physics: read the cloth, score, terminate, observe."""
+        self._refresh_cloth()
         self._step_count += 1
         reward, terms = self._reward()
         self._success_steps = self._success_steps + 1 if self._fold_score() >= SUCCESS_FOLD_SCORE else 0
@@ -481,6 +719,93 @@ class IsaacClothFoldEnv(gym.Env):
         terminated = reason is not None
         truncated = (not terminated) and self._step_count >= self.max_episode_steps
         return self._get_obs(), reward, terminated, truncated, self._step_info(terms, reason)
+
+    def close(self):
+        self.lab.close()
+        if _app is not None:
+            _app.close()
+
+
+# ---- milestone V: several envs in one scene ----
+
+class IsaacSubEnv(IsaacClothFoldEnv):
+    """Env i of an IsaacClothFoldBatch: an IsaacClothFoldEnv (same API, attributes and per-env state) bound to copy i
+    of the batch's scene, reading everything in that copy's frame. Physics advances only through the batch:
+    each control step it needs is `batch.sync(i)`; its reset touches only its own copy."""
+
+    def __init__(self, batch, index, **kwargs):
+        self._batch = batch
+        self._configure_kwargs(**kwargs)
+        self._attach(batch.lab, index)
+
+    def _configure_kwargs(self, control_dt=0.05, max_episode_steps=200, observation_mode="state", image_size=(84, 84),
+                          camera_names=None, n_cloth_samples=9, n_tasks=4, grasp_corners=None,
+                          grasp_radius=GRASP_RADIUS, headless=True, cameras=None, grasp_mode=None, device=None,
+                          profile="lehome", grasp_knobs=None):
+        self._configure(control_dt, max_episode_steps, observation_mode, image_size, camera_names, n_cloth_samples,
+                        n_tasks, grasp_corners, grasp_radius, headless, cameras, grasp_mode, device, profile, grasp_knobs)
+
+    def _submit_targets(self):
+        self.lab.set_copy_targets(self._copy, self._targets())
+
+    def _physics(self):
+        self._batch.sync(self._copy)
+
+    def _scene_call(self, fn, *args):
+        return self._batch.on_main(fn, *args)
+
+    def _reset_scene(self):
+        self._batch.on_main(self.lab.reset_copy, self._copy)
+
+    def park(self):
+        """Put this copy's cloth back flat on its table and its arms at HOME, without stepping: an episode that
+        ended with the cloth blown up must not leave it drifting while the other copies keep stepping."""
+        self._pinned = {p: {} for p in self.prefixes}
+        self._joint_targets = {p: self._home() for p in self.prefixes}
+        self._gripper_closed = {p: False for p in self.prefixes}
+        self._batch.on_main(self.lab.reset_copy, self._copy)
+        self._batch.on_main(self.lab.reset_cloth, np.zeros(2), self._prof["drop_height"], (0.0, 0.0, 0.0), self._copy)
+        self.lab.set_pinned_masses(self._copy)
+        self._submit_targets()
+
+    def keep_alive(self):
+        self._batch.on_main(self._batch.keep_alive)
+
+    def close(self):
+        """The scene is the batch's: closing one view closes nothing."""
+
+
+class IsaacClothFoldBatch(BatchBase):
+    """n IsaacClothFoldEnvs in ONE Isaac scene (milestone V; GPU weld profile): `envs[i]` is an IsaacSubEnv on copy i
+    of a SceneEnv(n_copies=n). `advance()` is one control step of every copy, each holding the joint targets its
+    sub-env last submitted. Without a scheduler every `sync(i)` advances at once; a rollout worker attaches an
+    imitation.lockstep.Lockstep, which advances once every sub-env with an episode in flight is waiting.
+    Kwargs are IsaacClothFoldEnv's. Design: docs/superpowers/specs/2026-10-04-isaac-vec-design.md."""
+
+    def __init__(self, n, **kwargs):
+        proto = IsaacClothFoldEnv.__new__(IsaacClothFoldEnv)
+        IsaacSubEnv._configure_kwargs(proto, **kwargs)
+        if n > 1 and proto.sim_device == "cpu":
+            raise ValueError("several envs per scene need the GPU pipeline (device='cuda:0')")
+        self.n = n
+        self.lab = proto._build_scene(n)
+        self._use_image = proto._use_image
+        self._kit_ticked = time.time()
+        self.steps = 0
+        self.envs = [IsaacSubEnv(self, i, **kwargs) for i in range(n)]
+
+    def advance(self):
+        """One control step for every copy (n_substeps physics steps), then Kit's tick in state mode."""
+        self.lab.step(self.lab.targets.clone())
+        self.steps += 1
+        if not self._use_image and time.time() - self._kit_ticked > KIT_TICK_PERIOD_S:
+            self.keep_alive()
+
+    def keep_alive(self):
+        self.lab.sim.set_setting("/app/player/playSimulations", False)
+        _app.update()
+        self.lab.sim.set_setting("/app/player/playSimulations", True)
+        self._kit_ticked = time.time()
 
     def close(self):
         self.lab.close()

@@ -1,0 +1,72 @@
+{
+ "git_commit": "b310675cf6c281dfa0fc06ed99b94727fa28cf06-dirty",
+ "dataset": {
+  "root": "outputs\\imitation\\datasets",
+  "version": "isaac_pilot",
+  "content_hash": "a0bbd40bf051d7df490f59153fd84ea581a93597e4861ba8f7d46719fde06141",
+  "n_episodes": 2,
+  "n_train_samples": 272,
+  "n_dagger_labels": 0,
+  "clamped_fraction": 0.00015869656635913998,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "vision",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "width": 512,
+   "depth": 3,
+   "dropout": 0.1,
+   "cameras": [
+    [
+     "main",
+     128
+    ],
+    [
+     "left_wrist_cam",
+     64
+    ],
+    [
+     "right_wrist_cam",
+     64
+    ]
+   ],
+   "feat": 256
+  },
+  "n_params": 8611712
+ },
+ "train": {
+  "steps": 3000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 1.0,
+  "obs_subset": null,
+  "init_from": null,
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 367.6
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\isaac_pilot_vision\\final.pt",
+  "sha256": "169cebd25a57d0d84d3424a98407230869ce37b32ea31995245e9ca8e8106e63"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.030452023423276842,
+   "val_loss": 0.3181298077106476
+  },
+  {
+   "step": 3000,
+   "train_loss": 0.005559330596588552,
+   "val_loss": 0.3269149363040924
+  }
+ ]
+}

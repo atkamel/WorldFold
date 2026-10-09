@@ -1,0 +1,11 @@
+{
+ "milestone": "I2.1",
+ "status": "PASS",
+ "evidence": [
+  "eval_expert.json id_easy: 2/20 [2.8, 30.1] (pilot, no threshold)",
+  "eval_expert_recovery.json recovery: 0/10 [0.0, 27.8] (pilot, no threshold)",
+  "test_isaac_expert.py exit 0: 1 passed in 170.41s (0:02:50)"
+ ],
+ "commit": "bf8cd140bc1306f7d308b170b0758d61a48549eb",
+ "time": "2026-10-03T13:45:52-0400"
+}

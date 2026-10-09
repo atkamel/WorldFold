@@ -1,0 +1,91 @@
+{
+ "git_commit": "a9415ee089620c55db02c4a887081087ff01bf3d-dirty",
+ "dataset": {
+  "root": "outputs/imitation/datasets",
+  "version": "v1_dagger_diff_r2_dagger_shift_r2",
+  "content_hash": "fe75f9ac7af521521c45770d94dfa294c2da9122e3e3196d222ebfcf7fc91d36",
+  "n_episodes": 896,
+  "n_train_samples": 39986,
+  "n_dagger_labels": 6958,
+  "clamped_fraction": 0.000268639181740582,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "diffusion",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "cond_dim": 256,
+   "channels": [
+    128,
+    256
+   ],
+   "train_steps": 100,
+   "infer_steps": 10
+  },
+  "n_params": 7348748
+ },
+ "train": {
+  "steps": 15000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 4.0,
+  "obs_subset": null,
+  "init_from": "outputs\\imitation\\runs\\dagger_diff\\round_1\\final.pt",
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 666.1
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\dagger_shift\\round_2\\final.pt",
+  "sha256": "f03c6ebd6a8225ebb2756ace92ff2ee2e60a2cba563b9b122c44dec5ecb1a01e"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.015107975690625608,
+   "val_loss": 0.044872788800657586
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.00951557878870517,
+   "val_loss": 0.043577174249620584
+  },
+  {
+   "step": 6000,
+   "train_loss": 0.007683018536772579,
+   "val_loss": 0.04679435502051504
+  },
+  {
+   "step": 8000,
+   "train_loss": 0.005720255628693849,
+   "val_loss": 0.05671849887764173
+  },
+  {
+   "step": 10000,
+   "train_loss": 0.004280219814972952,
+   "val_loss": 0.071072819765163
+  },
+  {
+   "step": 12000,
+   "train_loss": 0.0027623277244856583,
+   "val_loss": 0.0837629241896555
+  },
+  {
+   "step": 14000,
+   "train_loss": 0.0019120795943308622,
+   "val_loss": 0.09800329867358154
+  },
+  {
+   "step": 15000,
+   "train_loss": 0.0007891205284977331,
+   "val_loss": 0.09788951515595921
+  }
+ ]
+}

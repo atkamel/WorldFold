@@ -1,0 +1,47 @@
+STEP collect 2026-10-03T05:23:37
+RESUME 2026-10-03T07:24:48
+STEP collect 2026-10-03T07:24:52
+DONE collect 2145s
+STEP train_mlp 2026-10-03T08:00:37
+DONE train_mlp 64s
+STEP train_diff 2026-10-03T08:01:41
+DONE train_diff 255s
+STEP train_vision 2026-10-03T08:05:56
+DONE train_vision 376s
+STEP eval_mlp_id_easy 2026-10-03T08:12:12
+DONE eval_mlp_id_easy 2036s
+STEP eval_mlp_recovery 2026-10-03T08:46:08
+DONE eval_mlp_recovery 1057s
+STEP eval_diff_id_easy 2026-10-03T09:03:44
+SKIP collect (have outputs\imitation\datasets\isaac_pilot\manifest.json)
+SKIP train_mlp (have outputs\imitation\runs\isaac_pilot_mlp\final.pt)
+SKIP train_diff (have outputs\imitation\runs\isaac_pilot_diff\final.pt)
+SKIP train_vision (have outputs\imitation\runs\isaac_pilot_vision\final.pt)
+SKIP eval_mlp_id_easy (have outputs\imitation\isaac\pilot\eval_mlp_id_easy.json)
+SKIP eval_mlp_recovery (have outputs\imitation\isaac\pilot\eval_mlp_recovery.json)
+STEP eval_diff_id_easy 2026-10-03T09:25:05
+DONE eval_diff_id_easy 2027s
+STEP eval_diff_id_hard 2026-10-03T09:58:52
+DONE eval_diff_id_hard 1053s
+STEP eval_diff_recovery 2026-10-03T10:16:25
+DONE eval_diff_recovery 1044s
+STEP eval_vision_id_easy 2026-10-03T10:33:49
+DONE eval_vision_id_easy 1108s
+STEP dagger 2026-10-03T10:52:18
+SKIP collect (have outputs\imitation\datasets\isaac_pilot\manifest.json)
+SKIP train_mlp (have outputs\imitation\runs\isaac_pilot_mlp\final.pt)
+SKIP train_diff (have outputs\imitation\runs\isaac_pilot_diff\final.pt)
+SKIP train_vision (have outputs\imitation\runs\isaac_pilot_vision\final.pt)
+SKIP eval_mlp_id_easy (have outputs\imitation\isaac\pilot\eval_mlp_id_easy.json)
+SKIP eval_mlp_recovery (have outputs\imitation\isaac\pilot\eval_mlp_recovery.json)
+SKIP eval_diff_id_easy (have outputs\imitation\isaac\pilot\eval_diff_id_easy.json)
+SKIP eval_diff_id_hard (have outputs\imitation\isaac\pilot\eval_diff_id_hard.json)
+SKIP eval_diff_recovery (have outputs\imitation\isaac\pilot\eval_diff_recovery.json)
+SKIP eval_vision_id_easy (have outputs\imitation\isaac\pilot\eval_vision_id_easy.json)
+STEP dagger 2026-10-03T11:25:20
+DONE dagger 6240s
+STEP detector_train 2026-10-03T13:09:20
+DONE detector_train 66s
+STEP detector_agree 2026-10-03T13:10:26
+DONE detector_agree 20s
+PILOT COMPLETE

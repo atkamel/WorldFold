@@ -1,0 +1,23 @@
+{
+ "rows": [
+  {
+   "procs": 1,
+   "per_process": [
+    3.32
+   ],
+   "aggregate": 3.32,
+   "peak_vram_mib": 6367,
+   "completed": 1
+  },
+  {
+   "procs": 2,
+   "per_process": [
+    2.32,
+    2.65
+   ],
+   "aggregate": 4.97,
+   "peak_vram_mib": 9119,
+   "completed": 2
+  }
+ ]
+}

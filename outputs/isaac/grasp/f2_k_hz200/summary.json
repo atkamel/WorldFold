@@ -1,0 +1,190 @@
+{
+ "n": 24,
+ "seeds": [
+  600400,
+  600401,
+  600402,
+  600403,
+  600404,
+  600405,
+  600406,
+  600407,
+  600408,
+  600409,
+  600410,
+  600411,
+  600412,
+  600413,
+  600414,
+  600415,
+  600416,
+  600417,
+  600418,
+  600419,
+  600420,
+  600421,
+  600422,
+  600423
+ ],
+ "arms": {
+  "left_": {
+   "acquired": {
+    "k": 23,
+    "n": 24,
+    "rate": 95.8,
+    "wilson": [
+     79.8,
+     99.3
+    ]
+   },
+   "held": {
+    "k": 20,
+    "n": 24,
+    "rate": 83.3,
+    "wilson": [
+     64.1,
+     93.3
+    ]
+   },
+   "placed": {
+    "k": 18,
+    "n": 24,
+    "rate": 75.0,
+    "wilson": [
+     55.1,
+     88.0
+    ]
+   },
+   "released": {
+    "k": 20,
+    "n": 24,
+    "rate": 83.3,
+    "wilson": [
+     64.1,
+     93.3
+    ]
+   },
+   "released_strict": {
+    "k": 5,
+    "n": 24,
+    "rate": 20.8,
+    "wilson": [
+     9.2,
+     40.5
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.0837,
+    "max": 0.2011
+   },
+   "first_failure": {
+    "held": 3,
+    "placed": 3,
+    "acquired": 1
+   }
+  },
+  "right_": {
+   "acquired": {
+    "k": 24,
+    "n": 24,
+    "rate": 100.0,
+    "wilson": [
+     86.2,
+     100.0
+    ]
+   },
+   "held": {
+    "k": 21,
+    "n": 24,
+    "rate": 87.5,
+    "wilson": [
+     69.0,
+     95.7
+    ]
+   },
+   "placed": {
+    "k": 14,
+    "n": 24,
+    "rate": 58.3,
+    "wilson": [
+     38.8,
+     75.5
+    ]
+   },
+   "released": {
+    "k": 21,
+    "n": 24,
+    "rate": 87.5,
+    "wilson": [
+     69.0,
+     95.7
+    ]
+   },
+   "released_strict": {
+    "k": 7,
+    "n": 24,
+    "rate": 29.2,
+    "wilson": [
+     14.9,
+     49.2
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.0666,
+    "max": 0.2006
+   },
+   "first_failure": {
+    "placed": 7,
+    "held": 3
+   }
+  }
+ },
+ "config": {
+  "jitter": 0.01,
+  "profile": "friction",
+  "device": "cuda:0",
+  "dr": true,
+  "knobs": {
+   "particle_friction": null,
+   "pad_friction": null,
+   "pad_thickness": null,
+   "gripper_drive": {
+    "stiffness": 17.8,
+    "damping": 0.6,
+    "effort_limit_sim": 10.0
+   },
+   "gripper_closed": 0.05,
+   "jaw_open_rate": null,
+   "adhesion": 0.1,
+   "adhesion_offset_scale": null,
+   "gravity_scale": null,
+   "physics_hz": 200
+  },
+  "expert": {
+   "PINCH_HEIGHT": 0.005,
+   "PINCH_INSET": 0.005,
+   "PLACE_HEIGHT": 0.011,
+   "ARC_HEIGHT": 0.12,
+   "CLOSE_DWELL": 8,
+   "OPEN_DWELL": 6
+  },
+  "overshoot": {
+   "0left_": [
+    -0.001,
+    0.052,
+    0.0
+   ],
+   "0right_": [
+    0.013,
+    0.05,
+    0.0
+   ]
+  },
+  "code": "C:\\Users\\ethan\\Documents\\Projects\\watai\\WorldFold\\isaac\\grasp_bench.py"
+ },
+ "reasons": {
+  "bench_stop": 9,
+  "cloth_dragged": 3,
+  "success": 12
+ }
+}

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Isaac Half-Fold Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one 1040px lab-notebook column; result table and interval chart up top, video matrix (policy x benchmark) below. */
+:root {
+  --bg: #f6f5f3;
+  --surface: #ffffff;
+  --fg: #1d2127;
+  --muted: #5d6470;
+  --rule: #d9d6d1;
+  --cloth: #d9576f;        /* the sim's pink cloth */
+  --cloth-soft: #f6d9df;
+  --steel: #3b6e8f;        /* sensor-only policy */
+  --steel-soft: #d6e5ef;
+  --ref: #8b8f96;          /* reference marks (expert, MuJoCo) */
+  --good: #2f7d4f;
+  --warn: #a8611a;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15181c; --surface: #1d2127; --fg: #e8e6e2; --muted: #a2a7b0; --rule: #343a43;
+  --cloth: #ef7a90; --cloth-soft: #4a2730; --steel: #7fb0d1; --steel-soft: #23384a; --ref: #8f949c;
+  --good: #6cc08f; --warn: #e2a25e; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15181c; --surface: #1d2127; --fg: #e8e6e2; --muted: #a2a7b0; --rule: #343a43;
+  --cloth: #ef7a90; --cloth-soft: #4a2730; --steel: #7fb0d1; --steel-soft: #23384a; --ref: #8f949c;
+  --good: #6cc08f; --warn: #e2a25e; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px; display: grid; gap: 44px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(30px, 5vw, 46px); font-weight: 800; line-height: 1.05; }
+h2 { font-size: 22px; font-weight: 700; }
+h3 { font-size: 15px; font-weight: 700; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+section { display: grid; gap: 16px; min-width: 0; }
+header { display: grid; gap: 14px; border-bottom: 2px solid var(--fg); padding-bottom: 22px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+.lede { font-size: 18px; }
+
+/* headline numbers */
+.score { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.policy { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
+.policy.priv { border-top: 4px solid var(--cloth); }
+.policy.sens { border-top: 4px solid var(--steel); }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.trio div { display: grid; gap: 2px; }
+.trio .n { font-family: var(--display); font-weight: 800; font-size: clamp(24px, 4vw, 34px); font-variant-numeric: tabular-nums; line-height: 1; }
+.trio .l { font-family: var(--mono); font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.trio .ci { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.policy p.small { font-size: 14px; color: var(--muted); }
+
+/* interval chart */
+.chart { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 18px; display: grid; gap: 18px; overflow-x: auto; }
+.set { display: grid; gap: 6px; min-width: 520px; }
+.row { display: grid; grid-template-columns: 170px 1fr 120px; align-items: center; gap: 12px; font-size: 13.5px; }
+.row .name { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.row .val { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; text-align: right; }
+.track { position: relative; height: 18px; background: linear-gradient(to right, var(--rule) 1px, transparent 1px) 0 0 / 10% 100%; border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); }
+.bar { position: absolute; top: 4px; height: 10px; left: 0; border-radius: 0 2px 2px 0; }
+.bar.priv { background: var(--cloth); }
+.bar.sens { background: var(--steel); }
+.ci-line { position: absolute; top: 8px; height: 2px; background: var(--fg); opacity: 0.55; }
+.tick { position: absolute; top: 1px; width: 2px; height: 16px; background: var(--ref); }
+.tick.mj { background: transparent; border-left: 2px dashed var(--ref); width: 0; }
+.axis { display: grid; grid-template-columns: 170px 1fr 120px; gap: 12px; min-width: 520px; }
+.axis .scale { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.key { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 14px; height: 8px; border-radius: 1px; }
+
+/* tables */
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-family: var(--mono); font-size: 11.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.up { color: var(--good); } .down { color: var(--warn); }
+
+/* videos */
+.vids { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.vids figure { margin: 0; display: grid; gap: 8px; min-width: 0; }
+.vids video { width: 100%; max-width: 100%; aspect-ratio: 1 / 1; background: #000; border-radius: 4px; display: block; }
+figcaption { display: grid; gap: 2px; font-size: 13.5px; }
+figcaption b { font-family: var(--display); font-size: 14px; }
+figcaption span { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.vlabel { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.pill { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+.pill.priv { background: var(--cloth-soft); color: var(--fg); }
+.pill.sens { background: var(--steel-soft); color: var(--fg); }
+
+ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 72ch; }
+.note { font-size: 14px; color: var(--muted); }
+footer { border-top: 1px solid var(--rule); padding-top: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); display: grid; gap: 4px; }
+
+@media (max-width: 760px) {
+  .score { grid-template-columns: 1fr; }
+  .vids { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .vids { grid-template-columns: 1fr; }
+  .row, .axis { grid-template-columns: 120px 1fr 96px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">WorldFold · Phase W · milestone W5 · 7 Oct 2026</div>
+    <h1>Half fold on Isaac Sim</h1>
+    <p class="lede">The imitation pipeline from the MuJoCo work, retrained from scratch on the Isaac Sim / LeHome cloth-fold environment from PR #15. Two policies fold the cloth: a privileged one that reads the simulator state, and a sensor-only student that sees only cameras and its own joints.</p>
+    <div class="meta">
+      <span>branch feature/isaac-imitation</span><span>results as of 219e016</span><span>Isaac Sim 5.1 · weld grasp profile</span><span>n = 200 per benchmark · Wilson 95% intervals</span>
+    </div>
+  </header>
+
+  <section aria-labelledby="h-results">
+    <div class="eyebrow">Final results</div>
+    <h2 id="h-results">Success rate on three held-out benchmarks</h2>
+    <p class="note">Clean: nominal starts. Shifted: cloth moved 2.5–4 cm. Recovery: knocked off course by 8–15 random actions mid-fold. 200 episodes each, held-out seeds, deterministic inference.</p>
+    <div class="score">
+      <div class="policy priv">
+        <div class="vlabel"><h3>Privileged policy</h3><span class="pill priv">diffusion + DAgger · replan 4</span></div>
+        <div class="trio">
+          <div><span class="l">clean</span><span class="n">99.0%</span><span class="ci">198/200 · 96.4–99.7</span></div>
+          <div><span class="l">shifted</span><span class="n">97.5%</span><span class="ci">195/200 · 94.3–98.9</span></div>
+          <div><span class="l">recovery</span><span class="n">54.5%</span><span class="ci">109/200 · 47.6–61.3</span></div>
+        </div>
+        <p class="small">Reads the 139-D simulator state, including cloth corner positions. Used as the teacher.</p>
+      </div>
+      <div class="policy sens">
+        <div class="vlabel"><h3>Sensor-only student</h3><span class="pill sens">vision · replan 2</span></div>
+        <div class="trio">
+          <div><span class="l">clean</span><span class="n">99.0%</span><span class="ci">198/200 · 96.4–99.7</span></div>
+          <div><span class="l">shifted</span><span class="n">82.5%</span><span class="ci">165/200 · 76.6–87.1</span></div>
+          <div><span class="l">recovery</span><span class="n">31.0%</span><span class="ci">62/200 · 25.0–37.7</span></div>
+        </div>
+        <p class="small">Main camera 128², two wrist cameras 64², and 48 joint/gripper sensor values. No cloth state.</p>
+      </div>
+    </div>
+
+    <div class="chart" role="img" aria-label="Success rate with 95% intervals per benchmark, with the expert and MuJoCo reference marks">
+      <div class="legend">
+        <span class="key"><span class="sw" style="background:var(--cloth)"></span>privileged</span>
+        <span class="key"><span class="sw" style="background:var(--steel)"></span>sensor-only</span>
+        <span class="key"><span class="sw" style="background:var(--fg);opacity:.55;height:2px"></span>95% interval</span>
+        <span class="key"><span class="sw" style="background:var(--ref);width:2px;height:12px"></span>scripted expert</span>
+        <span class="key"><span class="sw" style="border-left:2px dashed var(--ref);width:0;height:12px"></span>MuJoCo best (same policy type)</span>
+      </div>
+      <div id="bars"></div>
+      <div class="axis"><span></span><div class="scale"><span>0</span><span>25</span><span>50</span><span>75</span><span>100%</span></div><span></span></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-videos">
+    <div class="eyebrow">Video evidence</div>
+    <h2 id="h-videos">Three episodes per benchmark, played exactly as evaluated</h2>
+    <p class="note">The first three seeds of each held-out set, at real time (20 fps). Shifted episodes start from the shifted cloth poses. In recovery episodes the on-screen label reads KNOCK while the random actions run. Failures are shown as they happened.</p>
+    <div class="vlabel"><h3>Privileged policy</h3><span class="pill priv">replan 4</span></div>
+    <div class="vids">
+      <figure><video controls muted playsinline preload="metadata" src="media/half_fold_isaac_privileged_id_easy.mp4"></video>
+        <figcaption><b>Clean · 3/3</b><span>seeds 100000–2 · 81 / 95 / 100 steps · fold 0.98 / 0.96 / 0.98</span></figcaption></figure>
+      <figure><video controls muted playsinline preload="metadata" src="media/half_fold_isaac_privileged_id_hard.mp4"></video>
+        <figcaption><b>Shifted · 3/3</b><span>seeds 200000–2 · 87 / 79 / 156 steps · fold 0.90 / 0.97 / 0.91</span></figcaption></figure>
+      <figure><video controls muted playsinline preload="metadata" src="media/half_fold_isaac_privileged_recovery.mp4"></video>
+        <figcaption><b>Recovery · 2/3</b><span>seeds 300000–1 recover in 109 / 146 steps · 300002 times out at 250 (fold 0.65)</span></figcaption></figure>
+    </div>
+    <div class="vlabel"><h3>Sensor-only student</h3><span class="pill sens">replan 2</span></div>
+    <div class="vids">
+      <figure><video controls muted playsinline preload="metadata" src="media/half_fold_isaac_sensor_id_easy.mp4"></video>
+        <figcaption><b>Clean · 3/3</b><span>seeds 100000–2 · 82 / 96 / 91 steps · fold 0.98 / 0.93 / 0.96</span></figcaption></figure>
+      <figure><video controls muted playsinline preload="metadata" src="media/half_fold_isaac_sensor_id_hard.mp4"></video>
+        <figcaption><b>Shifted · 3/3</b><span>seeds 200000–2 · 89 / 79 / 113 steps · fold 0.96 / 0.95 / 0.94</span></figcaption></figure>
+      <figure><video controls muted playsinline preload="metadata" src="media/half_fold_isaac_sensor_recovery.mp4"></video>
+        <figcaption><b>Recovery · 1/3</b><span>seed 300000 recovers in 109 steps · 300001 and 300002 time out after missing the re-grasp</span></figcaption></figure>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-mujoco">
+    <div class="eyebrow">Against MuJoCo</div>
+    <h2 id="h-mujoco">Same pipeline, same eval seeds, different simulator</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>policy</th><th>clean</th><th>shifted</th><th>recovery</th></tr></thead>
+      <tbody>
+        <tr><td>MuJoCo privileged (DAgger diffusion, replan 4)</td><td class="num">99.5%</td><td class="num">77.0%</td><td class="num">79.5%</td></tr>
+        <tr><td><b>Isaac privileged</b> (DAgger diffusion r1, replan 4)</td><td class="num">99.0%</td><td class="num up">97.5% (+20.5)</td><td class="num down">54.5% (−25.0)</td></tr>
+        <tr><td>MuJoCo sensor-only (vision student, replan 2)</td><td class="num">94.0%</td><td class="num">91.0%</td><td class="num">41.0%</td></tr>
+        <tr><td><b>Isaac sensor-only</b> (vision student, replan 2)</td><td class="num up">99.0% (+5.0)</td><td class="num down">82.5% (−8.5)</td><td class="num down">31.0% (−10.0)</td></tr>
+      </tbody>
+    </table></div>
+    <ul>
+      <li><b>Shifted poses are much better on Isaac.</b> Replanning every 4 steps removed the privileged policy's grasp misses entirely (grasp success 100%).</li>
+      <li><b>Recovery is the gap.</b> The Isaac expert itself recovers only 81.7% of knocks (MuJoCo's: 96%), which caps what imitation can learn.</li>
+      <li><b>DAgger teaches less on Isaac.</b> Isaac has no simulator snapshot, so the expert can only correct by taking over: 403 corrections in one round, against a label at every replan point on MuJoCo. One round added +5 pp recovery here against +17 pp on MuJoCo.</li>
+      <li><b>Most recovery failures are missed re-grasps.</b> After the knock the gripper closes more than 3 cm from its corner, so the grasp never engages: 50 of 91 privileged failures, 115 of 138 sensor-only failures.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="h-train">
+    <div class="eyebrow">How it was trained</div>
+    <h2 id="h-train">Pipeline stages and selection results</h2>
+    <p class="note">Selection evals: n = 100 per benchmark at replan 8, used only to pick seeds and rounds. Order: clean / shifted / recovery.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>stage</th><th>data and setting</th><th>result</th></tr></thead>
+      <tbody>
+        <tr><td>Expert demos</td><td>400 seeds, 30% knocked; 384 successes kept, 16 failures for the detector; 75 min</td><td class="num">expert 100 / 100 / 81</td></tr>
+        <tr><td>Diffusion BC, seed 0</td><td>30k steps, 36 min</td><td class="num">100 / 85 / 44</td></tr>
+        <tr><td>Diffusion BC, seed 1</td><td>same recipe, seed check</td><td class="num">98 / 73 / 38</td></tr>
+        <tr><td>DAgger round 1</td><td>128 student rollouts, expert takeovers p = 0.3, 403 labels, 15k steps</td><td class="num">100 / 88 / 49</td></tr>
+        <tr><td>Sensor-only student</td><td>30k steps, every collected step relabelled by the DAgger policy; 19 min</td><td class="num">final table above</td></tr>
+        <tr><td>Success detector</td><td>image classifier on successes + failures</td><td class="num">98.0% agreement (392/400), 0 false passes</td></tr>
+      </tbody>
+    </table></div>
+    <ul>
+      <li><b>Seed variance:</b> 12 pp on shifted between two BC seeds. Read single-seed differences under about 10 pp as noise.</li>
+      <li><b>Compute:</b> one laptop GPU (16 GB). Capped at 2 Isaac processes × 4 envs with a thermal guard that pauses work at 90 °C; the GPU peaked at 87 °C and nothing paused.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="h-open">
+    <div class="eyebrow">Open items</div>
+    <h2 id="h-open">What this does not settle yet</h2>
+    <ul>
+      <li><b>Recovery</b> (54.5% privileged, 31.0% sensor-only). Next options: more DAgger rounds with more expert takeovers (about 1.5 h per round), or a better expert re-grasp.</li>
+      <li><b>The weld grasp is a stand-in</b> for LeHome's friction grasp, whose track is paused. These numbers hold for the weld profile only.</li>
+      <li><b>A parallel branch</b> (<span class="mono">feat/isaac-half-fold</span>) ports the same task with an anchor grasp and BC only (9/10 clean, n = 10). The two need reconciling before either lands on main.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>Source of truth: docs/results.md · Report in repo: docs/reports/2026-10-07-isaac-half-fold.md</span>
+    <span>Verify: python -m imitation.verify W5 → PASS · tests: 187 fast, 12 slow passing</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  // [label, kind, k, n, lo, hi, expert, mujoco]
+  const sets = [
+    ["Clean", [["privileged", "priv", 198, 200, 96.4, 99.7, 100, 99.5], ["sensor-only", "sens", 198, 200, 96.4, 99.7, 100, 94.0]]],
+    ["Shifted", [["privileged", "priv", 195, 200, 94.3, 98.9, 100, 77.0], ["sensor-only", "sens", 165, 200, 76.6, 87.1, 100, 91.0]]],
+    ["Recovery", [["privileged", "priv", 109, 200, 47.6, 61.3, 81.7, 79.5], ["sensor-only", "sens", 62, 200, 25.0, 37.7, 81.7, 41.0]]],
+  ];
+  const root = document.getElementById("bars");
+  for (const [title, rows] of sets) {
+    const set = document.createElement("div");
+    set.className = "set";
+    set.innerHTML = '<h3>' + title + '</h3>';
+    for (const [name, kind, k, n, lo, hi, ex, mj] of rows) {
+      const p = 100 * k / n;
+      const row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML =
+        '<span class="name">' + name + '</span>' +
+        '<div class="track">' +
+          '<div class="bar ' + kind + '" style="width:' + p + '%"></div>' +
+          '<div class="ci-line" style="left:' + lo + '%;width:' + (hi - lo) + '%"></div>' +
+          '<div class="tick" style="left:calc(' + ex + '% - 1px)" title="scripted expert ' + ex + '%"></div>' +
+          '<div class="tick mj" style="left:calc(' + mj + '% - 1px)" title="MuJoCo best ' + mj + '%"></div>' +
+        '</div>' +
+        '<span class="val">' + p.toFixed(1) + '% · ' + k + '/' + n + '</span>';
+      set.appendChild(row);
+    }
+    root.appendChild(set);
+  }
+})();
+</script>
+
+</html>

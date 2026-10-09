@@ -1,0 +1,12 @@
+{
+ "milestone": "IG.1",
+ "status": "PASS",
+ "evidence": [
+  "ig1_baseline left_: acquired 20/20 [83.9, 100.0], held 18/20 [69.9, 97.2], placed 18/20 [69.9, 97.2], released 12/20 [38.7, 78.1], anchor drift max 0.0501 m",
+  "ig1_baseline right_: acquired 11/20 [34.2, 74.2], held 1/20 [0.9, 23.6], placed 0/20 [0.0, 16.1], released 0/20 [0.0, 16.1], anchor drift max 0.0748 m",
+  "n 20, seeds 600000..600019 in tune block=True; knobs as built=True",
+  "test_grasp_metrics.py exit 0: 5 passed in 0.11s"
+ ],
+ "commit": "ad56e4f32d69b38c141a61ecf6f7aec91b515a84",
+ "time": "2026-10-04T09:00:56-0400"
+}

@@ -1,0 +1,13 @@
+{
+ "ckpt": "expert",
+ "backend": "isaac",
+ "episodes": [
+  {
+   "seed": 100000,
+   "steps": 400,
+   "success": false,
+   "fold_score": 0.5163567599339813,
+   "termination_reason": null
+  }
+ ]
+}

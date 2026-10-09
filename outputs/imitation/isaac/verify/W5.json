@@ -1,0 +1,19 @@
+{
+ "milestone": "W5",
+ "status": "PASS",
+ "evidence": [
+  "final_privileged_r4: id_easy 198/200 [96.4, 99.7], id_hard 195/200 [94.3, 98.9], recovery 109/200 [47.6, 61.3] ok=True",
+  "final_vision_r2: id_easy 198/200 [96.4, 99.7], id_hard 165/200 [76.6, 87.1], recovery 62/200 [25.0, 37.7] ok=True",
+  "isaac_v1_weld_dagger/history.json: exists=True tracked=True",
+  "isaac_v1_weld_vision_t0/run.json: exists=True tracked=True",
+  "detector agreement 392/400 = 98.0% (bar >= 90%)",
+  "demo half_fold_isaac_privileged_id_easy.mp4: exists=True tracked=True",
+  "demo half_fold_isaac_privileged_id_hard.mp4: exists=True tracked=True",
+  "demo half_fold_isaac_privileged_recovery.mp4: exists=True tracked=True",
+  "demo half_fold_isaac_sensor_id_easy.mp4: exists=True tracked=True",
+  "demo half_fold_isaac_sensor_id_hard.mp4: exists=True tracked=True",
+  "demo half_fold_isaac_sensor_recovery.mp4: exists=True tracked=True"
+ ],
+ "commit": "effe4955589e4b14e5e1a557d5c8d1a48de0dcb4",
+ "time": "2026-10-07T01:22:27-0400"
+}

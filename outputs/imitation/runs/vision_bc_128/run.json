@@ -1,0 +1,137 @@
+{
+ "git_commit": "d05343a1a8a05e36e7e92db9fb60298db8fe59f0-dirty",
+ "dataset": {
+  "root": "outputs/imitation/datasets",
+  "version": "v1_img128",
+  "content_hash": "532f8a9c08b6abd2f31c105db8aa34ce72538a2e8d83f8b999c4e7c54ed7d964",
+  "n_episodes": 384,
+  "n_train_samples": 33028,
+  "n_dagger_labels": 0,
+  "clamped_fraction": 6.925688649062067e-05,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "vision",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "width": 512,
+   "depth": 3,
+   "dropout": 0.1,
+   "cameras": [
+    [
+     "main",
+     128
+    ],
+    [
+     "left_wrist_cam",
+     64
+    ],
+    [
+     "right_wrist_cam",
+     64
+    ]
+   ],
+   "feat": 256
+  },
+  "n_params": 8611712
+ },
+ "train": {
+  "steps": 30000,
+  "batch": 256,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 1.0,
+  "obs_subset": null,
+  "init_from": null,
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 999.9
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\vision_bc_128\\final.pt",
+  "sha256": "8382c33a3349e0ef2034d333894ef2773c646884f4e1ff9632e2ed980044e43e"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.11321054846048355,
+   "val_loss": 0.11339675594001578
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.06844415748491883,
+   "val_loss": 0.0792097904246559
+  },
+  {
+   "step": 6000,
+   "train_loss": 0.05385750224813819,
+   "val_loss": 0.0724961131109739
+  },
+  {
+   "step": 8000,
+   "train_loss": 0.04335575569421053,
+   "val_loss": 0.07026414364780915
+  },
+  {
+   "step": 10000,
+   "train_loss": 0.03669985057786107,
+   "val_loss": 0.0693540741630368
+  },
+  {
+   "step": 12000,
+   "train_loss": 0.03167439675889909,
+   "val_loss": 0.06928168454571196
+  },
+  {
+   "step": 14000,
+   "train_loss": 0.02755524800159037,
+   "val_loss": 0.06846273481959103
+  },
+  {
+   "step": 16000,
+   "train_loss": 0.024017094541341065,
+   "val_loss": 0.06823314527530505
+  },
+  {
+   "step": 18000,
+   "train_loss": 0.021555617405101656,
+   "val_loss": 0.06790499924265395
+  },
+  {
+   "step": 20000,
+   "train_loss": 0.01912121889181435,
+   "val_loss": 0.067753682922655
+  },
+  {
+   "step": 22000,
+   "train_loss": 0.01752570827957243,
+   "val_loss": 0.06778780760284177
+  },
+  {
+   "step": 24000,
+   "train_loss": 0.016233335738070308,
+   "val_loss": 0.06787596072807094
+  },
+  {
+   "step": 26000,
+   "train_loss": 0.015073681669309735,
+   "val_loss": 0.06789483439764517
+  },
+  {
+   "step": 28000,
+   "train_loss": 0.014715389721095562,
+   "val_loss": 0.0679259587989832
+  },
+  {
+   "step": 30000,
+   "train_loss": 0.014169287984259427,
+   "val_loss": 0.06793760690773255
+  }
+ ]
+}

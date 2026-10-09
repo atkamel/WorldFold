@@ -18,9 +18,14 @@ class ScriptedBase(gym.Env):
     """Exposes only what the fold wrappers read; the test moves vertices and grasps by hand."""
 
     def __init__(self):
+        self._sizes = (("proprio", 50), ("cloth_state", 69), ("task", 22))
         self.observation_space = gym.spaces.Dict({
             k: gym.spaces.Box(-np.inf, np.inf, shape=(n,), dtype=np.float32)
-            for k, n in (("proprio", 4), ("cloth_state", 4), ("task", 4))})
+            for k, n in self._sizes})
+        self.n_tasks = 4
+        self._domain_params = {}
+        self._goal_corners = None
+        self._goal_scale = None
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(14,), dtype=np.float32)
         self.prefixes = ["left_", "right_"]
         self.weld_mask = {}
@@ -29,10 +34,13 @@ class ScriptedBase(gym.Env):
         self.positions = None
         self.grasped = {p: False for p in self.prefixes}
 
-    def _obs(self):
-        return {k: np.zeros(4, dtype=np.float32) for k in ("proprio", "cloth_state", "task")}
+    def _get_obs(self):
+        return {k: np.zeros(n, dtype=np.float32) for k, n in self._sizes}
+
+    _obs = _get_obs
 
     def reset(self, seed=None, options=None):
+        self._domain_params = {}
         points, _ = cloth_grid_mesh()
         self.positions = np.array(points) + np.array([0.0, 0.0, 0.43])
         self.grasped = {p: False for p in self.prefixes}

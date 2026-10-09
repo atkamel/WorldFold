@@ -1,0 +1,12 @@
+{
+ "version": "isaac_pilot_isaac_pilot_dagger_r1",
+ "dagger_episodes": 16,
+ "takeovers": 208,
+ "full_chunks": 204,
+ "cut_by_episode_end": 4,
+ "full_rate": 0.9808,
+ "label_shape": [
+  16,
+  12
+ ]
+}

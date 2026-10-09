@@ -1,0 +1,160 @@
+{
+ "n": 20,
+ "seeds": [
+  600000,
+  600001,
+  600002,
+  600003,
+  600004,
+  600005,
+  600006,
+  600007,
+  600008,
+  600009,
+  600010,
+  600011,
+  600012,
+  600013,
+  600014,
+  600015,
+  600016,
+  600017,
+  600018,
+  600019
+ ],
+ "arms": {
+  "left_": {
+   "acquired": {
+    "k": 20,
+    "n": 20,
+    "rate": 100.0,
+    "wilson": [
+     83.9,
+     100.0
+    ]
+   },
+   "held": {
+    "k": 18,
+    "n": 20,
+    "rate": 90.0,
+    "wilson": [
+     69.9,
+     97.2
+    ]
+   },
+   "placed": {
+    "k": 18,
+    "n": 20,
+    "rate": 90.0,
+    "wilson": [
+     69.9,
+     97.2
+    ]
+   },
+   "released": {
+    "k": 17,
+    "n": 20,
+    "rate": 85.0,
+    "wilson": [
+     64.0,
+     94.8
+    ]
+   },
+   "released_strict": {
+    "k": 12,
+    "n": 20,
+    "rate": 60.0,
+    "wilson": [
+     38.7,
+     78.1
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.0401,
+    "max": 0.0501
+   },
+   "first_failure": {
+    "held": 2,
+    "placed": 1,
+    "released": 1
+   }
+  },
+  "right_": {
+   "acquired": {
+    "k": 11,
+    "n": 20,
+    "rate": 55.0,
+    "wilson": [
+     34.2,
+     74.2
+    ]
+   },
+   "held": {
+    "k": 1,
+    "n": 20,
+    "rate": 5.0,
+    "wilson": [
+     0.9,
+     23.6
+    ]
+   },
+   "placed": {
+    "k": 0,
+    "n": 20,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     16.1
+    ]
+   },
+   "released": {
+    "k": 1,
+    "n": 20,
+    "rate": 5.0,
+    "wilson": [
+     0.9,
+     23.6
+    ]
+   },
+   "released_strict": {
+    "k": 0,
+    "n": 20,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     16.1
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.0512,
+    "max": 0.0748
+   },
+   "first_failure": {
+    "held": 10,
+    "acquired": 9,
+    "placed": 1
+   }
+  }
+ },
+ "config": {
+  "knobs": {
+   "particle_friction": null,
+   "pad_friction": null,
+   "pad_thickness": null,
+   "gripper_drive": null,
+   "gripper_closed": null
+  },
+  "expert": {
+   "PINCH_HEIGHT": 0.01,
+   "PINCH_INSET": 0.005,
+   "PLACE_HEIGHT": 0.011,
+   "ARC_HEIGHT": 0.12,
+   "CLOSE_DWELL": 8,
+   "OPEN_DWELL": 6
+  },
+  "code": "C:\\Users\\ethan\\Documents\\Projects\\watai\\WorldFold\\.claude\\worktrees\\agent-a55d8fa30a92a92f8\\isaac\\grasp_bench.py"
+ },
+ "reasons": {
+  "bench_stop": 20
+ }
+}

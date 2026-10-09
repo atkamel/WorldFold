@@ -1,0 +1,402 @@
+[
+ {
+  "seed": 0,
+  "steps": 80,
+  "success": true,
+  "fold_score": 0.932,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 1,
+  "steps": 95,
+  "success": true,
+  "fold_score": 0.923,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 2,
+  "steps": 80,
+  "success": true,
+  "fold_score": 0.896,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 3,
+  "steps": 86,
+  "success": true,
+  "fold_score": 0.89,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 4,
+  "steps": 132,
+  "success": true,
+  "fold_score": 0.939,
+  "reason": "success",
+  "retries": 1
+ },
+ {
+  "seed": 5,
+  "steps": 114,
+  "success": true,
+  "fold_score": 0.887,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 6,
+  "steps": 84,
+  "success": true,
+  "fold_score": 0.932,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 7,
+  "steps": 95,
+  "success": true,
+  "fold_score": 0.903,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 8,
+  "steps": 94,
+  "success": true,
+  "fold_score": 0.927,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 9,
+  "steps": 82,
+  "success": true,
+  "fold_score": 0.919,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 10,
+  "steps": 79,
+  "success": true,
+  "fold_score": 0.883,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 11,
+  "steps": 85,
+  "success": true,
+  "fold_score": 0.918,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 12,
+  "steps": 96,
+  "success": true,
+  "fold_score": 0.931,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 13,
+  "steps": 104,
+  "success": true,
+  "fold_score": 0.89,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 14,
+  "steps": 85,
+  "success": true,
+  "fold_score": 0.905,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 15,
+  "steps": 87,
+  "success": true,
+  "fold_score": 0.854,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 16,
+  "steps": 97,
+  "success": true,
+  "fold_score": 0.883,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 17,
+  "steps": 79,
+  "success": true,
+  "fold_score": 0.915,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 18,
+  "steps": 87,
+  "success": true,
+  "fold_score": 0.929,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 19,
+  "steps": 95,
+  "success": true,
+  "fold_score": 0.941,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 20,
+  "steps": 87,
+  "success": true,
+  "fold_score": 0.905,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 21,
+  "steps": 82,
+  "success": true,
+  "fold_score": 0.876,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 22,
+  "steps": 94,
+  "success": true,
+  "fold_score": 0.891,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 23,
+  "steps": 84,
+  "success": true,
+  "fold_score": 0.922,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 24,
+  "steps": 250,
+  "success": false,
+  "fold_score": 0.764,
+  "reason": "truncated",
+  "retries": 4
+ },
+ {
+  "seed": 25,
+  "steps": 77,
+  "success": true,
+  "fold_score": 0.913,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 26,
+  "steps": 80,
+  "success": true,
+  "fold_score": 0.928,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 27,
+  "steps": 85,
+  "success": true,
+  "fold_score": 0.917,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 28,
+  "steps": 96,
+  "success": true,
+  "fold_score": 0.91,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 29,
+  "steps": 85,
+  "success": true,
+  "fold_score": 0.925,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 30,
+  "steps": 84,
+  "success": true,
+  "fold_score": 0.927,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 31,
+  "steps": 84,
+  "success": true,
+  "fold_score": 0.926,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 32,
+  "steps": 85,
+  "success": true,
+  "fold_score": 0.935,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 33,
+  "steps": 83,
+  "success": true,
+  "fold_score": 0.873,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 34,
+  "steps": 155,
+  "success": true,
+  "fold_score": 0.921,
+  "reason": "success",
+  "retries": 1
+ },
+ {
+  "seed": 35,
+  "steps": 250,
+  "success": false,
+  "fold_score": 0.761,
+  "reason": "truncated",
+  "retries": 3
+ },
+ {
+  "seed": 36,
+  "steps": 87,
+  "success": true,
+  "fold_score": 0.896,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 37,
+  "steps": 89,
+  "success": true,
+  "fold_score": 0.894,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 38,
+  "steps": 77,
+  "success": true,
+  "fold_score": 0.896,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 39,
+  "steps": 85,
+  "success": true,
+  "fold_score": 0.921,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 40,
+  "steps": 83,
+  "success": true,
+  "fold_score": 0.859,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 41,
+  "steps": 84,
+  "success": true,
+  "fold_score": 0.883,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 42,
+  "steps": 81,
+  "success": true,
+  "fold_score": 0.894,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 43,
+  "steps": 83,
+  "success": true,
+  "fold_score": 0.924,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 44,
+  "steps": 87,
+  "success": true,
+  "fold_score": 0.884,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 45,
+  "steps": 82,
+  "success": true,
+  "fold_score": 0.911,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 46,
+  "steps": 84,
+  "success": true,
+  "fold_score": 0.95,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 47,
+  "steps": 149,
+  "success": true,
+  "fold_score": 0.921,
+  "reason": "success",
+  "retries": 1
+ },
+ {
+  "seed": 48,
+  "steps": 84,
+  "success": true,
+  "fold_score": 0.931,
+  "reason": "success",
+  "retries": 0
+ },
+ {
+  "seed": 49,
+  "steps": 85,
+  "success": true,
+  "fold_score": 0.934,
+  "reason": "success",
+  "retries": 0
+ }
+]

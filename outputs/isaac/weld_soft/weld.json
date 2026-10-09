@@ -1,0 +1,115 @@
+{
+ "phases": {
+  "approach": {
+   "ik_err_mm": 0.0,
+   "steps": 40,
+   "s_per_step": 0.139,
+   "max_track_mm": null,
+   "corner_z_start": 0.424,
+   "corner_z_end": 0.424,
+   "grasp_active": false
+  },
+  "descend": {
+   "ik_err_mm": 0.0,
+   "steps": 30,
+   "s_per_step": 0.143,
+   "max_track_mm": null,
+   "corner_z_start": 0.424,
+   "corner_z_end": 0.4239,
+   "grasp_active": false
+  },
+  "close": {
+   "ik_err_mm": 0.0,
+   "steps": 5,
+   "s_per_step": 0.152,
+   "max_track_mm": 0.178,
+   "corner_z_start": 0.4239,
+   "corner_z_end": 0.4239,
+   "grasp_active": true
+  },
+  "lift": {
+   "ik_err_mm": 0.0,
+   "steps": 40,
+   "s_per_step": 0.148,
+   "max_track_mm": 63.926,
+   "corner_z_start": 0.424,
+   "corner_z_end": 0.479,
+   "grasp_active": true
+  },
+  "carry": {
+   "ik_err_mm": 0.01,
+   "steps": 40,
+   "s_per_step": 0.153,
+   "max_track_mm": 65.134,
+   "corner_z_start": 0.4735,
+   "corner_z_end": 0.4845,
+   "grasp_active": true
+  },
+  "hold_neutral": {
+   "ik_err_mm": 0.01,
+   "steps": 10,
+   "s_per_step": 0.152,
+   "max_track_mm": 62.678,
+   "corner_z_start": 0.481,
+   "corner_z_end": 0.4844,
+   "grasp_active": true
+  },
+  "release": {
+   "ik_err_mm": 0.01,
+   "steps": 30,
+   "s_per_step": 0.141,
+   "max_track_mm": null,
+   "corner_z_start": 0.4422,
+   "corner_z_end": 0.4289,
+   "grasp_active": false
+  },
+  "mask_approach": {
+   "ik_err_mm": 0.0,
+   "steps": 40,
+   "s_per_step": 0.138,
+   "max_track_mm": null,
+   "corner_z_start": 0.424,
+   "corner_z_end": 0.424,
+   "grasp_active": false
+  },
+  "mask_descend": {
+   "ik_err_mm": 0.0,
+   "steps": 30,
+   "s_per_step": 0.141,
+   "max_track_mm": null,
+   "corner_z_start": 0.424,
+   "corner_z_end": 0.4239,
+   "grasp_active": false
+  },
+  "mask_close": {
+   "ik_err_mm": 0.0,
+   "steps": 5,
+   "s_per_step": 0.143,
+   "max_track_mm": null,
+   "corner_z_start": 0.4239,
+   "corner_z_end": 0.4239,
+   "grasp_active": false
+  }
+ },
+ "device": "cuda:0",
+ "weld_tau": 0.02,
+ "cloth_rest_z": [
+  0.424,
+  0.424
+ ],
+ "engaged": true,
+ "n_pinned_particles": 21,
+ "held_on_neutral": true,
+ "released": true,
+ "masked_engaged": false,
+ "checks": {
+  "engaged": true,
+  "tracking_under_3mm": false,
+  "corner_rose_8cm": false,
+  "held_on_neutral": true,
+  "released_and_fell": false,
+  "mask_respected": true,
+  "cloth_rests_on_table": true
+ },
+ "passed": false
+}

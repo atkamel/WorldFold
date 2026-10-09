@@ -1,0 +1,569 @@
+﻿== 2026-10-07T18:01:36 "C:\Users\ethan\Documents\Projects\watai\WorldFold\.venv-isaac\Scripts\python.exe" -u "C:\Users\ethan\Documents\Projects\watai\WorldFold\isaac\grasp_bench.py" --seeds 600300:600400 --out "C:\Users\ethan\Documents\Projects\watai\WorldFold\outputs\isaac\grasp\f2_fresh" --profile friction
+[INFO][AppLauncher]: Using device: cuda:0
+[INFO][AppLauncher]: Loading experience file: C:\Users\ethan\Documents\Projects\watai\WorldFold\.venv-isaac\src\IsaacLab\apps\isaaclab.python.kit
+Loading user config located at: 'C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/data/Kit/Isaac-Sim/5.1/user.config.json'
+[Info] [carb] Logging to file: C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/logs/Kit/Isaac-Sim/5.1/kit_20261007_180137.log
+2026-10-07T22:01:37Z [22ms] [Warning] [carb.crashreporter-breakpad.plugin] [previous crash] preventing upload of minidump due to user opt-out: 'C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/data/Kit/Isaac-Sim/5.1\c028bb7c-c523-4d6e-8b2b-2af63f808ac2.dmp'
+2026-10-07T22:01:37Z [24ms] [Warning] [carb.crashreporter-breakpad.plugin] [previous crash] preventing upload of minidump due to user opt-out: 'C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/data/Kit/Isaac-Sim/5.1\581073d2-5aa0-4aac-8bfa-8d8e8aec0915.dmp'
+[0.486s] [ext: omni.kit.async_engine-0.0.3] startup
+[0.923s] [ext: omni.metrics.core-0.0.3] startup
+[0.925s] [ext: omni.client.lib-1.1.0] startup
+[0.955s] [ext: omni.blobkey-1.1.2] startup
+[0.957s] [ext: omni.stats-1.0.1] startup
+[0.962s] [ext: omni.datastore-0.0.0] startup
+[0.966s] [ext: omni.client-1.3.0] startup
+[0.979s] [ext: omni.ujitso.default-1.0.0] startup
+[0.985s] [ext: omni.hsscclient-1.1.2] startup
+[1.002s] [ext: omni.gpu_foundation.shadercache.d3d12-1.0.0] startup
+[1.014s] [ext: omni.assets.plugins-0.0.0] startup
+[1.029s] [ext: omni.gpu_foundation-0.0.0] startup
+[1.080s] [ext: carb.windowing.plugins-1.0.0] startup
+[1.414s] [ext: omni.kit.renderer.init-0.0.0] startup
+[1.418s] [ext: omni.materialx.libs-1.0.7] startup
+[1.449s] [ext: omni.kit.pipapi-0.0.0] startup
+[1.453s] [ext: omni.usd.config-1.0.6] startup
+[1.502s] [ext: omni.gpucompute.plugins-0.0.0] startup
+[1.511s] [ext: omni.usd.libs-1.0.1] startup
+[1.700s] [ext: omni.kit.telemetry-0.5.2] startup
+[1.737s] [ext: omni.mdl-56.0.3] startup
+[1.909s] [ext: omni.iray.libs-0.0.0] startup
+[1.947s] [ext: omni.mdl.neuraylib-0.2.12] startup
+[1.964s] [ext: omni.kit.usd.mdl-1.1.5] startup
+2026-10-07T22:01:39Z [1,878ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Arc(TM) 140T GPU (32GB)
+[2.227s] [ext: omni.kit.pip_archive-0.0.0] startup
+2026-10-07T22:01:39Z [1,901ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Arc(TM) 140T GPU (32GB)
+[2.230s] [ext: omni.kit.loop-isaac-1.3.7] startup
+[2.241s] [ext: omni.kit.test-2.0.1] startup
+[2.544s] [ext: omni.appwindow-1.1.10] startup
+[2.552s] [ext: omni.kit.renderer.core-1.1.0] startup
+[2.586s] [ext: omni.kit.renderer.capture-0.0.0] startup
+[2.595s] [ext: omni.kit.renderer.imgui-2.0.5] startup
+[2.618s] [ext: omni.ui-2.27.1] startup
+[2.647s] [ext: omni.kit.mainwindow-1.0.3] startup
+[2.652s] [ext: carb.audio-0.1.0] startup
+[2.656s] [ext: omni.uiaudio-1.0.0] startup
+[2.664s] [ext: omni.kit.uiapp-0.0.0] startup
+[2.664s] [ext: omni.usd.schema.metrics.assembler-107.3.1] startup
+[2.684s] [ext: omni.usd.schema.geospatial-0.0.0] startup
+[2.707s] [ext: omni.usd.schema.anim-0.0.0] startup
+[2.798s] [ext: omni.usd.schema.physx-107.3.26] startup
+[2.887s] [ext: omni.usd.schema.omnigraph-1.0.0] startup
+[2.915s] [ext: omni.usd.schema.semantics-0.0.0] startup
+[2.930s] [ext: omni.usd.schema.audio-0.0.0] startup
+[2.972s] [ext: isaacsim.robot.schema-3.6.0] startup
+[3.006s] [ext: omni.usd_resolver-1.0.0] startup
+[3.026s] [ext: omni.usd.core-1.5.3] startup
+[3.029s] [ext: omni.usd.schema.omni_lens_distortion-0.0.0] startup
+
+|---------------------------------------------------------------------------------------------|
+| Driver Version: 616.56        | Graphics API: D3D12
+|=============================================================================================|
+| GPU | Name                             | Active | LDA | GPU Memory | Vendor-ID | LUID       |
+|     |                                  |        |     |            | Device-ID | UUID       |
+|     |                                  |        |     |            | Bus-ID    |            |
+|---------------------------------------------------------------------------------------------|
+| 0   | NVIDIA GeForce RTX 5080 Laptop.. | Yes: 0 |     | 16003   MB | 10de      | 35350100.. |
+|     |                                  |        |     |            | 2c59      | 0          |
+|     |                                  |        |     |            | 1         |            |
+|---------------------------------------------------------------------------------------------|
+| 1   | Intel(R) Arc(TM) 140T GPU (32GB) |        |     | 128     MB | 8086      | c94f0100.. |
+|     |                                  |        |     |            | 7d51      | 0          |
+|     |                                  |        |     |            | N/A       |            |
+|=============================================================================================|
+| OS: Windows 11 Pro, Version: 10.0 (25H2), Build: 26200, Kernel: 10.0.26100.9457
+| Processor: Intel(R) Core(TM) Ultra 9 285H
+| Cores: 16 | Logical Cores: 16
+|---------------------------------------------------------------------------------------------|
+| Total Memory (MB): 64957 | Free Memory: 28351
+| Total Page/Swap (MB): 83857 | Free Page/Swap: 14640
+|---------------------------------------------------------------------------------------------|
+[3.102s] [ext: omni.usd.schema.omni_sensors-0.0.0] startup
+[3.104s] [ext: omni.usd.schema.omniscripting-1.0.0] startup
+2026-10-07T22:01:40Z [2,800ms] [Warning] [gpu.foundation.plugin] PCIe link width current (8) and maximum (16) for device 0 don't match.
+[3.130s] [ext: omni.kit.window.popup_dialog-2.0.24] startup
+[3.150s] [ext: omni.graph.exec-0.9.6] startup
+[3.155s] [ext: omni.kit.widget.nucleus_connector-2.0.1] startup
+[3.169s] [ext: omni.kit.usd_undo-0.1.8] startup
+[3.171s] [ext: omni.kit.exec.core-0.13.4] startup
+[3.185s] [ext: omni.kit.actions.core-1.0.0] startup
+[3.201s] [ext: omni.resourcemonitor-107.0.1] startup
+[3.215s] [ext: omni.activity.core-1.0.3] startup
+[3.222s] [ext: omni.timeline-1.0.14] startup
+[3.233s] [ext: omni.kit.commands-1.4.10] startup
+[3.262s] [ext: usdrt.scenegraph-7.6.1] startup
+[3.390s] [ext: omni.kit.audiodeviceenum-1.0.2] startup
+[3.399s] [ext: omni.hydra.usdrt_delegate-7.5.1] startup
+[3.429s] [ext: omni.hydra.scene_delegate-0.3.4] startup
+[3.436s] [ext: omni.usd-1.13.10] startup
+[3.546s] [ext: omni.kit.asset_converter-5.0.17] startup
+[3.570s] [ext: omni.usd.schema.render_settings.rtx-0.0.0] startup
+[3.576s] [ext: omni.index.libs-380600.8087.0] startup
+[3.576s] [ext: omni.volume-0.5.2] startup
+[3.593s] [ext: omni.ujitso.client-0.0.0] startup
+[3.599s] [ext: omni.index-1.0.1] startup
+[3.604s] [ext: omni.hydra.rtx.shadercache.d3d12-1.0.0] startup
+[3.613s] [ext: omni.hydra.rtx-1.0.0] startup
+[3.700s] [ext: omni.kit.viewport.legacy_gizmos-1.0.19] startup
+[3.709s] [ext: omni.kit.raycast.query-1.1.0] startup
+[3.721s] [ext: omni.kit.widget.path_field-2.0.11] startup
+[3.729s] [ext: omni.kit.clipboard-1.0.5] startup
+[3.733s] [ext: omni.kit.widget.options_menu-1.1.6] startup
+[3.751s] [ext: omni.kit.helper.file_utils-0.1.9] startup
+[3.757s] [ext: omni.kit.widget.browser_bar-2.0.10] startup
+[3.761s] [ext: omni.kit.notification_manager-1.0.10] startup
+[3.768s] [ext: omni.kit.menu.core-1.1.2] startup
+[3.773s] [ext: omni.kit.widget.options_button-1.0.3] startup
+[3.776s] [ext: omni.kit.widget.filebrowser-2.12.3] startup
+[3.812s] [ext: omni.kit.viewport.registry-104.0.6] startup
+[3.814s] [ext: omni.kit.menu.utils-2.0.5] startup
+[3.867s] [ext: omni.kit.widget.context_menu-1.2.5] startup
+[3.874s] [ext: omni.kit.usd.layers-2.2.11] startup
+[3.957s] [ext: omni.ui.scene-1.11.5] startup
+[3.968s] [ext: omni.kit.context_menu-1.8.6] startup
+[3.979s] [ext: omni.kit.window.filepicker-2.13.4] startup
+[4.112s] [ext: omni.kit.widget.searchable_combobox-1.0.6] startup
+[4.119s] [ext: omni.kit.viewport.scene_camera_model-1.0.6] startup
+[4.125s] [ext: omni.kit.hydra_texture-1.4.6] startup
+[4.135s] [ext: omni.kit.window.file_importer-1.1.18] startup
+[4.150s] [ext: omni.kit.widget.settings-1.2.6] startup
+[4.165s] [ext: omni.kit.window.drop_support-1.0.5] startup
+[4.167s] [ext: omni.kit.widget.viewport-107.1.3] startup
+[4.195s] [ext: omni.kit.material.library-2.0.7] startup
+[4.228s] [ext: omni.hydra.engine.stats-1.0.3] startup
+[4.236s] [ext: omni.kit.window.preferences-1.8.0] startup
+[4.271s] [ext: omni.kit.viewport.window-107.2.0] startup
+[4.471s] [ext: omni.kit.manipulator.transform-107.0.0] startup
+[4.497s] [ext: omni.kvdb-107.3.26] startup
+[4.506s] [ext: omni.kit.widget.toolbar-2.0.1] startup
+[4.532s] [ext: omni.kit.viewport.utility-1.1.2] startup
+[4.536s] [ext: omni.usdphysics-107.3.26] startup
+[4.542s] [ext: omni.physx.foundation-107.3.26] startup
+[4.553s] [ext: omni.localcache-107.3.26] startup
+[4.561s] [ext: omni.convexdecomposition-107.3.26] startup
+[4.573s] [ext: omni.kit.manipulator.tool.snap-1.5.13] startup
+[4.604s] [ext: omni.kit.manipulator.selector-1.1.3] startup
+[4.609s] [ext: omni.physx.cooking-107.3.26] startup
+[4.618s] [ext: omni.kit.viewport.manipulator.transform-107.0.4] startup
+[4.625s] [ext: omni.physx-107.3.26] startup
+[4.660s] [ext: omni.kit.manipulator.viewport-107.0.1] startup
+[4.665s] [ext: omni.kit.primitive.mesh-1.0.17] startup
+[4.683s] [ext: omni.kit.manipulator.prim.core-107.0.8] startup
+[4.720s] [ext: omni.fabric.commands-1.1.6] startup
+[4.741s] [ext: omni.kit.manipulator.prim.usd-107.0.3] startup
+[4.745s] [ext: omni.kit.manipulator.prim.fabric-107.0.4] startup
+[4.751s] [ext: omni.debugdraw-0.1.4] startup
+[4.761s] [ext: omni.physx.commands-107.3.26] startup
+[4.798s] [ext: omni.kit.manipulator.selection-106.0.1] startup
+[4.805s] [ext: omni.kit.manipulator.prim-107.0.0] startup
+[4.805s] [ext: omni.physics.tensors-107.3.26] startup
+[4.841s] [ext: omni.kit.property.adapter.core-1.0.2] startup
+[4.855s] [ext: omni.kit.widget.highlight_label-1.0.3] startup
+[4.857s] [ext: omni.kit.widget.searchfield-1.1.8] startup
+[4.866s] [ext: omni.kit.property.adapter.fabric-1.0.3] startup
+[4.876s] [ext: omni.kit.widget.filter-1.1.4] startup
+[4.880s] [ext: omni.kit.widget.prompt-1.0.7] startup
+[4.885s] [ext: omni.kit.window.property-1.12.1] startup
+[4.897s] [ext: omni.kit.property.adapter.usd-1.0.2] startup
+[4.900s] [ext: omni.kit.hotkeys.core-1.3.10] startup
+[4.905s] [ext: omni.kit.window.file_exporter-1.0.33] startup
+[4.910s] [ext: omni.kit.stage_template.core-1.1.22] startup
+[4.913s] [ext: omni.kit.viewport.menubar.core-107.2.1] startup
+[4.985s] [ext: omni.kit.viewport.actions-107.0.2] startup
+[4.998s] [ext: omni.kit.window.file-2.0.5] startup
+[5.018s] [ext: omni.kit.window.content_browser_registry-0.0.6] startup
+[5.022s] [ext: omni.kit.viewport.menubar.display-107.0.3] startup
+[5.027s] [ext: omni.kit.window.content_browser-3.1.3] startup
+[5.063s] [ext: omni.kit.widget.stage-3.1.4] startup
+[5.160s] [ext: omni.inspect-1.0.2] startup
+[5.172s] [ext: omni.kit.widget.layers-1.8.6] startup
+[5.289s] [ext: omni.kit.property.usd-4.5.12] startup
+[5.397s] [ext: omni.kit.numpy.common-0.1.3] startup
+[5.405s] [ext: omni.physics-107.3.26] startup
+[5.416s] [ext: omni.graph.core-2.184.5] startup
+[5.422s] [ext: omni.usdphysics.ui-107.3.26] startup
+[5.495s] [ext: omni.physics.stageupdate-107.3.26] startup
+[5.507s] [ext: isaacsim.core.deprecation_manager-0.2.7] startup
+[5.510s] [ext: omni.physx.ui-107.3.26] startup
+[5.675s] [ext: isaacsim.core.version-2.0.6] startup
+[5.677s] [ext: omni.usd.metrics.assembler-107.3.1] startup
+[5.701s] [ext: omni.warp.core-1.8.2] startup
+[6.152s] [ext: omni.ui_query-1.1.8] startup
+[6.157s] [ext: omni.physics.physx-107.3.26] startup
+2026-10-07T22:01:43Z [5,836ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [omni::physx::IPhysxBenchmarks v1.0] (plugin: <default plugin>), by client: omni.physics.physx.plugin. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.
+[6.166s] [ext: isaacsim.storage.native-1.5.1] startup
+[6.177s] [ext: omni.usd.metrics.assembler.physics-107.3.26] startup
+[6.191s] [ext: omni.isaac.dynamic_control-2.0.7] startup
+2026-10-07T22:01:43Z [5,878ms] [Warning] [omni.isaac.dynamic_control] omni.isaac.dynamic_control is deprecated as of Isaac Sim 4.5. No action is needed from end-users.
+[6.207s] [ext: omni.graph.tools-1.79.2] startup
+[6.345s] [ext: omni.physx.tensors-107.3.26] startup
+[6.355s] [ext: isaacsim.core.utils-3.5.1] startup
+[6.366s] [ext: omni.graph-1.141.2] startup
+[6.514s] [ext: isaacsim.core.simulation_manager-1.4.4] startup
+[11.883s] [ext: omni.graph.action_core-1.1.7] startup
+[11.893s] [ext: omni.kit.stage_templates-2.0.0] startup
+[11.905s] [ext: isaacsim.core.prims-0.6.1] startup
+[12.012s] [ext: omni.graph.action_nodes-1.50.4] startup
+[12.021s] [ext: isaacsim.core.api-4.8.0] startup
+[12.151s] [ext: omni.graph.action-1.130.0] startup
+[12.153s] [ext: omni.kit.widget.stage_icons-1.0.8] startup
+[12.161s] [ext: omni.kit.selection-0.1.6] startup
+[12.170s] [ext: omni.kit.window.stage-2.6.1] startup
+[12.192s] [ext: omni.kit.menu.create-2.0.1] startup
+[12.205s] [ext: omni.kit.widget.text_editor-1.1.1] startup
+[12.216s] [ext: omni.kit.ui_test-1.3.7] startup
+[12.228s] [ext: omni.kit.scripting-107.3.2] startup
+[12.266s] [ext: omni.kit.window.extensions-1.4.27] startup
+[12.404s] [ext: omni.graph.visualization.nodes-2.1.3] startup
+[12.444s] [ext: isaacsim.replicator.behavior-1.1.16] startup
+[12.448s] [ext: isaacsim.gui.components-1.2.1] startup
+[12.481s] [ext: isaacsim.gui.menu-2.4.4] startup
+[12.554s] [ext: isaacsim.core.cloner-1.4.10] startup
+[12.576s] [ext: semantics.schema.editor-2.0.2] startup
+2026-10-07T22:01:50Z [12,264ms] [Warning] [pxr.Semantics] pxr.Semantics is deprecated - please use Semantics instead
+[12.596s] [ext: omni.kit.widget.zoombar-1.0.6] startup
+[12.602s] [ext: omni.kit.usd.collect-2.4.5] startup
+[12.616s] [ext: omni.kit.browser.core-2.3.13] startup
+[12.643s] [ext: omni.kit.menu.stage-1.2.7] startup
+[12.649s] [ext: omni.kit.tool.collect-2.2.18] startup
+[12.664s] [ext: omni.kit.browser.folder.core-1.10.9] startup
+[12.695s] [ext: isaacsim.core.experimental.utils-0.3.0] startup
+[12.701s] [ext: isaacsim.asset.browser-1.3.23] startup
+[13.332s] [ext: omni.kit.widget.graph-2.0.0] startup
+[13.389s] [ext: omni.graph.image.core-0.6.1] startup
+[13.396s] [ext: omni.kit.graph.delegate.default-1.2.3] startup
+[13.399s] [ext: omni.graph.image.nodes-1.3.1] startup
+[13.406s] [ext: omni.kit.graph.editor.core-1.5.3] startup
+[13.428s] [ext: omni.graph.nodes-1.170.10] startup
+[13.456s] [ext: omni.graph.ui_nodes-1.50.5] startup
+[13.471s] [ext: omni.kit.graph.usd.commands-1.3.1] startup
+[13.481s] [ext: omni.kit.widget.material_preview-1.0.16] startup
+[13.502s] [ext: omni.videoencoding-0.1.2] startup
+[13.514s] [ext: omni.kit.stagerecorder.core-107.0.3] startup
+[13.536s] [ext: omni.warp-1.8.2] startup
+[13.558s] [ext: omni.syntheticdata-0.6.13] startup
+[13.664s] [ext: omni.kit.window.material_graph-1.9.1] startup
+[13.783s] [ext: omni.graph.scriptnode-1.50.0] startup
+[13.800s] [ext: omni.kit.stagerecorder.ui-107.0.1] startup
+[13.864s] [ext: omni.replicator.core-1.12.27] startup
+2026-10-07T22:01:51Z [13,917ms] [Warning] [omni.graph.core.plugin] Found duplicate of category 'Replicator' - was 'Annotators', adding 'Fabric Reader'
+2026-10-07T22:01:51Z [13,918ms] [Warning] [omni.graph.core.plugin] Category 'Replicator' not accepted on node type 'omni.replicator.core.FabricReader' in extension 'omni.replicator.core'
+2026-10-07T22:01:51Z [13,921ms] [Warning] [omni.replicator.core.scripts.extension] No material configuration file, adding configuration to material settings directly.
+[14.256s] [ext: omni.kit.stagerecorder.bundle-105.0.2] startup
+[14.260s] [ext: isaacsim.core.nodes-3.4.3] startup
+[14.286s] [ext: isaacsim.test.docstring-1.1.0] startup
+[14.316s] [ext: isaacsim.sensors.camera-1.3.6] startup
+[14.366s] [ext: isaacsim.core.experimental.prims-0.8.1] startup
+[14.485s] [ext: omni.kit.usdz_export-1.0.9] startup
+[14.497s] [ext: isaacsim.robot.surface_gripper-3.3.1] startup
+[14.522s] [ext: isaacsim.sensors.physics-0.4.3] startup
+[14.571s] [ext: omni.kit.tool.asset_importer-4.3.2] startup
+[14.632s] [ext: isaacsim.robot.manipulators-3.3.6] startup
+[14.667s] [ext: isaacsim.robot.policy.examples-4.1.11] startup
+[14.682s] [ext: omni.sensors.nv.common-3.0.0] startup
+[14.752s] [ext: isaacsim.asset.importer.mjcf-2.5.13] startup
+[15.599s] [ext: isaacsim.util.debug_draw-3.1.0] startup
+[15.621s] [ext: omni.sensors.nv.materials-2.0.0] startup
+[15.672s] [ext: omni.sensors.net-1.0.0] startup
+[15.754s] [ext: isaacsim.sensors.physx-2.3.2] startup
+[15.779s] [ext: isaacsim.examples.browser-0.2.1] startup
+[15.794s] [ext: isaacsim.asset.importer.urdf-2.4.31] startup
+[16.014s] [ext: isaacsim.simulation_app-2.12.2] startup
+[16.018s] [ext: omni.sensors.nv.ids-2.0.0] startup
+[16.042s] [ext: omni.sensors.nv.lidar-3.0.0] startup
+[16.070s] [ext: omni.kit.property.audio-1.0.16] startup
+[16.088s] [ext: omni.kit.property.camera-1.0.10] startup
+[16.110s] [ext: omni.kit.property.geometry-2.0.4] startup
+[16.127s] [ext: omni.hydra.scene_api-0.1.2] startup
+[16.139s] [ext: omni.sensors.nv.wpm-3.0.0] startup
+[16.150s] [ext: omni.kit.property.light-1.0.12] startup
+[16.245s] [ext: omni.kit.property.material-1.11.9] startup
+[16.369s] [ext: omni.kit.property.render-1.2.1] startup
+[16.382s] [ext: omni.kit.property.transform-1.5.13] startup
+[16.489s] [ext: omni.sensors.nv.radar-3.0.0] startup
+[16.531s] [ext: omni.anim.curve.core-1.3.1] startup
+[16.577s] [ext: omni.kit.manipulator.camera-106.0.4] startup
+[16.609s] [ext: isaacsim.gui.property-1.1.3] startup
+[16.623s] [ext: omni.kit.property.bundle-1.4.1] startup
+[16.630s] [ext: isaacsim.sensors.rtx-15.8.4] startup
+[16.661s] [ext: omni.kit.viewport.menubar.camera-107.0.6] startup
+[16.706s] [ext: omni.kit.viewport.menubar.lighting-107.3.1] startup
+[16.728s] [ext: omni.kit.viewport.menubar.render-107.0.10] startup
+[16.750s] [ext: omni.kit.viewport.menubar.settings-107.0.3] startup
+[16.773s] [ext: omni.kit.window.script_editor-2.0.1] startup
+[16.792s] [ext: omni.kit.window.console-1.1.4] startup
+[16.815s] [ext: isaacsim.robot.wheeled_robots-4.0.24] startup
+[16.851s] [ext: omni.physx.demos-107.3.26] startup
+[17.061s] [ext: omni.kit.property.physx-107.3.26] startup
+[17.181s] [ext: omni.rtx.window.settings-0.6.19] startup
+[17.221s] [ext: omni.ocio-0.1.1] startup
+[17.231s] [ext: omni.asset_validator.core-1.1.6] startup
+[17.428s] [ext: omni.physx.vehicle-107.3.26] startup
+[17.535s] [ext: omni.replicator.replicator_yaml-2.0.11] startup
+[17.614s] [ext: omni.rtx.settings.core-0.6.5] startup
+[17.650s] [ext: omni.kit.window.toolbar-2.0.0] startup
+[17.659s] [ext: omni.kit.window.status_bar-0.1.9] startup
+[17.668s] [ext: omni.physx.asset_validator-107.3.26] startup
+[17.704s] [ext: omni.physx.camera-107.3.26] startup
+[17.728s] [ext: omni.physx.cct-107.3.26] startup
+[17.754s] [ext: omni.physx.graph-107.3.26] startup
+[17.790s] [ext: omni.physx.supportui-107.3.26] startup
+[17.900s] [ext: omni.physx.telemetry-107.3.26] startup
+[17.912s] [ext: omni.usd.metrics.assembler.ui-107.3.1] startup
+[17.968s] [ext: isaacsim.app.about-2.0.11] startup
+[17.987s] [ext: isaacsim.core.throttling-2.2.2] startup
+[17.997s] [ext: omni.kit.ui.actions-1.0.5] startup
+[18.005s] [ext: semantics.schema.property-2.0.1] startup
+[18.011s] [ext: omni.physx.bundle-107.3.26] startup
+[18.012s] [ext: isaaclab-0.53.1] startup
+[19.385s] [ext: isaaclab_assets-0.2.4] startup
+[20.141s] [ext: isaaclab_tasks-0.11.12] startup
+[21.017s] [ext: omni.kit.menu.common-2.0.1] startup
+[21.024s] [ext: isaaclab_rl-0.4.7] startup
+[21.025s] [ext: isaaclab_mimic-1.0.16] startup
+[21.027s] [ext: isaaclab.python-2.3.0] startup
+[21.034s] Simulation App Starting
+2026-10-07T22:01:59Z [21,208ms] [Warning] [omni.fabric.plugin] Warning: attribute overrideClipRange not found for bucket id 9
+
+[21.584s] app ready
+[24.919s] Simulation App Startup Complete
+2026-10-07T22:02:04Z [26,902ms] [Warning] [isaaclab.envs.direct_rl_env] Seed not set for the environment. The environment creation may not be deterministic.
+
+[36m===================================================================================================================[0m
+[36m[1m[INFO][IsaacLab]: Logging to file: C:\Users\ethan\AppData\Local\Temp\isaaclab\logs\isaaclab_2026-10-07_18-02-04.log[0m
+[36m===================================================================================================================[0m
+
+[27.472s] [ext: omni.physx.fabric-107.3.26] startup
+[33m18:02:08 [simulation_context.py] WARNING: The `enable_external_forces_every_iteration` parameter in the PhysxCfg is set to False. If you are experiencing noisy velocities, consider enabling this flag. You may need to slightly increase the number of velocity iterations (setting it to 1 or 2 rather than 0), together with this flag, to improve the accuracy of velocity updates.[0m
+[INFO]: Base environment:
+	Environment device    : cuda:0
+	Environment seed      : None
+	Physics step-size     : 0.01
+	Rendering step-size   : 0.05
+	Environment step-size : 0.05
+2026-10-07T22:02:09Z [32,070ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-07 18:02:09 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+[INFO]: Time taken for scene creation : 0.998305 seconds
+[INFO]: Scene manager:  <class InteractiveScene>
+	Number of environments: 1
+	Environment spacing   : 4.0
+	Source prim name      : /World/envs/env_0
+	Global prim paths     : []
+	Replicate physics     : True
+[INFO]: Starting the simulation. This may take a few seconds. Please wait...
+2026-10-07T22:02:09Z [32,115ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Left_Robot/gripper/Capsule
+2026-10-07T22:02:09Z [32,115ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Left_Robot/jaw/Capsule
+2026-10-07T22:02:09Z [32,115ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Right_Robot/gripper/Capsule
+2026-10-07T22:02:09Z [32,116ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Right_Robot/jaw/Capsule
+2026-10-07T22:02:10Z [32,719ms] [Warning] [omni.physx.plugin] Detected an articulation at /World/Robot/Left_Robot with more than 4 velocity iterations being added to a TGS scene.The related behavior changed recently, please consult the changelog. This warning will only print once.
+2026-10-07T22:02:11Z [33,201ms] [Warning] [omni.fabric.plugin] getAttributeCount called on non-existent path /World/Robot/Right_Robot/wrist/visuals/wrist_roll_pitch_so101_v2
+2026-10-07T22:02:11Z [33,201ms] [Warning] [omni.fabric.plugin] getTypes called on non-existent path /World/Robot/Right_Robot/wrist/visuals/wrist_roll_pitch_so101_v2
+[INFO]: Time taken for simulation start : 2.773001 seconds
+[INFO]: Completed setting up the environment...
+CONFIG {"jitter": 0.01, "profile": "friction", "device": "cuda:0", "dr": true, "knobs": {"particle_friction": null, "pad_friction": null, "pad_thickness": null, "gripper_drive": {"stiffness": 17.8, "damping": 0.6, "effort_limit_sim": 10.0}, "gripper_closed": 0.05, "jaw_open_rate": null, "adhesion": 0.1, "adhesion_offset_scale": null, "gravity_scale": null, "physics_hz": null}, "expert": {"PINCH_HEIGHT": 0.005, "PINCH_INSET": 0.005, "PLACE_HEIGHT": 0.011, "ARC_HEIGHT": 0.12, "CLOSE_DWELL": 8, "OPEN_DWELL": 6}, "overshoot": {"0left_": [-0.001, 0.052, 0.0], "0right_": [0.013, 0.05, 0.0]}, "code": "C:\\Users\\ethan\\Documents\\Projects\\watai\\WorldFold\\isaac\\grasp_bench.py"}
+2026-10-07 18:02:12 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [0.0, -0.135, 0.425]
+2026-10-07 18:02:12 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-07 18:02:12 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600300 success 168 54.0 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:03:06 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600301 success 172 58.1 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:04:05 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600302 success 164 59.7 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:05:04 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600303 success 154 56.9 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:06:01 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600304 success 169 56.3 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:06:57 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600305 bench_stop 202 70.3 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:08:08 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600306 success 156 51.7 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:08:59 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600307 success 169 55.7 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:09:55 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600308 success 165 53.1 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:10:48 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600309 success 173 55.7 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:11:44 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600310 success 166 59.3 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:12:43 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600311 bench_stop 200 63.4 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": false, "placed": false, "released": false}}
+2026-10-07 18:13:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600312 success 166 57.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:14:45 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600313 bench_stop 187 65.8 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:15:50 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600314 success 179 60.3 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:16:51 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600315 success 174 63.6 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:17:54 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600316 bench_stop 188 57.3 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:18:51 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600317 success 173 59.6 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:19:51 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600318 success 182 61.9 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:20:53 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600319 success 163 55.2 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:21:48 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600320 success 170 52.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:22:41 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600321 bench_stop 201 68.4 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": false, "released": true}}
+2026-10-07 18:23:49 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600322 success 173 62.3 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:24:52 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600323 success 164 51.1 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:25:43 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600324 bench_stop 186 58.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:26:42 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600325 success 168 56.5 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:27:38 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600326 success 163 49.9 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:28:28 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600327 bench_stop 185 59.5 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:29:27 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600328 success 183 61.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:30:29 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600329 success 183 61.0 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:31:30 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600330 success 167 55.7 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:32:26 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600331 success 173 56.1 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:33:22 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600332 bench_stop 200 65.9 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": false, "placed": false, "released": false}}
+2026-10-07 18:34:28 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600333 success 169 51.2 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:35:19 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600334 success 187 66.6 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:36:26 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600335 success 158 56.1 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:37:22 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600336 bench_stop 202 65.4 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:38:27 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600337 success 173 60.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:39:28 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600338 success 171 53.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:40:22 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600339 success 161 57.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:41:20 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600340 success 164 52.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:42:12 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600341 success 168 48.7 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:43:01 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600342 bench_stop 201 63.3 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:44:05 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600343 success 172 52.4 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:44:57 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600344 success 167 58.2 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:45:55 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600345 success 176 56.6 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:46:52 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600346 bench_stop 198 67.3 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": false, "released": true}}
+2026-10-07 18:47:59 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600347 success 157 50.3 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:48:49 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600348 success 193 70.4 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:50:00 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600349 success 166 48.0 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:50:48 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600350 success 170 56.2 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:51:44 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600351 bench_stop 200 67.6 {"left_": {"acquired": true, "held": false, "placed": false, "released": false}, "right_": {"acquired": true, "held": false, "placed": false, "released": false}}
+2026-10-07 18:52:52 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-07T22:52:53Z [3,076,118ms] [Warning] [carb] Client gpu.foundation.plugin has acquired [gpu::unstable::IMemoryBudgetManagerFactory v0.1] 100 times. Consider accessing this interface with carb::getCachedInterface() (Performance warning)
+ROW 600352 success 175 57.1 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:53:49 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600353 bench_stop 193 66.1 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:54:55 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600354 success 169 49.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:55:45 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600355 success 161 52.1 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:56:37 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600356 success 165 57.5 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:57:34 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600357 bench_stop 186 48.0 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:58:22 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600358 success 181 38.5 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:59:01 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600359 success 166 46.2 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 18:59:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600360 success 166 60.1 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:00:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600361 success 167 55.2 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:01:42 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600362 success 177 59.3 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:02:41 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600363 success 180 60.9 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:03:42 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600364 success 165 54.3 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": false, "placed": true, "released": false}}
+2026-10-07 19:04:37 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600365 bench_stop 186 63.3 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:05:40 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600366 success 177 59.7 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:06:40 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600367 bench_stop 187 60.2 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:07:40 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600368 success 162 53.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:08:34 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600369 success 163 52.1 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:09:26 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600370 success 162 58.4 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:10:24 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600371 success 170 51.4 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:11:16 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600372 success 164 56.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:12:12 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600373 success 185 65.5 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:13:18 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600374 bench_stop 196 66.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": false, "released": true}}
+2026-10-07 19:14:25 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600375 success 164 50.7 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:15:15 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600376 bench_stop 185 61.9 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:16:17 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600377 bench_stop 200 68.6 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": false, "placed": false, "released": false}}
+2026-10-07 19:17:26 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600378 success 162 57.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:18:24 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600379 success 175 63.4 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:19:27 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600380 bench_stop 202 65.2 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": false, "placed": false, "released": false}}
+2026-10-07 19:20:32 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600381 success 173 62.5 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:21:35 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600382 success 178 58.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:22:34 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600383 bench_stop 194 59.3 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:23:33 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600384 success 158 54.0 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:24:27 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600385 success 160 53.3 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:25:20 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600386 success 165 52.5 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:26:13 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600387 success 166 51.3 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:27:04 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600388 success 173 61.3 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:28:05 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600389 success 156 61.2 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:29:06 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600390 success 162 57.5 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:30:04 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600391 success 170 54.9 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:30:59 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600392 success 182 69.5 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:32:08 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600393 success 189 73.5 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:33:22 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600394 bench_stop 200 67.9 {"left_": {"acquired": true, "held": true, "placed": false, "released": true}, "right_": {"acquired": true, "held": true, "placed": false, "released": true}}
+2026-10-07 19:34:30 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600395 success 161 50.6 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:35:20 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600396 success 179 55.8 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:36:16 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600397 success 169 62.4 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:37:19 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600398 success 171 56.7 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+2026-10-07 19:38:15 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+ROW 600399 success 165 60.2 {"left_": {"acquired": true, "held": true, "placed": true, "released": true}, "right_": {"acquired": true, "held": true, "placed": true, "released": true}}
+n = 100  reasons {'success': 78, 'bench_stop': 22}
+  left_   acquired 100/100 [96.3, 100.0]  held 99/100 [94.6, 99.8]  placed 86/100 [77.9, 91.5]  released 99/100 [94.6, 99.8]  released_strict 22/100 [15.0, 31.1]  drift mean 0.0562 max 0.1572  first failure {'placed': 13, 'held': 1}
+  right_  acquired 100/100 [96.3, 100.0]  held 94/100 [87.5, 97.2]  placed 91/100 [83.8, 95.2]  released 94/100 [87.5, 97.2]  released_strict 9/100 [4.8, 16.2]  drift mean 0.0447 max 0.1792  first failure {'held': 6, 'placed': 4}
+== exit 0 2026-10-07T19:39:17

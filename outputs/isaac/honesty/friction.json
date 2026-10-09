@@ -1,0 +1,149 @@
+{
+ "backend": "isaac_friction",
+ "profile": "friction",
+ "grasp_mode": "friction",
+ "n": 20,
+ "seeds": [
+  100000,
+  100020
+ ],
+ "lifted_steps": 3667,
+ "violations": {
+  "pins": 0,
+  "attachments": 0,
+  "jaw_target": 0,
+  "lifted_shut": 0
+ },
+ "max_open_carry_steps": 3,
+ "open_carry_max": 5,
+ "examples": {
+  "pins": [],
+  "attachments": [],
+  "jaw_target": [],
+  "lifted_shut": []
+ },
+ "episodes": [
+  {
+   "seed": 100000,
+   "steps": 179,
+   "success": true,
+   "wall_s": 66.5
+  },
+  {
+   "seed": 100001,
+   "steps": 183,
+   "success": true,
+   "wall_s": 62.8
+  },
+  {
+   "seed": 100002,
+   "steps": 171,
+   "success": true,
+   "wall_s": 57.6
+  },
+  {
+   "seed": 100003,
+   "steps": 158,
+   "success": true,
+   "wall_s": 56.6
+  },
+  {
+   "seed": 100004,
+   "steps": 159,
+   "success": true,
+   "wall_s": 53.2
+  },
+  {
+   "seed": 100005,
+   "steps": 163,
+   "success": true,
+   "wall_s": 54.8
+  },
+  {
+   "seed": 100006,
+   "steps": 168,
+   "success": true,
+   "wall_s": 53.6
+  },
+  {
+   "seed": 100007,
+   "steps": 162,
+   "success": true,
+   "wall_s": 55.2
+  },
+  {
+   "seed": 100008,
+   "steps": 172,
+   "success": true,
+   "wall_s": 55.6
+  },
+  {
+   "seed": 100009,
+   "steps": 161,
+   "success": true,
+   "wall_s": 51.0
+  },
+  {
+   "seed": 100010,
+   "steps": 315,
+   "success": true,
+   "wall_s": 106.7
+  },
+  {
+   "seed": 100011,
+   "steps": 178,
+   "success": true,
+   "wall_s": 63.7
+  },
+  {
+   "seed": 100012,
+   "steps": 168,
+   "success": true,
+   "wall_s": 48.4
+  },
+  {
+   "seed": 100013,
+   "steps": 278,
+   "success": false,
+   "wall_s": 105.7
+  },
+  {
+   "seed": 100014,
+   "steps": 164,
+   "success": true,
+   "wall_s": 52.3
+  },
+  {
+   "seed": 100015,
+   "steps": 400,
+   "success": false,
+   "wall_s": 136.8
+  },
+  {
+   "seed": 100016,
+   "steps": 164,
+   "success": true,
+   "wall_s": 53.9
+  },
+  {
+   "seed": 100017,
+   "steps": 193,
+   "success": true,
+   "wall_s": 66.1
+  },
+  {
+   "seed": 100018,
+   "steps": 177,
+   "success": true,
+   "wall_s": 60.7
+  },
+  {
+   "seed": 100019,
+   "steps": 162,
+   "success": true,
+   "wall_s": 53.1
+  }
+ ],
+ "successes": 18,
+ "honest": true
+}

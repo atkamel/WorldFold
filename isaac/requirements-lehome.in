@@ -1,0 +1,11 @@
+# LeHome lehome-challenge @a805ad2 root dependencies (pyproject.toml), re-resolved for Windows cp311.
+# Seeded with LeHome's own uv.lock export so its versions are kept wherever Windows allows.
+isaacsim[all,extscache]==5.1.0
+lerobot==0.4.3
+num2words>=0.5.14
+open3d>=0.19.0
+pinocchio>=0.4.3
+torch==2.7.0
+torchvision==0.22.0
+transformers>=4.57.6
+transforms3d>=0.4.2

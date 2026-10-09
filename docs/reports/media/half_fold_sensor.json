@@ -1,0 +1,33 @@
+{
+ "ckpt": "outputs/imitation/runs/vision_t0_128/final.pt",
+ "episodes": [
+  {
+   "seed": 100000,
+   "steps": 96,
+   "success": true,
+   "fold_score": 0.8704963093789408,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 100001,
+   "steps": 250,
+   "success": false,
+   "fold_score": 0.8144709909544497,
+   "termination_reason": null
+  },
+  {
+   "seed": 100002,
+   "steps": 82,
+   "success": true,
+   "fold_score": 0.9075328962011018,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 100003,
+   "steps": 100,
+   "success": true,
+   "fold_score": 0.8681601464368418,
+   "termination_reason": "success"
+  }
+ ]
+}

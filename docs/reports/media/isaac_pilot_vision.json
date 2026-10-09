@@ -1,0 +1,13 @@
+{
+ "ckpt": "outputs\\imitation\\runs\\isaac_pilot_vision\\final.pt",
+ "backend": "isaac",
+ "episodes": [
+  {
+   "seed": 100000,
+   "steps": 400,
+   "success": false,
+   "fold_score": 0.0,
+   "termination_reason": null
+  }
+ ]
+}

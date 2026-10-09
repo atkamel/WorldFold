@@ -1,0 +1,61 @@
+[
+ {
+  "round": 0,
+  "checkpoint": "outputs\\imitation\\runs\\isaac_pilot_diff\\final.pt",
+  "dataset": "isaac_pilot",
+  "eval": {
+   "id_easy": {
+    "n": 20,
+    "success_rate": 0.0,
+    "mean_fold_score": 0.11601706762900665,
+    "grasp_success": 1.0,
+    "mean_steps_success": null,
+    "termination": {
+     "truncated": 20
+    },
+    "failure_codes": {
+     "G1": 20
+    },
+    "perturbed_failures": 0,
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 11.368200008291751,
+     "mean_batch": 16.0
+    }
+   }
+  },
+  "kept": true
+ },
+ {
+  "round": 1,
+  "checkpoint": "outputs\\imitation\\runs\\isaac_pilot_dagger\\round_1\\final.pt",
+  "dataset": "isaac_pilot_isaac_pilot_dagger_r1",
+  "beta": 0.3,
+  "n_labels": 208,
+  "eval": {
+   "id_easy": {
+    "n": 20,
+    "success_rate": 0.0,
+    "mean_fold_score": 0.10853662493320027,
+    "grasp_success": 0.75,
+    "mean_steps_success": null,
+    "termination": {
+     "truncated": 20
+    },
+    "failure_codes": {
+     "G1": 19,
+     "S1": 1
+    },
+    "perturbed_failures": 0,
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 11.296700016828254,
+     "mean_batch": 16.0
+    }
+   }
+  },
+  "gain": 0.0,
+  "gain_se": 0.0,
+  "kept": false
+ }
+]

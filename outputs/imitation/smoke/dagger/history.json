@@ -1,0 +1,137 @@
+[
+ {
+  "round": 0,
+  "checkpoint": "outputs\\imitation\\smoke\\bc\\final.pt",
+  "dataset": "smoke",
+  "eval": {
+   "id_easy": {
+    "n": 14,
+    "success_rate": 0.5714285714285714,
+    "mean_fold_score": 0.793115532455312,
+    "grasp_success": 0.9285714285714286,
+    "mean_steps_success": 135.5,
+    "termination": {
+     "success": 8,
+     "truncated": 6
+    },
+    "failure_codes": {
+     "F1": 4,
+     "G1": 2
+    },
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 4.462000000785338,
+     "mean_batch": 1.114864864864865
+    }
+   },
+   "id_hard": {
+    "n": 14,
+    "success_rate": 0.0,
+    "mean_fold_score": 0.2001835195849432,
+    "grasp_success": 0.2857142857142857,
+    "mean_steps_success": null,
+    "termination": {
+     "truncated": 14
+    },
+    "failure_codes": {
+     "G1": 12,
+     "F1": 2
+    },
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 4.365500000858447,
+     "mean_batch": 1.108910891089109
+    }
+   },
+   "recovery": {
+    "n": 14,
+    "success_rate": 0.07142857142857142,
+    "mean_fold_score": 0.5425227513512746,
+    "grasp_success": 0.9285714285714286,
+    "mean_steps_success": 125.0,
+    "termination": {
+     "truncated": 13,
+     "success": 1
+    },
+    "failure_codes": {
+     "R1": 13
+    },
+    "perturbed_steps": 165,
+    "policy_infer_ms": {
+     "ms_per_call": 4.511899998760782,
+     "mean_batch": 1.139344262295082
+    }
+   }
+  },
+  "kept": true
+ },
+ {
+  "round": 1,
+  "checkpoint": "outputs\\imitation\\smoke\\dagger\\round_1\\final.pt",
+  "dataset": "smoke_dagger_r1",
+  "beta": 0.3,
+  "n_labels": 332,
+  "eval": {
+   "id_easy": {
+    "n": 14,
+    "success_rate": 0.9285714285714286,
+    "mean_fold_score": 0.851676334836718,
+    "grasp_success": 0.9285714285714286,
+    "mean_steps_success": 108.23076923076923,
+    "termination": {
+     "success": 13,
+     "truncated": 1
+    },
+    "failure_codes": {
+     "G1": 1
+    },
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 3.0593999981647357,
+     "mean_batch": 1.07
+    }
+   },
+   "id_hard": {
+    "n": 14,
+    "success_rate": 0.2857142857142857,
+    "mean_fold_score": 0.5511198990959343,
+    "grasp_success": 0.5714285714285714,
+    "mean_steps_success": 117.75,
+    "termination": {
+     "truncated": 10,
+     "success": 4
+    },
+    "failure_codes": {
+     "G1": 6,
+     "F1": 4
+    },
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 2.6307000007363968,
+     "mean_batch": 1.0888252148997135
+    }
+   },
+   "recovery": {
+    "n": 14,
+    "success_rate": 0.2857142857142857,
+    "mean_fold_score": 0.5923820610681881,
+    "grasp_success": 0.8571428571428571,
+    "mean_steps_success": 137.25,
+    "termination": {
+     "truncated": 10,
+     "success": 4
+    },
+    "failure_codes": {
+     "R1": 10
+    },
+    "perturbed_steps": 165,
+    "policy_infer_ms": {
+     "ms_per_call": 4.15564999821072,
+     "mean_batch": 1.106508875739645
+    }
+   }
+  },
+  "gain": 0.5714285714285716,
+  "kept": true
+ }
+]

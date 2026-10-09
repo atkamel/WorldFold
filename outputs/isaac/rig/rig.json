@@ -1,0 +1,61 @@
+{
+ "frames": {
+  "main": {
+   "shape": [
+    3,
+    128,
+    128
+   ],
+   "dtype": "uint8",
+   "expected": [
+    3,
+    128,
+    128
+   ],
+   "mean": 199.89697265625,
+   "std": 38.82060474560329
+  },
+  "left_wrist_cam": {
+   "shape": [
+    3,
+    64,
+    64
+   ],
+   "dtype": "uint8",
+   "expected": [
+    3,
+    64,
+    64
+   ],
+   "mean": 99.15738932291667,
+   "std": 32.8211268533539
+  },
+  "right_wrist_cam": {
+   "shape": [
+    3,
+    64,
+    64
+   ],
+   "dtype": "uint8",
+   "expected": [
+    3,
+    64,
+    64
+   ],
+   "mean": 95.16365559895833,
+   "std": 25.451690811264807
+  }
+ },
+ "wrist_pose": {
+  "left_": {
+   "pos_err_mm": 0.013532486518410006,
+   "rot_err_deg": 0.0
+  },
+  "right_": {
+   "pos_err_mm": 0.013532486518409804,
+   "rot_err_deg": 0.0
+  }
+ },
+ "dict_steps_per_s": 2.84,
+ "state_finite": true
+}

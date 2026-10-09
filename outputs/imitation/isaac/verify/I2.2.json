@@ -1,0 +1,9 @@
+{
+ "milestone": "I2.2",
+ "status": "PASS",
+ "evidence": [
+  "isaac_pilot_isaac_pilot_dagger_r1: 204/208 full chunks (98.1%), 4 cut by episode end, label shape [16, 12]"
+ ],
+ "commit": "bf8cd140bc1306f7d308b170b0758d61a48549eb",
+ "time": "2026-10-03T13:45:52-0400"
+}

@@ -1,0 +1,99 @@
+{
+ "profile": "mujoco",
+ "device": "cuda:0",
+ "grasp_mode": "weld",
+ "arm_drive": {
+  "stiffness": 998.22,
+  "damping": 3.331,
+  "effort_limit_sim": 3.35,
+  "armature": 0.028
+ },
+ "arm_step_fraction": {
+  "0": 1.403,
+  "1": 1.384,
+  "2": 1.351,
+  "3": 1.014,
+  "4": 1.012
+ },
+ "arm_step_fraction_mujoco": {
+  "0": 1.287,
+  "1": 1.395,
+  "2": 1.413,
+  "3": 1.33,
+  "4": 1.297
+ },
+ "cloth_centroid_zero": [
+  -0.0,
+  0.0
+ ],
+ "cloth_offset_measured": [
+  0.02,
+  -0.03
+ ],
+ "cloth_rest_z": [
+  0.424,
+  0.424
+ ],
+ "dr": {
+  "seed5": [
+   {
+    "params": {
+     "cloth_mass_scale": 1.1830017542472282,
+     "table_friction_scale": 1.1847644738418963,
+     "cloth_damping_scale": 1.0091953366252853
+    },
+    "mass_ratio": 1.183,
+    "friction_ratio": 1.18476,
+    "damping_ratio": 1.0092
+   },
+   {
+    "params": {
+     "cloth_mass_scale": 1.1830017542472282,
+     "table_friction_scale": 1.1847644738418963,
+     "cloth_damping_scale": 1.0091953366252853
+    },
+    "mass_ratio": 1.183,
+    "friction_ratio": 1.18476,
+    "damping_ratio": 1.0092
+   }
+  ],
+  "seed6": [
+   {
+    "params": {
+     "cloth_mass_scale": 1.022898610883166,
+     "table_friction_scale": 0.9059625218880031,
+     "cloth_damping_scale": 0.921440343877227
+    },
+    "mass_ratio": 1.0229,
+    "friction_ratio": 0.90596,
+    "damping_ratio": 0.92144
+   }
+  ],
+  "unrandomized": {
+   "params": {},
+   "mass_ratio": 1.0,
+   "friction": 0.5,
+   "damping": 0.05000000074505806
+  },
+  "rest_material": [
+   0.5,
+   0.05000000074505806
+  ]
+ },
+ "drop_mean_z_after_3_steps": {
+  "0.0": 0.60729,
+  "40.0": 0.61974
+ },
+ "checks": {
+  "arm_reaches_90pct_in_one_step": true,
+  "cloth_centred": true,
+  "cloth_offset_applied": true,
+  "dr_deterministic_per_seed": true,
+  "dr_differs_across_seeds": true,
+  "dr_in_range": true,
+  "dr_read_back": true,
+  "dr_off_restores": true,
+  "damping_takes_effect": true
+ },
+ "passed": true
+}

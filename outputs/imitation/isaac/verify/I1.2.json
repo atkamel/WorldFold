@@ -1,0 +1,10 @@
+{
+ "milestone": "I1.2",
+ "status": "PASS",
+ "evidence": [
+  "test_seeds.py exit 0: 6 passed in 3.47s",
+  "R_max 1.0 cm: reachable 1.0 of 200 ok=True"
+ ],
+ "commit": "bf8cd140bc1306f7d308b170b0758d61a48549eb",
+ "time": "2026-10-03T13:42:58-0400"
+}

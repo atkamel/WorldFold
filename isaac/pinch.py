@@ -101,3 +101,30 @@ class PinchIK:
             J = np.column_stack([(e - error(q + dq)) / 1e-6 for dq in np.eye(5) * 1e-6])
             q = np.clip(q + J.T @ np.linalg.solve(J @ J.T + 1e-4 * np.eye(6), e), self.low, self.high)
         return q, float(np.linalg.norm(self.site_pose(prefix, q)[0] - tip))
+
+    def solve_position(self, prefix, target, seed_q, rng=None, iters=400, damping=0.08, restarts=12, tol=0.006):
+        """cloth_fold_rl.expert.solve_ik on these kinematics: damped least squares on position only (the wrist is
+        free), steps capped at 0.1 rad, random restarts within the joint limits from the second try on. Returns the
+        best (q (5,), error (m))."""
+        rng = rng or np.random.default_rng(0)
+        target = np.asarray(target, float)
+        best_q, best_err = None, np.inf
+        for r in range(restarts):
+            q = np.clip(np.asarray(seed_q[:5], float), self.low, self.high) if r == 0 else rng.uniform(self.low, self.high)
+            for _ in range(iters):
+                err = target - self.site_pose(prefix, q)[0]
+                if np.linalg.norm(err) < tol:
+                    break
+                J = np.column_stack([(self.site_pose(prefix, q + dq)[0] - self.site_pose(prefix, q)[0]) / 1e-6
+                                     for dq in np.eye(5) * 1e-6])
+                dq = J.T @ np.linalg.solve(J @ J.T + damping ** 2 * np.eye(3), err)
+                step = float(np.max(np.abs(dq)))
+                if step > 0.1:
+                    dq *= 0.1 / step
+                q = np.clip(q + dq, self.low, self.high)
+            e = float(np.linalg.norm(target - self.site_pose(prefix, q)[0]))
+            if e < best_err:
+                best_q, best_err = q.copy(), e
+                if e < tol:
+                    break
+        return best_q, best_err

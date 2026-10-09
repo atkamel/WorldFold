@@ -1,0 +1,105 @@
+{
+ "B": 3,
+ "offsets": [
+  [
+   0.0,
+   0.0,
+   0.0
+  ],
+  [
+   2.5,
+   0.0,
+   0.0
+  ],
+  [
+   -2.5,
+   0.0,
+   0.0
+  ]
+ ],
+ "cloth_world_mean": [
+  [
+   0.0,
+   0.0,
+   0.42399999499320984
+  ],
+  [
+   2.5,
+   0.0,
+   0.42399999499320984
+  ],
+  [
+   -2.5,
+   0.0,
+   0.42399999499320984
+  ]
+ ],
+ "local_corner_diff_m": [
+  0.0,
+  8.940696716308594e-08,
+  8.940696716308594e-08
+ ],
+ "local_gripper_diff_m": [
+  0.0,
+  1.341104507446289e-07,
+  1.341104507446289e-07
+ ],
+ "local_joint_diff_rad": [
+  0.0,
+  0.0,
+  0.0
+ ],
+ "dr": [
+  {
+   "params": {
+    "cloth_mass_scale": 1.2009889783012053,
+    "table_friction_scale": 1.0579324161807324,
+    "cloth_damping_scale": 0.8733179450147222
+   },
+   "mass_ratio": 1.200989007949829,
+   "friction_ratio": 1.0579323768615723,
+   "damping_ratio": 0.8733179290098261
+  },
+  {
+   "params": {
+    "cloth_mass_scale": 1.2661195033663324,
+    "table_friction_scale": 0.9156526200049439,
+    "cloth_damping_scale": 1.1708832471819863
+   },
+   "mass_ratio": 1.2661194801330566,
+   "friction_ratio": 0.9156526327133179,
+   "damping_ratio": 1.1708832357692236
+  },
+  {
+   "params": {
+    "cloth_mass_scale": 0.7959946870025821,
+    "table_friction_scale": 1.0515661089041364,
+    "cloth_damping_scale": 1.194302066309708
+   },
+   "mass_ratio": 0.7959946990013123,
+   "friction_ratio": 1.0515661239624023,
+   "damping_ratio": 1.194302049364119
+  }
+ ],
+ "dr_repeat": {
+  "cloth_mass_scale": 1.2009889783012053,
+  "table_friction_scale": 1.0579324161807324,
+  "cloth_damping_scale": 0.8733179450147222
+ },
+ "isolation": {
+  "run_to_run_noise": 3.903503908997408e-11,
+  "deviation_with_other_reset": 7.0122364512204e-11,
+  "copy0_motion": 0.45344479382038116,
+  "unchanged_at_reset": true
+ },
+ "checks": {
+  "copies_separate": true,
+  "local_frame_matches": true,
+  "dr_per_copy": true,
+  "dr_deterministic": true,
+  "reset_isolated": true,
+  "reset_isolated_dynamics": true,
+  "weld_per_copy": false
+ },
+ "passed": false
+}

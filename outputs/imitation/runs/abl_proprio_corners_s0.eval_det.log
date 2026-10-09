@@ -1,0 +1,4 @@
+  id_easy   success 96% (191/200)  fold 0.906  grasp 100%  failures {'F1': 9}  632s
+  id_hard   success 46% (93/200)  fold 0.654  grasp 80%  failures {'F1': 23, 'G1': 69, 'S1': 15}  1017s
+  recovery  success 22% (44/200)  fold 0.638  grasp 98%  failures {'F1': 51, 'G1': 101, 'S1': 4}  1101s
+wrote outputs/imitation/runs/abl_proprio_corners_s0/eval_det.json

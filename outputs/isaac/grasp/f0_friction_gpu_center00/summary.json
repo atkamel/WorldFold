@@ -1,0 +1,151 @@
+{
+ "n": 1,
+ "seeds": [
+  600000
+ ],
+ "arms": {
+  "left_": {
+   "acquired": {
+    "k": 0,
+    "n": 1,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     79.3
+    ]
+   },
+   "held": {
+    "k": 0,
+    "n": 1,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     79.3
+    ]
+   },
+   "placed": {
+    "k": 0,
+    "n": 1,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     79.3
+    ]
+   },
+   "released": {
+    "k": 0,
+    "n": 1,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     79.3
+    ]
+   },
+   "released_strict": {
+    "k": 0,
+    "n": 1,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     79.3
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.0759,
+    "max": 0.0759
+   },
+   "first_failure": {
+    "acquired": 1
+   }
+  },
+  "right_": {
+   "acquired": {
+    "k": 0,
+    "n": 1,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     79.3
+    ]
+   },
+   "held": {
+    "k": 0,
+    "n": 1,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     79.3
+    ]
+   },
+   "placed": {
+    "k": 0,
+    "n": 1,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     79.3
+    ]
+   },
+   "released": {
+    "k": 0,
+    "n": 1,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     79.3
+    ]
+   },
+   "released_strict": {
+    "k": 0,
+    "n": 1,
+    "rate": 0.0,
+    "wilson": [
+     0.0,
+     79.3
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.0413,
+    "max": 0.0413
+   },
+   "first_failure": {
+    "acquired": 1
+   }
+  }
+ },
+ "config": {
+  "profile": "friction",
+  "knobs": {
+   "particle_friction": null,
+   "pad_friction": null,
+   "pad_thickness": null,
+   "gripper_drive": null,
+   "gripper_closed": 0.05,
+   "jaw_open_rate": null
+  },
+  "expert": {
+   "PINCH_HEIGHT": 0.005,
+   "PINCH_INSET": 0.005,
+   "PLACE_HEIGHT": 0.011,
+   "ARC_HEIGHT": 0.12,
+   "CLOSE_DWELL": 8,
+   "OPEN_DWELL": 6
+  },
+  "overshoot": {
+   "0left_": [
+    -0.001,
+    0.052,
+    0.0
+   ],
+   "0right_": [
+    0.013,
+    0.05,
+    0.0
+   ]
+  },
+  "code": "C:\\Users\\ethan\\Documents\\Projects\\watai\\WorldFold\\isaac\\grasp_bench.py"
+ },
+ "reasons": {
+  "bench_stop": 1
+ }
+}

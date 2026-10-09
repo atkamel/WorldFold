@@ -1,0 +1,27 @@
+{
+ "ckpt": "outputs\\imitation\\runs\\isaac_v1_friction_diff_s0\\final.pt",
+ "backend": "isaac_friction",
+ "episodes": [
+  {
+   "seed": 200000,
+   "steps": 167,
+   "success": true,
+   "fold_score": 0.9454425956790621,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 200001,
+   "steps": 400,
+   "success": false,
+   "fold_score": 0.7610691879668974,
+   "termination_reason": null
+  },
+  {
+   "seed": 200002,
+   "steps": 154,
+   "success": true,
+   "fold_score": 0.9053813927155685,
+   "termination_reason": "success"
+  }
+ ]
+}

@@ -1,0 +1,169 @@
+{
+ "n": 9,
+ "seeds": [
+  600000,
+  600001,
+  600002,
+  600003,
+  600004,
+  600005,
+  600006,
+  600007,
+  600008
+ ],
+ "arms": {
+  "left_": {
+   "acquired": {
+    "k": 9,
+    "n": 9,
+    "rate": 100.0,
+    "wilson": [
+     70.1,
+     100.0
+    ]
+   },
+   "held": {
+    "k": 4,
+    "n": 9,
+    "rate": 44.4,
+    "wilson": [
+     18.9,
+     73.3
+    ]
+   },
+   "placed": {
+    "k": 2,
+    "n": 9,
+    "rate": 22.2,
+    "wilson": [
+     6.3,
+     54.7
+    ]
+   },
+   "released": {
+    "k": 4,
+    "n": 9,
+    "rate": 44.4,
+    "wilson": [
+     18.9,
+     73.3
+    ]
+   },
+   "released_strict": {
+    "k": 3,
+    "n": 9,
+    "rate": 33.3,
+    "wilson": [
+     12.1,
+     64.6
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.0386,
+    "max": 0.0828
+   },
+   "first_failure": {
+    "placed": 2,
+    "held": 5
+   }
+  },
+  "right_": {
+   "acquired": {
+    "k": 8,
+    "n": 9,
+    "rate": 88.9,
+    "wilson": [
+     56.5,
+     98.0
+    ]
+   },
+   "held": {
+    "k": 4,
+    "n": 9,
+    "rate": 44.4,
+    "wilson": [
+     18.9,
+     73.3
+    ]
+   },
+   "placed": {
+    "k": 2,
+    "n": 9,
+    "rate": 22.2,
+    "wilson": [
+     6.3,
+     54.7
+    ]
+   },
+   "released": {
+    "k": 4,
+    "n": 9,
+    "rate": 44.4,
+    "wilson": [
+     18.9,
+     73.3
+    ]
+   },
+   "released_strict": {
+    "k": 4,
+    "n": 9,
+    "rate": 44.4,
+    "wilson": [
+     18.9,
+     73.3
+    ]
+   },
+   "anchor_drift_m": {
+    "mean": 0.0431,
+    "max": 0.0548
+   },
+   "first_failure": {
+    "acquired": 1,
+    "held": 4,
+    "placed": 2
+   }
+  }
+ },
+ "config": {
+  "profile": "friction",
+  "device": "cuda:0",
+  "dr": true,
+  "knobs": {
+   "particle_friction": null,
+   "pad_friction": null,
+   "pad_thickness": null,
+   "gripper_drive": null,
+   "gripper_closed": 0.05,
+   "jaw_open_rate": null,
+   "adhesion": 0.1,
+   "adhesion_offset_scale": null,
+   "gravity_scale": null,
+   "physics_hz": null
+  },
+  "expert": {
+   "PINCH_HEIGHT": 0.005,
+   "PINCH_INSET": 0.005,
+   "PLACE_HEIGHT": 0.011,
+   "ARC_HEIGHT": 0.12,
+   "CLOSE_DWELL": 8,
+   "OPEN_DWELL": 6
+  },
+  "overshoot": {
+   "0left_": [
+    -0.001,
+    0.052,
+    0.0
+   ],
+   "0right_": [
+    0.013,
+    0.05,
+    0.0
+   ]
+  },
+  "code": "C:\\Users\\ethan\\Documents\\Projects\\watai\\WorldFold\\isaac\\grasp_bench.py"
+ },
+ "reasons": {
+  "success": 1,
+  "bench_stop": 8
+ }
+}

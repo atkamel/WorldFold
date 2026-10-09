@@ -1,0 +1,377 @@
+﻿[INFO][AppLauncher]: Using device: cpu
+[INFO][AppLauncher]: Loading experience file: C:\Users\ethan\Documents\Projects\watai\WorldFold\.venv-isaac\src\IsaacLab\apps\isaaclab.python.kit
+Loading user config located at: 'C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/data/Kit/Isaac-Sim/5.1/user.config.json'
+[Info] [carb] Logging to file: C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/logs/Kit/Isaac-Sim/5.1/kit_20261003_013620.log
+2026-10-03T05:36:20Z [10ms] [Warning] [carb.crashreporter-breakpad.plugin] [previous crash] preventing upload of minidump due to user opt-out: 'C:/Users/ethan/Documents/Projects/watai/WorldFold/.venv-isaac/kit/data/Kit/Isaac-Sim/5.1\581073d2-5aa0-4aac-8bfa-8d8e8aec0915.dmp'
+[0.291s] [ext: omni.kit.async_engine-0.0.3] startup
+[0.609s] [ext: omni.metrics.core-0.0.3] startup
+[0.612s] [ext: omni.client.lib-1.1.0] startup
+[0.655s] [ext: omni.blobkey-1.1.2] startup
+[0.659s] [ext: omni.stats-1.0.1] startup
+[0.664s] [ext: omni.datastore-0.0.0] startup
+[0.671s] [ext: omni.client-1.3.0] startup
+[0.688s] [ext: omni.ujitso.default-1.0.0] startup
+[0.697s] [ext: omni.hsscclient-1.1.2] startup
+[0.715s] [ext: omni.gpu_foundation.shadercache.d3d12-1.0.0] startup
+[0.725s] [ext: omni.assets.plugins-0.0.0] startup
+[0.735s] [ext: omni.gpu_foundation-0.0.0] startup
+[0.794s] [ext: carb.windowing.plugins-1.0.0] startup
+[1.038s] [ext: omni.kit.renderer.init-0.0.0] startup
+[1.043s] [ext: omni.materialx.libs-1.0.7] startup
+[1.070s] [ext: omni.kit.pipapi-0.0.0] startup
+[1.074s] [ext: omni.usd.config-1.0.6] startup
+[1.099s] [ext: omni.gpucompute.plugins-0.0.0] startup
+[1.105s] [ext: omni.usd.libs-1.0.1] startup
+[1.332s] [ext: omni.kit.telemetry-0.5.2] startup
+[1.363s] [ext: omni.mdl-56.0.3] startup
+[1.538s] [ext: omni.iray.libs-0.0.0] startup
+[1.582s] [ext: omni.mdl.neuraylib-0.2.12] startup
+[1.594s] [ext: omni.kit.usd.mdl-1.1.5] startup
+2026-10-03T05:36:22Z [1,524ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Arc(TM) 140T GPU (32GB)
+2026-10-03T05:36:22Z [1,526ms] [Warning] [gpu.foundation.plugin] Skipping unsupported non-NVIDIA GPU: Intel(R) Arc(TM) 140T GPU (32GB)
+[1.816s] [ext: omni.kit.pip_archive-0.0.0] startup
+[1.818s] [ext: omni.kit.loop-isaac-1.3.7] startup
+[1.823s] [ext: omni.kit.test-2.0.1] startup
+[2.106s] [ext: omni.appwindow-1.1.10] startup
+[2.118s] [ext: omni.kit.renderer.core-1.1.0] startup
+[2.152s] [ext: omni.kit.renderer.capture-0.0.0] startup
+[2.169s] [ext: omni.kit.renderer.imgui-2.0.5] startup
+
+|---------------------------------------------------------------------------------------------|
+| Driver Version: 616.56        | Graphics API: D3D12
+|=============================================================================================|
+| GPU | Name                             | Active | LDA | GPU Memory | Vendor-ID | LUID       |
+|     |                                  |        |     |            | Device-ID | UUID       |
+|     |                                  |        |     |            | Bus-ID    |            |
+|---------------------------------------------------------------------------------------------|
+| 0   | NVIDIA GeForce RTX 5080 Laptop.. | Yes: 0 |     | 16003   MB | 10de      | b5360100.. |
+|     |                                  |        |     |            | 2c59      | 0          |
+|     |                                  |        |     |            | 1         |            |
+|---------------------------------------------------------------------------------------------|
+| 1   | Intel(R) Arc(TM) 140T GPU (32GB) |        |     | 128     MB | 8086      | 5b510100.. |
+|     |                                  |        |     |            | 7d51      | 0          |
+|     |                                  |        |     |            | N/A       |            |
+|=============================================================================================|
+| OS: Windows 11 Pro, Version: 10.0 (25H2), Build: 26200, Kernel: 10.0.26100.9457
+| Processor: Intel(R) Core(TM) Ultra 9 285H
+| Cores: 16 | Logical Cores: 16
+|---------------------------------------------------------------------------------------------|
+| Total Memory (MB): 64957 | Free Memory: 37275
+| Total Page/Swap (MB): 69053 | Free Page/Swap: 25028
+|---------------------------------------------------------------------------------------------|
+[2.215s] [ext: omni.ui-2.27.1] startup
+[2.250s] [ext: omni.kit.mainwindow-1.0.3] startup
+[2.254s] [ext: carb.audio-0.1.0] startup
+[2.258s] [ext: omni.uiaudio-1.0.0] startup
+2026-10-03T05:36:23Z [2,075ms] [Warning] [gpu.foundation.plugin] PCIe link width current (8) and maximum (16) for device 0 don't match.
+[2.265s] [ext: omni.kit.uiapp-0.0.0] startup
+[2.266s] [ext: omni.usd.schema.metrics.assembler-107.3.1] startup
+[2.286s] [ext: omni.usd.schema.geospatial-0.0.0] startup
+[2.312s] [ext: omni.usd.schema.anim-0.0.0] startup
+[2.401s] [ext: omni.usd.schema.physx-107.3.26] startup
+[2.465s] [ext: omni.usd.schema.omnigraph-1.0.0] startup
+[2.490s] [ext: omni.usd.schema.semantics-0.0.0] startup
+[2.507s] [ext: omni.usd.schema.audio-0.0.0] startup
+[2.521s] [ext: isaacsim.robot.schema-3.6.0] startup
+[2.555s] [ext: omni.usd_resolver-1.0.0] startup
+[2.573s] [ext: omni.usd.core-1.5.3] startup
+[2.578s] [ext: omni.usd.schema.omni_lens_distortion-0.0.0] startup
+[2.651s] [ext: omni.usd.schema.omni_sensors-0.0.0] startup
+[2.654s] [ext: omni.usd.schema.omniscripting-1.0.0] startup
+[2.674s] [ext: omni.kit.window.popup_dialog-2.0.24] startup
+[2.693s] [ext: omni.graph.exec-0.9.6] startup
+[2.698s] [ext: omni.kit.widget.nucleus_connector-2.0.1] startup
+[2.711s] [ext: omni.kit.usd_undo-0.1.8] startup
+[2.714s] [ext: omni.kit.exec.core-0.13.4] startup
+[2.724s] [ext: omni.kit.actions.core-1.0.0] startup
+[2.737s] [ext: omni.resourcemonitor-107.0.1] startup
+[2.747s] [ext: omni.activity.core-1.0.3] startup
+[2.755s] [ext: omni.timeline-1.0.14] startup
+[2.764s] [ext: omni.kit.commands-1.4.10] startup
+[2.789s] [ext: usdrt.scenegraph-7.6.1] startup
+[2.925s] [ext: omni.kit.audiodeviceenum-1.0.2] startup
+[2.934s] [ext: omni.hydra.usdrt_delegate-7.5.1] startup
+[2.965s] [ext: omni.hydra.scene_delegate-0.3.4] startup
+[2.973s] [ext: omni.usd-1.13.10] startup
+[3.086s] [ext: omni.kit.asset_converter-5.0.17] startup
+[3.114s] [ext: omni.usd.schema.render_settings.rtx-0.0.0] startup
+[3.119s] [ext: omni.index.libs-380600.8087.0] startup
+[3.120s] [ext: omni.volume-0.5.2] startup
+[3.137s] [ext: omni.ujitso.client-0.0.0] startup
+[3.141s] [ext: omni.index-1.0.1] startup
+[3.144s] [ext: omni.hydra.rtx.shadercache.d3d12-1.0.0] startup
+[3.150s] [ext: omni.hydra.rtx-1.0.0] startup
+[3.255s] [ext: omni.kit.viewport.legacy_gizmos-1.0.19] startup
+[3.259s] [ext: omni.kit.raycast.query-1.1.0] startup
+[3.269s] [ext: omni.kit.widget.path_field-2.0.11] startup
+[3.275s] [ext: omni.kit.clipboard-1.0.5] startup
+[3.280s] [ext: omni.kit.widget.options_menu-1.1.6] startup
+[3.300s] [ext: omni.kit.helper.file_utils-0.1.9] startup
+[3.312s] [ext: omni.kit.widget.browser_bar-2.0.10] startup
+[3.319s] [ext: omni.kit.notification_manager-1.0.10] startup
+[3.328s] [ext: omni.kit.menu.core-1.1.2] startup
+[3.333s] [ext: omni.kit.widget.options_button-1.0.3] startup
+[3.336s] [ext: omni.kit.widget.filebrowser-2.12.3] startup
+[3.375s] [ext: omni.kit.viewport.registry-104.0.6] startup
+[3.377s] [ext: omni.kit.menu.utils-2.0.5] startup
+[3.422s] [ext: omni.kit.widget.context_menu-1.2.5] startup
+[3.429s] [ext: omni.kit.usd.layers-2.2.11] startup
+[3.472s] [ext: omni.ui.scene-1.11.5] startup
+[3.482s] [ext: omni.kit.context_menu-1.8.6] startup
+[3.497s] [ext: omni.kit.window.filepicker-2.13.4] startup
+[3.609s] [ext: omni.kit.widget.searchable_combobox-1.0.6] startup
+[3.616s] [ext: omni.kit.viewport.scene_camera_model-1.0.6] startup
+[3.622s] [ext: omni.kit.hydra_texture-1.4.6] startup
+[3.633s] [ext: omni.kit.window.file_importer-1.1.18] startup
+[3.645s] [ext: omni.kit.widget.settings-1.2.6] startup
+[3.658s] [ext: omni.kit.window.drop_support-1.0.5] startup
+[3.661s] [ext: omni.kit.widget.viewport-107.1.3] startup
+[3.695s] [ext: omni.kit.material.library-2.0.7] startup
+[3.731s] [ext: omni.hydra.engine.stats-1.0.3] startup
+[3.737s] [ext: omni.kit.window.preferences-1.8.0] startup
+[3.771s] [ext: omni.kit.viewport.window-107.2.0] startup
+[3.940s] [ext: omni.kit.manipulator.transform-107.0.0] startup
+[3.971s] [ext: omni.kvdb-107.3.26] startup
+[3.982s] [ext: omni.kit.widget.toolbar-2.0.1] startup
+[4.029s] [ext: omni.kit.viewport.utility-1.1.2] startup
+[4.034s] [ext: omni.usdphysics-107.3.26] startup
+[4.040s] [ext: omni.physx.foundation-107.3.26] startup
+[4.079s] [ext: omni.localcache-107.3.26] startup
+[4.093s] [ext: omni.convexdecomposition-107.3.26] startup
+[4.105s] [ext: omni.kit.manipulator.tool.snap-1.5.13] startup
+[4.132s] [ext: omni.kit.manipulator.selector-1.1.3] startup
+[4.140s] [ext: omni.physx.cooking-107.3.26] startup
+[4.154s] [ext: omni.kit.viewport.manipulator.transform-107.0.4] startup
+[4.167s] [ext: omni.physx-107.3.26] startup
+[4.217s] [ext: omni.kit.manipulator.viewport-107.0.1] startup
+[4.223s] [ext: omni.kit.primitive.mesh-1.0.17] startup
+[4.256s] [ext: omni.kit.manipulator.prim.core-107.0.8] startup
+[4.306s] [ext: omni.fabric.commands-1.1.6] startup
+[4.335s] [ext: omni.kit.manipulator.prim.usd-107.0.3] startup
+[4.342s] [ext: omni.kit.manipulator.prim.fabric-107.0.4] startup
+[4.350s] [ext: omni.debugdraw-0.1.4] startup
+[4.362s] [ext: omni.physx.commands-107.3.26] startup
+[4.420s] [ext: omni.kit.manipulator.selection-106.0.1] startup
+[4.430s] [ext: omni.kit.manipulator.prim-107.0.0] startup
+[4.431s] [ext: omni.physics.tensors-107.3.26] startup
+[4.463s] [ext: omni.kit.property.adapter.core-1.0.2] startup
+[4.479s] [ext: omni.kit.widget.highlight_label-1.0.3] startup
+[4.483s] [ext: omni.kit.widget.searchfield-1.1.8] startup
+[4.491s] [ext: omni.kit.property.adapter.fabric-1.0.3] startup
+[4.499s] [ext: omni.kit.widget.filter-1.1.4] startup
+[4.504s] [ext: omni.kit.widget.prompt-1.0.7] startup
+[4.511s] [ext: omni.kit.window.property-1.12.1] startup
+[4.536s] [ext: omni.kit.property.adapter.usd-1.0.2] startup
+[4.542s] [ext: omni.kit.hotkeys.core-1.3.10] startup
+[4.545s] [ext: omni.kit.window.file_exporter-1.0.33] startup
+[4.550s] [ext: omni.kit.stage_template.core-1.1.22] startup
+[4.553s] [ext: omni.kit.viewport.menubar.core-107.2.1] startup
+[4.648s] [ext: omni.kit.viewport.actions-107.0.2] startup
+[4.663s] [ext: omni.kit.window.file-2.0.5] startup
+[4.689s] [ext: omni.kit.window.content_browser_registry-0.0.6] startup
+[4.693s] [ext: omni.kit.viewport.menubar.display-107.0.3] startup
+[4.703s] [ext: omni.kit.window.content_browser-3.1.3] startup
+[4.741s] [ext: omni.kit.widget.stage-3.1.4] startup
+[4.839s] [ext: omni.inspect-1.0.2] startup
+[4.848s] [ext: omni.kit.widget.layers-1.8.6] startup
+[4.927s] [ext: omni.kit.property.usd-4.5.12] startup
+[5.024s] [ext: omni.kit.numpy.common-0.1.3] startup
+[5.029s] [ext: omni.physics-107.3.26] startup
+[5.042s] [ext: omni.graph.core-2.184.5] startup
+[5.049s] [ext: omni.usdphysics.ui-107.3.26] startup
+[5.144s] [ext: omni.physics.stageupdate-107.3.26] startup
+[5.156s] [ext: isaacsim.core.deprecation_manager-0.2.7] startup
+[5.160s] [ext: omni.physx.ui-107.3.26] startup
+[5.320s] [ext: isaacsim.core.version-2.0.6] startup
+[5.325s] [ext: omni.usd.metrics.assembler-107.3.1] startup
+[5.349s] [ext: omni.warp.core-1.8.2] startup
+[5.843s] [ext: omni.ui_query-1.1.8] startup
+[5.847s] [ext: omni.physics.physx-107.3.26] startup
+2026-10-03T05:36:26Z [5,668ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [omni::physx::IPhysxBenchmarks v1.0] (plugin: <default plugin>), by client: omni.physics.physx.plugin. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.
+[5.852s] [ext: isaacsim.storage.native-1.5.1] startup
+[5.862s] [ext: omni.usd.metrics.assembler.physics-107.3.26] startup
+[5.878s] [ext: omni.isaac.dynamic_control-2.0.7] startup
+2026-10-03T05:36:26Z [5,714ms] [Warning] [omni.isaac.dynamic_control] omni.isaac.dynamic_control is deprecated as of Isaac Sim 4.5. No action is needed from end-users.
+[5.899s] [ext: omni.graph.tools-1.79.2] startup
+[6.085s] [ext: omni.physx.tensors-107.3.26] startup
+[6.093s] [ext: isaacsim.core.utils-3.5.1] startup
+[6.106s] [ext: omni.graph-1.141.2] startup
+[6.324s] [ext: isaacsim.core.simulation_manager-1.4.4] startup
+[11.797s] [ext: omni.graph.action_core-1.1.7] startup
+[11.810s] [ext: omni.kit.stage_templates-2.0.0] startup
+[11.823s] [ext: isaacsim.core.prims-0.6.1] startup
+[11.935s] [ext: omni.graph.action_nodes-1.50.4] startup
+[11.953s] [ext: isaacsim.core.api-4.8.0] startup
+[12.062s] [ext: omni.graph.action-1.130.0] startup
+[12.063s] [ext: omni.kit.widget.stage_icons-1.0.8] startup
+[12.069s] [ext: omni.kit.selection-0.1.6] startup
+[12.075s] [ext: omni.kit.window.stage-2.6.1] startup
+[12.089s] [ext: omni.kit.menu.create-2.0.1] startup
+[12.098s] [ext: omni.kit.widget.text_editor-1.1.1] startup
+[12.109s] [ext: omni.kit.ui_test-1.3.7] startup
+[12.121s] [ext: omni.kit.scripting-107.3.2] startup
+[12.154s] [ext: omni.kit.window.extensions-1.4.27] startup
+[12.268s] [ext: omni.graph.visualization.nodes-2.1.3] startup
+[12.294s] [ext: isaacsim.replicator.behavior-1.1.16] startup
+[12.299s] [ext: isaacsim.gui.components-1.2.1] startup
+[12.336s] [ext: isaacsim.gui.menu-2.4.4] startup
+[12.396s] [ext: isaacsim.core.cloner-1.4.10] startup
+[12.411s] [ext: semantics.schema.editor-2.0.2] startup
+2026-10-03T05:36:33Z [12,252ms] [Warning] [pxr.Semantics] pxr.Semantics is deprecated - please use Semantics instead
+[12.440s] [ext: omni.kit.widget.zoombar-1.0.6] startup
+[12.447s] [ext: omni.kit.usd.collect-2.4.5] startup
+[12.466s] [ext: omni.kit.browser.core-2.3.13] startup
+[12.493s] [ext: omni.kit.menu.stage-1.2.7] startup
+[12.499s] [ext: omni.kit.tool.collect-2.2.18] startup
+[12.518s] [ext: omni.kit.browser.folder.core-1.10.9] startup
+[12.551s] [ext: isaacsim.core.experimental.utils-0.3.0] startup
+[12.556s] [ext: isaacsim.asset.browser-1.3.23] startup
+[13.239s] [ext: omni.kit.widget.graph-2.0.0] startup
+[13.288s] [ext: omni.graph.image.core-0.6.1] startup
+[13.294s] [ext: omni.kit.graph.delegate.default-1.2.3] startup
+[13.297s] [ext: omni.graph.image.nodes-1.3.1] startup
+[13.303s] [ext: omni.kit.graph.editor.core-1.5.3] startup
+[13.321s] [ext: omni.graph.nodes-1.170.10] startup
+[13.345s] [ext: omni.graph.ui_nodes-1.50.5] startup
+[13.358s] [ext: omni.kit.graph.usd.commands-1.3.1] startup
+[13.370s] [ext: omni.kit.widget.material_preview-1.0.16] startup
+[13.387s] [ext: omni.videoencoding-0.1.2] startup
+[13.396s] [ext: omni.kit.stagerecorder.core-107.0.3] startup
+[13.412s] [ext: omni.warp-1.8.2] startup
+[13.441s] [ext: omni.syntheticdata-0.6.13] startup
+[13.616s] [ext: omni.kit.window.material_graph-1.9.1] startup
+[13.789s] [ext: omni.graph.scriptnode-1.50.0] startup
+[13.805s] [ext: omni.kit.stagerecorder.ui-107.0.1] startup
+[13.862s] [ext: omni.replicator.core-1.12.27] startup
+2026-10-03T05:36:35Z [14,126ms] [Warning] [omni.graph.core.plugin] Found duplicate of category 'Replicator' - was 'Annotators', adding 'Fabric Reader'
+2026-10-03T05:36:35Z [14,126ms] [Warning] [omni.graph.core.plugin] Category 'Replicator' not accepted on node type 'omni.replicator.core.FabricReader' in extension 'omni.replicator.core'
+2026-10-03T05:36:35Z [14,128ms] [Warning] [omni.replicator.core.scripts.extension] No material configuration file, adding configuration to material settings directly.
+[14.317s] [ext: omni.kit.stagerecorder.bundle-105.0.2] startup
+[14.321s] [ext: isaacsim.core.nodes-3.4.3] startup
+[14.350s] [ext: isaacsim.test.docstring-1.1.0] startup
+[14.373s] [ext: isaacsim.sensors.camera-1.3.6] startup
+[14.419s] [ext: isaacsim.core.experimental.prims-0.8.1] startup
+[14.558s] [ext: omni.kit.usdz_export-1.0.9] startup
+[14.577s] [ext: isaacsim.robot.surface_gripper-3.3.1] startup
+[14.609s] [ext: isaacsim.sensors.physics-0.4.3] startup
+[14.651s] [ext: omni.kit.tool.asset_importer-4.3.2] startup
+[14.731s] [ext: isaacsim.robot.manipulators-3.3.6] startup
+[14.779s] [ext: isaacsim.robot.policy.examples-4.1.11] startup
+[14.830s] [ext: omni.sensors.nv.common-3.0.0] startup
+[14.914s] [ext: isaacsim.asset.importer.mjcf-2.5.13] startup
+[15.702s] [ext: isaacsim.util.debug_draw-3.1.0] startup
+[15.747s] [ext: omni.sensors.nv.materials-2.0.0] startup
+[15.801s] [ext: omni.sensors.net-1.0.0] startup
+[15.847s] [ext: isaacsim.sensors.physx-2.3.2] startup
+[15.885s] [ext: isaacsim.examples.browser-0.2.1] startup
+[15.931s] [ext: isaacsim.asset.importer.urdf-2.4.31] startup
+[16.153s] [ext: isaacsim.simulation_app-2.12.2] startup
+[16.160s] [ext: omni.sensors.nv.ids-2.0.0] startup
+[16.211s] [ext: omni.sensors.nv.lidar-3.0.0] startup
+[16.250s] [ext: omni.kit.property.audio-1.0.16] startup
+[16.264s] [ext: omni.kit.property.camera-1.0.10] startup
+[16.276s] [ext: omni.kit.property.geometry-2.0.4] startup
+[16.298s] [ext: omni.hydra.scene_api-0.1.2] startup
+[16.312s] [ext: omni.sensors.nv.wpm-3.0.0] startup
+[16.326s] [ext: omni.kit.property.light-1.0.12] startup
+[16.368s] [ext: omni.kit.property.material-1.11.9] startup
+[16.436s] [ext: omni.kit.property.render-1.2.1] startup
+[16.444s] [ext: omni.kit.property.transform-1.5.13] startup
+[16.483s] [ext: omni.sensors.nv.radar-3.0.0] startup
+[16.516s] [ext: omni.anim.curve.core-1.3.1] startup
+[16.592s] [ext: omni.kit.manipulator.camera-106.0.4] startup
+[16.627s] [ext: isaacsim.gui.property-1.1.3] startup
+[16.637s] [ext: omni.kit.property.bundle-1.4.1] startup
+[16.645s] [ext: isaacsim.sensors.rtx-15.8.4] startup
+[16.679s] [ext: omni.kit.viewport.menubar.camera-107.0.6] startup
+[16.727s] [ext: omni.kit.viewport.menubar.lighting-107.3.1] startup
+[16.751s] [ext: omni.kit.viewport.menubar.render-107.0.10] startup
+[16.771s] [ext: omni.kit.viewport.menubar.settings-107.0.3] startup
+[16.795s] [ext: omni.kit.window.script_editor-2.0.1] startup
+[16.813s] [ext: omni.kit.window.console-1.1.4] startup
+[16.837s] [ext: isaacsim.robot.wheeled_robots-4.0.24] startup
+[16.882s] [ext: omni.physx.demos-107.3.26] startup
+[17.106s] [ext: omni.kit.property.physx-107.3.26] startup
+[17.198s] [ext: omni.rtx.window.settings-0.6.19] startup
+[17.225s] [ext: omni.ocio-0.1.1] startup
+[17.232s] [ext: omni.asset_validator.core-1.1.6] startup
+[17.409s] [ext: omni.physx.vehicle-107.3.26] startup
+[17.516s] [ext: omni.replicator.replicator_yaml-2.0.11] startup
+[17.592s] [ext: omni.rtx.settings.core-0.6.5] startup
+[17.626s] [ext: omni.kit.window.toolbar-2.0.0] startup
+[17.635s] [ext: omni.kit.window.status_bar-0.1.9] startup
+[17.645s] [ext: omni.physx.asset_validator-107.3.26] startup
+[17.681s] [ext: omni.physx.camera-107.3.26] startup
+[17.706s] [ext: omni.physx.cct-107.3.26] startup
+[17.739s] [ext: omni.physx.graph-107.3.26] startup
+[17.772s] [ext: omni.physx.supportui-107.3.26] startup
+[17.843s] [ext: omni.physx.telemetry-107.3.26] startup
+[17.852s] [ext: omni.usd.metrics.assembler.ui-107.3.1] startup
+[17.884s] [ext: isaacsim.app.about-2.0.11] startup
+[17.889s] [ext: isaacsim.core.throttling-2.2.2] startup
+[17.898s] [ext: omni.kit.ui.actions-1.0.5] startup
+[17.906s] [ext: semantics.schema.property-2.0.1] startup
+[17.915s] [ext: omni.physx.bundle-107.3.26] startup
+[17.916s] [ext: isaaclab-0.53.1] startup
+[19.373s] [ext: isaaclab_assets-0.2.4] startup
+[20.252s] [ext: isaaclab_tasks-0.11.12] startup
+[21.113s] [ext: omni.kit.menu.common-2.0.1] startup
+[21.119s] [ext: isaaclab_rl-0.4.7] startup
+[21.121s] [ext: isaaclab_mimic-1.0.16] startup
+[21.122s] [ext: isaaclab.python-2.3.0] startup
+[21.129s] Simulation App Starting
+2026-10-03T05:36:42Z [21,381ms] [Warning] [omni.fabric.plugin] Warning: attribute overrideClipRange not found for bucket id 9
+
+[21.607s] app ready
+[24.645s] Simulation App Startup Complete
+2026-10-03T05:36:47Z [26,130ms] [Warning] [isaaclab.envs.direct_rl_env] Seed not set for the environment. The environment creation may not be deterministic.
+
+[36m===================================================================================================================[0m
+[36m[1m[INFO][IsaacLab]: Logging to file: C:\Users\ethan\AppData\Local\Temp\isaaclab\logs\isaaclab_2026-10-03_01-36-47.log[0m
+[36m===================================================================================================================[0m
+
+[33m01:36:47 [simulation_context.py] WARNING: The `enable_external_forces_every_iteration` parameter in the PhysxCfg is set to False. If you are experiencing noisy velocities, consider enabling this flag. You may need to slightly increase the number of velocity iterations (setting it to 1 or 2 rather than 0), together with this flag, to improve the accuracy of velocity updates.[0m
+[INFO]: Base environment:
+	Environment device    : cpu
+	Environment seed      : None
+	Physics step-size     : 0.01
+	Rendering step-size   : 0.05
+	Environment step-size : 0.05
+2026-10-03T05:36:49Z [28,126ms] [Warning] [isaacsim.core.prims.impl.cloth_prim] Please note that support for particle cloth and related APIs is now deprecated. These features will be removed in future releases.
+2026-10-03 01:36:49 - lehome.assets.object.Garment - WARNING - [GarmentObject] No visual materials specified
+[INFO]: Time taken for scene creation : 1.676687 seconds
+[INFO]: Scene manager:  <class InteractiveScene>
+	Number of environments: 1
+	Environment spacing   : 4.0
+	Source prim name      : /World/envs/env_0
+	Global prim paths     : []
+	Replicate physics     : True
+[INFO]: Starting the simulation. This may take a few seconds. Please wait...
+2026-10-03T05:36:49Z [28,299ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Left_Robot/gripper/Capsule
+2026-10-03T05:36:49Z [28,300ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Left_Robot/jaw/Capsule
+2026-10-03T05:36:49Z [28,300ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Right_Robot/gripper/Capsule
+2026-10-03T05:36:49Z [28,301ms] [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation on prim: /World/Robot/Right_Robot/jaw/Capsule
+2026-10-03T05:36:50Z [29,857ms] [Warning] [omni.physx.plugin] Detected an articulation at /World/Robot/Left_Robot with more than 4 velocity iterations being added to a TGS scene.The related behavior changed recently, please consult the changelog. This warning will only print once.
+2026-10-03T05:36:51Z [30,884ms] [Warning] [omni.fabric.plugin] getAttributeCount called on non-existent path /World/Robot/Right_Robot/wrist/visuals/wrist_roll_pitch_so101_v2
+2026-10-03T05:36:51Z [30,884ms] [Warning] [omni.fabric.plugin] getTypes called on non-existent path /World/Robot/Right_Robot/wrist/visuals/wrist_roll_pitch_so101_v2
+2026-10-03T05:36:53Z [32,766ms] [Warning] [rtx.postprocessing.plugin] DLSS increasing input dimensions: Render resolution of (49, 49) is below minimal input resolution of 300.
+2026-10-03T05:36:53Z [32,974ms] [Warning] [omni.syntheticdata.plugin] OgnSdPostRenderVarToHost : rendervar copy from texture directly to host buffer is counter-performant. Please use copy from texture to device buffer first.
+[INFO]: Time taken for simulation start : 4.733918 seconds
+[INFO]: Completed setting up the environment...
+2026-10-03 01:36:54 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_pos_range has zero range (min == max for all dimensions). Reset position will always be the same: [0.0, -0.135, 0.425]
+2026-10-03 01:36:54 - lehome.assets.object.Garment - WARNING - [GarmentObject] WARNING: soft_reset_rot_range has zero range (min == max for all dimensions). Reset rotation will always be the same: [0.0, 0.0, 0.0]
+2026-10-03 01:36:54 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-03T05:36:54Z [33,859ms] [Warning] [omni.physx.plugin] Changing particle cloth mesh or PhysxSchemaPhysxAutoParticleClothAPI parameter during simulation is not supported. Prim: /World/Object/cloth/mesh
+2026-10-03T05:36:54Z [33,859ms] [Warning] [omni.physx.plugin] Changing particle cloth mesh or PhysxSchemaPhysxAutoParticleClothAPI parameter during simulation is not supported. Prim: /World/Object/cloth/mesh
+2026-10-03 01:37:04 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-03 01:37:12 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-03 01:37:21 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+2026-10-03T05:37:27Z [66,394ms] [Warning] [carb] Client gpu.foundation.plugin has acquired [gpu::unstable::IMemoryBudgetManagerFactory v0.1] 100 times. Consider accessing this interface with carb::getCachedInterface() (Performance warning)
+contract ok: {'cloth_state': ((69,), 'float32'), 'depth': ((84, 84, 1), 'float32'), 'image': ((84, 84, 3), 'uint8'), 'proprio': ((50,), 'float32'), 'task': ((22,), 'float32')}
+2026-10-03 01:37:30 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+throughput (hybrid): 2.9 control steps/s
+2026-10-03 01:37:47 - lehome.assets.object.Garment - INFO - [GarmentObject] Reset complete - pos: [0.0, -0.135, 0.425], ori: [0.0, 0.0, 0.0]
+depth: 6355/7056 valid px, range 0.369..1.474 m, image mean 200.9
+saved outputs\isaac\smoke\20261003-013243\hybrid_rgb.png
+SMOKE OK
+[95.969s] Simulation App Shutting Down

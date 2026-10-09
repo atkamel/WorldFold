@@ -1,0 +1,11 @@
+{
+ "milestone": "I0.1",
+ "status": "PASS",
+ "evidence": [
+  "ce02b44 is an ancestor of HEAD",
+  "expert_benchmark_i0_1.json == expert_benchmark_m1_5.json",
+  "docs/results.md mentions I0.1"
+ ],
+ "commit": "bf8cd140bc1306f7d308b170b0758d61a48549eb",
+ "time": "2026-10-03T13:41:00-0400"
+}

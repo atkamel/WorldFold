@@ -1,0 +1,458 @@
+"""Scripted half-fold expert for the Isaac env, with the friction grasp as built (Phase I, I2.1).
+
+A drop-in for cloth_fold_rl.expert.FoldExpert inside QuarterFoldExpert (same constructor, phase machine fields,
+act / reset / infer_phase), so the imitation pipeline's ScriptedTeacher, release gate, retry-on-measured-miss and
+resync work unchanged. The motion is isaac/half_fold_demo.py's plan, unchanged (no grasp tuning in this pass): a
+top-down pinch solved by PinchIK on the corner's live position, the jaw across the corner; close and dwell; an IK
+waypoint arc over the fold line onto the goal; open and dwell; back off. Every pose is held until the joints get
+there (the env moves each joint at most JOINT_DELTA_SCALE per step and the joints lag), with a step budget as the
+per-phase patience. It reads the sim only through env accessors (cloth_positions, gripper_position,
+joint_positions, grasp_active).
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+from mujuco.cloth_params import ARM_BASE_LEFT, ARM_BASE_RIGHT
+from isaac.half_fold_demo import (ARC_HEIGHT, ARC_WAYPOINTS, PINCH_HEIGHT, PLACE_HEIGHT, POSE_SETTLE_STEPS, SEED_Q,
+                                  TRACK_TOL, WAYPOINT_TOL)
+from mujuco.cloth_params import JOINT_DELTA_SCALE, TABLE_TOP_Z
+
+SUCCESS_DIST = 0.05          # = cloth_fold_rl.fold_env.SUCCESS_DIST (placed)
+CLOSE_DWELL = 8              # half_fold_demo SCHEDULE: ("pinch", -1.0, 8)
+OPEN_DWELL = 6               # ("arc", 1.0, 6)
+LIFT_WAYPOINTS = 3           # the first arc waypoints count as "lift" (phase groups for the teacher)
+ABOVE = 0.04                 # pre-pinch height above the pinch point
+RETREAT = 0.05
+# per (stage, arm): metres past the goal to place at, the friction grasp's measured spring-back (cf.
+# cloth_fold_rl.quarter_fold_expert.OVERSHOOT on MuJoCo, isaac.weld_expert.OVERSHOOT_ISAAC on the weld profile).
+# Stage 0 is calibrated (track G, IG.2 attempt 8: minus the settled miss of attempt 3); stage 1 stays zero.
+OVERSHOOT_FRICTION = {key: np.zeros(3) for key in ((0, "left_"), (0, "right_"), (1, "left_"), (1, "right_"))}
+OVERSHOOT_FRICTION[(0, "left_")][:] = (-0.001, 0.052, 0.0)
+OVERSHOOT_FRICTION[(0, "right_")][:] = (0.013, 0.050, 0.0)
+# The "friction" profile (Phase F) keeps #9's offsets. Subtracting F2-A's mean settled miss (left (+1.9, +0.8) cm,
+# right (-1.3, +1.5) cm) made it worse: F2 attempts F and G, which both carried it, held 11/20 and placed 10/20 on the
+# right arm against A's 16 / 15 (results.md). The landing point is not independent of the target.
+OVERSHOOT_FRICTION_PROFILE = {key: v.copy() for key, v in OVERSHOOT_FRICTION.items()}
+OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE}
+
+
+ORIENTATION_WEIGHT = 0.1     # = isaac.pinch.ORIENTATION_WEIGHT (not imported: isaac.pinch needs LeHome)
+TILT_WEIGHT = 0.03            # REGRASP_TILT's IK orientation weight
+CORNER_REST_DZ = 0.004       # a flat corner's height above the table top (the particle rest offset)
+JAW_SHUT_TOL = 0.05          # = isaac_env.JAW_SETTLED_TOL
+JAW_STILL = 0.01             # rad per control step
+
+
+class IsaacArmExpert:
+    PHASES = ("approach", "descend", "close", "lift", "carry", "place", "hold")
+    RELEASE_PHASES = ("release", "retreat", "done")
+    OPEN_PHASES = ("approach", "descend", "release", "retreat", "done")
+    # everything that changes while it acts: ScriptedTeacher saves / restores these around a label
+    PHASE_FIELDS = ("phase", "q_target", "phase_steps", "retreat_target", "release_allowed", "rng", "plan", "wp",
+                    "budget", "regrasps", "miss_steps", "last_jaw", "align_tries", "descend_retries", "resynced",
+                    "site_hist")
+
+    # the pinch / place geometry and dwells, as class attributes so the grasp bench can try candidates (track G)
+    PINCH_HEIGHT = 0.005             # fingertip above the table at the pinch (IG.2 #9; half_fold_demo / weld: 0.010)
+    PINCH_INSET = 0.005              # pinch point this far in from the corner, toward the cloth centre
+    PLACE_HEIGHT = PLACE_HEIGHT
+    ARC_HEIGHT = ARC_HEIGHT
+    CLOSE_DWELL = CLOSE_DWELL
+    OPEN_DWELL = OPEN_DWELL
+    # Phase F (F2/F3), ideas from origin/feat/isaac-half-fold's Markov expert; 0 = off (track G's behaviour), so the
+    # grasp bench can A/B each one (--expert SETTLE_LIFT=1,...)
+    SETTLE_LIFT = 0          # 1: close ends only once the jaw is shut and still (lifting mid-squeeze slips)
+    REGRASP = 0              # n > 0: corner not held for MISS_STEPS steps in lift/carry -> open and re-approach, n times
+    MISS_STEPS = 3
+    REPLAN_MOVE = 0.0        # m > 0: re-plan the approach whenever the corner has moved this far from the planned pinch
+    CARRY_SPEED = 1.0        # joint-speed scale in lift/carry (< 1: a slower carry)
+    # m > 0: close only once the gripper frame is within this (horizontally) of the pinch point re-solved on the corner
+    # as it lies now; otherwise re-plan and descend again (at most ALIGN_TRIES times). F2: right-arm slips start as a
+    # pinch ~1 cm off that the closing jaw sweeps 3.5 cm across the pinch (shallow grip, 2.8 vs 1.4 cm deep)
+    ALIGN_TOL = 0.008        # F2 L / M: every acquired right-arm corner held (40/40; 93% over n = 300 without it)
+    ALIGN_TRIES = 2
+    OVERSHOOT_SCALE = 1.0    # scales the profile's placement overshoot table (0: none, Adam's as-built expert)
+    SERVO = 0                # 1: ScriptedTeacher uses isaac.servo_expert.IsaacServoExpert (closed-loop, Phase F3b)
+    # F3b drop traces: descends parked 1-2 cm from the corner (the fingertip meets the table / cloth there) for 30-60
+    # steps because the joint-space arrival test (TRACK_TOL) never fires with the arm folded near its base; then the
+    # retry knobs sent it back up. 1: a descend has arrived when the gripper site is within CART_XY of the pinch point,
+    # within CART_Z above it, and has stopped moving (< CART_STILL over CART_STEPS steps)
+    CART_ARRIVE = 1          # F3b default (tune_id_easy 48/50 vs 44/50 without it)
+    CART_XY = 0.02
+    CART_Z = 0.02
+    CART_STILL = 0.003
+    CART_STEPS = 3
+    # 1: the pinch height follows the corner (its height above a flat corner's), not the table. F3 recovery traces: after
+    # a knock, re-grasp descents took 30-85 steps (clean: 4-5) and the re-grasped corners slipped -- consistent with a
+    # pinch planned into a corner that lies on a fold
+    PINCH_FOLLOW_Z = 0
+    # F3b diagnosis (recovery traces, 18 post-knock closes): 6 closed 5-12 cm off the corner, each after a 44-60 step
+    # descend that never arrived. The post-resync plan was IK-seeded from the knocked arm's joints.
+    RESYNC_IK_HOME = 1       # 1: after a resync, plan from the home seed (SEED_Q) and re-approach from above
+    DESCEND_RETRY = 2        # n > 0: a descend that times out without arriving re-approaches (home seed), n times
+    # F3b drop traces: a corner dropped mid-carry lands on top of the other half (9-17 mm up) and a top-down pinch closes
+    # on the wrong layer. 1: when a resync finds the corner on the other layer, slide it along the top layer to its goal
+    # with the closed jaw resting on it (a push), then hold / release as after a carry
+    PUSH_ON_LAYER = 0
+    # F3b drop traces (2): a dropped corner lies flat but 10-25 cm from where it started, outside the top-down pinch's
+    # reach with the jaw aimed from the cloth centre (offline IK at 22 landing spots: 12/22 within 5 mm). After a
+    # resync, aim the jaw along the arm's own reach (base -> corner: 16/22) and, if still short, let it tilt (20/22).
+    REGRASP_JAW = 0
+    REGRASP_TILT = 0
+    REACH_TOL = 0.005
+    PUSH_Z = 0.008           # a corner this far above a flat one lies on cloth, not the table
+    PUSH_PRESS = 0.002       # fingertip this far above the corner's top while pushing (contact, no gouge)
+    PUSH_BEHIND = 0.015      # start this far behind the corner along the push direction
+
+    _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
+
+    def __init__(self, env, seed=0, prefix="left_", corner=(10,), goal=None, release=False, raw_vertex=True):
+        self.env = env
+        self.base = env.unwrapped
+        self.seed = seed
+        self.rng = np.random.default_rng(seed)
+        self.prefix = prefix
+        self.corners = tuple(np.atleast_1d(corner))
+        self.goal = goal
+        if release:
+            self.PHASES = self.PHASES + self.RELEASE_PHASES
+        self.release_allowed = True
+        if IsaacArmExpert._ik is None:
+            from isaac.pinch import PinchIK
+            IsaacArmExpert._ik = PinchIK()
+        self.reset()
+
+    # ---- state ------------------------------------------------------------
+    def reset(self):
+        self.phase = 0
+        self.q_target = None
+        self.phase_steps = 0
+        self.retreat_target = None
+        self.plan = None          # {"jaw", "above", "pinch", "arc": [q...], "arc_tips": [...], "retreat"}
+        self.wp = 0               # index into the arc while lifting / carrying / placing
+        self.budget = 0           # steps allowed on the current target (half_fold_demo's per-pose budget)
+        self.regrasps = 0
+        self.miss_steps = 0
+        self.last_jaw = None
+        self.align_tries = 0
+        self.descend_retries = 0
+        self.site_hist = []
+        self.resynced = False     # a resync happened this episode: re-grasp plans use REGRASP_JAW / REGRASP_TILT
+
+    def _corner(self):
+        cloth = self.base.cloth_positions()
+        return np.mean([cloth[c] for c in self.corners], axis=0)
+
+    def _q(self):
+        return np.asarray(self.base.joint_positions(self.prefix)[:5], dtype=float)
+
+    # ---- planning (half_fold_demo.plan, per arm) ---------------------------
+    def _make_plan(self, from_q=None):
+        ik, p = self._ik, self.prefix
+        cloth = self.base.cloth_positions()
+        center = cloth.mean(axis=0)
+        corner = self._corner()
+        goal = np.asarray(self.goal(), dtype=float)
+        jaw = np.r_[center[:2] - corner[:2], 0.0]
+        if self.REGRASP_JAW and self.resynced:      # along the arm's reach: base -> corner, pointing back at the base
+            base = np.asarray(ARM_BASE_LEFT if self.prefix == "left_" else ARM_BASE_RIGHT, dtype=float)
+            jaw = np.r_[base[:2] - corner[:2], 0.0]
+        jaw /= np.linalg.norm(jaw)
+        offset = -self.PINCH_INSET * jaw[:2]
+        z = TABLE_TOP_Z + self.PINCH_HEIGHT
+        if self.PINCH_FOLLOW_Z:      # a knocked corner may lie on a fold: pinch at its height, not the table's
+            z = max(z, float(corner[2]) - CORNER_REST_DZ + self.PINCH_HEIGHT)
+        pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], z])
+        # the held point's mirror image across the fold line, so the corner lands on the goal
+        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
+        q = list(SEED_Q[p]) if from_q is None else list(from_q)
+        plan = {"jaw": jaw, "corner": corner.copy()}
+        w = ORIENTATION_WEIGHT
+        q0 = q
+        q, e_above = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q, orientation_weight=w)
+        q_above = q
+        q, e_pinch = ik.solve(p, pinch, jaw, q, orientation_weight=w)
+        if self.REGRASP_TILT and self.resynced and max(e_above, e_pinch) > self.REACH_TOL:
+            w = TILT_WEIGHT                         # out of reach upright: let the jaw tilt
+            q, _ = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q0, orientation_weight=w)
+            q_above = q
+            q, _ = ik.solve(p, pinch, jaw, q, orientation_weight=w)
+        plan["above"] = q_above
+        plan["pinch"] = q
+        plan["arc"], plan["arc_tips"] = [], []
+        start = pinch
+        for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
+            tip = start + (place - start) * (1.0 - math.cos(math.pi * s)) / 2.0
+            tip[2] = start[2] + (place[2] - start[2]) * s + self.ARC_HEIGHT * math.sin(math.pi * s)
+            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05)
+            plan["arc"].append(q)
+            plan["arc_tips"].append(tip)
+        q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
+        plan["retreat"] = q
+        return plan
+
+    def _on_layer(self, corner):
+        """The corner lies on cloth (PUSH_Z .. 4 cm above a flat corner): settled on the other half, not in the air."""
+        dz = float(corner[2]) - TABLE_TOP_Z - CORNER_REST_DZ
+        return self.PUSH_Z < dz < 0.04
+
+    def _push_plan(self, corner, goal):
+        """Waypoints for a push: above the start, down onto the cloth behind the corner, then a straight slide at the
+        corner's height to the goal (the place pose's xy), and a retreat above the goal."""
+        ik, p = self._ik, self.prefix
+        d = np.r_[goal[:2] - corner[:2], 0.0]
+        d = d / max(np.linalg.norm(d), 1e-6)
+        jaw = self._jaw()
+        z = float(corner[2]) + self.PUSH_PRESS
+        start = np.array([corner[0], corner[1], z]) - self.PUSH_BEHIND * d
+        end = np.array([goal[0], goal[1], z]) - self.PUSH_BEHIND * d
+        q, tips, arc = list(SEED_Q[p]), [], []
+        path = [start + [0, 0, ABOVE], start]
+        n = max(2, int(np.ceil(np.linalg.norm(end - start) / 0.02)))
+        path += [start + (end - start) * s for s in np.linspace(0.0, 1.0, n + 1)[1:]]
+        for tip in path:
+            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05)
+            arc.append(q)
+            tips.append(tip)
+        plan = dict(self.plan or {}, jaw=jaw, arc=arc, arc_tips=tips)
+        plan["retreat"], _ = ik.solve(p, end + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
+        return plan
+
+    def _arc_from_here(self):
+        """After a resync while holding: a fresh arc from where the gripper is to the place pose."""
+        ik, p = self._ik, self.prefix
+        goal = np.asarray(self.goal(), dtype=float)
+        jaw = self.plan["jaw"] if self.plan else np.array([0.0, -1.0, 0.0])
+        offset = -self.PINCH_INSET * jaw[:2]
+        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
+        start = np.asarray(self.base.gripper_position(p), dtype=float)
+        q, arc, tips = self._q(), [], []
+        n = max(2, int(np.ceil(np.linalg.norm(place - start) / 0.02)))
+        for s in np.linspace(0.0, 1.0, n + 1)[1:]:
+            tip = start + (place - start) * s
+            tip[2] = max(tip[2], place[2]) + 0.5 * self.ARC_HEIGHT * math.sin(math.pi * s) * (start[2] > place[2] + 0.02)
+            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05)
+            arc.append(q)
+            tips.append(tip)
+        plan = dict(self.plan or {"jaw": jaw})
+        plan["arc"], plan["arc_tips"] = arc, tips
+        q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
+        plan["retreat"] = q
+        return plan
+
+    # ---- acting -------------------------------------------------------------
+    def _target(self, name):
+        if name in ("approach",):
+            return self.plan["above"]
+        if name in ("descend", "close"):
+            return self.plan["pinch"]
+        if name in ("lift", "carry", "place", "hold", "release"):
+            return self.plan["arc"][min(self.wp, len(self.plan["arc"]) - 1)]
+        if name == "retreat":
+            return self.plan["retreat"]
+        return None          # done: stop moving
+
+    def act(self):
+        action = np.zeros(6, dtype=np.float32)
+        name = self.PHASES[self.phase]
+        action[5] = 1.0 if name in self.OPEN_PHASES else -1.0
+        if self.plan is None:
+            self.plan = self._make_plan()
+        target = self._target(name)
+        if target is not None:
+            self.q_target = np.asarray(target, dtype=float)
+            if self.phase_steps == 0:     # a new target: what its largest joint move needs at the speed limit
+                last = name not in ("lift", "carry") or self.wp >= len(self.plan["arc"]) - 1
+                self.budget = (int(np.ceil(np.max(np.abs(self.q_target - self._q())) / JOINT_DELTA_SCALE))
+                               + (POSE_SETTLE_STEPS if last else 0))
+            delta = (self.q_target - self._q()) / JOINT_DELTA_SCALE
+            action[0:5] = delta / max(1.0, float(np.max(np.abs(delta))))     # all joints arrive together
+            if name in ("lift", "carry"):
+                action[0:5] *= self.CARRY_SPEED
+        self.phase_steps += 1
+        self._maybe_advance(name)
+        return action
+
+    def _arrived(self, tol):
+        return self.q_target is not None and float(np.max(np.abs(self.q_target - self._q()))) < tol
+
+    def _next(self):
+        self.phase = min(self.phase + 1, len(self.PHASES) - 1)
+        self.phase_steps = 0
+
+    def _jaw_shut(self):
+        """The jaw has reached its closed target and stopped (SETTLE_LIFT)."""
+        jaw = float(self.base.joint_positions(self.prefix)[5])
+        last, self.last_jaw = self.last_jaw, jaw
+        closed_q = getattr(self.base, "_closed_q", jaw)
+        return jaw <= closed_q + JAW_SHUT_TOL and last is not None and abs(jaw - last) < JAW_STILL
+
+    def _cart_arrived(self):
+        """CART_ARRIVE: near the pinch point on the corner as it lies now, low, and no longer moving."""
+        site = np.asarray(self.base.gripper_position(self.prefix), dtype=float)
+        self.site_hist = (self.site_hist + [site])[-(self.CART_STEPS + 1):]
+        corner, jaw = self._corner(), self.plan["jaw"]
+        pinch = corner[:2] - self.PINCH_INSET * jaw[:2]
+        near = float(np.linalg.norm(site[:2] - pinch)) < self.CART_XY
+        low = site[2] - (TABLE_TOP_Z + self.PINCH_HEIGHT) < self.CART_Z
+        still = (len(self.site_hist) > self.CART_STEPS
+                 and float(np.linalg.norm(self.site_hist[-1] - self.site_hist[0])) < self.CART_STILL)
+        return near and low and still
+
+    def _misaligned(self):
+        """The gripper frame is more than ALIGN_TOL (horizontally) from the pinch point on the corner as it lies now."""
+        corner = self._corner()
+        jaw = self.plan["jaw"]
+        pinch = corner[:2] - self.PINCH_INSET * jaw[:2]
+        site = np.asarray(self.base.gripper_position(self.prefix), dtype=float)
+        return float(np.linalg.norm(site[:2] - pinch)) > self.ALIGN_TOL
+
+    def _restart_grasp(self):
+        """Missed or slipped: open, re-plan on the corner where it lies now, and approach again (REGRASP)."""
+        self.regrasps += 1
+        self.miss_steps = 0
+        self.plan = self._make_plan(from_q=self._q())
+        self.phase = self.PHASES.index("approach")
+        self.phase_steps = 0
+        self.q_target = None
+        self.wp = 0
+
+    def _maybe_advance(self, name):
+        if name == "done" or (name == "hold" and not (self.release_allowed and "release" in self.PHASES)):
+            return
+        if self.REGRASP and name in ("lift", "carry"):
+            held = self.base.grasp_active(self.prefix)
+            self.miss_steps = 0 if held else self.miss_steps + 1
+            if self.miss_steps >= self.MISS_STEPS and self.regrasps < self.REGRASP:
+                self._restart_grasp()
+                return
+        if self.REPLAN_MOVE and name == "approach" and self.plan is not None and "corner" in self.plan:
+            if float(np.linalg.norm(self._corner() - self.plan["corner"])) > self.REPLAN_MOVE:
+                self.plan = self._make_plan(from_q=self._q())
+                self.phase_steps = 0
+        patience = self.phase_steps > self.budget    # a pose pressed into the table or cloth may never get closer
+        if self.CART_ARRIVE and name == "descend" and self._cart_arrived():
+            self.site_hist = []
+            self._next()                             # close: the pads (4.3 cm) grip from here
+            return
+        if name in ("approach", "descend"):
+            if self._arrived(TRACK_TOL) or patience:
+                if name == "approach" and self.PUSH_ON_LAYER and self._on_layer(self._corner()):
+                    self.plan = self._push_plan(self._corner(), np.asarray(self.goal(), dtype=float))
+                    self.wp = 0
+                    self.phase = self.PHASES.index("carry")     # settled on the other layer: push it home instead
+                    self.phase_steps = 0
+                    self.q_target = None
+                    return
+                if name == "approach":       # re-solve the pinch on the corner as it lies now (closed loop)
+                    self.plan = self._make_plan(from_q=self._q())
+                elif (self.DESCEND_RETRY and patience and not self._arrived(TRACK_TOL)
+                      and self.descend_retries < self.DESCEND_RETRY):
+                    self.descend_retries += 1         # never arrived: back up and re-approach on a fresh IK branch
+                    self.plan = self._make_plan()
+                    self.phase = self.PHASES.index("approach")
+                    self.phase_steps = 0
+                    self.q_target = None
+                    return
+                elif self.ALIGN_TOL and self.align_tries < self.ALIGN_TRIES and self._misaligned():
+                    self.align_tries += 1
+                    self.plan = self._make_plan(from_q=self._q())
+                    self.phase_steps = 0
+                    return
+                self._next()
+        elif name == "close":
+            shut = self._jaw_shut() if self.SETTLE_LIFT else True
+            if (self.phase_steps >= self.CLOSE_DWELL and shut) or self.phase_steps >= 3 * self.CLOSE_DWELL:
+                self.wp = 0
+                self.miss_steps = 0
+                self._next()
+        elif name in ("lift", "carry"):
+            last = len(self.plan["arc"]) - 1
+            if self._arrived(WAYPOINT_TOL) or patience:
+                self.wp = min(self.wp + 1, last)
+                self.phase_steps = 0
+            if name == "lift" and self.wp >= LIFT_WAYPOINTS:
+                self._next()
+            elif name == "carry" and self.wp >= last:
+                self._next()
+        elif name == "place":
+            if self._arrived(TRACK_TOL) or patience:
+                self._next()
+        elif name == "hold":
+            self._next()
+        elif name == "release":
+            if self.phase_steps >= self.OPEN_DWELL:
+                self._next()
+        elif name == "retreat":
+            if self._arrived(TRACK_TOL) or patience:
+                self._next()
+
+    # ---- resync --------------------------------------------------------------
+    def _jaw(self):
+        if self.plan is not None and "jaw" in self.plan:
+            return self.plan["jaw"]
+        center, corner = self.base.cloth_positions().mean(axis=0), self._corner()
+        jaw = np.r_[center[:2] - corner[:2], 0.0]
+        return jaw / np.linalg.norm(jaw)
+
+    def infer_phase(self, placed=None):
+        """Phase from the live sim (a learner or a perturbation has been driving), as FoldExpert.infer_phase."""
+        tip = np.asarray(self.base.gripper_position(self.prefix), dtype=float)
+        corner = self._corner()
+        goal = np.asarray(self.goal(), dtype=float)
+        if placed is None:
+            placed = float(np.linalg.norm(corner - goal)) < SUCCESS_DIST
+        if self.base.grasp_active(self.prefix):
+            self.plan = dict(self.plan or {}, jaw=self._jaw())
+            self.plan = self._arc_from_here()
+            self.wp = 0
+            if float(np.linalg.norm(corner - goal)) < SUCCESS_DIST:
+                name, self.wp = "hold", len(self.plan["arc"]) - 1
+            elif float(np.linalg.norm(corner[:2] - goal[:2])) < 0.02:
+                name, self.wp = "place", len(self.plan["arc"]) - 1
+            elif corner[2] >= TABLE_TOP_Z + 0.04:
+                name = "carry"
+            else:
+                name = "lift"
+        elif placed and "done" in self.PHASES:
+            name = "done" if tip[2] >= corner[2] + RETREAT else "retreat"
+            self.plan = dict(self.plan or {}, jaw=self._jaw())
+            self.plan["retreat"], _ = self._ik.solve(self.prefix, tip + [0, 0, RETREAT], self.plan["jaw"], self._q(),
+                                                     orientation_weight=0.02)
+        elif self.PUSH_ON_LAYER and self._on_layer(corner):
+            self.plan = self._push_plan(corner, goal)
+            self.wp = 0
+            name = "carry"                        # follow the push path with the jaw closed, then place / hold / release
+        else:
+            self.resynced = True
+            if self.RESYNC_IK_HOME:               # the knocked joints are a poor IK seed: plan from home, approach
+                self.plan = self._make_plan()
+                name = "approach"
+            else:
+                self.plan = self._make_plan(from_q=self._q())
+                near = float(np.linalg.norm(tip[:2] - corner[:2])) < 0.02 and tip[2] - corner[2] < 0.07
+                name = "descend" if near else "approach"
+        self.phase = self.PHASES.index(name)
+        self.phase_steps = 0
+        self.q_target = None
+        self.retreat_target = None
+        return name
+
+def _apply_env_params():
+    """WORLDFOLD_EXPERT_PARAMS="SETTLE_LIFT=1,REGRASP=2": IsaacArmExpert class-attribute overrides for a whole run,
+    rollout workers included (they import this module). Unset or empty changes nothing."""
+    import json
+    import os
+    text = os.environ.get("WORLDFOLD_EXPERT_PARAMS", "")
+    for item in filter(None, (s.strip() for s in text.split(","))):
+        key, val = item.split("=", 1)
+        if not hasattr(IsaacArmExpert, key):
+            raise ValueError(f"WORLDFOLD_EXPERT_PARAMS: IsaacArmExpert has no {key}")
+        setattr(IsaacArmExpert, key, json.loads(val))
+
+
+_apply_env_params()
