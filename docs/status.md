@@ -258,7 +258,7 @@ Newest first. One line per work pass: date · what changed · commit.
     - reach: the "unreachable" second fold was a single-seed IK artefact;
     - the user chose a bimanual fold-over; its stages, expert placement and obs v2 were built.
   - Q0 noise floor crashed on a GPU overlap; re-queued.
-  - Fast 233 passed, 5 skipped; slow 14 passed (34 Isaac-only skipped). (this commit)
+  - Fast 233 passed, 5 skipped; slow 14 passed (34 Isaac-only skipped). c035eab
 - 2026-10-08 · **Phase F report:** `docs/reports/2026-10-08-physical-grasp.md` (+ HTML, shareable https://claude.ai/artifact/Jj6aJ5aTKBNQEFzLkU9uuF), 4 videos (student clean 2/3, shifted 2/3, arm bump 1/3; expert arm bump 3/3) · tests unchanged (207 fast) · 43a4d8b
 - 2026-10-08 · **F4 finals, BC only:** id_easy 81, id_hard 71, knock_arm 35 (n = 100), joint_noise 26, overshoot 4 (n = 50). Docs. Tests: 207 passed, 5 skipped (not slow) · 5f7e931
 - 2026-10-07/08 · **Phase F: physical grasp through F3; F4 paused (expert first).**
