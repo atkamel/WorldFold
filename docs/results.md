@@ -2064,3 +2064,36 @@ Expert stage 0 of the quarter fold (= the half-fold expert, F3b defaults), stopp
 - **Not a speed or overshoot effect.** A slower carry and half the overshoot leave the strip width at 6.8 cm (15
   expected). The wrinkling of the first fold is structural on this cloth: neither the carry dynamics nor the
   spring-back offset moves it.
+
+### Q1 — loss v2 A/B, gripper head fixed (`isaac_friction`, 2026-10-14, `q1/eval_q1_*.json`)
+
+Setup: diffusion seed 0, 20k steps on `isaac_v1_friction` (hash `71a993b12a3c`). Replan 4, 1 × 8. Paired against
+F4's BC on the same `sel_` seeds; the Q0 noise floor is 24–25% of seeds flipping.
+
+| arm | sel_id_hard | sel_knock_arm | pooled paired diff vs F4 run A (95% CI) | McNemar p | failures (id_hard / knock) |
+|---|---|---|---|---|---|
+| F4 BC (run A / run B) | 70 / 70 | 44 / 45 | — | — | S1 23, G2 7 / S1 32, G2 20 |
+| **q1_grip final** (gripper BCE head) | **86** (78–91) | **60** (50–69) | **+16.0 pp [+7.0, +24.5]** | **0.001** | G2 14 / G2 36, G1 3, M1 1 |
+
+- **The gripper head is kept.** The gain is +16 pp on each set, the same against run B (pooled +15.5 pp, p = 0.001),
+  and well beyond the noise floor (paired SE ≈ 7 pp per set).
+- **The stalls are gone.** S1 went 23 → 0 on id_hard and 32 → 0 on knock_arm. With the gripper a crisp ±1, the
+  policy no longer hovers in the hysteresis band. What is left is slips (G2).
+- **Still running:** q1_all (adds horizon tail + phase weighting) and both best_val checkpoints.
+
+### Q3 — parallel second fold, first batch (`isaac_friction`, 2026-10-14, `q3/expert_parallel.json`)
+
+`WORLDFOLD_QF_SECOND=parallel` (`STAGES_PARALLEL`): each arm carries its crease end (v5 / v115) onto its own near
+corner (v0 / v110). The expert is the friction expert with every Q2/Q3 change; no parallel-specific tuning. Seeds
+`tune_id_easy` 660000–015, 1 × 8, 800 cap.
+
+| measure | parallel | fold-over (attempt F, same seeds) |
+|---|---|---|
+| success | **7/16** (Wilson 23.1–66.8) | 0/16 (0–19.4) |
+| first fold completed | 16/16 | 15/16 |
+| failures | G2@1 8, M1@1 1 | G2@1 15, G2@0 1 |
+| mean final fold score | 0.85 | 0.56 |
+
+- **The fast successes** finish in 178–205 steps: on the first fold's narrowed strip the crease ends are only 5–9 cm
+  from the near corners.
+- **The open failure mode is slips in the second fold.** The crease end is a two-layer bend.

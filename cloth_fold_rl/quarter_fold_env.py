@@ -121,6 +121,13 @@ STAGES_FOLD_OVER = (STAGES[0], STAGE1_FOLD_OVER)
 STAGE_STRAIGHTEN = Stage(moves=(Move("left_", (CLOTH_5,), CLOTH_5, "reset"), Move("right_", (CLOTH_115,), CLOTH_115, "reset")),
                          anchors=((CLOTH_0, CLOTH_0), (CLOTH_110, CLOTH_110)))
 STAGES_FOLD_OVER_STRAIGHTEN = (STAGES[0], STAGE_STRAIGHTEN, STAGE1_FOLD_OVER)
+# Q3 comparison: the parallel second fold. The strip is folded in half again along the same axis; each arm carries its
+# crease end onto its own near (bottom) corner. That is short moves in each arm's own lane, and the result is a
+# 4-layer strip, not a square.
+STAGE1_PARALLEL = Stage(moves=(Move("left_", (CLOTH_5,), CLOTH_0), Move("right_", (CLOTH_115,), CLOTH_110)),
+                        anchors=((CLOTH_0, CLOTH_0), (CLOTH_110, CLOTH_110)))
+STAGES_PARALLEL = (STAGES[0], STAGE1_PARALLEL)
+GRASP_CORNERS_PARALLEL = {"left_": (CLOTH_10, CLOTH_5), "right_": (CLOTH_120, CLOTH_115)}
 GRASP_CORNERS_FOLD_OVER_STRAIGHTEN = {"left_": (CLOTH_10, CLOTH_5, CLOTH_0), "right_": (CLOTH_120, CLOTH_115, CLOTH_5)}
 GRASP_CORNERS_FOLD_OVER = {"left_": (CLOTH_10, CLOTH_0), "right_": (CLOTH_120, CLOTH_5)}
 

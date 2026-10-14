@@ -110,3 +110,15 @@ def test_isaac_quarter_fold_uses_the_bimanual_fold_over():
         assert task_stages("quarter_fold", backend) == STAGES
         assert task_grasp_corners("quarter_fold", backend) == GRASP_CORNERS
     assert task_grasp_corners("half_fold", "isaac_friction") == GRASP_CORNERS
+
+
+def test_parallel_second_fold_switch(monkeypatch):
+    from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS_PARALLEL, STAGES_PARALLEL
+    from imitation.tasks.half_fold import task_grasp_corners
+    monkeypatch.setenv("WORLDFOLD_QF_SECOND", "parallel")
+    assert task_stages("quarter_fold", "isaac_friction") == STAGES_PARALLEL
+    assert task_grasp_corners("quarter_fold", "isaac_friction") == GRASP_CORNERS_PARALLEL
+    for stage in STAGES_PARALLEL:
+        for m in stage.moves:
+            assert set(m.corners) <= set(GRASP_CORNERS_PARALLEL[m.prefix])
+    assert task_stages("quarter_fold", "mujoco") == STAGES

@@ -97,8 +97,17 @@ def task_stages(task="half_fold", backend="mujoco"):
         from cloth_fold_rl.quarter_fold_env import STAGES_FOLD_OVER, STAGES_FOLD_OVER_STRAIGHTEN
         if not _fold_over(backend):
             return STAGES
+        if _second() == "parallel":
+            from cloth_fold_rl.quarter_fold_env import STAGES_PARALLEL
+            return STAGES_PARALLEL
         return STAGES_FOLD_OVER_STRAIGHTEN if _straighten() else STAGES_FOLD_OVER
     raise ValueError(f"task must be one of {TASKS}, got {task!r}")
+
+
+def _second():
+    """WORLDFOLD_QF_SECOND=parallel: the quarter fold's second fold along the same axis (Q3 comparison)."""
+    import os
+    return os.environ.get("WORLDFOLD_QF_SECOND", "fold_over")
 
 
 def _straighten():
@@ -112,6 +121,9 @@ def task_grasp_corners(task="half_fold", backend="mujoco"):
     from cloth_fold_rl.quarter_fold_env import (GRASP_CORNERS, GRASP_CORNERS_FOLD_OVER,
                                                 GRASP_CORNERS_FOLD_OVER_STRAIGHTEN)
     if task == "quarter_fold" and _fold_over(backend):
+        if _second() == "parallel":
+            from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS_PARALLEL
+            return GRASP_CORNERS_PARALLEL
         return GRASP_CORNERS_FOLD_OVER_STRAIGHTEN if _straighten() else GRASP_CORNERS_FOLD_OVER
     return GRASP_CORNERS
 
