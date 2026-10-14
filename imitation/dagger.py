@@ -41,7 +41,7 @@ from imitation.evaluate import evaluate, resolve_workers
 from imitation.policies.common import load_policy
 from imitation.rollout import EnvPool, PolicyController, rollout
 from imitation.seeds import DAGGER_SEED_BASE, SHIFT_SEED_BASE, shifted_pose
-from imitation.spec import ACTION_DIM, OBS_DIM
+from imitation.spec import ACTION_DIM, obs_dim
 from imitation.train import train
 
 
@@ -55,11 +55,10 @@ def score(results, sets=SCORE_SETS):
 
 
 def gain_in_se(new, old, sets=SCORE_SETS):
-    """score(new) - score(old) in standard errors of that difference (independent
-    binomial sets, so the variances add)."""
-    var = sum(r[k]["success_rate"] * (1 - r[k]["success_rate"]) / r[k]["n"]
-              for r in (new, old) for k in sets if k in r)
-    return (score(new, sets) - score(old, sets)) / max(var, 1e-12) ** 0.5
+    """score(new) - score(old) in standard errors of that difference. Paired over shared seeds when both reports
+    carry per-episode rows (Q0, `imitation.stats.paired_gain_se`); independent binomials for older reports."""
+    from imitation.stats import paired_gain_se
+    return paired_gain_se(new, old, sets)
 
 
 def round_seeds(r, episodes, shift_fraction):
@@ -115,6 +114,8 @@ def build_parser():
     ap.add_argument("--resume", action="store_true", help="continue from <out>/history.json")
     ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
     ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
+    ap.add_argument("--task", choices=("half_fold", "quarter_fold"), default="half_fold",
+                    help="half_fold (stage 0) or quarter_fold (both stages)")
     ap.add_argument("--teacher", default="expert", help="'expert' or a privileged state-policy checkpoint")
     ap.add_argument("--labels", choices=("lookahead", "takeover"), default=None,
                     help="scripted-teacher labels: look-ahead from a sim snapshot (MuJoCo), or executed expert "
@@ -155,6 +156,8 @@ def main():
     pool_kwargs = {}
     if args.backend != "mujoco":
         pool_kwargs["backend"] = args.backend
+    if args.task != "half_fold":
+        pool_kwargs["task"] = args.task
     if student.needs_images:
         pool_kwargs.update(render=True, cameras=dict(student.cameras))
     log(f"== teacher: {args.teacher} | student: {student.kind} | score sets {sets} | "
@@ -173,7 +176,7 @@ def main():
             log(f"== round 0: evaluating {best_ckpt}")
             best = cached_eval(out / "round_0_eval.json", lambda: evaluate(
                 best_ckpt, args.eval_sets, args.eval_n, pool=pool, replan_every=args.replan_every, log=log,
-                backend=args.backend), log, reuse=args.resume)
+                backend=args.backend, task=args.task), log, reuse=args.resume)
             history = [{"round": 0, "checkpoint": str(best_ckpt), "dataset": dataset, "eval": best, "kept": True}]
             with open(history_path, "w") as f:
                 json.dump(history, f, indent=1)
@@ -197,14 +200,15 @@ def main():
                                        config={"round": r, "beta": beta, "policy": str(best_ckpt),
                                                "replan_every": args.replan_every, "episodes": args.episodes,
                                                "recovery_fraction": args.recovery_fraction,
-                                               "teacher": args.teacher, "shift_fraction": args.shift_fraction})
+                                               "teacher": args.teacher, "shift_fraction": args.shift_fraction,
+                                               "task": args.task})
                 all_seeds, reset_options = round_seeds(r, args.episodes, args.shift_fraction)
                 seeds = [s for s in all_seeds if s not in writer.done_seeds]
                 rollout(pool, seeds, controller, reset_options=reset_options,
                         perturb_fn=recovery_perturbation_for(args.backend, args.recovery_fraction,
                                                              args.perturb_kinds),
                         meta_extra={"round": r, "beta": beta, "policy": str(best_ckpt)},
-                        on_done=lambda e: writer.add(e, obs_dim=OBS_DIM, action_dim=ACTION_DIM))
+                        on_done=lambda e: writer.add(e, obs_dim=obs_dim(args.task), action_dim=ACTION_DIM))
                 m = writer.freeze()
             new = [e for e in m["episodes"] if e["file"].startswith(f"{version}/")]
             n_labels = sum(e["n_labels"] for e in new)
@@ -221,7 +225,7 @@ def main():
                                 allow_failures=args.allow_failures or bool(args.relabel), log=log)
             res = cached_eval(out / f"round_{r}" / "eval.json", lambda: evaluate(
                 ckpt, args.eval_sets, args.eval_n, pool=pool, replan_every=args.replan_every, log=log,
-                backend=args.backend), log, reuse=args.resume)
+                backend=args.backend, task=args.task), log, reuse=args.resume)
             gain, gain_se = score(res, sets) - score(best, sets), gain_in_se(res, best, sets)
             kept = gain > 0
             history.append({"round": r, "checkpoint": str(ckpt), "dataset": version, "beta": beta,

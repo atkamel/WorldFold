@@ -39,6 +39,16 @@ SEED_RANGES = {"train": (TRAIN_SEED_BASE, 10_000), "dagger": (DAGGER_SEED_BASE, 
                "harvest": (HARVEST_SEED_BASE, 500_000), "shift": (SHIFT_SEED_BASE, 600_000),
                "tune": (TUNE_SEED_BASE, 700_000)}
 
+# Phase Q0: held-out selection and final blocks. The legacy sets above were used both to pick checkpoints (DAgger
+# keep/stop, F4 selection) and to report finals; from Q0 on, `sel_<set>` picks and `final_<set>` is reported once.
+# Same distribution as <set>, own seeds. BLOCK_SETS is append-only: a set's position fixes its bases.
+BLOCK_SETS = ("id_easy", "id_hard", "recovery", "knock_arm", "drop", "joint_noise", "overshoot")
+SEL_SEED_BASE, FINAL_SEED_BASE, BLOCK_SIZE = 700_000, 800_000, 5_000
+BLOCK_BASE = {f"{kind}_{name}": base + BLOCK_SIZE * i
+              for kind, base in (("sel", SEL_SEED_BASE), ("final", FINAL_SEED_BASE))
+              for i, name in enumerate(BLOCK_SETS)}
+SEED_RANGES.update({"sel": (SEL_SEED_BASE, FINAL_SEED_BASE), "final": (FINAL_SEED_BASE, 900_000)})
+
 
 def shifted_pose(seed):
     """Cloth start outside the demos' jitter: at least 2.5 cm off in one axis, up to 4 cm.
@@ -97,11 +107,14 @@ def perturbation_fn(kind, backend="mujoco"):
 
 def eval_set(name, n, backend="mujoco"):
     """(seeds, reset_options fn or None, perturb_fn or None) for a named evaluation set."""
-    if name in TUNE_SET_BASE:               # same distribution as the eval set it copies, tune-block seeds
-        base_name = name[len("tune_"):]
-        seeds = list(range(TUNE_SET_BASE[name], TUNE_SET_BASE[name] + n))
-        _, opts, fn = eval_set(base_name, n, backend)
-        return seeds, opts, fn
+    for blocks, prefix in ((TUNE_SET_BASE, "tune_"), (BLOCK_BASE, None)):
+        if name in blocks:                  # same distribution as the eval set it copies, its own block's seeds
+            if n > BLOCK_SIZE:
+                raise ValueError(f"{name}: n = {n} exceeds the block size {BLOCK_SIZE}")
+            base_name = name.split("_", 1)[1] if prefix is None else name[len(prefix):]
+            seeds = list(range(blocks[name], blocks[name] + n))
+            _, opts, fn = eval_set(base_name, n, backend)
+            return seeds, opts, fn
     seeds = list(range(EVAL_SEED_BASE[name], EVAL_SEED_BASE[name] + n))
     isaac = backend in LEHOME_TASK_BACKENDS   # isaac_weld uses the MuJoCo sets
     if name == "id_easy":

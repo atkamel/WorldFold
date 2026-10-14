@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-08 · **Branch:** `feature/isaac-imitation` · **Phase:** F4 finals done (BC only); F4 ☐ until DAgger
+**Updated:** 2026-10-14 · **Branch:** `feature/isaac-imitation` · **Phase:** Q (quarter fold): Q0/Q1 code done, evals queued; Q2 fold-over expert built, untested on Isaac
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -40,6 +40,40 @@ I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expe
 rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
+
+**2026-10-14, Phase Q (user, 2026-10-13): a robust quarter fold on isaac_friction, fast track, with a better benchmark
+and better losses first.** Plan: [superpowers/plans/2026-10-13-quarter-fold.md](superpowers/plans/2026-10-13-quarter-fold.md);
+roadmap Phase Q.
+
+- **Q0 benchmark v2 (code done):**
+  - Per-episode rows and per-stage metrics in every eval JSON.
+  - `sel_` / `final_` seed blocks (700k / 800k).
+  - Paired McNemar and bootstrap: `python -m imitation.stats a.json b.json`.
+  - DAgger keep rule is now paired; G2 documented; G3 (split stack) added.
+- **Q1 loss v2 (code done, opt-in via `--loss-cfg`):**
+  - Gripper BCE head, horizon tail, phase weighting.
+  - `best_val.pt` / `step_<n>.pt` candidates.
+  - Both A/B arms are trained. Val loss bottoms at 4k of 20k steps in both, as in F4.
+- **Queued Isaac jobs (`scripts/q01_after_train.ps1`, then `scripts/q1_ab.ps1`, about 5–6 h):**
+  - The Q0 noise floor: the F4 checkpoint twice on `sel_id_hard` + `sel_knock_arm`, n = 100.
+  - The Q1 evals: final and best-val of each arm, paired against F4.
+  - The first noise-floor attempt crashed when a GPU training overlapped the GPU-physics evals; sims and trainings no
+    longer overlap.
+- **Q2 second fold:**
+  - **Reach:** the second fold is reachable once the arms swap roles (multi-seed IK, 50/50 per arm). The single-seed
+    "unreachable" was an IK artefact (results.md).
+  - **User decision (2026-10-14):** a bimanual fold-over. Left arm: stack 0+10 → 110; right arm: crease end 5 → 115.
+    A shift/re-centre skill comes later as its own stage.
+  - **Built, not yet run on Isaac:**
+    - `STAGES_FOLD_OVER`, plus its grasp corners for the LeHome backends;
+    - the expert's place point mirrors along the carry axis (stage 0 unchanged);
+    - from stage 1 on, the pinch and place heights follow the cloth;
+    - obs v2: +18 dims of per-arm carried point and goal, quarter fold only (157-D);
+    - `--task quarter_fold` everywhere.
+- **Next:**
+  - After the queued evals: the quarter-fold expert smoke on tune seeds (`imitation.evaluate --task quarter_fold --ckpt
+    expert`), then Q3 tuning.
+  - Q3's bars need the user's OK before the gate run.
 
 **2026-10-08, F4 finals (BC only, 3.5 h plan):** privileged diffusion BC on `isaac_v1_friction` scored id_easy
 81 / id_hard 71 / knock_arm 35 (n = 100), joint_noise 26 and overshoot 4 (n = 50). The expert scored 92 / 94 / 75 on the same sets. Stalls (S1) dominate the
@@ -156,7 +190,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 187 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 233 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 14 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -200,7 +234,7 @@ Ordered by what they block. Each is a roadmap milestone.
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujuco/` first on `sys.path`; `mujuco/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
 | 12 | `imitation.cpu_slot` isn't fair: a lane that releases and re-takes it between eval sets starves a lane polling every 2 s (lane A waited 37 min) | parallel queues | — |
 | 11 | `v1_dagger_v1_r1`/`_r2` frozen with bad teacher labels — never train on them | DAgger | — |
-| 10 | `cloth_angles/tasks.py::QUARTER` diverged from `quarter_fold_env.STAGES` (3 ways) | world-model work only (parked) | M7.3 |
+| 10 | `cloth_angles/tasks.py::QUARTER` diverged from `quarter_fold_env.STAGES` (3 ways), and from `STAGES_FOLD_OVER` (Q2). Left as is in Q2: the parked world model's own tests encode its version | world-model work only (parked) | M7.3 |
 
 ## Parked
 
@@ -216,6 +250,15 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-13/14 · **Phase Q start.**
+  - Plan approved.
+  - Q0 benchmark v2 and Q1 loss v2 code; both Q1 arms trained.
+  - Q2:
+    - `--task` plumbing (sonnet, merged by the lead);
+    - reach: the "unreachable" second fold was a single-seed IK artefact;
+    - the user chose a bimanual fold-over; its stages, expert placement and obs v2 were built.
+  - Q0 noise floor crashed on a GPU overlap; re-queued.
+  - Fast 233 passed, 5 skipped; slow 14 passed (34 Isaac-only skipped). (this commit)
 - 2026-10-08 · **Phase F report:** `docs/reports/2026-10-08-physical-grasp.md` (+ HTML, shareable https://claude.ai/artifact/Jj6aJ5aTKBNQEFzLkU9uuF), 4 videos (student clean 2/3, shifted 2/3, arm bump 1/3; expert arm bump 3/3) · tests unchanged (207 fast) · 43a4d8b
 - 2026-10-08 · **F4 finals, BC only:** id_easy 81, id_hard 71, knock_arm 35 (n = 100), joint_noise 26, overshoot 4 (n = 50). Docs. Tests: 207 passed, 5 skipped (not slow) · 5f7e931
 - 2026-10-07/08 · **Phase F: physical grasp through F3; F4 paused (expert first).**

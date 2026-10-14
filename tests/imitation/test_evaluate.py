@@ -51,3 +51,32 @@ def test_demo_grasp_lines_mark_a_slip_only_with_the_jaw_closed():
     assert "grasp: friction (contact only)" in lines and "jaw L +0.05 shut  R +1.00 open" in lines
     assert [ln for ln in lines if ln.startswith("SLIP")] == ["SLIP L: corner lost, jaw closed"]
     assert grasp_lines(SimpleNamespace(), {}, lost) == []           # MuJoCo env: no Isaac grasp state
+
+
+def test_summary_keeps_episode_rows_and_stage_metrics():
+    ok = make_episode(1)
+    ok.meta.update(final_fold_score=1.0, perturb=None, seed=5)
+    bad = _failed(None)
+    bad.meta["seed"] = 6
+    s = summarize([ok, bad])
+    rows = {r["seed"]: r for r in s["episodes"]}
+    assert rows[5]["success"] and rows[5]["code"] is None and rows[5]["stages_done"] >= 1
+    assert not rows[6]["success"] and rows[6]["code"] in s["failure_codes"] and rows[6]["fail_stage"] == 0
+    assert s["stage_completion"] == [0.5]
+    # one success, one failure: the censored median is the midpoint of (steps, inf) = inf -> undefined
+    assert s["median_steps_censored"] is None
+    assert summarize([ok, ok])["median_steps_censored"] == ok.steps
+    assert sum(s["failure_codes_by_stage"].values()) == 1
+
+
+def test_g2_is_a_documented_code():
+    from imitation.evaluate import FAILURE_CODES
+    assert "G2" in FAILURE_CODES
+
+
+def test_split_stack_is_g3():
+    ep = _failed(None)
+    ep.meta["final_carried_spread"] = [0.12, 0.0]
+    assert failure_code(ep) == "G3"
+    ep.meta["final_carried_spread"] = [0.02, 0.0]
+    assert failure_code(ep) != "G3"

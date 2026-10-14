@@ -21,7 +21,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from imitation.seeds import EVAL_SEED_BASE
-from imitation.tasks import HalfFoldEnv, is_isaac
+from imitation.tasks import is_isaac, make_env
 
 
 def _overlay(frame, lines):
@@ -116,7 +116,9 @@ def main():
     ap.add_argument("--ckpt", required=True, help="policy checkpoint, or 'expert'")
     ap.add_argument("--seeds", type=int, nargs="+", default=None, help="default: the first 3 id_easy seeds")
     ap.add_argument("--replan-every", type=int, default=8)
-    ap.add_argument("--out", default="outputs/imitation/demo/half_fold.mp4")
+    ap.add_argument("--out", default=None, help="default outputs/imitation/demo/<task>.mp4")
+    ap.add_argument("--task", choices=("half_fold", "quarter_fold"), default="half_fold",
+                    help="half_fold (stage 0) or quarter_fold (both stages)")
     ap.add_argument("--width", type=int, default=960)
     ap.add_argument("--height", type=int, default=544)
     ap.add_argument("--fps", type=int, default=20)   # control_dt = 0.05 s -> real time
@@ -130,13 +132,15 @@ def main():
     ap.add_argument("--n", type=int, default=3, help="with --set and no --seeds: the set's first n seeds")
     args = ap.parse_args()
     args.seeds_given = args.seeds is not None
+    if args.out is None:
+        args.out = f"outputs/imitation/demo/{args.task}.mp4"
     if args.seeds is None:
         args.seeds = [EVAL_SEED_BASE["id_easy"] + i for i in range(3)]
     if is_isaac(args.backend):
         return isaac_main(args)
 
     import mujoco                    # MuJoCo demo only; the Isaac venv has no mujoco
-    env = HalfFoldEnv()
+    env = make_env("mujoco", task=args.task)
     base = env.unwrapped
     if args.ckpt == "expert":
         act_fn, label = ExpertActor(env), "scripted expert"
@@ -167,7 +171,6 @@ def isaac_main(args):
     --demo-size); a vision checkpoint gets its own rig cameras from the same dict observation, as in evaluation.
     One Isaac env per process, and Kit hangs at interpreter shutdown, so this exits through os._exit."""
     import os
-    from imitation.tasks import make_env
     from imitation.teachers.scripted import ScriptedTeacher
     policy = None
     cams = {"demo": args.demo_size}
@@ -176,7 +179,7 @@ def isaac_main(args):
         policy = load_policy(args.ckpt)
         if policy.needs_images:
             cams.update(dict(policy.cameras))
-    env = make_env(backend=args.backend, obs_mode="dict", cameras=cams)
+    env = make_env(backend=args.backend, task=args.task, obs_mode="dict", cameras=cams)
     teacher = ScriptedTeacher(env) if policy is None else None
     label = ("scripted expert" if policy is None else
              f"{'vision' if policy.needs_images else 'state'} policy {Path(args.ckpt).parent.name}") + "  [Isaac Sim]"

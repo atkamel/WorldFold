@@ -68,3 +68,25 @@ def test_quarter_fold_goals_follow_stage():
     np.testing.assert_allclose(goals[1], _start(env, CLOTH_110), atol=1e-6)
     np.testing.assert_allclose(goals[3], _start(env, CLOTH_120), atol=1e-6)   # anchor stays
     assert obs[-2] == pytest.approx(0.5)
+
+
+def test_obs_v2_carries_each_arms_point_and_goal():
+    from cloth_fold_rl.quarter_fold_env import CLOTH_5, CLOTH_115
+    from imitation.spec import CARRY_SLICE, OBS_DIM_QF, obs_dim
+    from imitation.tasks import make_env
+    env = make_env("mujoco", task="quarter_fold")
+    obs, _ = env.reset(seed=0)
+    assert obs.shape == (OBS_DIM_QF,) == env.observation_space.shape and obs_dim("quarter_fold") == OBS_DIM_QF
+    np.testing.assert_allclose(obs[:OBS_DIM - 2], HalfFoldEnv().reset(seed=0)[0][:OBS_DIM - 2], atol=1e-5)
+    carry = obs[CARRY_SLICE].reshape(2, 3, 3)          # [arm, (point, goal, goal - point), xyz]
+    np.testing.assert_allclose(carry[0, 0], _start(env, CLOTH_10), atol=1e-5)     # stage 0: left carries v10 -> v0
+    np.testing.assert_allclose(carry[0, 1], _start(env, CLOTH_0), atol=1e-6)
+    np.testing.assert_allclose(carry[1, 2], carry[1, 1] - carry[1, 0], atol=1e-6)
+    # stage 1 (MuJoCo roles): the left arm's point is vertex 5, which no corner slot shows
+    env.stage = 1
+    env._stage_start = env._start.copy()
+    env._set_goals()
+    carry = env._observe()[CARRY_SLICE].reshape(2, 3, 3)
+    np.testing.assert_allclose(carry[0, 0], _start(env, CLOTH_5), atol=1e-5)
+    np.testing.assert_allclose(carry[0, 1], _start(env, CLOTH_115), atol=1e-6)
+    assert env._observe()[OBS_DIM - 2] == pytest.approx(0.5)

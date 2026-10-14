@@ -38,6 +38,8 @@ def resolve_workers(backend, workers):
 
 FAILURE_CODES = {
     "G1": "missed or unstable grasp (an arm never grasped, or dropped its unplaced corner)",
+    "G2": "slip: an arm lost its corner while its jaws were still commanded closed (friction grasp only)",
+    "G3": "split stack: the layers of a stacked corner carried together ended > 2 x SUCCESS_DIST apart (Q2)",
     "M1": "motion error: anchor corner dragged or sim unstable",
     "F1": "fold placed with poor alignment (released off target)",
     "S1": "stalled: timed out still holding / hovering",
@@ -65,6 +67,8 @@ def failure_code(ep: Episode) -> str | None:
         lost = np.flatnonzero(g[:-1] & ~g[1:]) + 1
         if len(lost) and (ep.obs[np.minimum(lost, len(ep.obs) - 1), GRIPPER_CTRL_DIMS[arm]] < 0.5).any():
             return "G2"
+    if max(m.get("final_carried_spread") or [0.0]) > 2 * SUCCESS_DIST:
+        return "G3"
     # an arm let go before its corner got near the goal
     dist = m.get("final_move_distance", [0.0, 0.0])
     for arm in range(2):
@@ -77,20 +81,47 @@ def failure_code(ep: Episode) -> str | None:
     return "S1"
 
 
+def stages_done(ep: Episode) -> int:
+    """Stages the episode completed: every stage it moved past, plus the last one on success."""
+    return int(ep.stage.max()) + (1 if ep.meta["success"] else 0) if len(ep.stage) else int(ep.meta["success"])
+
+
+def episode_row(ep: Episode) -> dict:
+    """One episode of an eval, kept in the report so policies can be compared seed by seed (imitation.stats)."""
+    m = ep.meta
+    st = np.asarray(ep.stage)
+    entered = [int(i) for i in np.flatnonzero(np.diff(st) > 0) + 1]     # step each later stage began
+    return {"seed": int(m["seed"]), "success": bool(m["success"]), "steps": int(ep.steps),
+            "stages_done": stages_done(ep), "stage_steps": entered,
+            "fold_score": float(m["final_fold_score"]), "code": failure_code(ep),
+            "fail_stage": None if m["success"] else int(m.get("final_stage", st[-1] if len(st) else 0)),
+            "grasped": [bool(g) for g in ep.grasped.any(axis=0)],
+            "termination": m["termination_reason"], "perturb_kind": m.get("perturb_kind")}
+
+
 def summarize(episodes: list[Episode], infer_ms=None) -> dict:
     n = len(episodes)
     codes = Counter(failure_code(e) for e in episodes)
     codes.pop(None, None)
     succ = [e for e in episodes if e.meta["success"]]
+    done = [stages_done(e) for e in episodes]
+    # time to success with failures censored at +inf: the median is defined while at least half the episodes succeed
+    med = float(np.median([e.steps if e.meta["success"] else np.inf for e in episodes]))
+    by_stage = Counter((failure_code(e), int(e.meta.get("final_stage", 0))) for e in episodes if not e.meta["success"])
     return {"n": n, "success_rate": len(succ) / n,
             "mean_fold_score": float(np.mean([e.meta["final_fold_score"] for e in episodes])),
             "grasp_success": float(np.mean([e.grasped.any(axis=0).all() for e in episodes])),
             "mean_steps_success": float(np.mean([e.steps for e in succ])) if succ else None,
+            "median_steps_censored": med if np.isfinite(med) else None,
+            # stage_completion[i] = share of episodes that completed at least i + 1 stages
+            "stage_completion": [float(np.mean([d > i for d in done])) for i in range(max(done + [1]))],
             "termination": dict(Counter(e.meta["termination_reason"] for e in episodes)),
             "failure_codes": dict(codes),
+            "failure_codes_by_stage": {f"{c}@{st}": k for (c, st), k in sorted(by_stage.items())},
             "perturbed_failures": sum(1 for e in episodes if not e.meta["success"] and e.meta.get("perturb")),
             "perturbed_steps": int(sum((e.actor == ACTOR_PERTURB).sum() for e in episodes)),
-            "policy_infer_ms": infer_ms}
+            "policy_infer_ms": infer_ms,
+            "episodes": [episode_row(e) for e in episodes]}
 
 
 def save_version_name(set_name, ckpt, n) -> str:
@@ -121,7 +152,7 @@ class _TimedPolicy:
 
 
 def evaluate(ckpt, sets=("id_easy",), n=48, workers=None, replan_every=8, pool=None, log=print, save_dir=None,
-             backend="mujoco", on_set=None):
+             backend="mujoco", on_set=None, task="half_fold"):
     from imitation.policies.common import load_policy
 
     policy = None if ckpt == "expert" else load_policy(ckpt)
@@ -133,6 +164,8 @@ def evaluate(ckpt, sets=("id_easy",), n=48, workers=None, replan_every=8, pool=N
     kw = {"render": needs_images, "cameras": cams}
     if backend != "mujoco":
         kw["backend"] = backend
+    if task != "half_fold":
+        kw["task"] = task
     pool = pool or EnvPool(resolve_workers(backend, workers), kw)
     results = {}
     try:
@@ -156,7 +189,10 @@ def evaluate(ckpt, sets=("id_easy",), n=48, workers=None, replan_every=8, pool=N
             r = results[name]
             if on_set is not None:         # e.g. persist each set as it finishes (a job limit can cut a long eval)
                 on_set(name, r)
-            log(f"  {name:9s} success {r['success_rate']:.0%} ({round(r['success_rate'] * r['n'])}/{r['n']})  "
+            from imitation.stats import wilson
+            k = round(r['success_rate'] * r['n'])
+            lo, hi = wilson(k, r['n'])
+            log(f"  {name:9s} success {r['success_rate']:.0%} ({k}/{r['n']}, Wilson {lo:.0f}-{hi:.0f})  "
                 f"fold {r['mean_fold_score']:.3f}  grasp {r['grasp_success']:.0%}  "
                 f"failures {r['failure_codes']}  {time.time() - t0:.0f}s")
             if save_dir:
@@ -178,6 +214,8 @@ def build_parser():
     ap.add_argument("--n", type=int, default=48)
     ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
     ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
+    ap.add_argument("--task", choices=("half_fold", "quarter_fold"), default="half_fold",
+                    help="half_fold (stage 0) or quarter_fold (both stages)")
     ap.add_argument("--replan-every", type=int, default=8)
     ap.add_argument("--out", default=None, help="JSON report path (default: next to the checkpoint)")
     ap.add_argument("--save-episodes", default=None, help="directory to write the rollouts to")
@@ -188,12 +226,15 @@ def build_parser():
 
 def main():
     args = build_parser().parse_args()
-    out = Path(args.out or (Path(args.ckpt).with_name(f"eval_r{args.replan_every}.json") if args.ckpt != "expert"
-                            else Path("outputs/imitation/eval_expert.json")))
+    tag = "" if args.backend == "mujoco" else f"_{args.backend}"   # MuJoCo keeps the pre-Q0 default names
+    tag += "" if args.task == "half_fold" else f"_{args.task}"
+    out = Path(args.out or (Path(args.ckpt).with_name(f"eval_r{args.replan_every}{tag}.json") if args.ckpt != "expert"
+                            else Path(f"outputs/imitation/eval_expert{tag}.json")))
     results = {}
     if args.resume and out.exists():
         prev = json.loads(out.read_text())
-        if prev.get("checkpoint") == args.ckpt and prev.get("replan_every") == args.replan_every:
+        if (prev.get("checkpoint") == args.ckpt and prev.get("replan_every") == args.replan_every
+                and prev.get("backend", "mujoco") == args.backend and prev.get("task", "half_fold") == args.task):
             results = {k: v for k, v in prev["results"].items() if v.get("n") == args.n}
             print(f"resuming {out}: have {sorted(results)}")
 
@@ -203,13 +244,13 @@ def main():
         order = [s for s in args.sets if s in results] + [s for s in results if s not in args.sets]
         out.parent.mkdir(parents=True, exist_ok=True)
         with open(out, "w") as f:
-            json.dump({"checkpoint": args.ckpt, "replan_every": args.replan_every,
+            json.dump({"checkpoint": args.ckpt, "replan_every": args.replan_every, "backend": args.backend, "task": args.task,
                        "results": {s: results[s] for s in order}, "failure_codes": FAILURE_CODES}, f, indent=1)
 
     todo = [s for s in args.sets if s not in results]
     if todo:
         evaluate(args.ckpt, todo, args.n, resolve_workers(args.backend, args.workers), args.replan_every,
-                 save_dir=args.save_episodes, backend=args.backend, on_set=write)
+                 save_dir=args.save_episodes, backend=args.backend, on_set=write, task=args.task)
     write()
     print(f"wrote {out}")
 

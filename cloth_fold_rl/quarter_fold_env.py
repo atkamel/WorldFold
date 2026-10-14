@@ -106,6 +106,15 @@ STAGES = (
           anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120))),
 )
 
+# Phase Q2 (2026-10-13, user): the second fold on Isaac as a bimanual fold-over. Both arms take the west edge, one end
+# each, lift it over the crease and lower it onto the east edge. The roles are swapped from STAGES[1]: on LeHome's
+# cloth position the left arm carries the near-row stack (0+10) and the right arm the far-row crease end (5); IK reach
+# 50/50 for both against 31/50 for the left arm in STAGES[1]'s roles (isaac/reach_check_qf.py, multi-seed IK).
+STAGE1_FOLD_OVER = Stage(moves=(Move("left_", (CLOTH_0, CLOTH_10), CLOTH_110), Move("right_", (CLOTH_5,), CLOTH_115)),
+                         anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120)))
+STAGES_FOLD_OVER = (STAGES[0], STAGE1_FOLD_OVER)
+GRASP_CORNERS_FOLD_OVER = {"left_": (CLOTH_10, CLOTH_0), "right_": (CLOTH_120, CLOTH_5)}
+
 
 class QuarterFoldEnv(gym.Wrapper):
     """Fold in half, release, fold in half again, release. See module docstring."""
@@ -113,7 +122,7 @@ class QuarterFoldEnv(gym.Wrapper):
     stages = STAGES     # subclasses may run a prefix of the stages (see imitation.tasks.HalfFoldEnv)
 
     def __init__(self, max_episode_steps=MAX_STEPS, seed=None, cloth_jitter=CLOTH_JITTER, base_env=None,
-                 stages=None):
+                 stages=None, carry_obs=False):
         # base_env: any ClothFoldEnv drop-in (e.g. isaac.isaac_env.IsaacClothFoldEnv) built in joint_delta
         # mode with grasp_corners=GRASP_CORNERS and grasp_radius=GRASP_RADIUS; the wrapper reads it through
         # cloth_positions / gripper_position / grasp_active, plus _get_obs, the goal fields and
@@ -142,6 +151,9 @@ class QuarterFoldEnv(gym.Wrapper):
         task_start = spaces["proprio"].shape[0] + spaces["cloth_state"].shape[0]
         self._onehot = slice(task_start, task_start + env.n_tasks)
         dim = self._flat.observation_space.shape[0] - env.n_tasks + 2
+        # Q2 obs v2 (imitation.spec.CARRY_OBS_DIM): per arm, the carried point, its goal and goal - point
+        self.carry_obs = carry_obs
+        dim += 18 if carry_obs else 0
         self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(dim,), dtype=np.float32)
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(ACTION_DIM,), dtype=np.float32)
         self.stage = 0
@@ -185,7 +197,19 @@ class QuarterFoldEnv(gym.Wrapper):
     def _observe(self):
         flat = np.delete(self._flat.observation(self.env._get_obs()), self._onehot)
         extra = [self.stage / len(self.stages), self._settle_steps / SETTLE_STEPS]
-        return np.concatenate([flat, extra]).astype(np.float32)
+        parts = [flat, extra]
+        if self.carry_obs:
+            parts.append(self._carry_features())
+        return np.concatenate(parts).astype(np.float32)
+
+    def _carry_features(self):
+        out = np.zeros((2, 3, 3))
+        for move in self.stages[self.stage].moves:
+            arm = 0 if move.prefix == "left_" else 1
+            point = np.mean([self._vertex(c) for c in move.corners], axis=0)
+            goal = self.goal(move)
+            out[arm] = (point, goal, goal - point)
+        return out.ravel()
 
     def _grasped(self, prefix):
         return self.env.grasp_active(prefix)
@@ -193,6 +217,10 @@ class QuarterFoldEnv(gym.Wrapper):
     def _move_distance(self, move):
         """Mean distance of the move's corners to its goal."""
         return float(np.mean([np.linalg.norm(self._vertex(c) - self.goal(move)) for c in move.corners]))
+
+    def _spread(self, move):
+        pts = [self._vertex(c) for c in move.corners]
+        return float(max((np.linalg.norm(a - b) for i, a in enumerate(pts) for b in pts[i + 1:]), default=0.0))
 
     def _placed(self, move):
         return all(np.linalg.norm(self._vertex(c) - self.goal(move)) < SUCCESS_DIST for c in move.corners)
@@ -270,6 +298,8 @@ class QuarterFoldEnv(gym.Wrapper):
         return {"stage": self.stage, "fold_score": self.fold_score(), "settle_steps": self._settle_steps,
                 "grasped": {p: self._grasped(p) for p in self.env.prefixes},
                 "move_distance": [self._move_distance(m) for m in self.stages[self.stage].moves],
+                # Q2: how far apart the vertices a move carries together are (a stack's two layers); 0 for one vertex
+                "carried_spread": [self._spread(m) for m in self.stages[self.stage].moves],
                 "anchor_drift": self._anchor_drift(), "success": reason == "success",
                 "termination_reason": reason}
 

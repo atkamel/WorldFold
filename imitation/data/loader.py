@@ -30,13 +30,14 @@ class WindowSampler:
     def __init__(self, episodes, obs_horizon, chunk, device, teacher=None, cameras=None):
         self.H, self.K, self.device, self.teacher = obs_horizon, chunk, device, teacher
         self.cameras = [c for c, _ in cameras] if cameras else []
-        obs, act_pad, valid_pad = [], [], []
+        obs, act_pad, valid_pad, fold = [], [], [], []
         dense_t, dense_start, dense_p, dense_w = [], [], [], []
         lab_t, lab_start, labels = [], [], []
         row = prow = 0
         for ep in episodes:
             T = ep.steps
             obs.append(ep.obs)
+            fold.append(ep.fold_score)
             act_pad.append(np.concatenate([ep.actions, np.repeat(_pad_action(ep.actions[-1])[None], chunk, 0)]))
             expert = ep.meta["source"] == "expert"
             if teacher is not None:          # every step, labelled by the teacher
@@ -61,6 +62,7 @@ class WindowSampler:
             prow += T + chunk
         t = lambda xs: torch.as_tensor(np.concatenate(xs) if xs else np.zeros(0, np.int64), device=device)
         self.obs = torch.as_tensor(np.concatenate(obs), dtype=torch.float32, device=device)
+        self.fold = torch.as_tensor(np.concatenate(fold), dtype=torch.float32, device=device)
         self.act_pad = torch.as_tensor(np.concatenate(act_pad), dtype=torch.float32, device=device)
         self.valid_pad = torch.as_tensor(np.concatenate(valid_pad), device=device)
         self.dense_t, self.dense_start, self.dense_p = t(dense_t), t(dense_start), t(dense_p)
@@ -140,6 +142,20 @@ class WindowSampler:
                 rows = self.rows[idx].cpu()
                 imgs = {c: self.images[c][rows].to(self.device, non_blocking=True) for c in self.cameras}
         return X, Y, M, imgs
+
+    @torch.no_grad()
+    def phase_flags(self, fold_thr=0.8):
+        """Per sample (Q1 phase weighting): in the placement phase (fold_score at its step >= fold_thr), or its
+        target chunk switches a gripper. Bool [len(self)] on the device."""
+        from imitation.data.dataset import GRIPPER_DIMS
+        g = list(GRIPPER_DIMS)
+        ar = torch.arange(self.K, device=self.device)[None]
+        y = self.teacher_y if self.teacher is not None else self.act_pad[self.dense_p[:, None] + ar]
+        def switches(chunks):            # open/closed side of 0 changes within the chunk
+            side = chunks[..., g] > 0
+            return (side != side[:, :1]).flatten(1).any(-1)
+        switch = [switches(y), switches(self.labels)]
+        return (self.fold[self.rows] >= fold_thr) | torch.cat(switch)
 
     def image_stats(self, n=4096, seed=0):
         """Per-camera, per-channel mean/std of the frames (for VisionChunkPolicy's normalizer)."""

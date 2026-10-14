@@ -3,6 +3,18 @@
 OBS_DIM = 139
 ACTION_DIM = 12
 
+# Obs v2 (Phase Q2): the quarter fold appends, per arm (left, right), the point its current move carries (the mean of
+# the carried vertices), that move's goal, and goal - point -- 18 dims after the 139. The 139 only show the four
+# corners, and the second fold's right arm carries vertex 5 (the crease end), which no corner slot holds.
+CARRY_OBS_DIM = 18
+OBS_DIM_QF = OBS_DIM + CARRY_OBS_DIM
+CARRY_SLICE = slice(OBS_DIM, OBS_DIM_QF)
+
+
+def obs_dim(task="half_fold"):
+    """Observation width of a task's env and datasets."""
+    return OBS_DIM_QF if task == "quarter_fold" else OBS_DIM
+
 # proprio dims of the gripper actuator command (left, right); 1.0 = open, below 0.5 = closing or closed
 GRIPPER_CTRL_DIMS = (10, 35)
 

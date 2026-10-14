@@ -55,3 +55,20 @@ def test_round_seeds_mix_shifted_poses_from_their_own_range():
     assert len(seeds) == 10 and len(shifted) == 5 and len(set(seeds)) == 10
     assert opts(shifted[0]) is not None and opts(seeds[0]) is None
     assert round_seeds(2, 10, 0.0)[1] is None
+
+
+def test_sel_and_final_blocks_are_disjoint_and_keep_their_set_distribution():
+    from imitation.seeds import BLOCK_BASE, BLOCK_SIZE
+    seen = set()
+    for name, base in BLOCK_BASE.items():
+        block = set(range(base, base + BLOCK_SIZE))
+        assert not (block & seen), name
+        seen |= block
+        lo, hi = SEED_RANGES[name.split("_", 1)[0]]
+        assert lo <= base and base + BLOCK_SIZE <= hi
+    for set_name, base in EVAL_SEED_BASE.items():
+        assert not (set(range(base, base + 10_000)) & seen)
+    seeds, opts, perturb = eval_set("sel_id_hard", 3, backend="isaac_friction")
+    assert seeds == [BLOCK_BASE["sel_id_hard"] + i for i in range(3)] and opts is shifted_pose_isaac
+    assert eval_set("final_knock_arm", 2, backend="isaac_friction")[2] is not None
+    assert eval_set("final_id_easy", 2)[1:] == (None, None)

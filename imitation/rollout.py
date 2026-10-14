@@ -802,6 +802,7 @@ def _finish(s: _Slot, final_obs, controller, meta_extra) -> Episode:
             "final_fold_score": float(info["fold_score"]), "final_stage": int(info["stage"]),
             "final_move_distance": [float(d) for d in info["move_distance"]],
             "final_anchor_drift": float(info["anchor_drift"]),
+            "final_carried_spread": [float(d) for d in info.get("carried_spread", [])],
             "perturb": None if s.perturb is None else [s.perturb.t, s.perturb.k],
             "perturb_kind": None if s.perturb is None else s.perturb.kind,
             **s.meta, **(meta_extra or {})}

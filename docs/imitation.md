@@ -177,6 +177,29 @@ Policies emit **chunks**: K = 16 actions, re-planned every 8 steps. The executed
 open-loop for those 8 steps, which is also the macro-action the offline-RL stage should
 treat as its action (Phase 5).
 
+### 3.1 Loss v2 (Phase Q1, 2026-10-13; opt-in, `train --loss-cfg`)
+
+The pre-Q1 loss (masked L1 for chunk-MLP and vision, masked ε-MSE for diffusion, every dim
+and chunk step weighted equally) stays the default and is unchanged when `--loss-cfg` is
+empty. `imitation/policies/loss.py::LossCfg`:
+
+- **`gripper_head`:** the friction expert's gripper commands are exactly −1 (60% of
+  `isaac_v1_friction` steps) or +1, never in the ±0.3 hold band, so the gripper is a binary
+  choice. MLP and vision read their gripper outputs as logits. Diffusion adds a classifier on
+  the obs encoding and denoises only the 10 joint dims. All are trained with BCE and emit
+  exactly ±1. The flag travels in the checkpoint config.
+- **`horizon_tail`:** weight of the chunk steps at or after `replan_every`, which are predicted
+  but never executed.
+- **`phase_weight` / `phase_fold`:** weight of samples in the placement phase
+  (fold_score ≥ `phase_fold`) or whose target chunk switches a gripper (`WindowSampler.phase_flags`).
+- Weights multiply the [B, K] chunk mask, so each policy's masked mean becomes a weighted
+  mean without any change to the policy code.
+- Not in v2: per-dim action normalization. The joint deltas saturate (|a| = 1 on 2–32% of
+  steps per dim, p99 = 1), so standardising them would not change their relative scale.
+- **Checkpoints:** `best_val.pt` (lowest EMA val loss) is always written, and `step_<n>.pt`
+  every `--save-every` steps. F4's val loss was lowest at 6k of 20k steps and doubled by
+  the end. Selection between checkpoints uses rollouts on `sel_` seeds, not val loss.
+
 ## 4. Episode schema
 
 Defined and documented in `imitation/data/schema.py` — see that module's docstring for the
@@ -238,7 +261,11 @@ From `imitation/evaluate.py:27`:
 | G1 | missed or unstable grasp (an arm never grasped, or dropped its unplaced corner) |
 | M1 | motion error: anchor corner dragged, or sim unstable |
 | F1 | fold placed with poor alignment (released off target) |
+| G2 | slip: an arm lost its corner while its jaws were still commanded closed (friction grasp only; Phase F) |
 | S1 | stalled: timed out still holding or hovering |
+
+Q0 (2026-10-13): `failure_codes_by_stage` in the summary keys each code by the stage the
+episode ended in (`S1@1` = stalled in the second fold).
 
 Whether a failure followed a disturbance is reported separately as `perturbed_failures`
 in the summary, not as a code (fixed in M2.2: the old R1 short-circuit made the `recovery`
@@ -258,6 +285,27 @@ Non-negotiable, because the differences being chased are a few percentage points
 - Every reported number goes in [results.md](results.md) with its run id, dataset version
   and n.
 
+**Benchmark v2 (Phase Q0, 2026-10-13).** Two policies always run on the same seeds of a
+set, so they are compared seed by seed, not as independent binomials:
+
+- **Per-episode rows** (`episodes` in each set of the eval JSON, `evaluate.episode_row`): seed,
+  success, steps, stages completed, the step each later stage began, final fold score,
+  failure code and the stage it happened in, per-arm grasp, perturbation kind.
+- **Per-stage summary:** `stage_completion[i]` = share of episodes that completed at least
+  i + 1 stages; `median_steps_censored` = median steps with failures counted as +inf (the mean
+  over successes alone hides that a slower policy also fails more).
+- **Paired tests** (`imitation/stats.py`, `python -m imitation.stats a.json b.json`): exact
+  McNemar on the discordant seeds, paired bootstrap 95% CI of the success difference, pooled
+  across sets. `dagger.gain_in_se` is now the paired gain in SE when both reports carry rows
+  (older reports fall back to the independent-binomial formula).
+- **Selection never touches the reported seeds:** checkpoint picks, DAgger keep/stop and loss
+  A/Bs use `sel_<set>`; numbers are reported once, on `final_<set>` (section 6).
+- **Isaac noise floor:** the same checkpoint evaluated twice on the same seeds
+  (`stats --flips`). Cloth on Isaac is not bit-deterministic, so a paired difference smaller
+  than the measured flip rate is reported as noise.
+- **Gates** state the point estimate and the Wilson lower bound; bars are written into the
+  roadmap row before the run.
+
 ## 6. Seed discipline and evaluation sets
 
 Disjoint ranges, so training data never shares a cloth start with evaluation
@@ -271,6 +319,15 @@ Disjoint ranges, so training data never shares a cloth start with evaluation
 | 200 000 .. | `id_hard` |
 | 300 000 .. | `recovery` (the legacy knock; 300 000–309 999) |
 | 310 000 / 320 000 / 330 000 / 340 000 .. | `knock_arm` / `drop` / `joint_noise` / `overshoot` (Phase F3b) |
+| 600 000 .. | tuning copies (`tune_<set>`) |
+| 700 000 + 5000·i .. | `sel_<set>`: selection (checkpoint picks, DAgger keep/stop, A/Bs) — Phase Q0 |
+| 800 000 + 5000·i .. | `final_<set>`: reported once — Phase Q0 |
+
+`i` is the set's position in `imitation.seeds.BLOCK_SETS` (append-only). `sel_` and `final_`
+sets have their parent set's distribution (poses, perturbations, backend rules) on their own
+seeds, at most 5000 per set. Through Phase F the same legacy blocks were used both to pick
+checkpoints and to report finals, so those finals carry a selection bias; from Phase Q on,
+reported numbers use `final_` only.
 
 - **`id_easy`** — same start distribution as the demos.
 - **`id_hard`** — cloth offset on a ring outside the training jitter (≥2.5 cm, up to 4 cm

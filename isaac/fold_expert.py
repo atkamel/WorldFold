@@ -147,6 +147,32 @@ class IsaacArmExpert:
         cloth = self.base.cloth_positions()
         return np.mean([cloth[c] for c in self.corners], axis=0)
 
+    def _stage(self):
+        return int(getattr(self.env, "stage", 0))
+
+    def _place_point(self, goal, offset, corner):
+        """The held point's mirror image across the fold line, so the corner lands on the goal: the pinch offset is
+        flipped along the carry axis. Stage 0 folds along y (as before Q2); a later stage along its dominant axis
+        (the quarter fold's second fold carries along x). From stage 1 on the goal lies on cloth, so the place
+        height follows the cloth surface there."""
+        axis = 1
+        if self._stage() > 0:
+            d = np.asarray(goal[:2], float) - np.asarray(corner[:2], float)
+            axis = int(abs(d[1]) > abs(d[0]))
+        o = np.array(offset[:2], dtype=float)
+        o[axis] = -o[axis]
+        z = TABLE_TOP_Z + self.PLACE_HEIGHT
+        if self._stage() > 0:
+            z = max(z, self._surface_z(goal) - CORNER_REST_DZ + self.PLACE_HEIGHT)
+        return np.array([goal[0] + o[0], goal[1] + o[1], z])
+
+    def _surface_z(self, xy, radius=0.02):
+        """Highest cloth particle within `radius` (horizontally) of xy, ignoring the vertices this arm carries."""
+        cloth = self.base.cloth_positions()
+        near = np.linalg.norm(cloth[:, :2] - np.asarray(xy[:2], float), axis=1) < radius
+        near[list(self.corners)] = False
+        return float(cloth[near, 2].max()) if near.any() else TABLE_TOP_Z + CORNER_REST_DZ
+
     def _q(self):
         return np.asarray(self.base.joint_positions(self.prefix)[:5], dtype=float)
 
@@ -164,11 +190,11 @@ class IsaacArmExpert:
         jaw /= np.linalg.norm(jaw)
         offset = -self.PINCH_INSET * jaw[:2]
         z = TABLE_TOP_Z + self.PINCH_HEIGHT
-        if self.PINCH_FOLLOW_Z:      # a knocked corner may lie on a fold: pinch at its height, not the table's
+        # a knocked corner may lie on a fold, and every stage-1 point does (the stack, the crease): pinch at its height
+        if self.PINCH_FOLLOW_Z or self._stage() > 0:
             z = max(z, float(corner[2]) - CORNER_REST_DZ + self.PINCH_HEIGHT)
         pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], z])
-        # the held point's mirror image across the fold line, so the corner lands on the goal
-        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
+        place = self._place_point(goal, offset, corner)
         q = list(SEED_Q[p]) if from_q is None else list(from_q)
         plan = {"jaw": jaw, "corner": corner.copy()}
         w = ORIENTATION_WEIGHT
@@ -228,7 +254,7 @@ class IsaacArmExpert:
         goal = np.asarray(self.goal(), dtype=float)
         jaw = self.plan["jaw"] if self.plan else np.array([0.0, -1.0, 0.0])
         offset = -self.PINCH_INSET * jaw[:2]
-        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
+        place = self._place_point(goal, offset, self._corner())
         start = np.asarray(self.base.gripper_position(p), dtype=float)
         q, arc, tips = self._q(), [], []
         n = max(2, int(np.ceil(np.linalg.norm(place - start) / 0.02)))

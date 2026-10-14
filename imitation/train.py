@@ -28,6 +28,7 @@ from imitation.data.loader import WindowSampler
 from imitation.data.dataset import Normalizer, bc_episodes, clamp_fraction, split_episodes
 from imitation.data.schema import load_dataset
 from imitation.policies.common import build_policy, policy_class, default_device, load_policy, n_params, save_policy
+from imitation.policies.loss import LossCfg, horizon_weights
 from imitation.spec import OBS_SUBSETS
 
 POLICY_DEFAULTS = {
@@ -65,7 +66,8 @@ class EMA:
 
 def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024, lr=1e-3, weight_decay=1e-4,
           warmup=500, ema=0.999, seed=0, eval_every=2000, init_from=None, max_episodes=None,
-          policy_kwargs=None, dagger_weight=1.0, allow_failures=False, obs_subset=None, teacher=None, log=print):
+          policy_kwargs=None, dagger_weight=1.0, allow_failures=False, obs_subset=None, teacher=None, loss_cfg=None,
+          save_every=None, log=print):
     """dagger_weight: sampling weight of a DAgger label relative to an expert chunk. Labels
     are few (one per replan) next to the dense expert chunks, and they are exactly
     the states the student gets wrong, so they are oversampled.
@@ -75,7 +77,12 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
     stored observation (Phase 4 distillation) instead of the expert/DAgger labels.
     Batches are built lazily by index (`imitation.data.loader.WindowSampler`); image
     policies keep their camera frames in pinned host memory and get a per-camera
-    normalizer fit on the training frames."""
+    normalizer fit on the training frames.
+
+    loss_cfg: Q1 loss v2 (`imitation.policies.loss.LossCfg` or its dict); None / the defaults = the pre-Q1 loss.
+    The checkpoint written is always the last EMA (final.pt); best_val.pt holds the EMA with the lowest val loss
+    and, with save_every, step_<n>.pt every save_every steps -- candidates for selection by rollouts (Q1.5)."""
+    lc = loss_cfg if isinstance(loss_cfg, LossCfg) else LossCfg.from_dict(loss_cfg)
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = default_device()
@@ -92,7 +99,9 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
     train_eps, val_eps = split_episodes(episodes, val_fraction=0.1)
     if not train_eps:             # a single episode (debugging): validate on what we train on
         train_eps = val_eps
-    cfg = POLICY_DEFAULTS.get(policy_kind, {}) | (policy_kwargs or {})
+    cfg = POLICY_DEFAULTS.get(policy_kind, {}) | (policy_kwargs or {}) | (
+        {"gripper_head": True} if lc.gripper_head else {})
+    cfg.setdefault("obs_dim", int(episodes[0].obs.shape[1]))     # 139, or obs v2's 157 for the quarter fold
     if needs_images and not init_from and "cameras" not in cfg:   # camera sizes come from the data
         order = ("main", "left_wrist_cam", "right_wrist_cam")
         cfg["cameras"] = [(c, int(episodes[0].images[c].shape[-1])) for c in order if c in episodes[0].images]
@@ -145,6 +154,14 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
         return total / max(count, 1)
 
     weights = torch.as_tensor(np.where(W == 1, dagger_weight, 1.0), dtype=torch.float32, device=device)
+    weighted = lc.horizon_tail != 1.0 or lc.phase_weight != 1.0
+    if weighted:                  # Q1: per-step weights folded into the chunk mask
+        hw = horizon_weights(policy.chunk, lc, device)
+        phase = data["train"].phase_flags(lc.phase_fold)
+        pw = torch.where(phase, lc.phase_weight, 1.0)
+        log(f"loss v2 weights: horizon tail {lc.horizon_tail} from step {lc.replan_every}, "
+            f"phase x{lc.phase_weight} on {float(phase.float().mean()):.1%} of samples")
+    best_vl = float("inf")
     t0, history, running = time.time(), [], 0.0
     policy.train()
     for step in range(1, steps + 1):
@@ -153,6 +170,8 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
         idx = (torch.multinomial(weights, batch, replacement=True) if n_dagger and dagger_weight != 1.0
                else torch.randint(0, n_train, (batch,), device=device))
         X, Y, M, imgs = data["train"].batch(idx)
+        if weighted:
+            M = M * hw[None] * pw[idx, None]
         with torch.autocast(device.type, dtype=torch.bfloat16, enabled=amp):
             loss = policy.compute_loss(*((X, Y, M) + ((imgs,) if needs_images else ())))
         opt.zero_grad(set_to_none=True)
@@ -172,6 +191,11 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
                 tb.add_scalar("loss/val_ema", vl, step)
                 tb.add_scalar("lr", sched.get_last_lr()[0], step)
             log(f"  step {step:6d}  train {tl:.4f}  val(ema) {vl:.4f}  {time.time() - t0:.0f}s")
+            if vl < best_vl:
+                best_vl = vl
+                save_policy(ema_model.model, run / "best_val.pt", extra={"dataset": dataset, "step": step})
+            if save_every and step % save_every == 0:
+                save_policy(ema_model.model, run / f"step_{step}.pt", extra={"dataset": dataset, "step": step})
 
     ckpt = run / "final.pt"
     sha = save_policy(ema_model.model, ckpt, extra={"dataset": dataset, "dataset_hash": manifest["content_hash"]})
@@ -183,7 +207,10 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
             "policy": {"kind": policy.kind, "config": policy.config(), "n_params": n_params(policy)},
             "train": {"steps": steps, "batch": batch, "lr": lr, "weight_decay": weight_decay, "warmup": warmup,
                       "ema": ema, "seed": seed, "dagger_weight": dagger_weight, "obs_subset": obs_subset, "init_from": str(init_from) if init_from else None,
-                      "device": str(device), "amp_bf16": amp, "seconds": round(time.time() - t0, 1)},
+                      "device": str(device), "amp_bf16": amp, "seconds": round(time.time() - t0, 1),
+                      "loss_cfg": lc.to_dict(),
+                      "best_val": {"loss": best_vl, "step": min(history, key=lambda h: h["val_loss"])["step"]}
+                      if history else None},
             "checkpoint": {"path": str(ckpt), "sha256": sha}, "history": history}
     with open(run / "run.json", "w") as f:
         json.dump(info, f, indent=1)
@@ -209,11 +236,15 @@ def main():
     ap.add_argument("--allow-failures", action="store_true", help="train on failed expert episodes too")
     ap.add_argument("--max-episodes", type=int, default=None, help="debug: train on the first N episodes")
     ap.add_argument("--policy-kwargs", default="{}", help='JSON overrides, e.g. \'{"chunk": 8}\'')
+    ap.add_argument("--loss-cfg", default="{}",
+                    help='Q1 loss v2 as JSON, e.g. \'{"gripper_head": true, "horizon_tail": 0.5, "phase_weight": 3}\' '
+                         '(imitation.policies.loss.LossCfg); {} = the pre-Q1 loss')
+    ap.add_argument("--save-every", type=int, default=None, help="also keep step_<n>.pt every n steps")
     args = ap.parse_args()
     train(args.policy, args.dataset, args.run, root=args.root, steps=args.steps, batch=args.batch, lr=args.lr,
           seed=args.seed, init_from=args.init_from, max_episodes=args.max_episodes, allow_failures=args.allow_failures,
           obs_subset=args.obs_subset, teacher=args.teacher, dagger_weight=args.dagger_weight,
-          policy_kwargs=json.loads(args.policy_kwargs))
+          policy_kwargs=json.loads(args.policy_kwargs), loss_cfg=LossCfg.parse(args.loss_cfg), save_every=args.save_every)
 
 
 if __name__ == "__main__":

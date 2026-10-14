@@ -24,7 +24,7 @@ from imitation.data.schema import DatasetWriter
 from imitation.evaluate import resolve_workers
 from imitation.rollout import EnvPool, ExpertController, Perturbation, rollout
 from imitation.seeds import TRAIN_SEED_BASE
-from imitation.spec import ACTION_DIM, OBS_DIM
+from imitation.spec import ACTION_DIM, obs_dim
 
 DEFAULT_ROOT = "outputs/imitation/datasets"
 
@@ -76,14 +76,18 @@ def parse_cameras(spec):
     return {k: int(v) for k, v in (p.split("=") for p in spec.split(","))}
 
 
+def _stage_label(task):
+    return "stage 0" if task == "half_fold" else "stages 0-1"
+
+
 def build_config(args):
     """Dataset config: the CLI args, task, teacher, and (isaac) the pinned stack + knobs hash."""
     config = {k: v for k, v in vars(args).items() if k != "resume"} | {
-        "task": "half_fold", "teacher": "QuarterFoldExpert(stage 0)"}
+        "task": args.task, "teacher": f"QuarterFoldExpert({_stage_label(args.task)})"}
     from imitation.tasks.half_fold import is_isaac
     if is_isaac(args.backend):
         knobs = Path(__file__).resolve().parents[2] / "isaac" / "isaac_env.py"
-        config["teacher"] = f"QuarterFoldExpert(stage 0) [{args.backend} backend]"
+        config["teacher"] = f"QuarterFoldExpert({_stage_label(args.task)}) [{args.backend} backend]"
         config["isaac_stack"] = dict(ISAAC_STACK, knobs_sha256=hashlib.sha256(knobs.read_bytes()).hexdigest())
     return config
 
@@ -93,6 +97,8 @@ def build_parser():
     ap.add_argument("--episodes", type=int, default=400)
     ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
     ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
+    ap.add_argument("--task", choices=("half_fold", "quarter_fold"), default="half_fold",
+                    help="half_fold (stage 0) or quarter_fold (both stages)")
     ap.add_argument("--render", action="store_true", help="record camera images at collection")
     ap.add_argument("--cameras", default=None, help="e.g. main=128,left_wrist_cam=64,right_wrist_cam=64")
     ap.add_argument("--version", default="v1")
@@ -119,12 +125,14 @@ def main():
         print(f"resuming {args.version}: {len(done)} done, {len(seeds)} to go", flush=True)
 
     def save(ep):
-        (writer if ep.meta["success"] else fail_writer).add(ep, obs_dim=OBS_DIM, action_dim=ACTION_DIM)
+        (writer if ep.meta["success"] else fail_writer).add(ep, obs_dim=obs_dim(args.task), action_dim=ACTION_DIM)
 
     t0 = time.time()
     kw = {}
     if args.backend != "mujoco":
         kw["backend"] = args.backend
+    if args.task != "half_fold":
+        kw["task"] = args.task
     if args.render:
         kw["render"] = True
         kw["cameras"] = parse_cameras(args.cameras)

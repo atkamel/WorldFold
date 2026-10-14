@@ -234,6 +234,25 @@ Added 2026-10-07.
 | F5 | Benchmark push, one A/B at a time (SE rules, n = 200). Teacher: intervention upweighting, DAgger to plateau, seed ensemble. Student: student DAgger, image aug, recovery weighting, corner auxiliary head | teacher recovery ≥ 75, id_hard ≥ 95; student id_hard ≥ 90, recovery ≥ 45; otherwise ❌ with the margin | ☐ |
 | F6 | Report + demos (6 friction videos + a weld vs friction clip), HTML page | `verify F0..F6` PASS | ☐ |
 
+## Phase Q — Robust quarter fold on Isaac friction (fast track)
+
+Added 2026-10-13 (user):
+- **Goal:** a quarter fold (two folds) with the full pipeline and comparison.
+- **Prerequisites:** a better benchmark and better losses come first.
+- **Budget (user):** fast track, i.e. 200 eps, 1 seed, 1 DAgger round, n = 100 finals.
+- **Plan:** [superpowers/plans/2026-10-13-quarter-fold.md](superpowers/plans/2026-10-13-quarter-fold.md).
+- **Comparisons:** Q0 and Q1 are A/B'd on the half fold first, so the quarter-fold numbers are measured with the new
+  tooling.
+
+| | milestone | exit | status |
+|---|---|---|---|
+| Q0 | Benchmark v2: per-episode rows, per-stage metrics, `sel_` / `final_` seed blocks, paired McNemar + bootstrap (`imitation/stats.py`), paired DAgger keep rule, G2 documented, backend-checked resume, Isaac noise floor | tests green; noise floor (same checkpoint twice, n = 100 × 2 sel sets) in results.md | ◐ code done (215 fast pass); noise floor running |
+| Q1 | Loss v2 (`--loss-cfg`): gripper BCE head, horizon tail, phase weighting; `best_val.pt` / `step_<n>.pt` candidates | A/B on `isaac_v1_friction` (sel_id_hard + sel_knock_arm, n = 100, paired): keep a change only if its paired gain exceeds the noise floor with no set regressing beyond it | ◐ trainings running |
+| Q2 | Quarter-fold task on isaac_friction: `--task` plumbing, obs v2 (carried point + goal per arm), stage-2 expert, stack-hold check (G3), `qf_*` sets, `tasks.py::QUARTER` reconciled | stage-2 IK reach ≥ 95/100 for both arms; tests green; scripted expert completes stage 2 on tune seeds | ◐ reach check: the second fold as defined (west edge onto east) is 0/100 reachable on Isaac (`isaac/reach_check_qf.py`); fold choice with the user |
+| Q3 | Quarter-fold expert gate (one mechanism per attempt, tune seeds n = 40, paired) | bars confirmed by the user before the run (proposed: stage-1 ≥ 92, qf_id_easy ≥ 85, qf_id_hard ≥ 80, knock sets ≥ 60, G2 + G3 ≤ 8%), n = 100 on `final_` | ☐ |
+| Q4 | Fast-track pipeline (`scripts/q_retrain.ps1`): 200 eps, BC baseline loss and loss v2, DAgger 1 round, vision student, detector, demos | finals n = 100 on `final_` sets, paired comparisons between adjacent rows, per-stage breakdown | ☐ |
+| Q5 | Report + HTML page | `verify Q0..Q5` PASS | ☐ |
+
 ## Phase 6 — Language-conditioned folds and the VLA  *(ref. milestone 3, reframed)*
 
 | | milestone | exit | status |

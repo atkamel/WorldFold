@@ -54,7 +54,7 @@ def test_make_env_dispatch(monkeypatch):
     class Stop(Exception):
         pass
 
-    def fake_base(steps=None, cameras=None, profile="lehome"):
+    def fake_base(steps=None, cameras=None, profile="lehome", grasp_corners=None):
         calls.append({"max_episode_steps": steps, "cameras": cameras, "profile": profile})
         return object()
 

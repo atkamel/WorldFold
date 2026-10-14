@@ -21,11 +21,12 @@ ISAAC_CLOTH_JITTER = 0.01   # = isaac.isaac_env.CLOTH_JITTER (kept literal so th
 # sets, jitter and DR, but a FRICTION_MAX_STEPS cap, since a physical pinch (close, settle, lift) is slower than a weld.
 ISAAC_PROFILES = {"isaac": "lehome", "isaac_weld": "weld", "isaac_friction": "friction"}
 FRICTION_MAX_STEPS = 400
+FRICTION_QF_MAX_STEPS = 800      # the two-fold task on the friction profile
 KIT_TICK_S = 30.0           # idle workers tick Kit this often; its hang detector allows 120 s
 
 
 def make_isaac_base(max_episode_steps: int = ISAAC_MAX_STEPS, cameras: dict | None = None,
-                    profile: str = "lehome"):
+                    profile: str = "lehome", grasp_corners: dict | None = None):
     """IsaacClothFoldEnv in state mode, built the way the half fold's wrapper expects (its grasp corners); `cameras`
     ({name: size}) adds the imitation camera rig to the scene (I1.3). `profile` is an ISAAC_PROFILES value."""
     # AppLauncher/Kit read sys.argv; in a spawned rollout worker that is the parent CLI's argv
@@ -33,16 +34,16 @@ def make_isaac_base(max_episode_steps: int = ISAAC_MAX_STEPS, cameras: dict | No
     from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS
     from isaac.isaac_env import IsaacClothFoldEnv
     return IsaacClothFoldEnv(observation_mode="state", max_episode_steps=max_episode_steps,
-                             grasp_corners=GRASP_CORNERS, grasp_radius=GRASP_RADIUS, cameras=cameras,
+                             grasp_corners=grasp_corners or GRASP_CORNERS, grasp_radius=GRASP_RADIUS, cameras=cameras,
                              profile=profile)
 
 
 def make_isaac_batch(n: int, max_episode_steps: int = ISAAC_MAX_STEPS, cameras: dict | None = None,
-                     profile: str = "weld"):
+                     profile: str = "weld", grasp_corners: dict | None = None):
     """IsaacClothFoldBatch of n sub-envs, each built as make_isaac_base builds its env (milestone V)."""
     sys.argv = sys.argv[:1]
     from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS
     from isaac.isaac_env import IsaacClothFoldBatch
     return IsaacClothFoldBatch(n, observation_mode="state", max_episode_steps=max_episode_steps,
-                               grasp_corners=GRASP_CORNERS, grasp_radius=GRASP_RADIUS, cameras=cameras,
+                               grasp_corners=grasp_corners or GRASP_CORNERS, grasp_radius=GRASP_RADIUS, cameras=cameras,
                                profile=profile)

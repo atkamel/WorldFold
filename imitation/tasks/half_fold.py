@@ -14,7 +14,7 @@ import time
 import gymnasium as gym
 import numpy as np
 
-from cloth_fold_rl.quarter_fold_env import HALF_FOLD_MAX_STEPS, STAGES, QuarterFoldEnv  # noqa: F401 (re-exported)
+from cloth_fold_rl.quarter_fold_env import HALF_FOLD_MAX_STEPS, MAX_STEPS, STAGES, QuarterFoldEnv  # noqa: F401 (re-exported)
 from imitation.spec import ACTION_DIM, OBS_DIM  # noqa: F401 (re-exported)
 
 
@@ -79,11 +79,40 @@ BACKENDS = ("mujoco", "isaac", "isaac_weld", "isaac_friction")
 GPU_BACKENDS = ("isaac_weld", "isaac_friction")
 
 
-def _gpu_cap(backend):
+TASKS = ("half_fold", "quarter_fold")
+
+
+def _fold_over(backend):
+    """The quarter fold's second fold is the bimanual fold-over (Q2) on LeHome's task layout: there the arms reach
+    the west edge only with STAGE1_FOLD_OVER's roles. MuJoCo and the weld profile keep STAGES[1]."""
+    from imitation.seeds import LEHOME_TASK_BACKENDS
+    return backend in LEHOME_TASK_BACKENDS
+
+
+def task_stages(task="half_fold", backend="mujoco"):
+    """The stages a task runs on a backend. One place to swap a stage definition."""
+    if task == "half_fold":
+        return STAGES[:1]
+    if task == "quarter_fold":
+        from cloth_fold_rl.quarter_fold_env import STAGES_FOLD_OVER
+        return STAGES_FOLD_OVER if _fold_over(backend) else STAGES
+    raise ValueError(f"task must be one of {TASKS}, got {task!r}")
+
+
+def task_grasp_corners(task="half_fold", backend="mujoco"):
+    """Per-arm corners the base env may grasp (the wrapper's per-stage mask narrows them)."""
+    from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_CORNERS_FOLD_OVER
+    return GRASP_CORNERS_FOLD_OVER if task == "quarter_fold" and _fold_over(backend) else GRASP_CORNERS
+
+
+def _gpu_cap(backend, task="half_fold"):
     if backend == "isaac_friction":
+        if task == "quarter_fold":
+            from imitation.isaac_runtime import FRICTION_QF_MAX_STEPS
+            return FRICTION_QF_MAX_STEPS
         from imitation.isaac_runtime import FRICTION_MAX_STEPS
         return FRICTION_MAX_STEPS
-    return HALF_FOLD_MAX_STEPS
+    return MAX_STEPS if task == "quarter_fold" else HALF_FOLD_MAX_STEPS
 
 
 def _jitter(backend):
@@ -101,7 +130,7 @@ def is_isaac(backend) -> bool:
     return str(backend).startswith("isaac")
 
 
-def make_env(backend="mujoco", **kwargs):
+def make_env(backend="mujoco", task="half_fold", **kwargs):
     """The half-fold env on either simulator; the only place an env should be built (Phase I).
 
     backend="mujoco": the MuJoCo ClothFoldEnv the pipeline was built on (default, unchanged).
@@ -112,33 +141,39 @@ def make_env(backend="mujoco", **kwargs):
     backend="isaac_friction": as isaac_weld, with profile="friction" (the jaws hold the cloth by contact, no weld) and
                       the FRICTION_MAX_STEPS cap (Phase F).
     """
+    kwargs["stages"] = task_stages(task, backend)
+    kwargs["carry_obs"] = task == "quarter_fold"         # obs v2 (imitation.spec.obs_dim)
     if backend == "mujoco":
+        if task == "quarter_fold":
+            kwargs.setdefault("max_episode_steps", MAX_STEPS)
         return HalfFoldEnv(**kwargs)
     if backend == "isaac":
         from imitation.isaac_runtime import ISAAC_CLOTH_JITTER, ISAAC_MAX_STEPS, make_isaac_base
-        kwargs.setdefault("max_episode_steps", ISAAC_MAX_STEPS)
+        kwargs.setdefault("max_episode_steps", ISAAC_MAX_STEPS * (2 if task == "quarter_fold" else 1))
         kwargs.setdefault("cloth_jitter", ISAAC_CLOTH_JITTER)
         cameras = None
         if kwargs.get("obs_mode", "state") == "dict":
             from imitation.vision.render import CAMERAS
             cameras = kwargs.get("cameras") or CAMERAS
-        kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras)
+        kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras,
+                                             grasp_corners=task_grasp_corners(task, backend))
         return HalfFoldEnv(**kwargs)
     if backend in GPU_BACKENDS:
         from imitation.isaac_runtime import ISAAC_PROFILES, make_isaac_base
-        kwargs.setdefault("max_episode_steps", _gpu_cap(backend))
+        kwargs.setdefault("max_episode_steps", _gpu_cap(backend, task))
         kwargs.setdefault("cloth_jitter", _jitter(backend))
         cameras = None
         if kwargs.get("obs_mode", "state") == "dict":
             from imitation.vision.render import CAMERAS
             cameras = kwargs.get("cameras") or CAMERAS
         kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras,
-                                             profile=ISAAC_PROFILES[backend])
+                                             profile=ISAAC_PROFILES[backend],
+                                             grasp_corners=task_grasp_corners(task, backend))
         return HalfFoldEnv(**kwargs)
     raise ValueError(f"backend must be one of {BACKENDS}, got {backend!r}")
 
 
-def make_env_batch(backend="isaac_weld", n=1, **kwargs):
+def make_env_batch(backend="isaac_weld", n=1, task="half_fold", **kwargs):
     """n half-fold envs sharing one Isaac scene (milestone V): -> (batch, [HalfFoldEnv over sub-env i]).
 
     Each env is built exactly as make_env(backend, **kwargs) builds one, except that its base env is
@@ -147,11 +182,14 @@ def make_env_batch(backend="isaac_weld", n=1, **kwargs):
     if backend not in GPU_BACKENDS:
         raise ValueError(f"only {GPU_BACKENDS} run several envs per process, got {backend!r}")
     from imitation.isaac_runtime import ISAAC_PROFILES, make_isaac_batch
-    kwargs.setdefault("max_episode_steps", _gpu_cap(backend))
+    kwargs["stages"] = task_stages(task, backend)
+    kwargs["carry_obs"] = task == "quarter_fold"
+    kwargs.setdefault("max_episode_steps", _gpu_cap(backend, task))
     kwargs.setdefault("cloth_jitter", _jitter(backend))
     cameras = None
     if kwargs.get("obs_mode", "state") == "dict":
         from imitation.vision.render import CAMERAS
         cameras = kwargs.get("cameras") or CAMERAS
-    batch = make_isaac_batch(n, kwargs["max_episode_steps"], cameras=cameras, profile=ISAAC_PROFILES[backend])
+    batch = make_isaac_batch(n, kwargs["max_episode_steps"], cameras=cameras, profile=ISAAC_PROFILES[backend],
+                             grasp_corners=task_grasp_corners(task, backend))
     return batch, [HalfFoldEnv(**dict(kwargs, base_env=sub)) for sub in batch.envs]

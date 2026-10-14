@@ -17,6 +17,7 @@ from torch.nn import functional as F
 
 from imitation.policies.chunk_mlp import _Block
 from imitation.policies.common import ChunkPolicy
+from imitation.policies.loss import gripper_from_logits, gripper_mask, split_loss
 from imitation.spec import ACTION_DIM, OBS_DIM, OBS_SUBSETS
 
 DEFAULT_CAMERAS = (("main", 128), ("left_wrist_cam", 64), ("right_wrist_cam", 64))   # M4.1: >= 128^2
@@ -54,7 +55,7 @@ class VisionChunkPolicy(ChunkPolicy):
     needs_images = True
 
     def __init__(self, obs_dim=OBS_DIM, action_dim=ACTION_DIM, obs_horizon=2, chunk=16, width=512, depth=3,
-                 dropout=0.1, cameras=DEFAULT_CAMERAS, feat=256):
+                 dropout=0.1, cameras=DEFAULT_CAMERAS, feat=256, gripper_head=False):
         super().__init__(obs_dim, action_dim, obs_horizon, chunk)
         self.width, self.depth, self.dropout, self.feat = width, depth, dropout, feat
         self.cameras = [tuple(c) for c in cameras]
@@ -64,6 +65,7 @@ class VisionChunkPolicy(ChunkPolicy):
         self.blocks = nn.Sequential(*[_Block(width, dropout) for _ in range(depth)])
         self.out = nn.Sequential(nn.LayerNorm(width), nn.Linear(width, chunk * action_dim))
         self.set_obs_subset(OBS_SUBSETS["proprio"])
+        self.gripper_head = gripper_head      # Q1: gripper dims are BCE logits, emitted as exactly +-1
         # per-modality normalization (M4.1): per camera, per channel; the defaults (0.5, 1)
         # reproduce the fixed /255 - 0.5 of checkpoints trained before these buffers existed
         for name, _ in self.cameras:
@@ -82,7 +84,8 @@ class VisionChunkPolicy(ChunkPolicy):
 
     def config(self):
         return super().config() | {"width": self.width, "depth": self.depth, "dropout": self.dropout,
-                                   "cameras": self.cameras, "feat": self.feat}
+                                   "cameras": self.cameras, "feat": self.feat} | (
+            {"gripper_head": True} if self.gripper_head else {})
 
     def forward(self, obs, images, augment=False):
         feats = [self.proprio(self.normalize_obs(obs).flatten(1))]
@@ -91,15 +94,19 @@ class VisionChunkPolicy(ChunkPolicy):
             if augment:
                 x = random_shift(x)
             feats.append(self.encoders[name](x))
-        y = self.out(self.blocks(self.inp(torch.cat(feats, -1))))
-        return torch.tanh(y).view(-1, self.chunk, self.action_dim)
+        y = self.out(self.blocks(self.inp(torch.cat(feats, -1)))).view(-1, self.chunk, self.action_dim)
+        if not self.gripper_head:
+            return torch.tanh(y)
+        return torch.where(gripper_mask(self.action_dim, y.device), y, torch.tanh(y))   # gripper dims stay logits
 
     def compute_loss(self, obs, actions, mask, images=None):
-        err = (self(obs, images, augment=self.training) - actions).abs().mean(-1)
+        pred = self(obs, images, augment=self.training)
+        err = split_loss(pred, actions) if self.gripper_head else (pred - actions).abs().mean(-1)
         return (err * mask).sum() / mask.sum().clamp(min=1.0)
 
     def sample(self, obs, images=None):
-        return self(obs, images)
+        out = self(obs, images)
+        return gripper_from_logits(out) if self.gripper_head else out
 
     @torch.no_grad()
     def predict(self, obs_hist: np.ndarray, images=None) -> np.ndarray:

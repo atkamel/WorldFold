@@ -1,0 +1,140 @@
+{
+ "tol_grasp_mm": 4.66,
+ "tol_place_mm": 17.6,
+ "n": 50,
+ "roles": {
+  "as_defined": {
+   "right_[0, 10]": {
+    "carries": [
+     0,
+     10
+    ],
+    "reachable": 50,
+    "nominal_mm": [
+     0.01,
+     0.01
+    ],
+    "worst_grasp_mm": 0.75,
+    "worst_place_mm": 4.8
+   },
+   "left_[5]": {
+    "carries": [
+     5
+    ],
+    "reachable": 31,
+    "nominal_mm": [
+     0.0,
+     70.12
+    ],
+    "worst_grasp_mm": 0.0,
+    "worst_place_mm": 80.36
+   }
+  },
+  "swapped": {
+   "left_[0, 10]": {
+    "carries": [
+     0,
+     10
+    ],
+    "reachable": 50,
+    "nominal_mm": [
+     0.0,
+     0.0
+    ],
+    "worst_grasp_mm": 0.0,
+    "worst_place_mm": 0.01
+   },
+   "right_[5]": {
+    "carries": [
+     5
+    ],
+    "reachable": 50,
+    "nominal_mm": [
+     0.01,
+     0.01
+    ],
+    "worst_grasp_mm": 2.44,
+    "worst_place_mm": 0.01
+   }
+  },
+  "parallel": {
+   "left_[5]": {
+    "carries": [
+     5
+    ],
+    "reachable": 50,
+    "nominal_mm": [
+     0.0,
+     2.34
+    ],
+    "worst_grasp_mm": 0.0,
+    "worst_place_mm": 13.71
+   },
+   "right_[115]": {
+    "carries": [
+     115
+    ],
+    "reachable": 50,
+    "nominal_mm": [
+     0.0,
+     3.05
+    ],
+    "worst_grasp_mm": 0.0,
+    "worst_place_mm": 14.39
+   }
+  },
+  "handover_west": {
+   "left_[0, 10]": {
+    "carries": [
+     0,
+     10
+    ],
+    "reachable": 50,
+    "nominal_mm": [
+     0.0,
+     0.0
+    ],
+    "worst_grasp_mm": 0.0,
+    "worst_place_mm": 0.0
+   },
+   "left_[5]": {
+    "carries": [
+     5
+    ],
+    "reachable": 50,
+    "nominal_mm": [
+     0.0,
+     0.0
+    ],
+    "worst_grasp_mm": 0.0,
+    "worst_place_mm": 0.0
+   }
+  },
+  "handover_east": {
+   "right_[55]": {
+    "carries": [
+     55
+    ],
+    "reachable": 34,
+    "nominal_mm": [
+     0.0,
+     10.47
+    ],
+    "worst_grasp_mm": 0.0,
+    "worst_place_mm": 22.47
+   },
+   "right_[60]": {
+    "carries": [
+     60
+    ],
+    "reachable": 50,
+    "nominal_mm": [
+     0.0,
+     0.0
+    ],
+    "worst_grasp_mm": 0.0,
+    "worst_place_mm": 0.0
+   }
+  }
+ }
+}

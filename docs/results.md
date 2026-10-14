@@ -1923,3 +1923,36 @@ Demos only, not a measurement: the first 3 seeds of each set, 1 env, `imitation.
   - id_hard 2/3: 200001 times out at 400 steps;
   - knock_arm 1/3: 310000 and 310002 time out.
 - **Expert:** knock_arm 3/3, in 183 / 175 / 185 steps.
+
+### Q2 — second-fold reach on Isaac (IK only, no physics; 2026-10-13, `outputs/isaac/reach_*`)
+
+`isaac/reach_check_qf.py`: the stage-1 pinch, 4 cm above it, and the place target for each arm, solved with PinchIK on
+the start grid. The stack is pinched one layer up, and the place offset is mirrored in x. Cloth offsets: 1 nominal
+plus 49 drawn from the Isaac id_hard rule (R_max 1 cm). Reachable means grasp ≤ 4.66 mm and place ≤ 17.6 mm, which is
+stage 0's own envelope over the ±1 cm box.
+
+| second fold | arm: carries → goal | single-seed IK (n = 100) | multi-seed IK (n = 50) |
+|---|---|---|---|
+| as defined (`STAGES[1]`) | right: stack 0+10 → 110 | 0/100 | 50/50 |
+| | left: crease end 5 → 115 | 0/100 | 31/50 |
+| **swapped roles (adopted)** | left: stack 0+10 → 110 | 0/100 | **50/50** |
+| | right: crease end 5 → 115 | 8/100 | **50/50** |
+| parallel (4-layer strip) | left: 5 → 0; right: 115 → 110 | 100/100 each | 50/50 each |
+
+- **The first result was an IK artefact.** The single-seed check said the second fold was unreachable, but PinchIK is
+  a local solver started from one seed. "Multi-seed" is the best of 8 starting poses: the chained solution, the demo
+  seed, and 6 seeds drawn ±0.8 rad around it.
+- **Reach map** (`isaac/reach_map.py`, top-down pinch at the table, 3 jaw directions, 3 cm grid):
+  - left arm x ∈ [−0.30, +0.18] on the near rows, +0.15 at y −0.135 (the strip's far row);
+  - right arm mirrored: x ∈ [−0.18, +0.30] on the near rows, −0.15 at y −0.135;
+  - so both arms span the 30 cm strip, and the right arm sits at its limit on the far row.
+- **Decision (user, 2026-10-14):** the bimanual fold-over with swapped roles (`STAGE1_FOLD_OVER`). A shift/re-centre
+  stage is a later, separately distilled skill.
+
+### Q0 — first noise-floor attempt crashed (2026-10-13, `q0/noise_a.crash_physx_gpu_overlap.log`)
+
+- **What crashed:** the F4 checkpoint on `sel_id_hard`, 2 × 8 envs, 53 min in. The PhysX GPU solver failed
+  (`SynchronizeStreams`, then `Failed to get DOF velocities`), and the eval died with no set saved.
+- **What was running:** a diffusion training on the same GPU (Q1 arm `q1_grip`), with the GPU at 85–87 °C, below the
+  guard's 90 °C trip.
+- **Change:** GPU trainings and Isaac evals no longer overlap (`scripts/q01_after_train.ps1`).

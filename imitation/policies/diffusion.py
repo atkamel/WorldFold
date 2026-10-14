@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from imitation.policies.common import ChunkPolicy
+from imitation.policies.loss import GRIPPER_ACTION_DIMS, gripper_from_logits, joint_dims
 from imitation.spec import ACTION_DIM, OBS_DIM
 
 
@@ -88,7 +89,7 @@ class DiffusionPolicy(ChunkPolicy):
     kind = "diffusion"
 
     def __init__(self, obs_dim=OBS_DIM, action_dim=ACTION_DIM, obs_horizon=2, chunk=16, cond_dim=256,
-                 channels=(128, 256), train_steps=100, infer_steps=10):
+                 channels=(128, 256), train_steps=100, infer_steps=10, gripper_head=False):
         super().__init__(obs_dim, action_dim, obs_horizon, chunk)
         assert chunk % (2 ** len(channels)) == 0, "chunk must divide by the U-Net's downsampling"
         self.cond_dim, self.channels = cond_dim, tuple(channels)
@@ -97,10 +98,16 @@ class DiffusionPolicy(ChunkPolicy):
         self.t_enc = nn.Sequential(_SinEmb(128), nn.Linear(128, cond_dim), nn.Mish(), nn.Linear(cond_dim, cond_dim))
         self.net = _UNet1D(action_dim, cond_dim, self.channels)
         self.register_buffer("alphas_cumprod", _cosine_alphas_cumprod(train_steps))
+        # Q1: the gripper is a binary choice, predicted by a classifier on the obs encoding (BCE) instead of being
+        # denoised; the U-Net still carries all dims (same architecture) but its loss covers the joint dims only
+        self.gripper_head = gripper_head
+        if gripper_head:
+            self.grip = nn.Sequential(nn.Mish(), nn.Linear(cond_dim, chunk * len(GRIPPER_ACTION_DIMS)))
 
     def config(self):
         return super().config() | {"cond_dim": self.cond_dim, "channels": list(self.channels),
-                                   "train_steps": self.train_steps, "infer_steps": self.infer_steps}
+                                   "train_steps": self.train_steps, "infer_steps": self.infer_steps} | (
+            {"gripper_head": True} if self.gripper_head else {})
 
     def _eps(self, noisy, t, obs_cond):
         cond = obs_cond + self.t_enc(t)
@@ -117,10 +124,20 @@ class DiffusionPolicy(ChunkPolicy):
         noise = torch.randn_like(actions)
         a = self.alphas_cumprod[t].view(B, 1, 1)
         noisy = a.sqrt() * actions + (1 - a).sqrt() * noise
-        err = F.mse_loss(self._eps(noisy, t, self._encode(obs)), noise, reduction="none").mean(-1)
+        cond = self._encode(obs)
+        err = F.mse_loss(self._eps(noisy, t, cond), noise, reduction="none")
+        if self.gripper_head:
+            target = (actions[..., list(GRIPPER_ACTION_DIMS)] > 0).float()
+            err = err[..., joint_dims(self.action_dim)].mean(-1) + F.binary_cross_entropy_with_logits(
+                self._grip_logits(cond).float(), target, reduction="none").mean(-1)
+        else:
+            err = err.mean(-1)
         if per_sample:
             return (err * mask).sum(-1) / mask.sum(-1).clamp(min=1.0)
         return (err * mask).sum() / mask.sum().clamp(min=1.0)
+
+    def _grip_logits(self, cond):
+        return self.grip(cond).view(-1, self.chunk, len(GRIPPER_ACTION_DIMS))
 
     def _fixed_noise(self, device):
         """The fixed-seed initial noise, drawn once per device (and before any CUDA graph
@@ -181,4 +198,11 @@ class DiffusionPolicy(ChunkPolicy):
             x0 = ((x - (1 - a_t).sqrt() * eps) / a_t.sqrt()).clamp(-1.0, 1.0)
             eps = (x - a_t.sqrt() * x0) / (1 - a_t).sqrt()      # re-derive eps from the clipped x0
             x = a_prev.sqrt() * x0 + (1 - a_prev).sqrt() * eps
+        if self.gripper_head:
+            # scatter the head's logits into the gripper dims with masks only (no host copies under graph capture)
+            logits = self._grip_logits(cond).to(x.dtype)
+            ar = torch.arange(self.action_dim, device=x.device)
+            for i, d in enumerate(GRIPPER_ACTION_DIMS):
+                x = torch.where(ar == d, logits[..., i:i + 1], x)
+            x = gripper_from_logits(x)
         return x
