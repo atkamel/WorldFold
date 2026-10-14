@@ -1,0 +1,3283 @@
+{
+ "checkpoint": "outputs\\imitation\\runs\\isaac_v1_friction_diff_s0\\final.pt",
+ "replan_every": 4,
+ "backend": "isaac_friction",
+ "task": "half_fold",
+ "results": {
+  "sel_id_hard": {
+   "n": 100,
+   "success_rate": 0.7,
+   "mean_fold_score": 0.8713963838902079,
+   "grasp_success": 1.0,
+   "mean_steps_success": 189.44285714285715,
+   "median_steps_censored": 190.0,
+   "stage_completion": [
+    0.7
+   ],
+   "termination": {
+    "truncated": 30,
+    "success": 70
+   },
+   "failure_codes": {
+    "S1": 19,
+    "G2": 11
+   },
+   "failure_codes_by_stage": {
+    "G2@0": 11,
+    "S1@0": 19
+   },
+   "perturbed_failures": 0,
+   "perturbed_steps": 0,
+   "policy_infer_ms": {
+    "ms_per_call": 10.78155000868719,
+    "mean_batch": 16.0
+   },
+   "episodes": [
+    {
+     "seed": 705000,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7904084807411458,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705001,
+     "success": true,
+     "steps": 170,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9069343002614666,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705002,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8460219718854073,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705003,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7433857116162336,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705004,
+     "success": true,
+     "steps": 197,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9366270541593665,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705005,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7536141403725098,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705006,
+     "success": true,
+     "steps": 168,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9294216602805364,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705007,
+     "success": true,
+     "steps": 186,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9110058165201445,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705008,
+     "success": true,
+     "steps": 217,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9249375976490118,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705009,
+     "success": true,
+     "steps": 154,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8876297321449304,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705010,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7354681975074364,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705011,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8804842415571562,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705012,
+     "success": true,
+     "steps": 180,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9088156978885604,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705013,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7625331958677206,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705014,
+     "success": true,
+     "steps": 208,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9209445555725192,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705015,
+     "success": true,
+     "steps": 315,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8883704823926665,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705016,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8179671843743803,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705017,
+     "success": true,
+     "steps": 159,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9239698539647544,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705018,
+     "success": true,
+     "steps": 177,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8659339593922492,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705019,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7453321659348754,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705020,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7521755265076081,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705021,
+     "success": true,
+     "steps": 179,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9141584689599794,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705022,
+     "success": true,
+     "steps": 164,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8897783560342297,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705023,
+     "success": true,
+     "steps": 182,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.932222717538634,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705024,
+     "success": true,
+     "steps": 177,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9316192515979038,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705025,
+     "success": true,
+     "steps": 194,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9526950798103451,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705026,
+     "success": true,
+     "steps": 188,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9094258813242876,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705027,
+     "success": true,
+     "steps": 170,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8801129978435753,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705028,
+     "success": true,
+     "steps": 169,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9165435498065164,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705029,
+     "success": true,
+     "steps": 178,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8983657656865741,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705030,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8611438796433708,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705031,
+     "success": true,
+     "steps": 175,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9547635304622724,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705032,
+     "success": true,
+     "steps": 180,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9114506870695677,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705033,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.754854805520965,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705034,
+     "success": true,
+     "steps": 192,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9240829683117229,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705035,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7633885529764454,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705036,
+     "success": true,
+     "steps": 189,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9149398113456606,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705037,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8736503888699936,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705038,
+     "success": true,
+     "steps": 152,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9035422044298245,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705039,
+     "success": true,
+     "steps": 160,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.901591923383355,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705040,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8251573717166186,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705041,
+     "success": true,
+     "steps": 175,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8885645107428904,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705042,
+     "success": true,
+     "steps": 152,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9102476642599303,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705043,
+     "success": true,
+     "steps": 188,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8992199007246362,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705044,
+     "success": true,
+     "steps": 155,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8858196607791393,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705045,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.734257591856528,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705046,
+     "success": true,
+     "steps": 184,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9018140795374479,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705047,
+     "success": true,
+     "steps": 245,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8813395770777862,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705048,
+     "success": true,
+     "steps": 183,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9056673232321018,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705049,
+     "success": true,
+     "steps": 211,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9057253010048095,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705050,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7606719581494248,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705051,
+     "success": true,
+     "steps": 162,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9055868228606163,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705052,
+     "success": true,
+     "steps": 164,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9058641989617444,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705053,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.78180347447325,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705054,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7150671605285612,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705055,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7582674550358125,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705056,
+     "success": true,
+     "steps": 236,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.859896045936647,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705057,
+     "success": true,
+     "steps": 191,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8785821947155851,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705058,
+     "success": true,
+     "steps": 163,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9498451454532852,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705059,
+     "success": true,
+     "steps": 156,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8601460444215547,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705060,
+     "success": true,
+     "steps": 205,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9439408023108787,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705061,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6727457628764566,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705062,
+     "success": true,
+     "steps": 188,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9219195243125266,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705063,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.9065621692339956,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705064,
+     "success": true,
+     "steps": 187,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9322154820161793,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705065,
+     "success": true,
+     "steps": 174,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8704878530995235,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705066,
+     "success": true,
+     "steps": 172,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9020074633356483,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705067,
+     "success": true,
+     "steps": 181,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9484854386120201,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705068,
+     "success": true,
+     "steps": 236,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9110253295140729,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705069,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8405298969618351,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705070,
+     "success": true,
+     "steps": 187,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9566264028657488,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705071,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8566656347152976,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705072,
+     "success": true,
+     "steps": 171,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9221765759475516,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705073,
+     "success": true,
+     "steps": 235,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.852177482215619,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705074,
+     "success": true,
+     "steps": 168,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8918864068626159,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705075,
+     "success": true,
+     "steps": 180,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9632170026812644,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705076,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.784020679953714,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705077,
+     "success": true,
+     "steps": 158,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8701285055011214,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705078,
+     "success": true,
+     "steps": 168,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.886270637408757,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705079,
+     "success": true,
+     "steps": 183,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9127912376310743,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705080,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7606076669046525,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705081,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7535750197467874,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705082,
+     "success": true,
+     "steps": 223,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9025513430010015,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705083,
+     "success": true,
+     "steps": 198,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9201087928831174,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705084,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.785574710016104,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705085,
+     "success": true,
+     "steps": 209,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8959538455106195,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705086,
+     "success": true,
+     "steps": 180,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9121368921251748,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705087,
+     "success": true,
+     "steps": 369,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9182852311793005,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705088,
+     "success": true,
+     "steps": 313,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.848467667577139,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705089,
+     "success": true,
+     "steps": 164,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9015820460231784,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705090,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7634407500695479,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705091,
+     "success": true,
+     "steps": 174,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8972744729486046,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705092,
+     "success": true,
+     "steps": 154,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9346011420708151,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705093,
+     "success": true,
+     "steps": 244,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8790693475964143,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705094,
+     "success": true,
+     "steps": 187,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9729866719619552,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705095,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8284417167451751,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705096,
+     "success": true,
+     "steps": 210,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9011299594057641,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705097,
+     "success": true,
+     "steps": 161,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.880164353503918,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705098,
+     "success": true,
+     "steps": 162,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8740115416474107,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 705099,
+     "success": true,
+     "steps": 175,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9299391013739465,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    }
+   ]
+  },
+  "sel_knock_arm": {
+   "n": 100,
+   "success_rate": 0.45,
+   "mean_fold_score": 0.786577082708241,
+   "grasp_success": 0.98,
+   "mean_steps_success": 203.0888888888889,
+   "median_steps_censored": null,
+   "stage_completion": [
+    0.45
+   ],
+   "termination": {
+    "truncated": 54,
+    "success": 45,
+    "cloth_dragged": 1
+   },
+   "failure_codes": {
+    "G2": 17,
+    "S1": 35,
+    "G1": 2,
+    "M1": 1
+   },
+   "failure_codes_by_stage": {
+    "G1@0": 2,
+    "G2@0": 17,
+    "M1@0": 1,
+    "S1@0": 35
+   },
+   "perturbed_failures": 55,
+   "perturbed_steps": 1141,
+   "policy_infer_ms": {
+    "ms_per_call": 10.677900005248375,
+    "mean_batch": 16.0
+   },
+   "episodes": [
+    {
+     "seed": 715000,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6182343867687395,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715001,
+     "success": true,
+     "steps": 210,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9381936916196327,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715002,
+     "success": true,
+     "steps": 180,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9073323479703104,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715003,
+     "success": true,
+     "steps": 208,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.891354715841649,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715004,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6551196594894284,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715005,
+     "success": true,
+     "steps": 188,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8955551009177997,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715006,
+     "success": true,
+     "steps": 166,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9646354543314473,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715007,
+     "success": true,
+     "steps": 157,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9172228788920611,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715008,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6905291624840778,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715009,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7064493747812297,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715010,
+     "success": true,
+     "steps": 204,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9092281123192543,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715011,
+     "success": true,
+     "steps": 174,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9827628312079603,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715012,
+     "success": true,
+     "steps": 192,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9436579545086394,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715013,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.36360869998957845,
+     "code": "G1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      false
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715014,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7251580444873531,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715015,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6714409716927736,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715016,
+     "success": true,
+     "steps": 168,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9736729592210157,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715017,
+     "success": true,
+     "steps": 230,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9885438959591888,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715018,
+     "success": true,
+     "steps": 216,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9305245522753863,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715019,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.693581972691201,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715020,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6803529365353478,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715021,
+     "success": true,
+     "steps": 179,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9812571954929755,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715022,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6934259461870892,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715023,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8968318624470973,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715024,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.746109749258779,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715025,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7139469568501315,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715026,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7164100942601964,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715027,
+     "success": true,
+     "steps": 185,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.911814749718738,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715028,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.12814539298505168,
+     "code": "G1",
+     "fail_stage": 0,
+     "grasped": [
+      false,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715029,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6655325835577571,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715030,
+     "success": true,
+     "steps": 219,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9499633263182387,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715031,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7728256201665068,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715032,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7352039831012297,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715033,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.670638567092822,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715034,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7074963617406809,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715035,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8297944804850497,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715036,
+     "success": true,
+     "steps": 233,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9167414770844333,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715037,
+     "success": true,
+     "steps": 165,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9790171707810369,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715038,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6955667269271654,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715039,
+     "success": true,
+     "steps": 172,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9600881358216923,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715040,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6520119901929703,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715041,
+     "success": true,
+     "steps": 174,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9358673621389778,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715042,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8691391419896555,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715043,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7095864739636265,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715044,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.24544671508538168,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715045,
+     "success": true,
+     "steps": 169,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9173619963073939,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715046,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6872409332938709,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715047,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6757535821521894,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715048,
+     "success": true,
+     "steps": 320,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8506176151265311,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715049,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6714451531269626,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715050,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8898016929673702,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715051,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7310708174957368,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715052,
+     "success": true,
+     "steps": 179,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8952946607155171,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715053,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7097529174646158,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715054,
+     "success": true,
+     "steps": 154,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9149037902546904,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715055,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7259517287056795,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715056,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7509120066008229,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715057,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7142556785772803,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715058,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7366961487694578,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715059,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8648054367902743,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715060,
+     "success": true,
+     "steps": 160,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9668031945195116,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715061,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7060055835343035,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715062,
+     "success": true,
+     "steps": 188,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.920876719948755,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715063,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6882087022922806,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715064,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.664855458868603,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715065,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7587538394333121,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715066,
+     "success": true,
+     "steps": 176,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8953936288813616,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715067,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6633175703714825,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715068,
+     "success": true,
+     "steps": 190,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9223316030817292,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715069,
+     "success": true,
+     "steps": 170,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9164305145161786,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715070,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7323419872966253,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715071,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7815590206507756,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715072,
+     "success": true,
+     "steps": 278,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9005989917272182,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715073,
+     "success": true,
+     "steps": 350,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8849697917235685,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715074,
+     "success": true,
+     "steps": 193,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9352496099843375,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715075,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.8221411278619023,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715076,
+     "success": false,
+     "steps": 92,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.060896613879732865,
+     "code": "M1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "cloth_dragged",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715077,
+     "success": true,
+     "steps": 185,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9343027478180805,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715078,
+     "success": true,
+     "steps": 193,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9539059988350784,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715079,
+     "success": true,
+     "steps": 396,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8402528911842154,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715080,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.6554274537588467,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715081,
+     "success": true,
+     "steps": 189,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9148340307352417,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715082,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7790475836478823,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715083,
+     "success": true,
+     "steps": 189,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8772527658632067,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715084,
+     "success": true,
+     "steps": 161,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9823888364183356,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715085,
+     "success": true,
+     "steps": 374,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8809733477623298,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715086,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.5946461052160714,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715087,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7651765206386902,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715088,
+     "success": true,
+     "steps": 160,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.878695199399447,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715089,
+     "success": true,
+     "steps": 164,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9241774751265274,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715090,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.500186407128557,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715091,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7007622437126833,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715092,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.21690127388366232,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715093,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7994782075158153,
+     "code": "G2",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715094,
+     "success": true,
+     "steps": 233,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9117567201200215,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715095,
+     "success": true,
+     "steps": 184,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9161156576436817,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715096,
+     "success": true,
+     "steps": 179,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9686974363724565,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715097,
+     "success": false,
+     "steps": 400,
+     "stages_done": 0,
+     "stage_steps": [],
+     "fold_score": 0.7509218894584796,
+     "code": "S1",
+     "fail_stage": 0,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715098,
+     "success": true,
+     "steps": 211,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.8755086749401709,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    },
+    {
+     "seed": 715099,
+     "success": true,
+     "steps": 174,
+     "stages_done": 1,
+     "stage_steps": [],
+     "fold_score": 0.9496789190932173,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": "knock_arm"
+    }
+   ]
+  }
+ },
+ "failure_codes": {
+  "G1": "missed or unstable grasp (an arm never grasped, or dropped its unplaced corner)",
+  "G2": "slip: an arm lost its corner while its jaws were still commanded closed (friction grasp only)",
+  "G3": "split stack: the layers of a stacked corner carried together ended > 2 x SUCCESS_DIST apart (Q2)",
+  "M1": "motion error: anchor corner dragged or sim unstable",
+  "F1": "fold placed with poor alignment (released off target)",
+  "S1": "stalled: timed out still holding / hovering"
+ }
+}

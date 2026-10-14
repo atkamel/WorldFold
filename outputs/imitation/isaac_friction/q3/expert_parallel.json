@@ -1,0 +1,334 @@
+{
+ "checkpoint": "expert",
+ "replan_every": 8,
+ "backend": "isaac_friction",
+ "task": "quarter_fold",
+ "results": {
+  "tune_id_easy": {
+   "n": 16,
+   "success_rate": 0.4375,
+   "mean_fold_score": 0.8492020806170173,
+   "grasp_success": 1.0,
+   "mean_steps_success": 338.7142857142857,
+   "median_steps_censored": null,
+   "stage_completion": [
+    1.0,
+    0.4375
+   ],
+   "termination": {
+    "success": 7,
+    "truncated": 8,
+    "cloth_dragged": 1
+   },
+   "failure_codes": {
+    "G2": 8,
+    "M1": 1
+   },
+   "failure_codes_by_stage": {
+    "G2@1": 8,
+    "M1@1": 1
+   },
+   "perturbed_failures": 0,
+   "perturbed_steps": 0,
+   "policy_infer_ms": null,
+   "episodes": [
+    {
+     "seed": 660000,
+     "success": true,
+     "steps": 507,
+     "stages_done": 2,
+     "stage_steps": [
+      165
+     ],
+     "fold_score": 0.928746681076039,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660001,
+     "success": false,
+     "steps": 800,
+     "stages_done": 1,
+     "stage_steps": [
+      203
+     ],
+     "fold_score": 0.7434716324513981,
+     "code": "G2",
+     "fail_stage": 1,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660002,
+     "success": true,
+     "steps": 205,
+     "stages_done": 2,
+     "stage_steps": [
+      184
+     ],
+     "fold_score": 0.960741049465385,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660003,
+     "success": false,
+     "steps": 800,
+     "stages_done": 1,
+     "stage_steps": [
+      169
+     ],
+     "fold_score": 0.7259479923991555,
+     "code": "G2",
+     "fail_stage": 1,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660004,
+     "success": true,
+     "steps": 181,
+     "stages_done": 2,
+     "stage_steps": [
+      160
+     ],
+     "fold_score": 0.9037836233113222,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660005,
+     "success": false,
+     "steps": 800,
+     "stages_done": 1,
+     "stage_steps": [
+      168
+     ],
+     "fold_score": 0.7324953013976291,
+     "code": "G2",
+     "fail_stage": 1,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660006,
+     "success": false,
+     "steps": 800,
+     "stages_done": 1,
+     "stage_steps": [
+      160
+     ],
+     "fold_score": 0.7842330410734554,
+     "code": "G2",
+     "fail_stage": 1,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660007,
+     "success": true,
+     "steps": 594,
+     "stages_done": 2,
+     "stage_steps": [
+      167
+     ],
+     "fold_score": 0.9533087625510759,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660008,
+     "success": false,
+     "steps": 800,
+     "stages_done": 1,
+     "stage_steps": [
+      182
+     ],
+     "fold_score": 0.7443981506067923,
+     "code": "G2",
+     "fail_stage": 1,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660009,
+     "success": true,
+     "steps": 178,
+     "stages_done": 2,
+     "stage_steps": [
+      157
+     ],
+     "fold_score": 0.9040563582944684,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660010,
+     "success": false,
+     "steps": 800,
+     "stages_done": 1,
+     "stage_steps": [
+      164
+     ],
+     "fold_score": 0.8208621235417453,
+     "code": "G2",
+     "fail_stage": 1,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660011,
+     "success": true,
+     "steps": 355,
+     "stages_done": 2,
+     "stage_steps": [
+      169
+     ],
+     "fold_score": 0.9321838053241639,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660012,
+     "success": false,
+     "steps": 800,
+     "stages_done": 1,
+     "stage_steps": [
+      159
+     ],
+     "fold_score": 0.9015967257437444,
+     "code": "G2",
+     "fail_stage": 1,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660013,
+     "success": true,
+     "steps": 351,
+     "stages_done": 2,
+     "stage_steps": [
+      157
+     ],
+     "fold_score": 0.9487986233256077,
+     "code": null,
+     "fail_stage": null,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "success",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660014,
+     "success": false,
+     "steps": 510,
+     "stages_done": 1,
+     "stage_steps": [
+      169
+     ],
+     "fold_score": 0.7617657191821909,
+     "code": "M1",
+     "fail_stage": 1,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "cloth_dragged",
+     "perturb_kind": null
+    },
+    {
+     "seed": 660015,
+     "success": false,
+     "steps": 800,
+     "stages_done": 1,
+     "stage_steps": [
+      360
+     ],
+     "fold_score": 0.8408437001281029,
+     "code": "G2",
+     "fail_stage": 1,
+     "grasped": [
+      true,
+      true
+     ],
+     "termination": "truncated",
+     "perturb_kind": null
+    }
+   ]
+  }
+ },
+ "failure_codes": {
+  "G1": "missed or unstable grasp (an arm never grasped, or dropped its unplaced corner)",
+  "G2": "slip: an arm lost its corner while its jaws were still commanded closed (friction grasp only)",
+  "G3": "split stack: the layers of a stacked corner carried together ended > 2 x SUCCESS_DIST apart (Q2)",
+  "M1": "motion error: anchor corner dragged or sim unstable",
+  "F1": "fold placed with poor alignment (released off target)",
+  "S1": "stalled: timed out still holding / hovering"
+ }
+}

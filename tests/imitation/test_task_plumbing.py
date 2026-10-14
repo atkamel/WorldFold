@@ -91,7 +91,8 @@ def test_evaluate_resume_requires_matching_task(monkeypatch, tmp_path):
     assert ran == []
 
 
-def test_isaac_quarter_fold_uses_the_bimanual_fold_over():
+def test_isaac_quarter_fold_uses_the_bimanual_fold_over(monkeypatch):
+    monkeypatch.setenv("WORLDFOLD_QF_SECOND", "fold_over")
     from cloth_fold_rl.quarter_fold_env import (CLOTH_0, CLOTH_5, CLOTH_10, CLOTH_110, CLOTH_115, GRASP_CORNERS,
                                                 GRASP_CORNERS_FOLD_OVER, STAGES_FOLD_OVER)
     from imitation.tasks.half_fold import task_grasp_corners
@@ -112,10 +113,10 @@ def test_isaac_quarter_fold_uses_the_bimanual_fold_over():
     assert task_grasp_corners("half_fold", "isaac_friction") == GRASP_CORNERS
 
 
-def test_parallel_second_fold_switch(monkeypatch):
+def test_parallel_second_fold_is_the_isaac_default(monkeypatch):
     from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS_PARALLEL, STAGES_PARALLEL
     from imitation.tasks.half_fold import task_grasp_corners
-    monkeypatch.setenv("WORLDFOLD_QF_SECOND", "parallel")
+    monkeypatch.delenv("WORLDFOLD_QF_SECOND", raising=False)
     assert task_stages("quarter_fold", "isaac_friction") == STAGES_PARALLEL
     assert task_grasp_corners("quarter_fold", "isaac_friction") == GRASP_CORNERS_PARALLEL
     for stage in STAGES_PARALLEL:

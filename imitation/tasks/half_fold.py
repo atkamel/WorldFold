@@ -105,9 +105,11 @@ def task_stages(task="half_fold", backend="mujoco"):
 
 
 def _second():
-    """WORLDFOLD_QF_SECOND=parallel: the quarter fold's second fold along the same axis (Q3 comparison)."""
+    """The quarter fold's second fold on LeHome backends. "parallel" (default since 2026-10-14, user: the strip folded
+    in half again along the same axis, 7/16 untuned against 0/16 for the fold-over; results.md); "fold_over" (the
+    bimanual west-onto-east fold, kept for follow-on work) via WORLDFOLD_QF_SECOND=fold_over."""
     import os
-    return os.environ.get("WORLDFOLD_QF_SECOND", "fold_over")
+    return os.environ.get("WORLDFOLD_QF_SECOND", "parallel")
 
 
 def _straighten():

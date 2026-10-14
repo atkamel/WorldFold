@@ -2079,7 +2079,24 @@ F4's BC on the same `sel_` seeds; the Q0 noise floor is 24–25% of seeds flippi
   and well beyond the noise floor (paired SE ≈ 7 pp per set).
 - **The stalls are gone.** S1 went 23 → 0 on id_hard and 32 → 0 on knock_arm. With the gripper a crisp ±1, the
   policy no longer hovers in the hysteresis band. What is left is slips (G2).
-- **Still running:** q1_all (adds horizon tail + phase weighting) and both best_val checkpoints.
+- **The rest of the A/B (2026-10-14):**
+
+  | arm | sel_id_hard | sel_knock_arm | pooled paired diff (95% CI) | McNemar p | failures (id_hard / knock) |
+  |---|---|---|---|---|---|
+  | q1_all final (head + horizon tail 0.5 + phase ×3) | 87 | 61 | vs F4 +17.0 pp [+8.5, +26.0]; **vs q1_grip +1.0 pp [−6.0, +8.0]** | <0.001; **0.89** | G2 13 / G2 33, G1 5, M1 1 |
+  | q1_grip best_val (EMA at 4k steps, lowest val loss) | **0** | **0** | vs q1_grip final −73.0 pp [−79.0, −66.5] | <0.001 | G2 71, G1 26, M1 3 / G2 62, G1 38 |
+  | q1_all best_val (4k) | not run | not run | — | — | stopped (user pause, 2026-10-14) |
+
+- **Weighting is dropped.** Horizon tail plus phase weighting adds nothing measurable on top of the gripper head
+  (+1 pp, p = 0.89), so loss v2 is the gripper head alone.
+- **Val-loss selection is rejected.**
+  - In both arms, val loss bottoms at 4k steps and climbs after that. The 4k checkpoint is undertrained in closed
+    loop: 0/200, mostly slips and missed grasps.
+  - On 171 demos, val loss does not track success at all. A run's final EMA or a rollout-based pick on `sel_` seeds
+    (step_<n>.pt) is the way to select.
+  - The q1_all best_val eval was stopped unrun: same step and same selection rule as q1_grip's.
+- **The Q1 decision:** `--loss-cfg gripper_head=true` for diffusion; candidates are selected by rollouts, not val
+  loss. The same seed was used for every arm; a second seed was not run (fast track).
 
 ### Q3 — parallel second fold, first batch (`isaac_friction`, 2026-10-14, `q3/expert_parallel.json`)
 

@@ -1,0 +1,114 @@
+{
+ "git_commit": "9de133125a934d3ca8f26945c8d5bdb70739593c-dirty",
+ "dataset": {
+  "root": "outputs\\imitation\\datasets",
+  "version": "isaac_v1_friction",
+  "content_hash": "71a993b12a3cd3d38b60d73d5409224a4b2bd88895f1c719c3d06f8b652ebf44",
+  "n_episodes": 171,
+  "n_train_samples": 26755,
+  "n_dagger_labels": 0,
+  "clamped_fraction": 0.00010074291640194133,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "diffusion",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "cond_dim": 256,
+   "channels": [
+    128,
+    256
+   ],
+   "train_steps": 100,
+   "infer_steps": 10,
+   "gripper_head": true
+  },
+  "n_params": 7356972
+ },
+ "train": {
+  "steps": 20000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 1.0,
+  "obs_subset": null,
+  "init_from": null,
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 3676.1,
+  "loss_cfg": {
+   "gripper_head": true,
+   "gripper_weight": 1.0,
+   "horizon_tail": 1.0,
+   "replan_every": 8,
+   "phase_weight": 1.0,
+   "phase_fold": 0.8
+  },
+  "best_val": {
+   "loss": 0.07967820018529892,
+   "step": 4000
+  }
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\isaac_v1_friction_q1_grip\\final.pt",
+  "sha256": "a032e533775bae27b1e1e0aab2bfc7644755a033611a98861646c3a3c245b019"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.11406609183177352,
+   "val_loss": 0.13607583940029144
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.03688879068940878,
+   "val_loss": 0.07967820018529892
+  },
+  {
+   "step": 6000,
+   "train_loss": 0.025605876836925744,
+   "val_loss": 0.11940238624811172
+  },
+  {
+   "step": 8000,
+   "train_loss": 0.019289594190195204,
+   "val_loss": 0.16934077441692352
+  },
+  {
+   "step": 10000,
+   "train_loss": 0.014740097033791245,
+   "val_loss": 0.21856863796710968
+  },
+  {
+   "step": 12000,
+   "train_loss": 0.011382175283506513,
+   "val_loss": 0.2727103531360626
+  },
+  {
+   "step": 14000,
+   "train_loss": 0.008276876469608396,
+   "val_loss": 0.3124958276748657
+  },
+  {
+   "step": 16000,
+   "train_loss": 0.00627573918318376,
+   "val_loss": 0.359468936920166
+  },
+  {
+   "step": 18000,
+   "train_loss": 0.004957971989642829,
+   "val_loss": 0.383008748292923
+  },
+  {
+   "step": 20000,
+   "train_loss": 0.0042434222414158285,
+   "val_loss": 0.3818933367729187
+  }
+ ]
+}

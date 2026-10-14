@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-14 · **Branch:** `feature/isaac-imitation` · **Phase:** Q (quarter fold): Q0/Q1 code done, evals queued; Q2 fold-over expert built, untested on Isaac
+**Updated:** 2026-10-14 · **Branch:** `feature/isaac-imitation` · **Phase:** Q — **paused** (user, 2026-10-14: rethink the quarter-fold process); Q0 ✅ Q1 ✅
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,54 +41,49 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**2026-10-14, Phase Q (user, 2026-10-13): a robust quarter fold on isaac_friction, fast track, with a better benchmark
-and better losses first.** Plan: [superpowers/plans/2026-10-13-quarter-fold.md](superpowers/plans/2026-10-13-quarter-fold.md);
-roadmap Phase Q.
+**2026-10-14, Phase Q PAUSED** (user: "wrap up [Q1] and pause, I want to rethink the quarter fold process").
+- **State:** nothing is running. No Isaac, training or thermal-guard processes, and no pause flag.
+- **Plan:** [superpowers/plans/2026-10-13-quarter-fold.md](superpowers/plans/2026-10-13-quarter-fold.md); roadmap Phase Q.
 
-- **Q0 benchmark v2 (code done):**
-  - Per-episode rows and per-stage metrics in every eval JSON.
-  - `sel_` / `final_` seed blocks (700k / 800k).
-  - Paired McNemar and bootstrap: `python -m imitation.stats a.json b.json`.
-  - DAgger keep rule is now paired; G2 documented; G3 (split stack) added.
-- **Q1 loss v2 (code done, opt-in via `--loss-cfg`):**
-  - Gripper BCE head, horizon tail, phase weighting.
-  - `best_val.pt` / `step_<n>.pt` candidates.
-  - Both A/B arms are trained. Val loss bottoms at 4k of 20k steps in both, as in F4.
-- **Queued Isaac jobs (`scripts/q01_after_train.ps1`, then `scripts/q1_ab.ps1`, about 5–6 h):**
-  - The Q0 noise floor: the F4 checkpoint twice on `sel_id_hard` + `sel_knock_arm`, n = 100.
-  - The Q1 evals: final and best-val of each arm, paired against F4.
-  - The first noise-floor attempt crashed when a GPU training overlapped the GPU-physics evals; sims and trainings no
-    longer overlap.
-- **Q2 second fold:**
-  - **Reach:** the second fold is reachable once the arms swap roles (multi-seed IK, 50/50 per arm). The single-seed
-    "unreachable" was an IK artefact (results.md).
-  - **User decision (2026-10-14):** a bimanual fold-over. Left arm: stack 0+10 → 110; right arm: crease end 5 → 115.
-    A shift/re-centre skill comes later as its own stage.
-  - **Built, not yet run on Isaac:**
-    - `STAGES_FOLD_OVER`, plus its grasp corners for the LeHome backends;
-    - the expert's place point mirrors along the carry axis (stage 0 unchanged);
-    - from stage 1 on, the pinch and place heights follow the cloth;
-    - obs v2: +18 dims of per-arm carried point and goal, quarter fold only (157-D);
-    - `--task quarter_fold` everywhere.
-- **Q3 fold-over iterations** (user, 2026-10-14: "keep fold-over, iterate"; log in results.md):
-  - **First smoke:** 0/16. Fold 1 completes 15/16; fold 2 never grasps (single-seed IK).
-  - **Kept so far, each stage ≥ 1 only:**
-    - multi-seed IK;
-    - lift gate;
-    - stage goals frozen at stage start;
-    - staggered approach (right arm first, left waits);
-    - Cartesian approach path;
-    - the waiting arm stays put.
-  - **Ruled out:** a fully sequential fold. It is impossible by cloth geometry.
-  - **Best so far:** attempt D, seed 660002, a near miss (5.06 / 0.97 cm).
-  - **Open problem:** fold 1 bunches the strip, so the west-edge pinch points end up only ~6–9 cm apart (should be
-    15 cm), and the two grippers crowd each other.
-  - **Running:** attempt F, n = 16 batch on `tune_id_easy`.
-- **Next:**
-  - Fold-over attempts until the n = 16 tune batch completes stage 2 on a majority.
-  - Then Q3's bars, which need the user's OK before the gate run.
-  - Noise floor and Q1 evals keep running on the other Isaac process.
-- **Flaky fast test:** 1 failure in 4 runs, not reproduced (likely timing under Isaac CPU load); unidentified.
+**Closed:**
+- **Q0 ✅ benchmark v2:**
+  - Per-episode rows and per-stage metrics.
+  - `sel_` / `final_` seed blocks.
+  - Paired McNemar and bootstrap: `python -m imitation.stats a.json b.json [--flips]`.
+  - Paired DAgger keep rule; G2 / G3 codes.
+  - **Isaac noise floor:** rates reproduce (70/70, 44/45), but 24–25% of seeds flip run to run. At n = 100 the paired
+    SE is ≈ 7 pp per set.
+- **Q1 ✅ loss v2:**
+  - The diffusion gripper head is kept: `sel_id_hard` 86 vs 70, `sel_knock_arm` 60 vs 44; pooled +16 pp, p = 0.001.
+    S1 stalls go to 0.
+  - Horizon and phase weighting are not kept (+1 pp, p = 0.89).
+  - Val-loss checkpoint selection is rejected (`best_val` at 4k: 0/200).
+  - A first head design (ε loss without the gripper dims) corrupted the joints; it was fixed and has a regression test.
+
+**What the quarter-fold work found** (Q2 / Q3, results.md):
+- **Second fold reach:** reachable with multi-seed IK. The single-seed "unreachable" was an IK artefact.
+- **The bimanual fold-over is 0/16** after 6 mechanism attempts (A–F), overshoot and carry-speed knobs, and a
+  straighten stage.
+  - The root cause is fold 1 on this cloth: it wrinkles the strip to ~7 of 15 cm (crease 4–5 cm toward the arms,
+    stack 5–6 cm split, `isaac/fold1_summary.py`).
+  - So the second fold's pinch points end up 6–9 cm apart and the grippers collide.
+  - A fully sequential fold-over is impossible by cloth geometry.
+- **The parallel second fold** (each arm folds its crease end onto its own near corner) is **7/16 untuned**; slips
+  at the crease bend are the remaining failure. It is now the default on LeHome backends (`WORLDFOLD_QF_SECOND`).
+
+**Built and ready when the quarter fold resumes:**
+- `--task quarter_fold` everywhere, and obs v2 (157-D, quarter fold only).
+- Stage options: `STAGES_FOLD_OVER`, `STAGES_FOLD_OVER_STRAIGHTEN`, `STAGES_PARALLEL`.
+- Expert changes (stage ≥ 1 only): multi-seed IK, lift gate, staggered approach, Cartesian approach, stage-start goals.
+- QF0 knobs; the quarter-fold knock window (35–420).
+- Tools: `isaac/recovery_replay.py --task --stop-at-stage --trace-dir`, `isaac/reach_check_qf.py`, `isaac/reach_map.py`.
+- `scripts/q_retrain.ps1` is the Q4 fast-track pipeline. It is written but has not been run.
+
+**Next:** the user's rethink of the quarter-fold process. Open questions for it:
+- Which second fold.
+- Whether to change fold 1 (e.g. a different first-fold motion) or the cloth/pad physics.
+- Whether shift/straighten should become separate distilled skills.
+- Q3 gate bars need the user's OK before any gate run.
 
 **2026-10-08, F4 finals (BC only, 3.5 h plan):** privileged diffusion BC on `isaac_v1_friction` scored id_easy
 81 / id_hard 71 / knock_arm 35 (n = 100), joint_noise 26 and overshoot 4 (n = 50). The expert scored 92 / 94 / 75 on the same sets. Stalls (S1) dominate the
@@ -265,6 +260,14 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-14 · **Q1 closed, Phase Q paused (user).**
+  - Gripper head kept: +16 pp, p = 0.001.
+  - Weighting not kept; val-loss selection rejected.
+  - Fold-1 geometry study (overshoot, speed, straighten: no gain).
+  - Parallel second fold 7/16, now the default.
+  - `verify Q0` / `Q1` PASS.
+  - All jobs stopped.
+  - Fast tests: 238 passed, 5 skipped, 47 deselected, 3 warnings. (this commit)
 - 2026-10-14 · **Q3 fold-over iterations A–F.**
   - Multi-seed IK, lift gate, stage-start goals, staggered approach, Cartesian approach, wait-in-place. Sequential
     fold ruled out.

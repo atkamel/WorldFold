@@ -761,6 +761,57 @@ def run_one(mid: str) -> Result:
     return res
 
 
+# ---------------------------------------------------------------- Phase Q (quarter fold; benchmark v2, loss v2)
+Q_DIR = ROOT / "outputs" / "imitation" / "isaac_friction"
+
+
+@check("Q0", "benchmark v2: per-episode rows + paired stats in place; Isaac noise floor (same checkpoint twice on the same sel_ seeds) measured and in results.md")
+def _q0() -> Result:
+    from imitation.stats import flip_rate, rows_of
+    ev, ok = [], True
+    paths = [Q_DIR / "q0" / f"noise_{r}.json" for r in ("a", "b")]
+    for path in paths:
+        if not path.exists():
+            return Result("Q0", "FAIL", [f"missing artifact: {path}"])
+        ok &= git_tracked(path)
+    a, b = (json.loads(p.read_text(encoding="utf-8"))["results"] for p in paths)
+    for s in ("sel_id_hard", "sel_knock_arm"):
+        ra, rb = rows_of(a, [s]), rows_of(b, [s])
+        if not ra or not rb:
+            ev.append(f"{s}: no per-episode rows")
+            ok = False
+            continue
+        f = flip_rate(ra, rb)
+        ev.append(f"{s}: {a[s]['success_rate']:.0%} / {b[s]['success_rate']:.0%}, flips {f['flips']}/{f['n']}")
+        ok &= f["n"] >= 100
+    ok &= results_md_has("Q0 — Isaac noise floor")
+    return Result("Q0", "PASS" if ok else "FAIL", ev)
+
+
+@check("Q1", "loss v2 A/B: each arm paired against F4 BC on the sel_ seeds (n >= 100 per set); decision in results.md")
+def _q1() -> Result:
+    from imitation.stats import compare_reports
+    base = json.loads((Q_DIR / "q0" / "noise_a.json").read_text(encoding="utf-8"))["results"]
+    ev, ok = [], True
+    for arm in ("q1_grip_final", "q1_all_final", "q1_grip_bestval"):
+        path = Q_DIR / "q1" / f"eval_{arm}.json"
+        if not path.exists():
+            ev.append(f"missing artifact: {path}")
+            ok = False
+            continue
+        r = json.loads(path.read_text(encoding="utf-8"))["results"]
+        p = compare_reports(r, base, ["sel_id_hard", "sel_knock_arm"]).get("pooled")
+        if p is None:
+            ev.append(f"{arm}: no per-episode rows")
+            ok = False
+            continue
+        ev.append(f"{arm}: pooled {p['rate_a']:.1%} vs {p['rate_b']:.1%}, diff {p['diff']:+.1%} "
+                  f"[{p['ci95'][0]:+.1%}, {p['ci95'][1]:+.1%}], McNemar p {p['p_mcnemar']:.3f}")
+        ok &= p["n"] >= 200 and git_tracked(path)
+    ok &= results_md_has("The Q1 decision")
+    return Result("Q1", "PASS" if ok else "FAIL", ev)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="imitation.verify")
     ap.add_argument("ids", nargs="*")

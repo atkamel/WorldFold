@@ -199,6 +199,11 @@ empty. `imitation/policies/loss.py::LossCfg`:
 - **Checkpoints:** `best_val.pt` (lowest EMA val loss) is always written, and `step_<n>.pt`
   every `--save-every` steps. F4's val loss was lowest at 6k of 20k steps and doubled by
   the end. Selection between checkpoints uses rollouts on `sel_` seeds, not val loss.
+- **The Q1 decision (2026-10-14, results.md):**
+  - **Diffusion trains with `gripper_head=true`.** The head adds BCE on top of the full 12-dim ε loss, and its
+    output replaces only the gripper dims. Gain on held-out seeds: +16 pp, p = 0.001.
+  - **Horizon and phase weighting are not used** (+1 pp, p = 0.89).
+  - **`best_val.pt` is not a selection candidate.** The val-loss minimum at 4k steps scored 0/200 in closed loop.
 
 ## 4. Episode schema
 
