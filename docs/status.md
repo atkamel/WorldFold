@@ -267,12 +267,12 @@ Newest first. One line per work pass: date · what changed · commit.
   - Parallel second fold 7/16, now the default.
   - `verify Q0` / `Q1` PASS.
   - All jobs stopped.
-  - Fast tests: 238 passed, 5 skipped, 47 deselected, 3 warnings. (this commit)
+  - Fast tests: 238 passed, 5 skipped. 2b716e7
 - 2026-10-14 · **Q3 fold-over iterations A–F.**
   - Multi-seed IK, lift gate, stage-start goals, staggered approach, Cartesian approach, wait-in-place. Sequential
     fold ruled out.
   - Q0 `sel_id_hard` 70/100 (first noise-floor set).
-  - Fast 236 passed (1 flaky failure in 4 runs, not reproduced). (this commit)
+  - Fast 236 passed (1 flaky failure in 4 runs, not reproduced). d63b15a
 - 2026-10-13/14 · **Phase Q start.**
   - Plan approved.
   - Q0 benchmark v2 and Q1 loss v2 code; both Q1 arms trained.
