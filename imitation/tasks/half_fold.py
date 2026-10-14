@@ -94,15 +94,26 @@ def task_stages(task="half_fold", backend="mujoco"):
     if task == "half_fold":
         return STAGES[:1]
     if task == "quarter_fold":
-        from cloth_fold_rl.quarter_fold_env import STAGES_FOLD_OVER
-        return STAGES_FOLD_OVER if _fold_over(backend) else STAGES
+        from cloth_fold_rl.quarter_fold_env import STAGES_FOLD_OVER, STAGES_FOLD_OVER_STRAIGHTEN
+        if not _fold_over(backend):
+            return STAGES
+        return STAGES_FOLD_OVER_STRAIGHTEN if _straighten() else STAGES_FOLD_OVER
     raise ValueError(f"task must be one of {TASKS}, got {task!r}")
+
+
+def _straighten():
+    """WORLDFOLD_QF_STRAIGHTEN=1: the fold-over quarter fold with a straighten stage between the folds (Q3 trial)."""
+    import os
+    return os.environ.get("WORLDFOLD_QF_STRAIGHTEN", "0") == "1"
 
 
 def task_grasp_corners(task="half_fold", backend="mujoco"):
     """Per-arm corners the base env may grasp (the wrapper's per-stage mask narrows them)."""
-    from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_CORNERS_FOLD_OVER
-    return GRASP_CORNERS_FOLD_OVER if task == "quarter_fold" and _fold_over(backend) else GRASP_CORNERS
+    from cloth_fold_rl.quarter_fold_env import (GRASP_CORNERS, GRASP_CORNERS_FOLD_OVER,
+                                                GRASP_CORNERS_FOLD_OVER_STRAIGHTEN)
+    if task == "quarter_fold" and _fold_over(backend):
+        return GRASP_CORNERS_FOLD_OVER_STRAIGHTEN if _straighten() else GRASP_CORNERS_FOLD_OVER
+    return GRASP_CORNERS
 
 
 def _gpu_cap(backend, task="half_fold"):

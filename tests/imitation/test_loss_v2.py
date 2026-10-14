@@ -102,3 +102,18 @@ def test_loss_cfg_parses_json_and_key_value_pairs():
     kv = LossCfg.parse("gripper_head=true,horizon_tail=0.5,phase_weight=3")
     assert kv == LossCfg.parse('{"gripper_head": true, "horizon_tail": 0.5, "phase_weight": 3}')
     assert kv.gripper_head and kv.phase_weight == 3 and LossCfg.parse("").is_baseline
+
+
+def test_diffusion_head_keeps_the_full_denoising_loss():
+    # the gripper head adds BCE on top; the epsilon loss still covers every dim (Q1 regression: dropping the gripper
+    # dims from it corrupted the joint channels)
+    torch.manual_seed(0)
+    base = build_policy("diffusion", obs_dim=D, action_dim=A, obs_horizon=2, chunk=16)
+    head = build_policy("diffusion", obs_dim=D, action_dim=A, obs_horizon=2, chunk=16, gripper_head=True)
+    head.load_state_dict(base.state_dict(), strict=False)
+    obs, acts = torch.randn(4, 2, D), torch.sign(torch.rand(4, 16, A) * 2 - 1)
+    torch.manual_seed(1)
+    lb = base.compute_loss(obs, acts, torch.ones(4, 16))
+    torch.manual_seed(1)
+    lh = head.compute_loss(obs, acts, torch.ones(4, 16))
+    assert lh > lb            # the same epsilon loss (same seed, same weights) plus a positive BCE term

@@ -47,7 +47,7 @@ class QuarterFoldExpert:
     # behind, the stack cannot reach the far corner (they are 15 cm apart in the cloth; trace 2026-10-14).
     # Only for per-arm experts with a `waiting` flag (isaac.fold_expert.IsaacArmExpert); MuJoCo's FoldExpert and
     # stage 0 are unchanged.
-    SEQUENCE = {1: ("right_", "left_")}
+    SEQUENCE = {"fold_over": ("right_", "left_")}     # keyed by stage role (see _stage_role)
 
     def __init__(self, env, seed=0, expert_cls=None, overshoot=None):
         # expert_cls: the per-arm phase machine (default the MuJoCo FoldExpert; isaac.fold_expert.IsaacArmExpert on
@@ -63,7 +63,8 @@ class QuarterFoldExpert:
         for s, stage in enumerate(env.stages):
             for k, move in enumerate(stage.moves):
                 self.moves[(s, move.prefix)] = move
-                goal = lambda m=move, s=s: env.goal(m) + self.overshoot[(s, m.prefix)] + self.correction[(s, m.prefix)]
+                goal = lambda m=move, s=s: (env.goal(m) + self.overshoot.get((s, m.prefix), np.zeros(3))
+                                            + self.correction[(s, m.prefix)])
                 self.experts[(s, move.prefix)] = expert_cls(env, seed=seed + 10 * s + k, prefix=move.prefix,
                                                             corner=list(move.corners), goal=goal, release=True,
                                                             raw_vertex=True)
@@ -110,9 +111,19 @@ class QuarterFoldExpert:
         self._update_release_gate()
         return self.phases()
 
+    def _stage_role(self):
+        """"fold_over" for the Isaac quarter fold's second fold (whatever its index), else the stage index."""
+        try:
+            from cloth_fold_rl.quarter_fold_env import STAGE1_FOLD_OVER
+            if self.env.stages[self.env.stage] == STAGE1_FOLD_OVER:
+                return "fold_over"
+        except (AttributeError, IndexError, TypeError):
+            pass
+        return self.env.stage
+
     def _sequenced(self):
         arms = self._arms()
-        order = self.SEQUENCE.get(self.env.stage)
+        order = self.SEQUENCE.get(self._stage_role())
         if not order or not all(hasattr(e, "waiting") for e in arms.values()) or set(order) != set(arms):
             return None
         return order

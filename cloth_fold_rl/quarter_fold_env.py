@@ -91,6 +91,7 @@ class Move:
     prefix: str        # the arm
     corners: tuple     # cloth vertices it carries (reached for at their mean position)
     goal: int          # cloth vertex whose start position they go to
+    goal_from: str = "stage"   # "stage": the goal vertex where it lies when the stage starts; "reset": at reset (Q3)
 
 
 @dataclass(frozen=True)
@@ -113,6 +114,14 @@ STAGES = (
 STAGE1_FOLD_OVER = Stage(moves=(Move("left_", (CLOTH_0, CLOTH_10), CLOTH_110), Move("right_", (CLOTH_5,), CLOTH_115)),
                          anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120)))
 STAGES_FOLD_OVER = (STAGES[0], STAGE1_FOLD_OVER)
+# Q3 (2026-10-14): the first fold leaves the strip wrinkled into ~7 cm of its 15 cm width (crease 4-5 cm toward the
+# arms, bottom corners ~3 cm away from them; results.md), too narrow for both grippers on its west edge. A straighten
+# stage between the folds: each arm pulls its own crease end back to where it lay at reset (each on its own side,
+# 4-9 cm), flattening the strip; the bottom corners must stay (anchors).
+STAGE_STRAIGHTEN = Stage(moves=(Move("left_", (CLOTH_5,), CLOTH_5, "reset"), Move("right_", (CLOTH_115,), CLOTH_115, "reset")),
+                         anchors=((CLOTH_0, CLOTH_0), (CLOTH_110, CLOTH_110)))
+STAGES_FOLD_OVER_STRAIGHTEN = (STAGES[0], STAGE_STRAIGHTEN, STAGE1_FOLD_OVER)
+GRASP_CORNERS_FOLD_OVER_STRAIGHTEN = {"left_": (CLOTH_10, CLOTH_5, CLOTH_0), "right_": (CLOTH_120, CLOTH_115, CLOTH_5)}
 GRASP_CORNERS_FOLD_OVER = {"left_": (CLOTH_10, CLOTH_0), "right_": (CLOTH_120, CLOTH_5)}
 
 
@@ -178,7 +187,8 @@ class QuarterFoldEnv(gym.Wrapper):
 
     def _begin_stage(self):
         for move in self.stages[self.stage].moves:
-            self._goals[move] = self._stage_start[move.goal].copy()
+            ref = self._start if getattr(move, "goal_from", "stage") == "reset" else self._stage_start
+            self._goals[move] = ref[move.goal].copy()
 
     def _apply_weld_mask(self):
         # Each arm may weld only the corners it is meant to carry this stage.

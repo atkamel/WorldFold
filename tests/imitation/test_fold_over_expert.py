@@ -81,8 +81,9 @@ def test_sequenced_stage_parks_the_left_arm_until_the_right_arm_closed():
         def __init__(self, phase):
             self.phase, self.waiting, self.release_allowed, self.lift_allowed = phases.index(phase), False, False, True
 
+    from cloth_fold_rl.quarter_fold_env import STAGES_FOLD_OVER, STAGES_FOLD_OVER_STRAIGHTEN
     q = QuarterFoldExpert.__new__(QuarterFoldExpert)
-    q.env = types.SimpleNamespace(stage=1)
+    q.env = types.SimpleNamespace(stage=1, stages=STAGES_FOLD_OVER)
     left, right = Arm("approach"), Arm("descend")
     q.experts = {(1, "left_"): left, (1, "right_"): right}
     q.turn_done = set()
@@ -96,3 +97,10 @@ def test_sequenced_stage_parks_the_left_arm_until_the_right_arm_closed():
     right.phase = phases.index("approach")                      # a regrasp keeps the left arm's turn
     q._update_sequence()
     assert not left.waiting
+
+    # the role follows the stage, not its index: with the straighten stage the fold-over is stage 2
+    q.env = types.SimpleNamespace(stage=1, stages=STAGES_FOLD_OVER_STRAIGHTEN)
+    assert q._sequenced() is None
+    q.env.stage = 2
+    q.experts.update({(2, "left_"): Arm("approach"), (2, "right_"): Arm("approach")})
+    assert q._sequenced() == ("right_", "left_")

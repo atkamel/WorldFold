@@ -55,8 +55,10 @@ class ScriptedTeacher(Teacher):
                 from isaac.servo_expert import IsaacServoExpert as cls
             table = OVERSHOOTS[getattr(env.unwrapped, "profile", "lehome")]
             scale = float(cls.OVERSHOOT_SCALE)
+            qf0 = float(getattr(cls, "QF0_OVERSHOOT_SCALE", 1.0)) if len(env.stages) > 1 else 1.0
             self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=cls,
-                                            overshoot={k: scale * v for k, v in table.items()})
+                                            overshoot={k: scale * (qf0 if k[0] == 0 else 1.0) * v
+                                                       for k, v in table.items()})
         else:
             self.expert = QuarterFoldExpert(env, seed=seed)
 

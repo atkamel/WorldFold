@@ -1990,4 +1990,77 @@ These are diagnostics, not rates.
 | D | staggered approach (right closes first, left parked), then lift together | 660001 | First joint grasp (g11 at t650). Before it, the left arm's joint-space approach swept through the right arm's workspace and moved the right gripper up to 18 cm. Both slipped about 30 steps into the carry, with drift 7.8 → 10.7 cm. |
 | E | Cartesian approach path in stage 1 (level waypoints every 3 cm) | 660001 | The right arm held the crease end steadily from t350 to the cap (the interference is gone). The waiting left arm parked at home (y +0.02, over the far side), and its path back crossed the right gripper: no grasp in 450 steps. The first fold had bunched the strip: crease end at y −0.20, stack at −0.26, only 6 cm apart. |
 | D (seed 660002) | as D | 660002 | Near miss: final distances 5.06 / 0.97 cm (success needs ≤ 5 cm on both), truncated at 800 after 2 retries. |
-| F | the waiting arm stays put instead of parking at home; first batch measurement | tune_id_easy n = 16 | running |
+| F | the waiting arm stays put instead of parking at home; first batch measurement | tune_id_easy n = 16 (`q3/expert_F.json`) | **0/16** (Wilson 0–19). First fold done 15/16; failures G2@1 15, G2@0 1, all truncated at 800. Final fold score ≈ 0.52 on 13 seeds, meaning no progress on the second fold; 0.81 / 0.83 on 660003 / 660015. |
+
+### Q0 — Isaac noise floor (`isaac_friction`, 2026-10-14, `q0/noise_{a,b}.json`, `q0/flips.txt`)
+
+F4's BC checkpoint (`runs/isaac_v1_friction_diff_s0/final.pt`, replan 4) run twice on the same `sel_` seeds, 1 × 8 envs,
+same code.
+
+| set | n | run A | run B | Wilson (A) | per-seed flips | flip rate (Wilson 95%) | McNemar p |
+|---|---|---|---|---|---|---|---|
+| sel_id_hard | 100 | 70 | 70 | 60.4–78.0 | 24 | 24% (16.7–33.2) | 1.0 |
+| sel_knock_arm | 100 | 44 | 45 | 34.7–53.8 | 25 | 25% (17.5–34.3) | 1.0 |
+
+- **Rates reproduce; seeds don't.** Isaac cloth is not deterministic run to run, so about a quarter of individual seeds
+  change outcome between identical runs, and the flips balance out.
+- **Consequences for every A/B on this backend:**
+  - The paired SE of a success difference at n = 100 is about √(25 + 25)/100 ≈ 7 pp under pure noise. Differences
+    under ~10–14 pp at n = 100 are not resolvable; ~5 pp needs n ≈ 400–800.
+  - McNemar remains valid: it tests the asymmetry of the discordant pairs, which is symmetric under noise.
+- **The new blocks match the legacy sets:** `sel_id_hard` 70 vs legacy id_hard 71 (F4).
+- **Legacy F4 finals:** n = 100 and 50 on point estimates, e.g. joint_noise 13/50. Gaps smaller than ±10 pp between
+  F-phase rows were within this noise.
+
+### Q1 — loss v2, first A/B: invalid, a gripper-head bug (`isaac_friction`, 2026-10-14, `q1/bug_v1/`)
+
+The setup was as planned: diffusion seed 0, 20k steps on `isaac_v1_friction`; eval on `sel_id_hard` + `sel_knock_arm`
+(n = 100, replan 4, 1 × 8), paired against F4's BC (`q0/noise_a.json`: 70 / 44).
+
+| arm | sel_id_hard | sel_knock_arm | pooled diff vs F4 (paired 95% CI) | failures (id_hard) |
+|---|---|---|---|---|
+| q1_grip final | 9 | 7 | −49.0 pp [−56.5, −41.5], McNemar p < 0.001 | G1 46, G2 45 |
+| q1_all final | 3 | 2 | −54.5 pp [−61.5, −47.5] | G1 74, G2 23 |
+| q1_grip best_val (4k) | 0 | 0 | −57.0 pp [−63.5, −50.0] | G1 95, G2 5 |
+
+- **Cause:** the diffusion gripper head's ε loss left out the gripper dims, so those channels drifted freely during
+  DDIM and fed the joint channels through the U-Net's convolutions.
+- **Offline evidence** (val windows, 2,000 samples):
+
+  | model | joint L1 | gripper sign error |
+  |---|---|---|
+  | F4 BC | 0.042 | 1.4% |
+  | q1_grip | 0.066 | 1.6% |
+  | q1_all | 0.070 | 1.6% |
+
+  The gripper classification was fine; the joints were not.
+- **Fix:** the full 12-dim ε loss plus the BCE head, with the head overriding only the gripper output, plus a
+  regression test. The arms are being retrained; these numbers say nothing about loss v2.
+
+### Q3 — where the first fold leaves the cloth (`isaac_friction`, 2026-10-14, `q3/fold1_*.jsonl`, `isaac/fold1_summary.py`)
+
+Expert stage 0 of the quarter fold (= the half-fold expert, F3b defaults), stopped when stage 1 begins. Tune seeds
+660000–007, 1 env, clean. All values in cm.
+
+| variant | stack spread W / E | strip width W / E (15 expected) | crease shift W / E | v0 drift / v110 drift |
+|---|---|---|---|---|
+| half-fold defaults | 6.2 / 5.3 | 6.8 / 6.5 | −5.4 / −4.2 | 6.7 / 4.9 |
+| `QF0_OVERSHOOT_SCALE=0.5` (n = 6: 2 of 8 never finished fold 1) | 9.5 / 9.1 | 6.8 / 7.0 | −4.0 / −3.5 | 6.1 / 5.6 |
+| `QF0_CARRY_SPEED=0.5` (n = 6 within the 450-step cap) | 6.5 / 4.2 | 6.8 / 7.0 | −5.2 / −3.3 | 6.7 / 4.8 |
+
+- **The first fold compresses the strip toward the arms on every seed.**
+  - The carried top corners (v10, v120) end 1–5 cm past the bottom corners, toward the arms.
+  - The crease and the bottom layer slide toward the arms by 3–10 cm, so the edges the second fold has to grip are
+    5–9 cm wide instead of 15.
+  - In two seeds the bottom-left corner was also pulled about 8 cm inward in x.
+- **Seed 660002 failed differently:** the bottom corners were dragged 16 cm away from the arms, along with the top
+  layer.
+- **Why it matters:** the half fold scores these as successes (carried corners within 5 cm). For the quarter fold
+  this geometry is the root of the arm crowding and of the split stacks (attempts A–F).
+- **Straighten stage** (trial, `WORLDFOLD_QF_STRAIGHTEN=1`, seed 660000; each arm pulls its crease end back to its reset
+  pose): both arms gripped (g11), but the strip slid with the pull instead of flattening. Anchor drift was 4 → 14 cm,
+  and the crease ends were still 8.7 / 8.3 cm from target after 2 retries at the 450-step cap. With two arms nothing
+  holds the bottom layer. The trial was stopped after 1 seed, and the stage is kept off by default.
+- **Not a speed or overshoot effect.** A slower carry and half the overshoot leave the strip width at 6.8 cm (15
+  expected). The wrinkling of the first fold is structural on this cloth: neither the carry dynamics nor the
+  spring-back offset moves it.

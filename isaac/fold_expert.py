@@ -113,6 +113,12 @@ class IsaacArmExpert:
     # on, a solve that misses by more than REACH_TOL retries from IK_RESTARTS spread seeds. Among the solutions within
     # REACH_TOL it keeps the one nearest the chained solve (no needless branch jumps along an arc). Stage 0's plans are
     # unchanged.
+    # Q3: the quarter fold's first fold (stage 0 when the task has 2 stages) must leave a flat, full-width strip with
+    # its corners stacked. The half-fold defaults leave the stack 3-5 cm split and the crease 6-9 cm toward the arms
+    # (traces 2026-10-14). These change stage 0 of the quarter fold only; None / 1.0 = the half-fold behaviour.
+    QF0_OVERSHOOT_SCALE = 1.0    # x the stage-0 spring-back overshoot (applied by ScriptedTeacher)
+    QF0_CARRY_SPEED = None       # lift/carry joint-speed scale in stage 0
+    QF0_ARC_HEIGHT = None        # carry arc peak in stage 0 (m)
     IK_RESTARTS = 6
     SCREEN_ITERS = 100
     ARC_TOL = 0.02
@@ -159,6 +165,10 @@ class IsaacArmExpert:
 
     def _stage(self):
         return int(getattr(self.env, "stage", 0))
+
+    def _qf0(self, value):
+        """A QF0_* knob, if this is the quarter fold's first fold and the knob is set."""
+        return value if value is not None and self._stage() == 0 and len(getattr(self.env, "stages", ())) > 1 else None
 
     def _solve(self, tip, jaw, q, tol=None, **kw):
         """ik.solve, with the multi-seed fallback from stage 1 on (IK_RESTARTS) when the chained solve misses by more
@@ -260,7 +270,8 @@ class IsaacArmExpert:
         start = pinch
         for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
             tip = start + (place - start) * (1.0 - math.cos(math.pi * s)) / 2.0
-            tip[2] = start[2] + (place[2] - start[2]) * s + self.ARC_HEIGHT * math.sin(math.pi * s)
+            arc_h = self._qf0(self.QF0_ARC_HEIGHT) or self.ARC_HEIGHT
+            tip[2] = start[2] + (place[2] - start[2]) * s + arc_h * math.sin(math.pi * s)
             q, _ = self._solve(tip, jaw, q, tol=self.ARC_TOL, orientation_weight=0.05)
             plan["arc"].append(q)
             plan["arc_tips"].append(tip)
@@ -366,7 +377,7 @@ class IsaacArmExpert:
             delta = (self.q_target - self._q()) / JOINT_DELTA_SCALE
             action[0:5] = delta / max(1.0, float(np.max(np.abs(delta))))     # all joints arrive together
             if name in ("lift", "carry"):
-                action[0:5] *= self.CARRY_SPEED
+                action[0:5] *= self._qf0(self.QF0_CARRY_SPEED) or self.CARRY_SPEED
         self.phase_steps += 1
         self._maybe_advance(name)
         return action

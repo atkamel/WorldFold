@@ -33,6 +33,8 @@ def main():
     ap.add_argument("--kind", default="knock", choices=("knock", "knock_arm", "drop"),
                     help="perturbation kind (imitation.seeds.perturbation_fn; knock = the legacy recovery knock)")
     ap.add_argument("--task", default="half_fold", choices=("half_fold", "quarter_fold"))
+    ap.add_argument("--stop-at-stage", type=int, default=None,
+                    help="end the episode when this stage begins, recording key vertices then (Q3 fold-1 study)")
     ap.add_argument("--set", action="append", default=[], metavar="ATTR=VALUE",
                     help="override an IsaacFoldExpert class attribute for this run, e.g. REGRASP_OFFSET=none")
     args = ap.parse_args()
@@ -88,6 +90,7 @@ def main():
         env.reset(seed=seed)
         expert.reset()
         stale, timeline, prev = False, [], None
+        stage_end = None
         retry_log.clear()
         last_grip, drop_at, drop_arms = np.ones(2, dtype=np.float32), None, ()
         for t in range(base.max_episode_steps):
@@ -145,13 +148,18 @@ def main():
                       f"drift {100 * env._anchor_drift():.1f}cm  {now - getattr(main, '_t', now):.1f}s", flush=True)
                 main._t = now
             _, _, term, trunc, info = env.step(act)
+            if args.stop_at_stage is not None and env.stage >= args.stop_at_stage:
+                cloth = base.cloth_positions()       # where fold 1 left the vertices the second fold works on
+                stage_end = {"t": t + 1, **{str(v): np.round(cloth[v], 4).tolist() for v in (0, 5, 10, 110, 115, 120)},
+                             "start": {str(v): np.round(env._start[v], 4).tolist() for v in (0, 5, 10, 110, 115, 120)}}
+                break
             if term or trunc:
                 break
         row = {"seed": seed, "kind": p.kind, "drop_at": drop_at, "knock": [p.t if drop_at is None else drop_at, p.k], "success": bool(info["success"]), "steps": t + 1,
                "reason": info["termination_reason"] or "truncated", "retries": sum(expert.retries.values()),
                "d": [round(float(x), 4) for x in info["move_distance"]], "domain": dict(base._domain_params),
                "knobs": args.set, "max_steps": base.max_episode_steps, "max_retries": qfe.MAX_RETRIES,
-               "retry_log": list(retry_log),
+               "retry_log": list(retry_log), "stage_end": stage_end,
                "timeline": timeline}
         if args.trace_dir:
             Path(args.trace_dir).mkdir(parents=True, exist_ok=True)

@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from imitation.policies.common import ChunkPolicy
-from imitation.policies.loss import GRIPPER_ACTION_DIMS, gripper_from_logits, joint_dims
+from imitation.policies.loss import GRIPPER_ACTION_DIMS, gripper_from_logits
 from imitation.spec import ACTION_DIM, OBS_DIM
 
 
@@ -98,8 +98,8 @@ class DiffusionPolicy(ChunkPolicy):
         self.t_enc = nn.Sequential(_SinEmb(128), nn.Linear(128, cond_dim), nn.Mish(), nn.Linear(cond_dim, cond_dim))
         self.net = _UNet1D(action_dim, cond_dim, self.channels)
         self.register_buffer("alphas_cumprod", _cosine_alphas_cumprod(train_steps))
-        # Q1: the gripper is a binary choice, predicted by a classifier on the obs encoding (BCE) instead of being
-        # denoised; the U-Net still carries all dims (same architecture) but its loss covers the joint dims only
+        # Q1: the gripper is a binary choice, predicted by a classifier on the obs encoding (BCE); its output replaces
+        # the denoised gripper dims. The U-Net is unchanged and still trained on all dims
         self.gripper_head = gripper_head
         if gripper_head:
             self.grip = nn.Sequential(nn.Mish(), nn.Linear(cond_dim, chunk * len(GRIPPER_ACTION_DIMS)))
@@ -126,12 +126,14 @@ class DiffusionPolicy(ChunkPolicy):
         noisy = a.sqrt() * actions + (1 - a).sqrt() * noise
         cond = self._encode(obs)
         err = F.mse_loss(self._eps(noisy, t, cond), noise, reduction="none")
+        err = err.mean(-1)
         if self.gripper_head:
+            # the denoiser keeps its loss on all 12 dims, exactly as without the head. Dropping the gripper dims from
+            # it (Q1 first try) left those channels free to drift during DDIM; they feed the joint channels through
+            # the convolutions, and val joint L1 rose 0.042 -> 0.066 with closed-loop success 70 -> 9% (results.md)
             target = (actions[..., list(GRIPPER_ACTION_DIMS)] > 0).float()
-            err = err[..., joint_dims(self.action_dim)].mean(-1) + F.binary_cross_entropy_with_logits(
-                self._grip_logits(cond).float(), target, reduction="none").mean(-1)
-        else:
-            err = err.mean(-1)
+            err = err + F.binary_cross_entropy_with_logits(self._grip_logits(cond).float(), target,
+                                                           reduction="none").mean(-1)
         if per_sample:
             return (err * mask).sum(-1) / mask.sum(-1).clamp(min=1.0)
         return (err * mask).sum() / mask.sum().clamp(min=1.0)
