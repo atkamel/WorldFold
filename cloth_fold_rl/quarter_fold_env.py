@@ -159,6 +159,7 @@ class QuarterFoldEnv(gym.Wrapper):
         self.stage = 0
         self._start = None          # cloth vertex positions at reset, [N*N, 3]
         self._stage_start = None    # cloth vertex positions at the current stage's start
+        self._goals = {}            # move -> its goal position, frozen when the move's stage begins
         self._settle_steps = 0
         self._prev_potential = 0.0
 
@@ -168,7 +169,16 @@ class QuarterFoldEnv(gym.Wrapper):
         return self.env.cloth_positions()[index]
 
     def goal(self, move):
-        return self._start[move.goal]
+        # Q2: a stage's goal is its goal vertex where it lies when the stage starts. Stage 0 is unchanged (the stage
+        # start is the reset). For the second fold the first one has moved the cloth by a few cm, so the reset
+        # position of 110/115 no longer marks the east edge (traces 2026-10-14: the crease end lay 9 cm from its
+        # reset pose).
+        # Frozen per move when its stage begins (_begin_stage); a later stage not begun yet uses the reset pose.
+        return self._goals[move] if move in self._goals else self._start[move.goal]
+
+    def _begin_stage(self):
+        for move in self.stages[self.stage].moves:
+            self._goals[move] = self._stage_start[move.goal].copy()
 
     def _apply_weld_mask(self):
         # Each arm may weld only the corners it is meant to carry this stage.
@@ -277,6 +287,8 @@ class QuarterFoldEnv(gym.Wrapper):
         self._start = self.env.cloth_positions()
         self._stage_start = self._start.copy()
         self.stage = 0
+        self._goals = {}
+        self._begin_stage()
         self._apply_weld_mask()
         self._set_goals()
         self._settle_steps = 0
@@ -319,6 +331,7 @@ class QuarterFoldEnv(gym.Wrapper):
                 reward += STAGE_BONUS
                 self.stage += 1
                 self._stage_start = self.env.cloth_positions()
+                self._begin_stage()
                 self._apply_weld_mask()
                 self._set_goals()
                 self._settle_steps = 0

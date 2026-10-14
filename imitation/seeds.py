@@ -64,6 +64,15 @@ def shifted_pose(seed):
 ISAAC_HARD_RMAX = 0.01   # m; largest cloth offset radius all of whose id_hard draws are reachable (isaac/reach_check.py)
 ISAAC_HARD_MIN = 0.01    # m; the forced axis is at least this far off
 ISAAC_RECOVERY_T = (35, 140)   # provisional: MuJoCo 15-60 scaled to the ~230-step Isaac fold (revisit at I2.1)
+# Q2: the quarter fold's knock window spans both folds (the first fold ends at ~230 steps on the expert), so about half
+# of the knocked episodes are bumped in each fold; per-episode rows record the stage each failure ends in
+ISAAC_RECOVERY_T_QF = (35, 420)
+
+
+def knock_window(backend="mujoco", task="half_fold"):
+    if backend in LEHOME_TASK_BACKENDS:
+        return ISAAC_RECOVERY_T_QF if task == "quarter_fold" else ISAAC_RECOVERY_T
+    return (15, 60)
 
 
 def shifted_pose_isaac(seed):
@@ -84,11 +93,10 @@ def shifted_pose_isaac(seed):
 LEHOME_TASK_BACKENDS = ("isaac", "isaac_friction")
 
 
-def perturbation_fn(kind, backend="mujoco"):
+def perturbation_fn(kind, backend="mujoco", task="half_fold"):
     """perturb_fn(seed, rng) -> Perturbation for one kind of the suite; draws from its own seeded rng, so a seed's
     perturbation is the same in eval, demos and collection."""
-    isaac = backend in LEHOME_TASK_BACKENDS
-    lo, hi = ISAAC_RECOVERY_T if isaac else (15, 60)
+    lo, hi = knock_window(backend, task)
 
     def fn(seed, rng):
         r = np.random.default_rng([seed, 31337])
@@ -105,7 +113,7 @@ def perturbation_fn(kind, backend="mujoco"):
     return fn
 
 
-def eval_set(name, n, backend="mujoco"):
+def eval_set(name, n, backend="mujoco", task="half_fold"):
     """(seeds, reset_options fn or None, perturb_fn or None) for a named evaluation set."""
     for blocks, prefix in ((TUNE_SET_BASE, "tune_"), (BLOCK_BASE, None)):
         if name in blocks:                  # same distribution as the eval set it copies, its own block's seeds
@@ -113,7 +121,7 @@ def eval_set(name, n, backend="mujoco"):
                 raise ValueError(f"{name}: n = {n} exceeds the block size {BLOCK_SIZE}")
             base_name = name.split("_", 1)[1] if prefix is None else name[len(prefix):]
             seeds = list(range(blocks[name], blocks[name] + n))
-            _, opts, fn = eval_set(base_name, n, backend)
+            _, opts, fn = eval_set(base_name, n, backend, task)
             return seeds, opts, fn
     seeds = list(range(EVAL_SEED_BASE[name], EVAL_SEED_BASE[name] + n))
     isaac = backend in LEHOME_TASK_BACKENDS   # isaac_weld uses the MuJoCo sets
@@ -122,11 +130,11 @@ def eval_set(name, n, backend="mujoco"):
     if name == "id_hard":
         return seeds, shifted_pose_isaac if isaac else shifted_pose, None
     if name == "recovery":
-        lo, hi = ISAAC_RECOVERY_T if isaac else (15, 60)
+        lo, hi = knock_window(backend, task)
 
         def knock(seed, rng):
             return Perturbation(t=int(rng.integers(lo, hi)), k=int(rng.integers(8, 16)))
         return seeds, None, knock
     if name in PERTURB_SETS:
-        return seeds, None, perturbation_fn(name, backend)
+        return seeds, None, perturbation_fn(name, backend, task)
     raise KeyError(name)

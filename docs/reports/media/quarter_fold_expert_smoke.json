@@ -1,0 +1,27 @@
+{
+ "ckpt": "expert",
+ "backend": "isaac_friction",
+ "episodes": [
+  {
+   "seed": 660000,
+   "steps": 800,
+   "success": false,
+   "fold_score": 0.40594992214285,
+   "termination_reason": null
+  },
+  {
+   "seed": 660001,
+   "steps": 800,
+   "success": false,
+   "fold_score": 0.6649449110259588,
+   "termination_reason": null
+  },
+  {
+   "seed": 660002,
+   "steps": 800,
+   "success": false,
+   "fold_score": 0.561534834104351,
+   "termination_reason": null
+  }
+ ]
+}

@@ -1956,3 +1956,38 @@ stage 0's own envelope over the ±1 cm box.
 - **What was running:** a diffusion training on the same GPU (Q1 arm `q1_grip`), with the GPU at 85–87 °C, below the
   guard's 90 °C trip.
 - **Change:** GPU trainings and Isaac evals no longer overlap (`scripts/q01_after_train.ps1`).
+
+### Q3 — quarter-fold expert, first smoke (`isaac_friction`, 2026-10-14, `q3/expert_smoke.json`)
+
+The bimanual fold-over expert as first built: `STAGES_FOLD_OVER`, stage-1 place mirroring and surface heights, IK
+chained from the home seed. Seeds `tune_id_easy` 660000–015 (n = 16, 2 × 8), 800-step cap.
+
+| measure | value |
+|---|---|
+| success | 0/16 (Wilson 0–19) |
+| first fold completed | 15/16 (`stage_completion` 0.94), at steps 157–187 |
+| failures | G2@1 8, M1@1 7, G2@0 1 |
+| mean final fold score | 0.53 |
+
+- **Diagnosis** (demo video `docs/reports/media/quarter_fold_expert_smoke.mp4`, seeds 660000–002, 0/3):
+  - In the second fold, neither arm ever grasps (`grasp_active` 0 on both arms from step 200 to 700). The right arm
+    never reaches across to the crease end.
+  - The cloth is pushed around until the cap (G2/S1), or until an anchor drags past 20 cm (M1).
+  - The cause is the single-seed IK artefact from the reach check: the plan's solves chain from the home seed.
+- **Fix under test:** `IsaacArmExpert.IK_RESTARTS` (stage ≥ 1 only): a multi-seed fallback when a solve misses by
+  more than 5 mm.
+
+### Q3 — fold-over expert iterations (traces, tune seeds, 1 env; 2026-10-14, `q3/traces_*`, `q3/*.mp4`)
+
+One mechanism per attempt, judged on per-step traces (`isaac/recovery_replay.py --task quarter_fold --trace-dir`).
+These are diagnostics, not rates.
+
+| attempt | change | seed(s) | what the trace shows |
+|---|---|---|---|
+| A | multi-seed IK in stage-1 plans (`IK_RESTARTS`) | 660000–001 | The right arm now reaches across, but both arms crowd the west edge: the right gripper stalls 16–17 cm short and the left parks 5–6 cm off. One arm lifts alone and slips. The first fold leaves the stack 5 cm split and the crease end 9 cm from its reset pose. |
+| B | lift gate: no arm lifts before both have closed; stage goals frozen at stage start | 660001 (video) | The arms tangle: the right arm reaches over the left. Neither holds. Fold score 0.87 at the cap. |
+| C | fully sequential (left folds and releases, then right) | 660001 | **Impossible by geometry.** With the crease end left behind, the stack stops 5 cm short and 6 cm high: it can't reach the far corner while vertex 5 stays put. Stack spread 5 → 16 cm (G3). |
+| D | staggered approach (right closes first, left parked), then lift together | 660001 | First joint grasp (g11 at t650). Before it, the left arm's joint-space approach swept through the right arm's workspace and moved the right gripper up to 18 cm. Both slipped about 30 steps into the carry, with drift 7.8 → 10.7 cm. |
+| E | Cartesian approach path in stage 1 (level waypoints every 3 cm) | 660001 | The right arm held the crease end steadily from t350 to the cap (the interference is gone). The waiting left arm parked at home (y +0.02, over the far side), and its path back crossed the right gripper: no grasp in 450 steps. The first fold had bunched the strip: crease end at y −0.20, stack at −0.26, only 6 cm apart. |
+| D (seed 660002) | as D | 660002 | Near miss: final distances 5.06 / 0.97 cm (success needs ≤ 5 cm on both), truncated at 800 after 2 retries. |
+| F | the waiting arm stays put instead of parking at home; first batch measurement | tune_id_easy n = 16 | running |

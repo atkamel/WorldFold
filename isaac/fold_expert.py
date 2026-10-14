@@ -54,7 +54,7 @@ class IsaacArmExpert:
     # everything that changes while it acts: ScriptedTeacher saves / restores these around a label
     PHASE_FIELDS = ("phase", "q_target", "phase_steps", "retreat_target", "release_allowed", "rng", "plan", "wp",
                     "budget", "regrasps", "miss_steps", "last_jaw", "align_tries", "descend_retries", "resynced",
-                    "site_hist")
+                    "site_hist", "lift_allowed", "waiting")
 
     # the pinch / place geometry and dwells, as class attributes so the grasp bench can try candidates (track G)
     PINCH_HEIGHT = 0.005             # fingertip above the table at the pinch (IG.2 #9; half_fold_demo / weld: 0.010)
@@ -108,6 +108,14 @@ class IsaacArmExpert:
     PUSH_PRESS = 0.002       # fingertip this far above the corner's top while pushing (contact, no gouge)
     PUSH_BEHIND = 0.015      # start this far behind the corner along the push direction
 
+    # Q2: PinchIK is a local solver. Chained from the home seed it misses the second fold's cross-table points by
+    # 7-15 cm, though the arm reaches them (isaac/reach_check_qf.py: 8/100 single-seed vs 50/50 multi-seed). From stage 1
+    # on, a solve that misses by more than REACH_TOL retries from IK_RESTARTS spread seeds. Among the solutions within
+    # REACH_TOL it keeps the one nearest the chained solve (no needless branch jumps along an arc). Stage 0's plans are
+    # unchanged.
+    IK_RESTARTS = 6
+    SCREEN_ITERS = 100
+    ARC_TOL = 0.02
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
 
     def __init__(self, env, seed=0, prefix="left_", corner=(10,), goal=None, release=False, raw_vertex=True):
@@ -121,6 +129,8 @@ class IsaacArmExpert:
         if release:
             self.PHASES = self.PHASES + self.RELEASE_PHASES
         self.release_allowed = True
+        self.lift_allowed = True     # Q2: QuarterFoldExpert's lift gate (bimanual stages lift together)
+        self.waiting = False         # Q2: QuarterFoldExpert's sequence: hold still, jaw open, until it is this arm's turn
         if IsaacArmExpert._ik is None:
             from isaac.pinch import PinchIK
             IsaacArmExpert._ik = PinchIK()
@@ -149,6 +159,41 @@ class IsaacArmExpert:
 
     def _stage(self):
         return int(getattr(self.env, "stage", 0))
+
+    def _solve(self, tip, jaw, q, tol=None, **kw):
+        """ik.solve, with the multi-seed fallback from stage 1 on (IK_RESTARTS) when the chained solve misses by more
+        than `tol` (REACH_TOL for the pinch poses; the arc passes ARC_TOL, its normal error being ~17 mm). Restart
+        seeds are screened at SCREEN_ITERS and only the best is refined. Deterministic: fixed seed offsets."""
+        ik, p = self._ik, self.prefix
+        tol = self.REACH_TOL if tol is None else tol
+        q0, err = ik.solve(p, tip, jaw, q, **kw)
+        if self._stage() == 0 or not self.IK_RESTARTS or err <= tol:
+            return q0, err
+        rng = np.random.default_rng(1234)
+        home = np.asarray(SEED_Q[p], float)
+        seeds = [home] + [home + rng.uniform(-0.8, 0.8, 5) for _ in range(self.IK_RESTARTS)]
+        screened = []
+        for s in seeds:
+            screened.append(ik.solve(p, tip, jaw, s, iters=self.SCREEN_ITERS, **kw))
+            self._tick()
+        good = [s for s in screened if s[1] <= tol]
+        if good:      # nearest the chained solve: no needless branch jumps along an arc
+            q1 = min(good, key=lambda s: float(np.max(np.abs(np.asarray(s[0]) - np.asarray(q0)))))[0]
+        else:
+            q1 = min(screened, key=lambda s: s[1])[0]
+        q1, e1 = ik.solve(p, tip, jaw, q1, **kw)
+        return (q1, e1) if e1 < err else (q0, err)
+
+    def _tick(self):
+        """Keep Kit's hang detector fed during a long plan on a single (non-batched) env, which plans on Kit's main
+        thread; batched envs plan on worker threads while the lockstep scheduler ticks Kit."""
+        import time
+        now = time.monotonic()
+        if now - self.__dict__.get("_last_tick", 0.0) <= 5.0:
+            return
+        self._last_tick = now
+        if hasattr(self.base, "keep_alive") and not hasattr(self.base, "_batch"):
+            self.base.keep_alive()
 
     def _place_point(self, goal, offset, corner):
         """The held point's mirror image across the fold line, so the corner lands on the goal: the pinch offset is
@@ -199,27 +244,46 @@ class IsaacArmExpert:
         plan = {"jaw": jaw, "corner": corner.copy()}
         w = ORIENTATION_WEIGHT
         q0 = q
-        q, e_above = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q, orientation_weight=w)
+        q, e_above = self._solve(pinch + [0, 0, ABOVE], jaw, q, orientation_weight=w)
         q_above = q
-        q, e_pinch = ik.solve(p, pinch, jaw, q, orientation_weight=w)
+        q, e_pinch = self._solve(pinch, jaw, q, orientation_weight=w)
         if self.REGRASP_TILT and self.resynced and max(e_above, e_pinch) > self.REACH_TOL:
             w = TILT_WEIGHT                         # out of reach upright: let the jaw tilt
-            q, _ = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q0, orientation_weight=w)
+            q, _ = self._solve(pinch + [0, 0, ABOVE], jaw, q0, orientation_weight=w)
             q_above = q
-            q, _ = ik.solve(p, pinch, jaw, q, orientation_weight=w)
+            q, _ = self._solve(pinch, jaw, q, orientation_weight=w)
         plan["above"] = q_above
         plan["pinch"] = q
+        if self._stage() > 0:
+            plan["approach_path"], plan["awp"] = self._approach_path(pinch + [0, 0, ABOVE], jaw, q_above), 0
         plan["arc"], plan["arc_tips"] = [], []
         start = pinch
         for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
             tip = start + (place - start) * (1.0 - math.cos(math.pi * s)) / 2.0
             tip[2] = start[2] + (place[2] - start[2]) * s + self.ARC_HEIGHT * math.sin(math.pi * s)
-            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05)
+            q, _ = self._solve(tip, jaw, q, tol=self.ARC_TOL, orientation_weight=0.05)
             plan["arc"].append(q)
             plan["arc_tips"].append(tip)
-        q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
+        q, _ = self._solve(place + [0, 0, RETREAT], jaw, q, tol=self.ARC_TOL, orientation_weight=0.02)
         plan["retreat"] = q
         return plan
+
+    def _approach_path(self, above, jaw, q_above, step=0.03):
+        """Q2, stage >= 1: Cartesian waypoints from the gripper to the above-pinch pose, level at cruise height, so the
+        approach does not sweep through the other arm's workspace the way one joint-space move bulges (traces
+        2026-10-14: the left arm's approach swung out to (-0.06, -0.08) and shoved the right arm off its grip)."""
+        start = np.asarray(self.base.gripper_position(self.prefix), dtype=float)
+        cruise = max(float(start[2]), float(above[2]))
+        path = [np.array([start[0], start[1], cruise])]
+        n = max(1, int(np.ceil(np.linalg.norm(above[:2] - start[:2]) / step)))
+        path += [np.r_[start[:2] + (above[:2] - start[:2]) * s, cruise] for s in np.linspace(0, 1, n + 1)[1:]]
+        path.append(np.asarray(above, dtype=float))
+        q, qs = self._q(), []
+        for tip in path:
+            q, _ = self._solve(tip, jaw, q, tol=self.ARC_TOL, orientation_weight=0.05)
+            qs.append(q)
+        qs[-1] = q_above
+        return qs
 
     def _on_layer(self, corner):
         """The corner lies on cloth (PUSH_Z .. 4 cm above a flat corner): settled on the other half, not in the air."""
@@ -261,19 +325,20 @@ class IsaacArmExpert:
         for s in np.linspace(0.0, 1.0, n + 1)[1:]:
             tip = start + (place - start) * s
             tip[2] = max(tip[2], place[2]) + 0.5 * self.ARC_HEIGHT * math.sin(math.pi * s) * (start[2] > place[2] + 0.02)
-            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05)
+            q, _ = self._solve(tip, jaw, q, tol=self.ARC_TOL, orientation_weight=0.05)
             arc.append(q)
             tips.append(tip)
         plan = dict(self.plan or {"jaw": jaw})
         plan["arc"], plan["arc_tips"] = arc, tips
-        q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
+        q, _ = self._solve(place + [0, 0, RETREAT], jaw, q, tol=self.ARC_TOL, orientation_weight=0.02)
         plan["retreat"] = q
         return plan
 
     # ---- acting -------------------------------------------------------------
     def _target(self, name):
         if name in ("approach",):
-            return self.plan["above"]
+            path = self.plan.get("approach_path")
+            return path[min(self.plan["awp"], len(path) - 1)] if path else self.plan["above"]
         if name in ("descend", "close"):
             return self.plan["pinch"]
         if name in ("lift", "carry", "place", "hold", "release"):
@@ -284,6 +349,9 @@ class IsaacArmExpert:
 
     def act(self):
         action = np.zeros(6, dtype=np.float32)
+        if self.waiting:           # not this arm's turn: stay where the last stage left it, jaw open. Parking at home
+            action[5] = 1.0        # (SEED_Q) put the left arm over the cloth's far side, and its way back crossed the
+            return action          # right gripper (trace 2026-10-14). No plan yet: it is made when the turn comes
         name = self.PHASES[self.phase]
         action[5] = 1.0 if name in self.OPEN_PHASES else -1.0
         if self.plan is None:
@@ -365,6 +433,13 @@ class IsaacArmExpert:
             self.site_hist = []
             self._next()                             # close: the pads (4.3 cm) grip from here
             return
+        if name == "approach" and self.plan.get("approach_path"):
+            path = self.plan["approach_path"]
+            if self.plan["awp"] < len(path) - 1:          # an intermediate waypoint: pass it loosely
+                if self._arrived(WAYPOINT_TOL) or patience:
+                    self.plan["awp"] += 1
+                    self.phase_steps = 0
+                return
         if name in ("approach", "descend"):
             if self._arrived(TRACK_TOL) or patience:
                 if name == "approach" and self.PUSH_ON_LAYER and self._on_layer(self._corner()):
@@ -392,6 +467,8 @@ class IsaacArmExpert:
                 self._next()
         elif name == "close":
             shut = self._jaw_shut() if self.SETTLE_LIFT else True
+            if not self.lift_allowed:                 # the other arm has not closed yet: keep the pinch, wait
+                return
             if (self.phase_steps >= self.CLOSE_DWELL and shut) or self.phase_steps >= 3 * self.CLOSE_DWELL:
                 self.wp = 0
                 self.miss_steps = 0

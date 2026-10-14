@@ -37,14 +37,14 @@ def recovery_perturbation(fraction, t_range=(10, 70), k_range=(5, 15)):
     return fn
 
 
-def recovery_perturbation_for(backend, fraction, kinds=None):
+def recovery_perturbation_for(backend, fraction, kinds=None, task="half_fold"):
     """MuJoCo's (10, 70) onset window scaled by 230/97 for the longer Isaac fold. kinds (Phase F3b): perturbed episodes
     draw one of these suite kinds per seed (imitation.seeds.perturbation_fn) instead of the legacy all-dims knock.
     The noise kinds (joint_noise, overshoot) need clean labels for the executed noisy actions before they can feed BC,
     so collection uses the window kinds (knock_arm, drop) for now."""
     from imitation.seeds import LEHOME_TASK_BACKENDS, perturbation_fn
     if kinds:
-        fns = {k: perturbation_fn(k, backend) for k in kinds}
+        fns = {k: perturbation_fn(k, backend, task) for k in kinds}
 
         def mix(seed, rng):
             if rng.random() >= fraction:
@@ -138,7 +138,7 @@ def main():
         kw["cameras"] = parse_cameras(args.cameras)
     with EnvPool(args.workers, kw or None) as pool:
         rollout(pool, seeds, ExpertController(), perturb_fn=recovery_perturbation_for(args.backend, args.recovery_fraction,
-                                                                                 args.perturb_kinds),
+                                                                                 args.perturb_kinds, task=args.task),
                 progress=printer(t0), on_done=save)
     for w in dict.fromkeys((writer, fail_writer)):
         m = w.freeze()

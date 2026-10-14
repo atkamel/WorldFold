@@ -32,7 +32,8 @@ def test_make_env_passes_stages_and_cap(monkeypatch):
     make_env("mujoco")
     make_env("mujoco", task="quarter_fold")
     make_env("mujoco", task="quarter_fold", max_episode_steps=123)
-    assert seen[0] == {"stages": STAGES[:1]}            # half fold: default cap left to HalfFoldEnv
+    assert seen[0] == {"stages": STAGES[:1], "carry_obs": False}    # half fold: default cap left to HalfFoldEnv
+    assert seen[1]["carry_obs"]                                     # obs v2 for the quarter fold
     assert seen[1]["stages"] == STAGES and seen[1]["max_episode_steps"] == MAX_STEPS
     assert seen[2]["max_episode_steps"] == 123
     with pytest.raises(ValueError):

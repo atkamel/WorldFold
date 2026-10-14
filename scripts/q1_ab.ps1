@@ -43,7 +43,7 @@ while (-not (Test-Path "outputs\imitation\isaac_friction\q0\flips.txt")) {
 function Eval($name, $ckpt) {
     Run "eval_$name" "$out\$name.done" {
         & $py -u -m imitation.evaluate --backend isaac_friction --ckpt $ckpt --sets sel_id_hard sel_knock_arm `
-            --n $N --replan-every 4 --workers 2 --out "$out\$name.json" --resume
+            --n $N --replan-every 4 --workers 1 --out "$out\$name.json" --resume
         if ($LASTEXITCODE -eq 0) { Set-Content "$out\$name.done" (Get-Date -Format s) } }
 }
 foreach ($arm in $arms.Keys) { Eval "${arm}_final" "$runs\isaac_v1_friction_$arm\final.pt" }

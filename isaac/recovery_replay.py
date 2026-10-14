@@ -32,6 +32,7 @@ def main():
     ap.add_argument("--no-knock", action="store_true", help="clean episodes (re-run a clean truncation with traces)")
     ap.add_argument("--kind", default="knock", choices=("knock", "knock_arm", "drop"),
                     help="perturbation kind (imitation.seeds.perturbation_fn; knock = the legacy recovery knock)")
+    ap.add_argument("--task", default="half_fold", choices=("half_fold", "quarter_fold"))
     ap.add_argument("--set", action="append", default=[], metavar="ATTR=VALUE",
                     help="override an IsaacFoldExpert class attribute for this run, e.g. REGRASP_OFFSET=none")
     args = ap.parse_args()
@@ -70,8 +71,8 @@ def main():
         _, _, knock = eval_set("recovery", 1, args.backend)
     else:
         from imitation.seeds import perturbation_fn
-        knock = perturbation_fn(args.kind, args.backend)
-    env = make_env(args.backend, **({"max_episode_steps": args.max_steps} if args.max_steps else {}))
+        knock = perturbation_fn(args.kind, args.backend, args.task)
+    env = make_env(args.backend, task=args.task, **({"max_episode_steps": args.max_steps} if args.max_steps else {}))
     expert = ScriptedTeacher(env, seed=0).expert
     base = env.unwrapped
     for seed in range(a, b):
@@ -81,7 +82,9 @@ def main():
         p = knock(seed, rng)
         if args.no_knock:
             p.t = 10 ** 9
-        trace = {pr: {k: [] for k in ("phase", "jaw", "site", "corner", "dist", "fold", "g")} for pr in base.prefixes}
+        trace = {pr: {k: [] for k in ("phase", "jaw", "site", "corner", "dist", "fold", "g", "stage", "drift",
+                                                 "spread")}
+                 for pr in base.prefixes}
         env.reset(seed=seed)
         expert.reset()
         stale, timeline, prev = False, [], None
@@ -112,8 +115,8 @@ def main():
             if args.trace_dir:
                 cloth = base.cloth_positions()
                 for pr in base.prefixes:
-                    # the corner this arm carries in stage 0 (grasp_corners lists every corner it may take, both stages)
-                    c = np.mean([cloth[v] for v in expert.experts[(0, pr)].corners], axis=0)
+                    # the point this arm carries in the current stage (the mean of its vertices)
+                    c = np.mean([cloth[v] for v in expert.experts[(env.stage, pr)].corners], axis=0)
                     site = np.asarray(base.gripper_position(pr), dtype=float)
                     near = np.linalg.norm(cloth[:, :2] - c[:2], axis=1) < 0.015
                     trace[pr]["phase"].append(("K" if p.active(t) else "") + ph[pr])
@@ -124,13 +127,23 @@ def main():
                     # a fold over the corner: cloth within 1.5 cm (xy) lying more than 5 mm above it
                     trace[pr]["fold"].append(int(bool((cloth[near, 2] > c[2] + 0.005).any())))
                     trace[pr]["g"].append(int(base.grasp_active(pr)))
+                    trace[pr]["stage"].append(int(env.stage))
+                    trace[pr]["drift"].append(round(float(env._anchor_drift()), 4))
+                    move = next(m for m in env.stages[env.stage].moves if m.prefix == pr)
+                    trace[pr]["spread"].append(round(float(env._spread(move)), 4))     # a stack's layers apart
             cz = base.cloth_positions()
             zc = "/".join(f"{1000 * (cz[v][2] - 0.42):.0f}" for v in (10, 120))     # stage-0 corners, mm above the table
-            cur = f"{tag}{ph['left_'][:4]}/{ph['right_'][:4]} g{g}"
+            cur = f"{tag}s{env.stage} {ph['left_'][:4]}/{ph['right_'][:4]} g{g}"
             if cur != prev:
-                timeline.append(f"t{t}:{cur} z{zc}")
+                timeline.append(f"t{t}:{cur} z{zc} drift{100 * env._anchor_drift():.1f}cm")
             prev = cur
             last_grip = np.asarray(act, dtype=np.float32)[list(GRIPPER_DIMS)]
+            if t % 50 == 0:      # progress: wall time per 50 steps exposes slow planning
+                import time
+                now = time.monotonic()
+                print(f"PROG seed {seed} t{t} s{env.stage} {ph['left_']}/{ph['right_']} g{g} "
+                      f"drift {100 * env._anchor_drift():.1f}cm  {now - getattr(main, '_t', now):.1f}s", flush=True)
+                main._t = now
             _, _, term, trunc, info = env.step(act)
             if term or trunc:
                 break

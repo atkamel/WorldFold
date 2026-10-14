@@ -17,7 +17,7 @@ foreach ($run in "a", "b") {
     "STEP noise_$run $(Get-Date -Format s)"
     $ErrorActionPreference = "Continue"
     & $py -u -m imitation.evaluate --backend isaac_friction --ckpt $ckpt --sets sel_id_hard sel_knock_arm --n $N `
-        --replan-every 4 --workers 2 --out "$out\noise_$run.json" --resume *>&1 |
+        --replan-every 4 --workers 1 --out "$out\noise_$run.json" --resume *>&1 |
         Out-File -Append -Encoding utf8 "$out\noise_$run.log"
     $ErrorActionPreference = "Stop"
     if ($LASTEXITCODE -ne 0) { "FAIL noise_$run exit $LASTEXITCODE"; exit 1 }

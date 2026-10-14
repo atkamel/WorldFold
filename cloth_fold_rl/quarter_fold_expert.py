@@ -39,6 +39,16 @@ SETTLE_WAIT = 15   # steps to wait in "done" before judging placement -- the
 
 
 class QuarterFoldExpert:
+    # Q2: per stage, the order in which the arms approach and close. The second fold on Isaac (the fold-over) puts
+    # both arms on the west edge, and approaching together they tangle: the right arm reaches across over the left
+    # (demo 2026-10-14). So the right arm goes first while the left arm waits parked at home. The left arm
+    # approaches once the right arm has closed, and the lift gate then lifts both together.
+    # A fully sequential fold (one arm folds and releases, then the other) cannot work: with the crease end left
+    # behind, the stack cannot reach the far corner (they are 15 cm apart in the cloth; trace 2026-10-14).
+    # Only for per-arm experts with a `waiting` flag (isaac.fold_expert.IsaacArmExpert); MuJoCo's FoldExpert and
+    # stage 0 are unchanged.
+    SEQUENCE = {1: ("right_", "left_")}
+
     def __init__(self, env, seed=0, expert_cls=None, overshoot=None):
         # expert_cls: the per-arm phase machine (default the MuJoCo FoldExpert; isaac.fold_expert.IsaacArmExpert on
         # Isaac); overshoot: per (stage, arm) placement offset, MuJoCo's measured spring-back by default
@@ -67,6 +77,7 @@ class QuarterFoldExpert:
             self.correction[key] = np.zeros(3)
         self.retries = {key: 0 for key in self.experts}
         self.done_steps = {key: 0 for key in self.experts}
+        self.turn_done = set()      # sequenced stages: (stage, arm) that have finished their turn once
 
     def _arms(self):
         return {p: e for (s, p), e in self.experts.items() if s == self.env.stage}
@@ -99,6 +110,39 @@ class QuarterFoldExpert:
         self._update_release_gate()
         return self.phases()
 
+    def _sequenced(self):
+        arms = self._arms()
+        order = self.SEQUENCE.get(self.env.stage)
+        if not order or not all(hasattr(e, "waiting") for e in arms.values()) or set(order) != set(arms):
+            return None
+        return order
+
+    def _update_sequence(self):
+        """In a sequenced stage an arm waits, parked, until every arm before it has closed on its point. The turn is
+        latched, so a later regrasp of an earlier arm does not send the next one back."""
+        order = self._sequenced()
+        if order is None:
+            return
+        arms = self._arms()
+        ahead = True
+        for p in order:
+            e = arms[p]
+            if e.phase >= e.PHASES.index("close"):
+                self.turn_done.add((self.env.stage, p))
+            e.waiting = not ahead
+            ahead = ahead and (self.env.stage, p) in self.turn_done
+
+    def _update_lift_gate(self):
+        # Q2, from stage 1 on (the bimanual fold-over): no arm lifts until every arm of the stage has closed on its
+        # point; one arm lifting alone drags the folded cloth out from under the other (traces 2026-10-14). Stage 0
+        # and per-arm experts without the gate (MuJoCo's FoldExpert) are unchanged.
+        arms = self._arms()
+        if self.env.stage == 0 or not all(hasattr(e, "lift_allowed") for e in arms.values()):
+            return
+        ready = all(e.phase >= e.PHASES.index("close") for e in arms.values())
+        for e in arms.values():
+            e.lift_allowed = ready
+
     def _update_release_gate(self):
         # release once every arm has reached hold. An arm already past hold (a
         # learner released it) counts too, or the other arm would hold forever.
@@ -110,6 +154,8 @@ class QuarterFoldExpert:
     def act(self):
         arms = self._arms()
         self._update_release_gate()
+        self._update_lift_gate()
+        self._update_sequence()
         for (s, p), expert in self.experts.items():
             if s == self.env.stage:
                 self._maybe_retry((s, p), expert)

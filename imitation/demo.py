@@ -190,7 +190,7 @@ def isaac_main(args):
     from imitation.seeds import eval_set
     reset_options = perturb_fn = None
     if args.set:                     # the evaluator's own set definition: same poses, same knock draw
-        set_seeds, reset_options, perturb_fn = eval_set(args.set, args.n, args.backend)
+        set_seeds, reset_options, perturb_fn = eval_set(args.set, args.n, args.backend, args.task)
         if not args.seeds_given:
             args.seeds = set_seeds
         label += f"  [{args.set}]"

@@ -206,7 +206,7 @@ def main():
                 seeds = [s for s in all_seeds if s not in writer.done_seeds]
                 rollout(pool, seeds, controller, reset_options=reset_options,
                         perturb_fn=recovery_perturbation_for(args.backend, args.recovery_fraction,
-                                                             args.perturb_kinds),
+                                                             args.perturb_kinds, task=args.task),
                         meta_extra={"round": r, "beta": beta, "policy": str(best_ckpt)},
                         on_done=lambda e: writer.add(e, obs_dim=obs_dim(args.task), action_dim=ACTION_DIM))
                 m = writer.freeze()

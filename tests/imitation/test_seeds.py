@@ -72,3 +72,13 @@ def test_sel_and_final_blocks_are_disjoint_and_keep_their_set_distribution():
     assert seeds == [BLOCK_BASE["sel_id_hard"] + i for i in range(3)] and opts is shifted_pose_isaac
     assert eval_set("final_knock_arm", 2, backend="isaac_friction")[2] is not None
     assert eval_set("final_id_easy", 2)[1:] == (None, None)
+
+
+def test_quarter_fold_knocks_span_both_folds_on_isaac():
+    from imitation.seeds import ISAAC_RECOVERY_T, ISAAC_RECOVERY_T_QF
+    ts = [eval_set("sel_knock_arm", 1, backend="isaac_friction", task="quarter_fold")[2](s, None).t
+          for s in range(400)]
+    assert ISAAC_RECOVERY_T_QF[0] <= min(ts) and max(ts) < ISAAC_RECOVERY_T_QF[1] and max(ts) > 300
+    half = [eval_set("knock_arm", 1, backend="isaac_friction")[2](s, None).t for s in range(200)]
+    assert max(half) < ISAAC_RECOVERY_T[1]
+    assert eval_set("knock_arm", 1, task="quarter_fold")[2](0, None).t < 60       # MuJoCo windows unchanged

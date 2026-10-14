@@ -70,10 +70,25 @@ roadmap Phase Q.
     - from stage 1 on, the pinch and place heights follow the cloth;
     - obs v2: +18 dims of per-arm carried point and goal, quarter fold only (157-D);
     - `--task quarter_fold` everywhere.
+- **Q3 fold-over iterations** (user, 2026-10-14: "keep fold-over, iterate"; log in results.md):
+  - **First smoke:** 0/16. Fold 1 completes 15/16; fold 2 never grasps (single-seed IK).
+  - **Kept so far, each stage ≥ 1 only:**
+    - multi-seed IK;
+    - lift gate;
+    - stage goals frozen at stage start;
+    - staggered approach (right arm first, left waits);
+    - Cartesian approach path;
+    - the waiting arm stays put.
+  - **Ruled out:** a fully sequential fold. It is impossible by cloth geometry.
+  - **Best so far:** attempt D, seed 660002, a near miss (5.06 / 0.97 cm).
+  - **Open problem:** fold 1 bunches the strip, so the west-edge pinch points end up only ~6–9 cm apart (should be
+    15 cm), and the two grippers crowd each other.
+  - **Running:** attempt F, n = 16 batch on `tune_id_easy`.
 - **Next:**
-  - After the queued evals: the quarter-fold expert smoke on tune seeds (`imitation.evaluate --task quarter_fold --ckpt
-    expert`), then Q3 tuning.
-  - Q3's bars need the user's OK before the gate run.
+  - Fold-over attempts until the n = 16 tune batch completes stage 2 on a majority.
+  - Then Q3's bars, which need the user's OK before the gate run.
+  - Noise floor and Q1 evals keep running on the other Isaac process.
+- **Flaky fast test:** 1 failure in 4 runs, not reproduced (likely timing under Isaac CPU load); unidentified.
 
 **2026-10-08, F4 finals (BC only, 3.5 h plan):** privileged diffusion BC on `isaac_v1_friction` scored id_easy
 81 / id_hard 71 / knock_arm 35 (n = 100), joint_noise 26 and overshoot 4 (n = 50). The expert scored 92 / 94 / 75 on the same sets. Stalls (S1) dominate the
@@ -190,7 +205,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 233 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 14 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 236 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 14 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -250,6 +265,11 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-14 · **Q3 fold-over iterations A–F.**
+  - Multi-seed IK, lift gate, stage-start goals, staggered approach, Cartesian approach, wait-in-place. Sequential
+    fold ruled out.
+  - Q0 `sel_id_hard` 70/100 (first noise-floor set).
+  - Fast 236 passed (1 flaky failure in 4 runs, not reproduced). (this commit)
 - 2026-10-13/14 · **Phase Q start.**
   - Plan approved.
   - Q0 benchmark v2 and Q1 loss v2 code; both Q1 arms trained.
