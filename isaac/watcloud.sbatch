@@ -10,7 +10,7 @@
 # for Isaac Sim 4.5 are below it. Pick an RTX node with >= 16 GB in --gres. Driver: on Modal, Isaac Sim 5.1 ran on
 # the 580 branch and segfaulted at start-up on 610 (isaac/modal_isaac.py, SUPPORTED_DRIVER), so this job stops on
 # any other branch unless ISAAC_ANY_DRIVER=1. --gres replaces the whole request, so it carries tmpdisk too (Docker's
-# image and layers live there: ~60 GB).
+# image and layers live there; the build unpacks a second copy: ask for 200 GB, 80 GB ran out on thor, job 707334).
 # Each job builds the image (~10 min, ~20 GB on tmpdisk), or loads $IMAGE_TAR if one was saved by hand.
 #SBATCH --job-name=worldfold-isaac
 #SBATCH --cpus-per-task=8
