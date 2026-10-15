@@ -35,8 +35,10 @@ ARM_PARAMS = (
     ("PLACE_HEIGHT", 0.004, 0.03),
     ("CARRY_SPEED", 0.4, 1.0),
     ("RELEASE_RATE", 0.02, 1.2),     # rad per control step; 1.2 opens in one step, as the scripted release
-    ("place_dx", -0.04, 0.04),       # added to the scripted placement overshoot (fold_expert.OVERSHOOTS), world axes
-    ("place_dy", -0.04, 0.04),
+    # added to the scripted placement overshoot (fold_expert.OVERSHOOTS), world axes; +-8 cm so a systematic slide of
+    # the bottom layer (6-14 cm on Isaac, runs s2 / strip1) can be met where it ends up
+    ("place_dx", -0.08, 0.08),
+    ("place_dy", -0.08, 0.08),
 )
 ARMS = ("left_", "right_")
 N_ARM = len(ARM_PARAMS)

@@ -111,9 +111,6 @@ class QuarterFoldEnv(gym.Wrapper):
     """Fold in half, release, fold in half again, release. See module docstring."""
 
     stages = STAGES     # subclasses may run a prefix of the stages (see imitation.tasks.HalfFoldEnv)
-    # True: a move's goal is where its goal vertex is now, not where it started. On Isaac the bottom layer slides 6-14
-    # cm while the top one is laid over it, so a corner placed on the start lands that far off its partner
-    goal_follows = False
 
     def __init__(self, max_episode_steps=MAX_STEPS, seed=None, cloth_jitter=CLOTH_JITTER, base_env=None,
                  stages=None):
@@ -159,7 +156,7 @@ class QuarterFoldEnv(gym.Wrapper):
         return self.env.cloth_positions()[index]
 
     def goal(self, move):
-        return self._vertex(move.goal) if self.goal_follows else self._start[move.goal]
+        return self._start[move.goal]
 
     def _apply_weld_mask(self):
         # Each arm may weld only the corners it is meant to carry this stage.
