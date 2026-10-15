@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-15 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (quarter fold RL on Isaac): scripted fold 2 gate
+**Updated:** 2026-10-15 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (quarter fold RL on Isaac): blocked on a layout the two arms can share
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -46,15 +46,15 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 Decisions: bar mean ≤ 1.0 cm / edges ≤ 1.5 cm (`cloth_fold_rl/fold_alignment.py`); RL over fold moves
 (`isaac/fold_rl.py`); long jobs on WATcloud.
 
-- **Layout** (`isaac/layout_search.py`, results.md): no arm placement reaches the 30 cm cloth's second fold with ±1 cm
-  jitter; 25.5 cm with the right arm north of the cloth does (profile `quarter`, `make_quarter_fold_env`).
-- **Gripper:** `gripper_mode="position"` knob (quarter profile): the command sets the jaw target over its range.
-- **Scripted quarter fold on Modal** (`isaac/quarter_fold_run.py`, n = 4 + 2): fold 1 completes once the arms start
-  tucked (QUARTER_HOME); its alignment was 4 cm mean because the friction profile's 5 cm overshoot was the miss
-  (now zero). Fold 2: the stack's bottom layer slips out of the pinch, and the crease end gets dragged when the
-  left arm lifts first (lift gate added). q3 (defaults vs SQUEEZE −0.05) in flight.
-- **Compute:** Modal A10G hosts now include driver 610 (Isaac refuses; the entrypoint retries). WATcloud 3090
-  nodes run driver 580.178.04; the image build + smoke job is queued (sbatch needed `DOCKER_HOST`).
+- **Where it stands (2026-10-15 ~10:00):** no quarter fold yet. 20 Isaac episodes on four new layouts (Modal q1–q5)
+  each failed on a physical obstruction the kinematic layout search didn't model: arms crossed at rest, a pinch
+  folding the jaw into the upper arm, one arm's forearm hitting the other arm. The search now uses the SO101's
+  collision meshes (`isaac/arm_collision.py`) and finds no layout at 24 cm with the arms 2 cm apart (results.md).
+- **Built and tested (sim-free):** layer-alignment score, position gripper mode, quarter profiles and runner, lift
+  gate, one-arm folds, fold-move PPO (`isaac/fold_rl.py`, 4 tests). The RL has not run.
+- **Compute:** Modal's A10G hosts moved to driver 610 (most starts refused). WATcloud 3090s run 580; the container
+  needed `--gpus device=$CUDA_VISIBLE_DEVICES` and `NVIDIA_DRIVER_CAPABILITIES=all` before PhysX found the GPU
+  (job 707320 testing the latter).
 
 The F4 DAgger item below is parked behind Phase Q.
 
@@ -234,6 +234,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-14/15 · **Phase Q overnight:** layout search (reach, tilt, collision meshes), quarter profiles, position gripper, alignment score, fold-move PPO (untested on Isaac), WATcloud container fixes; 20 Isaac episodes on new layouts, 0 quarter folds; no collision-free two-arm layout at 24 cm. Fast tests: 221 passed, 1 failed (#15) · (this commit)
 
 - 2026-10-14 · **Quarter fold RL: survey and plan, no code.** Plan `superpowers/plans/2026-10-14-quarter-fold-rl.md`. Found: stage 1 out of reach on the Isaac layout (37 / 40.5 cm vs 32 cm), gripper binary only, no whole-cloth alignment number for the friction expert, WATcloud unreachable (#16), Modal CLI works. Fast tests on macOS: 205 passed, 1 failed (#15, 1-ulp platform diff), 6 skipped · (this commit)
 

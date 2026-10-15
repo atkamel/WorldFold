@@ -195,6 +195,11 @@ def clearance(base1, path1, base2, path2):
     return worst
 
 
+def _clear_job(args):
+    """(fold-1 clearance, fold-2 clearance) of one layout, each from (base1, path1, base2, path2)."""
+    return tuple(clearance(*f) for f in args)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--assets", default="outputs/isaac/assets")
@@ -244,16 +249,21 @@ def main():
                     continue
                 found.append((name, b1, b2))
     print(f"{len(found)} reach-feasible layouts before clearance", flush=True)
-    rows = []
+    jobs = []
     for name, b1, b2 in found:
         m1, m2 = variants[name]
-        c0 = clearance(b1, table[b1]["A0"]["path"], b2, table[b2]["B0"]["path"])
         if m1 and m2:
-            c1 = clearance(b1, table[b1][m1]["path"], b2, table[b2][m2]["path"])
+            fold2 = (b1, table[b1][m1]["path"], b2, table[b2][m2]["path"])
         else:   # the idle arm parked where fold 1 left it (its retreat pose)
             mover, idle = (b1, b2) if m1 else (b2, b1)
-            idle_q = table[idle]["A0" if idle == b1 else "B0"]["path"][-1]
-            c1 = clearance(mover, table[mover]["M"]["path"], idle, [idle_q])
+            fold2 = (mover, table[mover]["M"]["path"], idle, [table[idle]["A0" if idle == b1 else "B0"]["path"][-1]])
+        jobs.append(((b1, table[b1]["A0"]["path"], b2, table[b2]["B0"]["path"]), fold2))
+    with mp.Pool(args.workers, initializer=_init_worker,
+                 initargs=(args.assets, args.base_dz, args.cloth / 2, list(OFFSETS))) as pool:
+        clears = pool.map(_clear_job, jobs, chunksize=4)
+    rows = []
+    for (name, b1, b2), (c0, c1) in zip(found, clears):
+        m1, m2 = variants[name]
         worst_place = max(table[b][m]["place"] for b, m in ((b1, "A0"), (b2, "B0"), (b1, m1), (b2, m2)) if m)
         margin = max(_badness(table[b][m]) for b, m in ((b1, "A0"), (b2, "B0"), (b1, m1), (b2, m2)) if m)
         rows.append({"variant": name, "arm1": b1, "arm2": b2, "clear_fold1": c0, "clear_fold2": c1,

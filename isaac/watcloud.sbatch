@@ -55,6 +55,8 @@ GPUS=all
 [[ -n ${CUDA_VISIBLE_DEVICES:-} ]] && GPUS="\"device=$CUDA_VISIBLE_DEVICES\""    # the job's own numbering (device=1 was unknown)
 echo "SLURM_JOB_GPUS=${SLURM_JOB_GPUS:-} CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-} -> --gpus $GPUS; host: $(ls /dev/nvidia* | tr '\n' ' ')"
 docker run --rm --gpus "$GPUS" $IMAGE bash -c 'ls /dev/nvidia* | tr "\n" " "; echo; "$ISAAC_PY" -c "import torch; print(\"torch cuda\", torch.cuda.is_available(), torch.cuda.device_count())"' || true
-docker run --rm --gpus "$GPUS" --network=host \
+# graphics too: with docker's default (compute, utility) Kit has no Vulkan driver, and PhysX then finds "no suitable
+# CUDA GPU" even though torch sees it (job 707319)
+docker run --rm --gpus "$GPUS" -e NVIDIA_DRIVER_CAPABILITIES=all --network=host \
     -v "$REPO":/workspace/WorldFold -v "$CACHE":/root/.cache -w /workspace/WorldFold $IMAGE \
     bash -c 'ln -sfn /opt/lehome-challenge/Assets Assets && exec "$ISAAC_PY" -u "$@"' -- "$@"

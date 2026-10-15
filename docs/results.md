@@ -1976,3 +1976,24 @@ Re-searched with that bound (best robust badness; ≤ 1 passes):
 
 Profiles: `quarter` = 24 cm, left (−0.225, −0.05), right (0.0, 0.175); `quarter_s` = 22.5 cm, left (−0.225, −0.025),
 right (−0.025, 0.175) (cloth-local). The quarter task's reset jitter has to come down to ±0.5 cm for these margins.
+
+### Collision-aware layout search (2026-10-15)
+
+`isaac/arm_collision.py` poses the SO101 URDF's collision meshes (SO-ARM100 STLs) by FK. It reproduces run q4's stall:
+the planned north-arm pinch left 0.7 mm between jaw and upper arm, and the joints stopped where 1–5 mm remained.
+Bounds: jaw vs own base/shoulder/upper arm ≥ 8 mm up to the pinch (the working half fold's place end touches, so not
+after), links ≥ 5 mm above the table, arms ≥ 2 cm apart (in lockstep, and each path against the other arm tucked or
+parked at its path's end). The old side-by-side half-fold layout clears at 2.2 cm.
+
+24 cm cloth, ±0.5 cm: 10,022 reach-feasible layouts, **none** with 2 cm between the arms. Best per variant:
+
+| variant | best (fold 1, fold 2) clearance |
+|---|---|
+| two-arm S/C | 1 mm, 1 mm |
+| two-arm C/S | 3 mm, 1 mm |
+| one-arm M/- | 15 mm, 2 mm |
+| one-arm -/M | 34 mm, 4 mm |
+
+Best S/C, by situation: fold 1 lockstep 9 mm, left arm vs right arm tucked 1 mm; fold 2 lockstep 1 mm, right arm vs
+left arm tucked 0. Two SO101s on two sides of a cloth they can both reach work in each other's space; the second
+fold's two grasp points share a 12 cm edge. Matches Isaac runs q1–q5 (20 episodes on new layouts, 0 quarter folds).
