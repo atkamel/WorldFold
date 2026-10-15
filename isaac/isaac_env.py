@@ -113,13 +113,11 @@ PROFILES["friction"] = dict(PROFILES["weld"], grasp_mode="friction", weld_tau=No
                                                 gripper_drive=LEHOME_GRIPPER_DRIVE, adhesion=0.1, pad_friction=2.0))
 # the rig's main / demo view follows the cloth (policy input and videos): the MuJoCo-aimed view had it at the top edge
 PROFILES["friction"]["view_shift"] = (float(CLOTH_CENTER[0]), float(CLOTH_CENTER[1]), 0.0)
-# "quarter" (2026-10-14): the friction profile on the quarter fold's layout. The SO101s can't reach the second fold of
-# the 30 cm cloth from any base pose with the cloth +-1 cm off (isaac/layout_search.py: pinch tilt <= 16.5 deg and
-# place tilt <= 33 deg, what the half fold already does); 25.5 cm is the largest cloth whose second fold two arms
-# reach. The left arm keeps its corner (4 cm further north), the right arm sits north of the cloth; both face the
-# cloth centre. The sheet keeps the 30 cm cloth's mass per area, and the gripper takes a position command.
-QUARTER_CLOTH = 0.255
-QUARTER_SPACING = QUARTER_CLOTH / (CLOTH_COUNT - 1)
+# "quarter" (2026-10-15): the friction profile on the quarter fold's layout. isaac/layout_search.py (pinch tilt <= 16.5
+# deg, place tilt <= 33 deg, elbow / wrist <= 1.3 rad at the pinch, the cloth +-0.5 cm off): no base pose reaches both
+# folds of the 30 cm cloth with two arms; 24 cm is the largest cloth that passes (badness 0.997), 22.5 cm passes with
+# more margin (0.905, "quarter_s"). The left arm sits west of its corner, the right arm north of the cloth; both face
+# the cloth centre. The sheet keeps the 30 cm cloth's mass per area, and the gripper takes a position command.
 
 
 def _facing(base_xy, target_xy):
@@ -127,15 +125,20 @@ def _facing(base_xy, target_xy):
     return np.array([np.cos(yaw / 2), 0.0, 0.0, np.sin(yaw / 2)])
 
 
-QUARTER_ARM_BASES = {
-    p: (np.array([CLOTH_CENTER[0] + x, CLOTH_CENTER[1] + y, ARM_BASE_LEFT[2]]), _facing((x, y), (0.0, 0.0)))
-    for p, (x, y) in (("left_", (-0.225, -0.125)), ("right_", (0.1, 0.225)))}
+def _quarter_bases(left_xy, right_xy):
+    """Arm base poses for cloth-local base positions (the cloth centred at CLOTH_CENTER), each facing the cloth."""
+    return {p: (np.array([CLOTH_CENTER[0] + x, CLOTH_CENTER[1] + y, ARM_BASE_LEFT[2]]), _facing((x, y), (0.0, 0.0)))
+            for p, (x, y) in (("left_", left_xy), ("right_", right_xy))}
+
+
 # At HOME (all zero) each arm reaches 38 cm out at 29 cm: facing the cloth from two sides the arms cross over it and
-# jam (2026-10-14 run q1, seed 1). QUARTER_HOME leans each arm back over its own base: every link within 7.2 cm of it
-# horizontally and >= 12 cm above the table (FK sweep).
-QUARTER_HOME = (0.0, -1.5, 0.87, -1.6, 0.0)
-PROFILES["quarter"] = dict(PROFILES["friction"], cloth_spacing=QUARTER_SPACING, arm_bases=QUARTER_ARM_BASES,
-                           arm_home=QUARTER_HOME,
+# jam (2026-10-14 run q1, seed 1). QUARTER_HOME stands each arm up over its own base, on the elbow-down branch the
+# plans use (isaac.pinch.ELBOW_DOWN): every link within 7.7 cm of the base horizontally, >= 12 cm above the table.
+QUARTER_HOME = (0.0, -0.2, -1.34, -1.2, 0.0)
+for _name, (_cloth, _left, _right) in {"quarter": (0.24, (-0.225, -0.05), (0.0, 0.175)),
+                                       "quarter_s": (0.225, (-0.225, -0.025), (-0.025, 0.175))}.items():
+    PROFILES[_name] = dict(PROFILES["friction"], cloth_spacing=_cloth / (CLOTH_COUNT - 1),
+                           arm_bases=_quarter_bases(_left, _right), arm_home=QUARTER_HOME,
                            friction_grasp=dict(PROFILES["friction"]["friction_grasp"], gripper_mode="position"))
 # friction grasp_active (Phase F): a closed jaw within this of its target counts as settled (track G traces: 0.14-0.21
 # rad mid-close, exactly the target once shut); the held corner rides 1-4 cm from the gripper frame during the carry

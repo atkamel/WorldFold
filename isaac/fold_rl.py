@@ -87,6 +87,8 @@ def from_unit(u):
 def apply(expert, stage, values):
     """Set one fold's move parameters on its two IsaacArmExperts (before their first act())."""
     for k, p in enumerate(ARMS):
+        if (stage, p) not in expert.experts:     # a one-arm fold: this arm idles
+            continue
         v = dict(zip([n for n, _, _ in ARM_PARAMS], values[k * N_ARM:(k + 1) * N_ARM]))
         e = expert.experts[(stage, p)]
         for name in ("PINCH_INSET", "PINCH_HEIGHT", "SQUEEZE", "ARC_HEIGHT", "PLACE_HEIGHT", "CARRY_SPEED",

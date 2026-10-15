@@ -108,17 +108,19 @@ def half_fold(episodes: int = 3):
 
 
 @app.function(image=image, gpu=PIPELINE_GPU, cpu=8, memory=32768, timeout=3 * 3600, volumes={VOL_PATH: vol})
-def quarter_job(seeds: str, out: str, video: bool, env: dict):
+def quarter_job(seeds: str, out: str, video: bool, env: dict, profile: str = "quarter"):
     """isaac/quarter_fold_run.py on some seeds; episodes.jsonl (+ videos) in its own folder on the volume."""
     import os
     os.environ.update(env)
     out_dir = pathlib.Path(VOL_PATH, out)
-    args = ["isaac/quarter_fold_run.py", "--seeds", seeds, "--out", str(out_dir)] + (["--video"] if video else [])
+    args = (["isaac/quarter_fold_run.py", "--seeds", seeds, "--out", str(out_dir), "--profile", profile]
+            + (["--video"] if video else []))
     return _run("run", args, out_dir)
 
 
 @app.local_entrypoint()
-def quarter(seeds: str = "0,1", per_job: int = 2, video: bool = False, env_json: str = "{}", tag: str = ""):
+def quarter(seeds: str = "0,1", per_job: int = 2, video: bool = False, env_json: str = "{}", tag: str = "",
+            profile: str = "quarter"):
     """Scripted quarter fold, seeds split over parallel A10Gs: modal run isaac/modal_isaac.py::quarter --seeds 0-9"""
     import json
     import time
@@ -130,10 +132,10 @@ def quarter(seeds: str = "0,1", per_job: int = 2, video: bool = False, env_json:
     stamp = tag or time.strftime("%Y%m%d-%H%M%S")
     outs = [f"quarter/{stamp}/job{k}" for k in range(len(chunks))]
     todo = list(zip(chunks, outs))
-    for attempt in range(4):        # a container on a 610-driver host refuses to start: run its chunk again
+    for attempt in range(16):       # a container on a 610-driver host refuses to start (3 in 4 A10Gs, 2026-10-15): again
         n = len(todo)
         results = list(quarter_job.map([c for c, _ in todo], [o for _, o in todo], [video] * n,
-                                       [json.loads(env_json)] * n))
+                                       [json.loads(env_json)] * n, [profile] * n))
         for r in results:
             print("RESULT", r)
         todo = [t for t, r in zip(todo, results) if r["exit"] == "unsupported_driver"]

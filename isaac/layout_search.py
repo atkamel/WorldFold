@@ -36,6 +36,10 @@ PINCH_TOL, PLACE_TOL, ARC_TOL = 0.00466, 0.006, 0.02        # reach_check's gras
 # over the +-1.5 cm shifted poses (F3 expert id_hard 94%) its pinches tilt up to 16.3 deg and its places 32.4 deg
 # (nominal 5.5 / 26). The friction pinch needs a near-vertical jaw; the README's 35 deg tilted pinch didn't hold.
 PINCH_TILT, PLACE_TILT = 16.5, 33.0
+# Above the pinch and at it, elbow_flex and wrist_flex stay at or under PINCH_FOLD: folded tighter, the jaw meets the
+# arm's own upper link (self-collision on) and the joints stop short (2026-10-15 run q4: the north arm's pinch 11 cm
+# from its base asked elbow 1.67 / wrist 1.40 and got 1.56 / 1.14). The half fold pinches at elbow -0.07, wrist 0.92.
+PINCH_FOLD = 1.3
 OFFSETS = [(dx, dy) for dx in (-0.01, 0.0, 0.01) for dy in (-0.01, 0.0, 0.01)]   # cloth reset jitter, +-1 cm
 CLEARANCE = 0.06                                            # link centrelines: ~2 cm link radius each + 2 cm
 # move: (pinch point, place point's mirror axis, jaw aim point); the place is the pinch's mirror across x = 0 or y = 0
@@ -78,8 +82,10 @@ def _configure(base_dz, half):
              "C": ((-H, 0.0), "x", (0.0, -H / 2)), "M": ((-H, -H / 2), "x", (0.0, -H / 2))}
 
 
-def _init_worker(assets, base_dz, half):
+def _init_worker(assets, base_dz, half, offsets=None):
     _configure(base_dz, half)
+    if offsets:
+        OFFSETS[:] = offsets
     _init(assets)
 
 
@@ -108,19 +114,15 @@ def plan_move(base_xy, move):
             q, e = ik.solve(p, pinch + [0, 0, ABOVE], jaw, [pan] + rest, iters=150)
             starts.append((e, -ik.site_pose(p, q)[1][2, 2], q))
     starts.sort(key=lambda t: (round(t[0], 4), -t[1]))          # closest, then most upright
-    runs = [_follow(ik, p, q, e, jaw, pinch, arc, place) for e, _, q in starts[:3]]   # the chain can flip branch
+    runs = [_follow(ik, p, q, e, jaw, pinch, arc, place) for e, _, q in starts[:6]]   # the chain can flip branch
     return min(runs, key=_badness)
-
-
-def _badness(r):
-    return max(r["pinch"] / PINCH_TOL, r["tilt"] / PINCH_TILT, r["place"] / PLACE_TOL, r["place_tilt"] / PLACE_TILT,
-               r["arc"] / ARC_TOL)
 
 
 def _follow(ik, p, q, e_above, jaw, pinch, arc, place):
     path = [q]
     q, e_pinch = ik.solve(p, pinch, jaw, q)
     tilt = math.degrees(math.acos(min(1.0, -ik.site_pose(p, q)[1][2, 2])))   # fingers off vertical at the pinch
+    fold = float(max(path[0][2], path[0][3], q[2], q[3]))                     # elbow / wrist, above and at the pinch
     path.append(q)
     arc_err = []
     for tip in arc:
@@ -130,7 +132,7 @@ def _follow(ik, p, q, e_above, jaw, pinch, arc, place):
     q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02, iters=150)
     path.append(q)
     place_tilt = math.degrees(math.acos(min(1.0, -ik.site_pose(p, path[-2])[1][2, 2])))   # at the place
-    return {"pinch": max(e_above, e_pinch), "tilt": tilt, "place_tilt": place_tilt, "arc": max(arc_err[:-1]),
+    return {"pinch": max(e_above, e_pinch), "tilt": tilt, "fold": fold, "place_tilt": place_tilt, "arc": max(arc_err[:-1]),
             "place": arc_err[-1],
             "path": [list(map(float, x)) for x in path]}
 
@@ -148,6 +150,11 @@ def _robust_job(args):
 
 def _reachable(r):
     return _badness(r) <= 1.0
+
+
+def _badness(r):
+    return max(r["pinch"] / PINCH_TOL, r["tilt"] / PINCH_TILT, r["place"] / PLACE_TOL, r["place_tilt"] / PLACE_TILT,
+               r["arc"] / ARC_TOL, r["fold"] / PINCH_FOLD)
 
 
 def arm_points(base_xy, q):
@@ -200,10 +207,12 @@ def main():
     ap.add_argument("--margin", type=float, default=0.05, help="base centre at least this far outside the cloth")
     ap.add_argument("--base-dz", type=float, default=0.0, help="arm mount height change (m)")
     ap.add_argument("--cloth", type=float, default=2 * H, help="cloth side (m)")
+    ap.add_argument("--jitter", type=float, default=0.01, help="cloth offset (+-m, both axes) the robust check covers")
     ap.add_argument("--robust", type=int, default=15, help="re-check this many top layouts per variant over OFFSETS")
     ap.add_argument("--workers", type=int, default=max(1, mp.cpu_count() - 1))
     args = ap.parse_args()
     _configure(args.base_dz, args.cloth / 2)
+    OFFSETS[:] = [(dx, dy) for dx in (-args.jitter, 0.0, args.jitter) for dy in (-args.jitter, 0.0, args.jitter)]
     _init(args.assets)
 
     grid = np.arange(-0.5, 0.5 + 1e-9, args.step)
@@ -260,7 +269,8 @@ def main():
                                                  key=lambda r: r["badness"])[:args.robust]]   # most reach margin first
     need = {(tuple(r[a]), m) for r in check for a, m in zip(("arm1", "arm2", "arm1", "arm2"),
                                                             ("A0", "B0") + variants[r["variant"]]) if m}
-    with mp.Pool(args.workers, initializer=_init_worker, initargs=(args.assets, args.base_dz, args.cloth / 2)) as pool:
+    with mp.Pool(args.workers, initializer=_init_worker,
+                 initargs=(args.assets, args.base_dz, args.cloth / 2, list(OFFSETS))) as pool:
         worst = {(b, m): w for b, m, w in pool.map(_robust_job, sorted(need), chunksize=1)}
     for r in check:
         r["robust_badness"] = max(worst[(tuple(r[a]), m)] for a, m in zip(("arm1", "arm2", "arm1", "arm2"),

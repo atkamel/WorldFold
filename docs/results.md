@@ -1953,3 +1953,26 @@ monotonically easier: points close to a base need a steep tilt too, and the grid
 **Chosen:** 25.5 cm, two-arm fold 2 (holding both ends of the carried edge is what the edge-alignment bar needs).
 Cloth-local bases: left (−0.225, −0.125), right (0.10, 0.225); clearance 18.3 cm (fold 1) and 11.6 cm (fold 2).
 `isaac_env.PROFILES["quarter"]`. The one-arm fold at 28.5 cm is the alternative if the two-arm fold fails physically.
+
+### Revision (2026-10-15): what the arm can track, and the chosen layout
+
+The first pick (25.5 cm, right arm north) failed on Isaac (Modal runs q1–q4, 13 episodes, 0 quarter folds):
+
+- At HOME (all joints zero) the two arms crossed over the cloth and jammed → a tucked rest pose per profile.
+- The friction profile's 5.2 cm placement overshoot was the whole fold-1 miss on this layout → zero for quarter.
+- The north arm's fold-1 pinch, 11 cm from its base, asked elbow 1.67 / wrist 1.40 rad and got 1.56 / 1.14: the jaw
+  meets the arm's own upper link (self-collision on). New bound: elbow and wrist ≤ 1.3 rad above and at the pinch
+  (the half fold pinches at elbow −0.07, wrist 0.92). An elbow-branch rule was tried and dropped: the working half
+  fold itself crosses from elbow −1.22 to +1.33 along its arc.
+
+Re-searched with that bound (best robust badness; ≤ 1 passes):
+
+| cloth | ±1 cm, two-arm | ±1 cm, one-arm | ±0.5 cm, two-arm | ±0.5 cm, one-arm |
+|---|---|---|---|---|
+| 27 cm | — | 1.20 | — | 1.07 |
+| 25.5 cm | 1.71 | 1.02 | 1.28 | **0.978** |
+| 24 cm | | | **0.997** | |
+| 22.5 cm | | | **0.905** | 1.07 (C/S two-arm) |
+
+Profiles: `quarter` = 24 cm, left (−0.225, −0.05), right (0.0, 0.175); `quarter_s` = 22.5 cm, left (−0.225, −0.025),
+right (−0.025, 0.175) (cloth-local). The quarter task's reset jitter has to come down to ±0.5 cm for these margins.

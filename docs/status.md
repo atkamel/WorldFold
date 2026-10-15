@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-14 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (quarter fold RL on Isaac), plan awaiting sign-off
+**Updated:** 2026-10-15 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (quarter fold RL on Isaac): scripted fold 2 gate
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,12 +41,22 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**2026-10-14, new goal (user):** an RL policy that does the two-stage quarter fold on Isaac with the friction
-grasp, good for at least one clean demo with edges and body lined up near perfectly. Plan:
-[superpowers/plans/2026-10-14-quarter-fold-rl.md](superpowers/plans/2026-10-14-quarter-fold-rl.md). Waiting on the
-user's sign-off and four decisions: fold geometry (stage 1 is out of the arms' reach on today's layout), the
-alignment bar, what counts as the RL policy (primitive-level recommended), and WATcloud access or a Modal cap.
-The F4 DAgger item below is parked behind it.
+**2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
+[superpowers/plans/2026-10-14-quarter-fold-rl.md](superpowers/plans/2026-10-14-quarter-fold-rl.md), signed off.
+Decisions: bar mean ≤ 1.0 cm / edges ≤ 1.5 cm (`cloth_fold_rl/fold_alignment.py`); RL over fold moves
+(`isaac/fold_rl.py`); long jobs on WATcloud.
+
+- **Layout** (`isaac/layout_search.py`, results.md): no arm placement reaches the 30 cm cloth's second fold with ±1 cm
+  jitter; 25.5 cm with the right arm north of the cloth does (profile `quarter`, `make_quarter_fold_env`).
+- **Gripper:** `gripper_mode="position"` knob (quarter profile): the command sets the jaw target over its range.
+- **Scripted quarter fold on Modal** (`isaac/quarter_fold_run.py`, n = 4 + 2): fold 1 completes once the arms start
+  tucked (QUARTER_HOME); its alignment was 4 cm mean because the friction profile's 5 cm overshoot was the miss
+  (now zero). Fold 2: the stack's bottom layer slips out of the pinch, and the crease end gets dragged when the
+  left arm lifts first (lift gate added). q3 (defaults vs SQUEEZE −0.05) in flight.
+- **Compute:** Modal A10G hosts now include driver 610 (Isaac refuses; the entrypoint retries). WATcloud 3090
+  nodes run driver 580.178.04; the image build + smoke job is queued (sbatch needed `DOCKER_HOST`).
+
+The F4 DAgger item below is parked behind Phase Q.
 
 **2026-10-08, F4 finals (BC only, 3.5 h plan):** privileged diffusion BC on `isaac_v1_friction` scored id_easy
 81 / id_hard 71 / knock_arm 35 (n = 100), joint_noise 26 and overshoot 4 (n = 50). The expert scored 92 / 94 / 75 on the same sets. Stalls (S1) dominate the
@@ -204,7 +214,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 16 | WATcloud's login node (`wato-login1.ext.watonomous.ca:22`) times out from the Mac (2026-10-14); the WATcloud image (`isaac/Dockerfile`) has never been built | long Isaac jobs | Q |
+| 16 | the WATcloud image (`isaac/Dockerfile`) has never been built (first job queued 2026-10-15); WATcloud needs the campus network from the Mac | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujuco/` first on `sys.path`; `mujuco/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
 | 12 | `imitation.cpu_slot` isn't fair: a lane that releases and re-takes it between eval sets starves a lane polling every 2 s (lane A waited 37 min) | parallel queues | — |

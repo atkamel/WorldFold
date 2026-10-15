@@ -10,8 +10,8 @@
 # for Isaac Sim 4.5 are below it. Pick an RTX node with >= 16 GB in --gres. Driver: on Modal, Isaac Sim 5.1 ran on
 # the 580 branch and segfaulted at start-up on 610 (isaac/modal_isaac.py, SUPPORTED_DRIVER), so this job stops on
 # any other branch unless ISAAC_ANY_DRIVER=1. --gres replaces the whole request, so it carries tmpdisk too (Docker's
-# image and layers live there).
-# The first job builds the image (~10 min, ~20 GB) and saves it to $IMAGE_TAR; later jobs load it.
+# image and layers live there: ~60 GB).
+# Each job builds the image (~10 min, ~20 GB on tmpdisk), or loads $IMAGE_TAR if one was saved by hand.
 #SBATCH --job-name=worldfold-isaac
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
@@ -32,13 +32,14 @@ if [[ $driver != 580.* && ${ISAAC_ANY_DRIVER:-0} != 1 ]]; then
 fi
 
 slurm-start-dockerd.sh
+export DOCKER_HOST=unix:///tmp/run/docker.sock     # the rootless daemon it starts (not /var/run)
 if ! docker image inspect $IMAGE > /dev/null 2>&1; then
     if [[ -f $IMAGE_TAR ]]; then
         docker load -i "$IMAGE_TAR"
     else
+        # no docker save: streaming the ~20 GB image out ran the job past its memory and killed it (2026-10-15,
+        # job 706908); a build takes ~10 min, so every job builds its own
         docker build -t $IMAGE -f "$REPO/isaac/Dockerfile" "$REPO/isaac"
-        mkdir -p "$(dirname "$IMAGE_TAR")"
-        docker save -o "$IMAGE_TAR" $IMAGE
     fi
 fi
 

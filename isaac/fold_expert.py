@@ -225,7 +225,9 @@ class IsaacArmExpert:
         for pan in np.linspace(-1.8, 1.8, 7):
             for rest in (SEED_Q["left_"][1:], SEED_Q["right_"][1:]):
                 q, e = self._ik.solve(p, tip, jaw, [pan] + list(rest), iters=150)
-                key = (round(e, 4), self._ik.site_pose(p, q)[1][2, 2])     # closest, then fingers most nearly down
+                # moderate fold first (isaac/layout_search.py PINCH_FOLD: the jaw meets the upper arm past it), then
+                # closest, then fingers most nearly down
+                key = (max(q[2], q[3]) > 1.3, round(e, 4), self._ik.site_pose(p, q)[1][2, 2])
                 if best is None or key < best[0]:
                     best = (key, q)
         return list(best[1])
@@ -515,8 +517,16 @@ class IsaacQuarterFoldExpert(QuarterFoldExpert):
                          overshoot=overshoot or {k: v.copy() for k, v in OVERSHOOTS["quarter"].items()})
 
     def act(self):
-        arms = self._arms().values()
-        ready = all(e.phase >= e.PHASES.index("close") for e in arms)
-        for e in arms:
+        arms = self._arms()
+        ready = all(e.phase >= e.PHASES.index("close") for e in arms.values())
+        for e in arms.values():
             e.lift_allowed = ready
-        return super().act()
+        if len(arms) == 2:
+            return super().act()
+        # a one-arm fold: the other arm holds where it is, jaw open
+        self._update_release_gate()
+        for (s, p), e in self.experts.items():
+            if s == self.env.stage:
+                self._maybe_retry((s, p), e)
+        idle = np.r_[np.zeros(5), 1.0].astype(np.float32)
+        return np.concatenate([arms[p].act() if p in arms else idle for p in ("left_", "right_")])

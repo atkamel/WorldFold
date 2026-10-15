@@ -68,7 +68,10 @@ def run(env, expert, seed, frames=None, trace=None):
                 row[p] = {"phase": phases[p], "grip": np.round(base.gripper_position(p), 3).tolist(),
                           "jaw": round(float(base.joint_positions(p)[5]), 3), "held": bool(info["grasped"][p]),
                           "carried": np.round(base.cloth_positions()[list(mv.corners)].mean(axis=0), 3).tolist(),
-                          "goal": np.round(env.goal(mv), 3).tolist()}
+                          "goal": np.round(env.goal(mv), 3).tolist(),
+                          "q": np.round(base.joint_positions(p)[:5], 3).tolist(),
+                          "q_target": None if expert.experts[(env.stage, p)].q_target is None else
+                          np.round(expert.experts[(env.stage, p)].q_target, 3).tolist()}
             trace.append(row)
         if env.stage == 1 and fold1 is None:
             s = score(base.cloth_positions(), folds=(("y", 5),))
