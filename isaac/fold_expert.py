@@ -40,7 +40,11 @@ OVERSHOOT_FRICTION_PROFILE = {key: v.copy() for key, v in OVERSHOOT_FRICTION.ite
 # quarter profile: none. On its layout a corner stays where it is let go (2026-10-14 run q2, seed 3: the left corner
 # ended 4.6-5.5 cm from its goal under the friction profile's 5.2 cm overshoot); fold_rl tunes placement from here
 OVERSHOOT_QUARTER = {key: np.zeros(3) for key in OVERSHOOT_FRICTION}
-OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE, "quarter": OVERSHOOT_QUARTER}
+# strip profile (the friction layout): fold 1 is the half fold with its tuned overshoot; fold 2 starts at none
+OVERSHOOT_STRIP = {key: (OVERSHOOT_FRICTION_PROFILE[key].copy() if key[0] == 0 else np.zeros(3))
+                   for key in OVERSHOOT_FRICTION}
+OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE, "quarter": OVERSHOOT_QUARTER,
+              "quarter_s": OVERSHOOT_QUARTER, "strip": OVERSHOOT_STRIP}
 
 
 ORIENTATION_WEIGHT = 0.1     # = isaac.pinch.ORIENTATION_WEIGHT (not imported: isaac.pinch needs LeHome)
@@ -509,12 +513,13 @@ _apply_env_params()
 
 
 class IsaacQuarterFoldExpert(QuarterFoldExpert):
-    """QuarterFoldExpert with IsaacArmExperts, the quarter profile's overshoot table (a copy: fold_rl edits it) and a
-    lift gate: no arm of the current fold lifts until every arm of it has started closing."""
+    """QuarterFoldExpert with IsaacArmExperts, the profile's overshoot table (a copy: fold_rl edits it, around
+    base_overshoot) and a lift gate: no arm of the current fold lifts until every arm of it has started closing."""
 
-    def __init__(self, env, seed=0, overshoot=None):
+    def __init__(self, env, seed=0, profile="quarter"):
+        self.base_overshoot = {k: v.copy() for k, v in OVERSHOOTS[profile].items()}
         super().__init__(env, seed=seed, expert_cls=IsaacArmExpert,
-                         overshoot=overshoot or {k: v.copy() for k, v in OVERSHOOTS["quarter"].items()})
+                         overshoot={k: v.copy() for k, v in self.base_overshoot.items()})
 
     def act(self):
         arms = self._arms()

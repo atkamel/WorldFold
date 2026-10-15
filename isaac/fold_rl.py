@@ -58,7 +58,7 @@ def defaults(stage):
     for p in ARMS:
         for name, _, _ in ARM_PARAMS:
             if name == "SQUEEZE":
-                out.append(PROFILES["quarter"]["friction_grasp"]["gripper_closed"])
+                out.append(PROFILES[PROFILE]["friction_grasp"]["gripper_closed"])
             elif name == "RELEASE_RATE":
                 out.append(1.2)
             elif name.startswith("place_"):
@@ -94,8 +94,7 @@ def apply(expert, stage, values):
         for name in ("PINCH_INSET", "PINCH_HEIGHT", "SQUEEZE", "ARC_HEIGHT", "PLACE_HEIGHT", "CARRY_SPEED",
                      "RELEASE_RATE"):
             setattr(e, name, float(v[name]))
-        from isaac.fold_expert import OVERSHOOTS
-        expert.overshoot[(stage, p)] = OVERSHOOTS["quarter"][(stage, p)] + np.array([v["place_dx"], v["place_dy"], 0.0])
+        expert.overshoot[(stage, p)] = expert.base_overshoot[(stage, p)] + np.array([v["place_dx"], v["place_dy"], 0.0])
 
 
 def features(env, stage):
@@ -195,7 +194,7 @@ def episode(env, expert, pol, seed, explore=True, frames=None):
             choose(1)
         if terminated or truncated:
             break
-    final = score(base.cloth_positions())
+    final = score(base.cloth_positions(), folds=env.alignment_folds)
     success = bool(info["success"])
     if fold1 is None:     # fold 1 never settled: score it as it lies
         s = score(base.cloth_positions(), folds=FOLD1)
@@ -211,12 +210,15 @@ def episode(env, expert, pol, seed, explore=True, frames=None):
             "decisions": decisions}
 
 
+PROFILE = os.environ.get("WORLDFOLD_FOLD_PROFILE", "strip")     # the task: strip (user, 2026-10-15) or quarter
+
+
 def _make_env_expert(video=False):
     from isaac.isaac_env import make_quarter_fold_env
     from isaac.fold_expert import IsaacQuarterFoldExpert, _apply_env_params
     _apply_env_params()
-    env = make_quarter_fold_env(cameras={"top": 400} if video else None)
-    expert = IsaacQuarterFoldExpert(env)        # its own overshoot table copy: apply() edits it per episode
+    env = make_quarter_fold_env(profile=PROFILE, cameras={"top": 400} if video else None)
+    expert = IsaacQuarterFoldExpert(env, profile=PROFILE)     # its own overshoot table copy: apply() edits it
     return env, expert
 
 

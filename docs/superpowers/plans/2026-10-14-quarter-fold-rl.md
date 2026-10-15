@@ -11,6 +11,12 @@ base poses, tilted placing (39 cm) and a one-arm second fold before any change t
 shrink the cloth to the largest size that does (likely 26-28 cm), still a square fold (user). Development waits
 for the user's review of this doc.
 
+**Decision (user, 2026-10-15, after the night):** the square quarter fold has no layout where both SO101s reach the
+cloth without colliding (docs/results.md, collision-aware layout search; 0/20 Isaac episodes on four new layouts).
+The quarter fold becomes the **strip fold on the proven friction layout**: the half fold, then each arm carries its
+crease end onto its near corner (profile `strip`, `make_quarter_fold_env(profile="strip")`). Alignment is scored
+with `STRIP_FOLDS`; the bar is unchanged (mean ≤ 1.0 cm, edges ≤ 1.5 cm). RL runs on WATcloud.
+
 **Goal (user, 2026-10-14):** an RL policy that does a two-stage quarter fold on the Isaac env with a physical
 (friction) grasp. Good enough for at least one clean recorded demo in which the cloth's edges and body line up
 near perfectly. Modal for fast iteration, WATcloud for long jobs, few tokens.

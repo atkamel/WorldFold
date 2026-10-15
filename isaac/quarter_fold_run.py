@@ -79,7 +79,7 @@ def run(env, expert, seed, frames=None, trace=None):
         if terminated or truncated:
             break
     pos = base.cloth_positions()
-    s = score(pos)
+    s = score(pos, folds=env.alignment_folds)
     return {"seed": seed, "steps": t + 1, "stage": info["stage"], "success": info["success"],
             "reason": info["termination_reason"] or "truncated", "retries": sum(expert.retries.values()),
             "anchor_drift": round(info["anchor_drift"], 4), "moves": moves, "fold1_align": fold1,
@@ -98,7 +98,7 @@ def main():
     env = make_quarter_fold_env(profile=args.profile, cameras={"top": 400} if args.video else None)
     from isaac.fold_expert import IsaacQuarterFoldExpert, _apply_env_params
     _apply_env_params()
-    expert = IsaacQuarterFoldExpert(env)
+    expert = IsaacQuarterFoldExpert(env, profile=args.profile)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     for seed in (int(s) for s in args.seeds.split(",")):

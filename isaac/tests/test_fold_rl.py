@@ -29,7 +29,8 @@ class _Arm:
 class _Expert:
     def __init__(self):
         self.experts = {(s, p): _Arm() for s in (0, 1) for p in R.ARMS}
-        self.overshoot = {(s, p): np.zeros(3) for s in (0, 1) for p in R.ARMS}
+        self.base_overshoot = {(s, p): np.full(3, 0.01 * s) for s in (0, 1) for p in R.ARMS}
+        self.overshoot = {k: v.copy() for k, v in self.base_overshoot.items()}
 
 
 def test_apply_sets_each_arm():
@@ -40,8 +41,7 @@ def test_apply_sets_each_arm():
     R.apply(e, 1, v)
     assert e.experts[(1, "right_")].SQUEEZE == pytest.approx(-0.07)
     assert e.experts[(1, "left_")].SQUEEZE == pytest.approx(0.05)
-    from isaac.fold_expert import OVERSHOOTS
-    assert np.allclose(e.overshoot[(1, "left_")], OVERSHOOTS["quarter"][(1, "left_")] + [0.01, 0.0, 0.0])
+    assert np.allclose(e.overshoot[(1, "left_")], [0.02, 0.01, 0.01])
 
 
 def test_ppo_moves_toward_rewarded_actions():

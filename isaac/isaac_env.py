@@ -892,19 +892,36 @@ def make_half_fold_env(observation_mode="state", seed=None, headless=True):
 
 QUARTER_MAX_STEPS = 700      # two half-fold-length folds (~230 steps each) plus releases and settles
 QUARTER_JITTER = 0.005       # the quarter layouts pass layout_search at +-0.5 cm, not at the half fold's +-1 cm
+# "strip" (user, 2026-10-15): the square quarter fold has no collision-free two-arm layout (docs/results.md), so the
+# quarter fold is two folds in the same direction on the friction profile's proven layout: the half fold, then each
+# arm carries its crease end onto its near corner, a strip a quarter as deep. The gripper takes a position command.
+PROFILES["strip"] = dict(PROFILES["friction"],
+                         friction_grasp=dict(PROFILES["friction"]["friction_grasp"], gripper_mode="position"))
 
 
 def make_quarter_fold_env(observation_mode="state", seed=None, headless=True, max_episode_steps=QUARTER_MAX_STEPS,
                           image_size=(84, 84), profile="quarter", cameras=None):
-    """cloth_fold_rl.quarter_fold_env.QuarterFoldEnv on the quarter profile's layout. Fold 1 as on MuJoCo; in fold 2
-    the arms swap roles (isaac/layout_search.py): the left arm carries the stack (cloth_0 + cloth_10) onto cloth_110's
-    start, the right arm, north of the cloth, the crease end cloth_5 onto cloth_115's."""
+    """cloth_fold_rl.quarter_fold_env.QuarterFoldEnv on Isaac; fold 1 is the half fold. Profile "strip": fold 2 carries
+    each crease end (cloth_5, cloth_115) onto its near corner's start (cloth_0, cloth_110), a fold about the quarter
+    line. Quarter profiles: fold 2 is west onto east with the arms' roles swapped (isaac/layout_search.py): the left
+    arm carries the stack (cloth_0 + cloth_10) onto cloth_110, the right arm, north of the cloth, cloth_5 onto
+    cloth_115. The returned env's alignment_folds is the fold sequence cloth_fold_rl.fold_alignment scores."""
+    from cloth_fold_rl.fold_alignment import QUARTER_FOLDS, STRIP_FOLDS
     from cloth_fold_rl.quarter_fold_env import (CLOTH_0, CLOTH_5, CLOTH_10, CLOTH_115, CLOTH_110, CLOTH_120,
                                                 GRASP_RADIUS, STAGES, Move, QuarterFoldEnv, Stage)
-    stages = (STAGES[0], Stage(moves=(Move("left_", (CLOTH_0, CLOTH_10), CLOTH_110), Move("right_", (CLOTH_5,), CLOTH_115)),
-                               anchors=STAGES[1].anchors))
-    corners = {"left_": (CLOTH_10, CLOTH_0), "right_": (CLOTH_120, CLOTH_5)}
+    if profile == "strip":
+        stages = (STAGES[0], Stage(moves=(Move("left_", (CLOTH_5,), CLOTH_0), Move("right_", (CLOTH_115,), CLOTH_110)),
+                                   anchors=STAGES[0].anchors))
+        corners = {"left_": (CLOTH_10, CLOTH_5), "right_": (CLOTH_120, CLOTH_115)}
+        jitter, folds = CLOTH_JITTER, STRIP_FOLDS
+    else:
+        stages = (STAGES[0], Stage(moves=(Move("left_", (CLOTH_0, CLOTH_10), CLOTH_110),
+                                          Move("right_", (CLOTH_5,), CLOTH_115)), anchors=STAGES[1].anchors))
+        corners = {"left_": (CLOTH_10, CLOTH_0), "right_": (CLOTH_120, CLOTH_5)}
+        jitter, folds = QUARTER_JITTER, QUARTER_FOLDS
     base = IsaacClothFoldEnv(observation_mode=observation_mode, max_episode_steps=max_episode_steps, image_size=image_size,
                              grasp_corners=corners, grasp_radius=GRASP_RADIUS, headless=headless, profile=profile,
                              cameras=cameras)
-    return QuarterFoldEnv(base_env=base, seed=seed, cloth_jitter=QUARTER_JITTER, stages=stages)
+    env = QuarterFoldEnv(base_env=base, seed=seed, cloth_jitter=jitter, stages=stages)
+    env.alignment_folds = folds
+    return env
