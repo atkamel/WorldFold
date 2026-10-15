@@ -1997,3 +1997,20 @@ parked at its path's end). The old side-by-side half-fold layout clears at 2.2 c
 Best S/C, by situation: fold 1 lockstep 9 mm, left arm vs right arm tucked 1 mm; fold 2 lockstep 1 mm, right arm vs
 left arm tucked 0. Two SO101s on two sides of a cloth they can both reach work in each other's space; the second
 fold's two grasp points share a 12 cm edge. Matches Isaac runs q1–q5 (20 episodes on new layouts, 0 quarter folds).
+
+## Strip fold, scripted, on the friction layout (2026-10-15)
+
+Profile `strip` (user's pick after the square layout failed): the half fold, then each arm carries its crease end
+onto its near corner. `isaac/quarter_fold_run.py`, IsaacQuarterFoldExpert (lift gate, retries), alignment with
+`STRIP_FOLDS`. Bar: mean ≤ 1.0 cm, edges ≤ 1.5 cm.
+
+| run | fold-2 overshoot | goals | n | env success | fold-1 align (mean / edge) | final align (mean / edge) | anchor drift |
+|---|---|---|---|---|---|---|---|
+| strip1 (WATcloud) | 0 | start | 1 | 1 | 3.3 / 4.7 cm | 7.9 / 12.7 cm | 10 cm |
+| s2 (Modal) | fold 1's | start | 2 | 1 (other: timeout in fold 2) | 9.5 / 15.5, 6.1 / 12.9 cm | 7.2 / 11.4, 7.3 / 14.4 cm | 14, 7 cm |
+| strip5 (WATcloud) | fold 1's | partner's current position + retarget | 2 | 0 (both unstable in fold 1) | — | 11.3, 10.1 cm | 11, 18 cm |
+
+The fold completes mechanically; the layers end ~7 cm apart because the bottom layer slides 6–14 cm while the top
+is carried over it, and the corners land on where their partners started. Chasing the partner (strip5) made the
+retries re-grasp a corner that springs back after release and destabilised the cloth: dropped. n is tiny (Modal
+refused 64 of 64 starts on driver 610 at the end; WATcloud jobs carry a 10 min image build).

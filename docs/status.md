@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-15 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (quarter fold RL on Isaac): blocked on a layout the two arms can share
+**Updated:** 2026-10-15 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (strip quarter fold, RL on WATcloud)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -46,15 +46,16 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 Decisions: bar mean ≤ 1.0 cm / edges ≤ 1.5 cm (`cloth_fold_rl/fold_alignment.py`); RL over fold moves
 (`isaac/fold_rl.py`); long jobs on WATcloud.
 
-- **Where it stands (2026-10-15 ~10:00):** no quarter fold yet. 20 Isaac episodes on four new layouts (Modal q1–q5)
-  each failed on a physical obstruction the kinematic layout search didn't model: arms crossed at rest, a pinch
-  folding the jaw into the upper arm, one arm's forearm hitting the other arm. The search now uses the SO101's
-  collision meshes (`isaac/arm_collision.py`) and finds no layout at 24 cm with the arms 2 cm apart (results.md).
-- **Built and tested (sim-free):** layer-alignment score, position gripper mode, quarter profiles and runner, lift
-  gate, one-arm folds, fold-move PPO (`isaac/fold_rl.py`, 4 tests). The RL has not run.
-- **Compute:** Modal's A10G hosts moved to driver 610 (most starts refused). WATcloud 3090s run 580; the container
-  needed `--gpus device=$CUDA_VISIBLE_DEVICES` and `NVIDIA_DRIVER_CAPABILITIES=all` before PhysX found the GPU
-  (job 707320 testing the latter).
+- **Square fold dropped (user, 2026-10-15):** no collision-free two-arm layout (results.md). Now the **strip fold**
+  on the proven friction layout (profile `strip`).
+- **Scripted strip fold:** completes (3 of 5 episodes), but layers end ~7 cm apart: the bottom layer slides 6-14 cm
+  during each carry. Goal-following placement was tried and dropped (unstable).
+- **RL running:** WATcloud job 707333, `isaac/fold_rl.py launch --run outputs/isaac/rl/strip_r2 --workers 6 --gpus 2
+  --hours 10` (2x 3090). Version 0 = the scripted fold; placement offsets ±8 cm. Watch
+  `outputs/isaac/rl/strip_r2/learner.jsonl` on WATcloud. Next: eval the best version with video
+  (`fold_rl.py eval --video`).
+- **Compute:** Modal unusable for Isaac (all A10G starts on driver 610). WATcloud works after three container fixes
+  (`--gpus device=$CUDA_VISIBLE_DEVICES`, `NVIDIA_DRIVER_CAPABILITIES=all`, Kit hang detector off).
 
 The F4 DAgger item below is parked behind Phase Q.
 
@@ -214,7 +215,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 16 | the WATcloud image (`isaac/Dockerfile`) has never been built (first job queued 2026-10-15); WATcloud needs the campus network from the Mac | long Isaac jobs | Q |
+| 16 | WATcloud jobs rebuild the image each time (~10 min): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujuco/` first on `sys.path`; `mujuco/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
 | 12 | `imitation.cpu_slot` isn't fair: a lane that releases and re-takes it between eval sets starves a lane polling every 2 s (lane A waited 37 min) | parallel queues | — |
