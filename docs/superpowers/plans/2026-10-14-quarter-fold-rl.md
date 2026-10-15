@@ -108,12 +108,13 @@ policy as the teacher, then the existing collect → BC → DAgger pipeline. Tha
 
 | # | step | check | where it runs |
 |---|---|---|---|
-| 1 | layer-alignment metric (sim-free) + score today's friction half fold, n = 10 | unit tests on synthetic perfect / shifted folds; baseline number into results.md | local + Modal (~20 GPU-min) |
-| 2 | stage-1 reach + arm-clearance probe for layout A candidates | every pinch / place within reach_check's tolerances, arms ≥ 2 cm apart along the path; else B | Modal (no physics) |
-| 3 | `gripper_mode="position"` | existing tests unchanged (binary path); new mapping and `grasp_active` tests; Isaac check that a mid target holds mid | local + Modal |
-| 4 | quarter-fold task + scripted primitives on the chosen layout | n = 10 on Modal: stage 0 and stage 1 both complete; alignment logged | Modal |
-| 5 | primitive-level PPO | learning curve on alignment; strict success rate at n ≥ 20 with Wilson interval | WATcloud (or Modal under a cap) |
-| 6 | demo video (main camera + an overhead camera) from the trained policy, report, docs | video shows aligned edges; the score is printed on the frames | Modal |
+| 1 | stage-1 reach + arm-clearance search for the 30 cm cloth (base poses, tilted placing, one-arm variant) | every pinch / place within reach_check's tolerances, arms ≥ 2 cm apart along the path; else shrink | Modal (no physics) |
+| 2 | `gripper_mode="position"` + layer-alignment metric (both sim-free code) | existing tests unchanged (binary path); new mapping and `grasp_active` tests; metric tests on synthetic perfect / shifted folds | local |
+| 3 | **second-fold feasibility, first thing on Isaac**: scripted half fold then scripted second fold in one episode, on the new layout, failures sorted by cause (table in §7) | n = 10: ≥ 3 finish stage 1; first fold re-checked on the new layout; alignment logged as the baseline | Modal |
+| 4 | primitive-level PPO | learning curve on alignment; strict success rate at n ≥ 20 with Wilson interval | WATcloud (or Modal under a cap) |
+| 5 | demo video (main camera + an overhead camera) from the trained policy, report, docs | video shows aligned edges; the score is printed on the frames | Modal |
+
+Step 3 is the gate everything after it depends on, so it runs as early as the code allows (~2-3 h in).
 
 Rules for the night: no goalpost moves; if the bar isn't met, the report gives the best score and video as they
 are. Jobs run detached and write one summary JSON, so polling reads a few lines.
@@ -125,10 +126,22 @@ Time boxes assume a ~10 h night. Each fallback is tried in order; every switch g
 | what fails | sign | next |
 |---|---|---|
 | no 30 cm layout reaches | layout search finds nothing | shrink the cloth to the largest size that passes (decided) |
-| the scripted second fold won't complete | under 3/10 episodes finish stage 1 after ~3 h of tuning | (1) one-arm second fold from the 15 cm edge's midpoint, the other arm pressing the cloth near the crease; (2) a wide CEM search over the fold-move parameters instead of hand tuning; (3) shrink the cloth further, still square |
+| the scripted second fold won't complete | under 3/10 episodes finish stage 1 after ~3 h of tuning | by cause, below |
 | folds complete but RL stalls above the bar | flat learning curve; the score's per-group breakdown says where the error is | (1) correction moves: after each fold, up to 2 extra pick-and-place moves where the policy picks the point and where it goes, as the expert's retries already do for corners; (2) grasp points along the edge, not only at the corners, to cut the sag; (3) CEM / CMA-ES in place of PPO if returns are too noisy for policy gradients |
 | too slow or too noisy to learn | < 1,000 episodes by midnight, or seed-to-seed spread larger than the gains | train the second fold from saved half-folded states (if the env can restore a cloth state; unchecked), more WATcloud GPUs |
 | nothing meets the bar by morning | deadline | stop and report the best score, its video and the per-group errors. The bar doesn't move without the user. Easier physics (e.g. cloth-table friction) is an option for the user to decide, since it changes the task, not the policy |
+
+**The second fold, by cause.** It differs from the tuned half fold in two ways: it carries sideways, and its
+corner is a two-layer stack.
+
+| cause | what it looks like | responses, in order |
+|---|---|---|
+| reach / collision | IK misses, arms touch | caught by step 1 before any physics; one-arm variant; shrink |
+| the pinch takes only the top layer | the layers part at the stack corner | squeeze harder (continuous gripper); pinch lower so the jaw passes under both layers; grasp the crease end, where the fold joins the layers and they can't part; adhesion within the Phase F limit (≤ 0.3) |
+| the carry drags the sheet or undoes the first fold | the near layer slides or lifts | higher lift, a lay-down arc, slower carry; the free arm presses the sheet near the fold line |
+| placement misses | corners land > 5 cm off or spring back | overshoot and release rate (the half fold's fix) |
+| none of the above helps | | (1) swap the fold order: the sideways fold first, on single-layer corners with the tuned grasp, then the two-layer corners go on the well-tuned straight-out carry; (2) a wide CEM search over the fold-move parameters in place of hand tuning; (3) shrink the cloth further |
+| still nothing by ~6 h in | | stop the quarter-fold work and report what failed and why, with videos. The morning's choices are the user's: the strip fold (its second fold grabs the crease, where the layers can't part), more cloth physics, or a different grasp |
 
 Every evaluation episode is recorded as it runs. The cloth sim isn't bit-reproducible, so a passing episode
 has to be captured live; a replay could come out differently.
