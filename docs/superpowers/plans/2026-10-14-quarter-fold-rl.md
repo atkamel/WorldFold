@@ -51,7 +51,7 @@ Options:
   the near edge, giving a 30 × 7.5 cm strip with four layers. Both carries are radial, which is the motion the
   tuned half fold already does. Lowest risk, but the result isn't a square.
 
-Recommendation: A, gated by the probe, with B pre-authorised as the fallback if the probe fails.
+Superseded by the user's decision at the top: a layout search on the 30 cm cloth, shrinking only if it fails.
 
 ## 3. Success condition (needs the user's numbers)
 
