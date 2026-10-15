@@ -118,8 +118,11 @@ def main():
             if args.trace_dir:
                 cloth = base.cloth_positions()
                 for pr in base.prefixes:
-                    # the point this arm carries in the current stage (the mean of its vertices)
-                    c = np.mean([cloth[v] for v in expert.experts[(env.stage, pr)].corners], axis=0)
+                    # the point this arm carries in the current stage (the mean of its vertices); an idle arm (no move
+                    # this stage, R2 square-up) traces its own gripper
+                    arm_e = expert.experts.get((env.stage, pr))
+                    c = (np.mean([cloth[v] for v in arm_e.corners], axis=0) if arm_e is not None
+                         else np.asarray(base.gripper_position(pr), dtype=float))
                     site = np.asarray(base.gripper_position(pr), dtype=float)
                     near = np.linalg.norm(cloth[:, :2] - c[:2], axis=1) < 0.015
                     trace[pr]["phase"].append(("K" if p.active(t) else "") + ph[pr])
@@ -132,8 +135,8 @@ def main():
                     trace[pr]["g"].append(int(base.grasp_active(pr)))
                     trace[pr]["stage"].append(int(env.stage))
                     trace[pr]["drift"].append(round(float(env._anchor_drift()), 4))
-                    move = next(m for m in env.stages[env.stage].moves if m.prefix == pr)
-                    trace[pr]["spread"].append(round(float(env._spread(move)), 4))     # a stack's layers apart
+                    move = next((m for m in env.stages[env.stage].moves if m.prefix == pr), None)
+                    trace[pr]["spread"].append(round(float(env._spread(move)), 4) if move else 0.0)  # a stack's layers apart
             cz = base.cloth_positions()
             zc = "/".join(f"{1000 * (cz[v][2] - 0.42):.0f}" for v in (10, 120))     # stage-0 corners, mm above the table
             cur = f"{tag}s{env.stage} {ph['left_'][:4]}/{ph['right_'][:4]} g{g}"

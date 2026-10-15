@@ -150,6 +150,7 @@ class IsaacArmExpert:
     # R2 attempt G: the left fold's flap, released at ~46 deg tilt on the goal, slid on 4 cm past it (trace 660001).
     # m: from stage 1, place this far short of the goal, back along the carry.
     STAGE1_PLACE_SHORT = 0.0
+    SHORT_MOVE = 0.15         # m: stage >= 1 moves shorter than this (square-up pulls) skip PLACE_SHORT, arc <= half
     STAGE1_RETREAT_TOOL = 0   # 1: from stage 1, retreat from the place back along the fingers' axis (attempt H)
     anchor = False
     APPROACH_CHAIN = 0           # 1: solve above / pinch / arc on from the approach path (kept only if within REACH_TOL)
@@ -198,6 +199,17 @@ class IsaacArmExpert:
 
     def _stage(self):
         return int(getattr(self.env, "stage", 0))
+
+    @staticmethod
+    def park_action(base, prefix):
+        """The 6-D action for an arm with no move this stage: back to home (SEED_Q), jaw open. After the left fold the
+        left arm would otherwise stay over the east edge, where the right arm squares the corners up (R2)."""
+        q = np.asarray(base.joint_positions(prefix)[:5], dtype=float)
+        delta = (np.asarray(SEED_Q[prefix], float) - q) / JOINT_DELTA_SCALE
+        action = np.zeros(6, dtype=np.float32)
+        action[0:5] = delta / max(1.0, float(np.max(np.abs(delta))))
+        action[5] = 1.0
+        return action
 
     def set_anchor(self):
         """Make this arm's move an anchor (see ANCHOR_PRESS_DZ): no close, lift or carry."""
@@ -265,9 +277,9 @@ class IsaacArmExpert:
         if self._stage() > 0:
             z = max(z, self._surface_z(goal) - CORNER_REST_DZ + self.PLACE_HEIGHT)
         xy = np.array([goal[0] + o[0], goal[1] + o[1]])
-        if self.STAGE1_PLACE_SHORT and self._stage() > 0:      # back toward where the point came from
-            d = np.asarray(corner[:2], float) - np.asarray(goal[:2], float)
-            xy = xy + self.STAGE1_PLACE_SHORT * d / max(np.linalg.norm(d), 1e-6)
+        d = np.asarray(corner[:2], float) - np.asarray(goal[:2], float)
+        if self.STAGE1_PLACE_SHORT and self._stage() > 0 and np.linalg.norm(d) > self.SHORT_MOVE:
+            xy = xy + self.STAGE1_PLACE_SHORT * d / max(np.linalg.norm(d), 1e-6)    # back toward where it came from
         return np.array([xy[0], xy[1], z])
 
     def _surface_z(self, xy, radius=0.02):
@@ -337,6 +349,9 @@ class IsaacArmExpert:
             arc_h = self._qf0(self.QF0_ARC_HEIGHT) or self.ARC_HEIGHT
             if self.STAGE1_ARC_HEIGHT is not None and self._stage() > 0:
                 arc_h = self.STAGE1_ARC_HEIGHT
+                span = float(np.linalg.norm(place[:2] - start[:2]))
+                if span < self.SHORT_MOVE:          # a square-up pull: lift only about half its length
+                    arc_h = min(arc_h, 0.5 * span)
             tip[2] = start[2] + (place[2] - start[2]) * s + arc_h * math.sin(math.pi * s)
             w_arc = self.STAGE1_ARC_ORIENT_W if (self.STAGE1_ARC_ORIENT_W is not None and self._stage() > 0) else 0.05
             q, _ = self._solve(tip, jaw, q, tol=self.ARC_TOL, orientation_weight=w_arc)

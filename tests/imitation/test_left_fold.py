@@ -95,3 +95,53 @@ def test_anchor_presses_first_and_lifts_off_when_the_flap_is_placed():
     left.phase = carry_ph.index("hold")
     q._update_release_gate()
     assert left.release_allowed
+
+
+def test_square_up_stages(monkeypatch):
+    from cloth_fold_rl.quarter_fold_env import (GRASP_CORNERS_LEFT_FOLD_SQUARE, STAGE1_LEFT_FOLD,
+                                                STAGES_LEFT_FOLD_SQUARE)
+    from imitation.tasks.half_fold import task_grasp_corners, task_stages
+    monkeypatch.setenv("WORLDFOLD_QF_SECOND", "left_fold_square")
+    st = task_stages("quarter_fold", "isaac_friction")
+    assert st == STAGES_LEFT_FOLD_SQUARE and len(st) == 4 and st[0] == STAGES[0]
+    assert task_grasp_corners("quarter_fold", "isaac_friction") == GRASP_CORNERS_LEFT_FOLD_SQUARE
+    fold, stack, crease = st[1:]
+    # the rough fold settles on its own move, within ROUGH_TOL, and the anchor
+    assert [(m.prefix, m.corners, m.goal, m.kind) for m in fold.moves] == [
+        (m.prefix, m.corners, m.goal, m.kind) for m in STAGE1_LEFT_FOLD.moves]
+    assert fold.checks == () and fold.moves[0].tol == 0.10 and STAGE1_LEFT_FOLD.moves[0].tol is None
+    assert [(m.prefix, m.corners, m.goal) for m in stack.moves] == [("right_", (CLOTH_0, CLOTH_10), CLOTH_110)]
+    assert [(m.prefix, m.corners, m.goal) for m in crease.moves] == [("right_", (CLOTH_5,), CLOTH_115)]
+    assert crease.checks == STAGE1_LEFT_FOLD.checks                       # the square is checked at the end
+    for stage in st:
+        for m in stage.moves:
+            if m.kind == "carry":
+                assert set(m.corners) <= set(GRASP_CORNERS_LEFT_FOLD_SQUARE[m.prefix])
+
+
+def test_one_arm_stage_parks_the_idle_arm():
+    from cloth_fold_rl.quarter_fold_env import STAGES_LEFT_FOLD_SQUARE
+    from cloth_fold_rl.quarter_fold_expert import QuarterFoldExpert
+
+    class Arm:
+        PHASES = ("approach", "close", "hold", "release", "done")
+        RELEASE_PHASES = ("release", "done")
+        phase, waiting, release_allowed, lift_allowed = 0, False, False, True
+
+        def act(self):
+            return np.full(6, 0.5, dtype=np.float32)
+
+    class Cls:
+        @staticmethod
+        def park_action(base, prefix):
+            return np.full(6, -0.25, dtype=np.float32)
+
+    q = QuarterFoldExpert.__new__(QuarterFoldExpert)
+    q.env = types.SimpleNamespace(stage=2, stages=STAGES_LEFT_FOLD_SQUARE, _placed=lambda m: True)
+    q.base = types.SimpleNamespace(prefixes=("left_", "right_"))
+    q.expert_cls = Cls
+    q.experts = {(2, "right_"): Arm()}
+    q.turn_done, q.done_steps, q.retries, q.correction = set(), {(2, "right_"): 0}, {(2, "right_"): 0}, {}
+    act = q.act()
+    assert act.shape == (12,) and np.all(act[:6] == -0.25) and np.all(act[6:] == 0.5)
+    assert q.phases() == {"left_": "idle", "right_": "approach"}

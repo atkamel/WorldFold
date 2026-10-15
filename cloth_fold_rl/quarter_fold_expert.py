@@ -64,6 +64,7 @@ class QuarterFoldExpert:
         self.overshoot = OVERSHOOT if overshoot is None else overshoot
         self.env = env
         self.base = env.unwrapped
+        self.expert_cls = expert_cls
         self.experts = {}
         self.moves = {}
         self.correction = {}
@@ -93,7 +94,10 @@ class QuarterFoldExpert:
         return {p: e for (s, p), e in self.experts.items() if s == self.env.stage}
 
     def phases(self):
-        return {p: e.PHASES[e.phase] for p, e in self._arms().items()}
+        """Each arm's phase; an arm with no move this stage (a one-arm stage, R2 square-up) is "idle"."""
+        out = {p: "idle" for p in self.base.prefixes}
+        out.update({p: e.PHASES[e.phase] for p, e in self._arms().items()})
+        return out
 
     def _maybe_retry(self, key, expert):
         if expert.PHASES[expert.phase] != "done":
@@ -188,7 +192,17 @@ class QuarterFoldExpert:
         for (s, p), expert in self.experts.items():
             if s == self.env.stage:
                 self._maybe_retry((s, p), expert)
-        return np.concatenate([arms["left_"].act(), arms["right_"].act()])
+        out = []
+        for p in ("left_", "right_"):
+            if p in arms:
+                out.append(arms[p].act())
+            elif hasattr(self.expert_cls, "park_action"):   # no move this stage: park out of the way (Isaac)
+                out.append(self.expert_cls.park_action(self.base, p))
+            else:
+                idle = np.zeros(6, dtype=np.float32)
+                idle[5] = 1.0                               # hold still, jaw open
+                out.append(idle)
+        return np.concatenate(out)
 
 
 def run_episode(env, expert, seed, verbose=True):

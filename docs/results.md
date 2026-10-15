@@ -2207,3 +2207,30 @@ start; traces on 660001 unless noted.
   pinch 54° (offline).
 - **Kept as knobs (default off):** `STAGE1_ARC_HEIGHT`, `STAGE1_ARC_ORIENT_W`, `STAGE1_PLACE_SHORT`,
   `STAGE1_RETREAT_TOOL`; the anchor mode (`Move.kind="anchor"`, `ANCHOR_PRESS_DZ`, `ANCHOR_LIFT`) and `Stage.checks`.
+
+### R2 — square-up after the left fold (`isaac_friction`, 2026-10-15, `r2/trace_sq*`, `r0/expert_sq.json`)
+
+User decision (2026-10-15): after the left fold, the right arm squares the corners up. It reaches the east half
+straight down. `WORLDFOLD_QF_SECOND=left_fold_square` (`STAGES_LEFT_FOLD_SQUARE`), four stages:
+1. fold 1;
+2. the rough left fold plus anchor (its midpoint within `ROUGH_TOL` = 10 cm, no square checks);
+3. the right arm pulls the folded corner stack (0 + 10) onto 110;
+4. the right arm pulls the crease end (5) onto 115, with the square checks.
+
+Supporting changes:
+- **Idle arm:** an arm with no move in a stage parks home (`IsaacArmExpert.park_action`).
+- **Short moves:** stage-1 moves under `SHORT_MOVE` = 15 cm skip `PLACE_SHORT` and lift at most half their length.
+- **Step cap:** `WORLDFOLD_QF_MAX_STEPS` raises the eval cap (opt-in).
+
+Expert knobs as in option 1 (A + E–H). From the clean start.
+
+| run | result |
+|---|---|
+| trace, 5 cm rough tolerance (660012–014) | None left the rough fold: its midpoint landed 5.8–11.7 cm off (the short place is 3.5 cm), and retries made it worse. Hence `ROUGH_TOL`. |
+| trace, 10 cm (660012–014) | The stages advance: two reach the crease square-up. The stack pull completes on 660013 and 660014, but on 660014 vertex 10 is left standing 5–6 cm off the table. 660013's crease pull cycles approach/descend 400 steps without closing and drags the cloth 12 cm. |
+| **n = 16, `tune_id_easy`, 1 × 8, cap 1200** | **1/16** (Wilson 1–28); success 660004 in 530 steps. Stages done: rough fold 11/16, stack square-up 3/11, crease square-up 1/3. Failures: G1@1 3, M1@1 2 (rough fold); G2@2 5, M1@2 2, G1@2 1 (stack); G2@3 2 (crease). Mean fold score 0.68. |
+
+- **The bottleneck is the stack square-up.** The right arm has to pull just the top two layers (the folded flap's
+  corner) off a four-layer stack. It slips (G2, 5/11) or drags the lower layers with it (M1, 2/11).
+- **Next mechanisms, not tried yet:** a deeper or lower stage-2/3 pinch on the flap corner; the left arm (now idle)
+  anchoring the bottom layers during the pulls; a drag-only pull (jaw closed, no lift) instead of lift-and-place.

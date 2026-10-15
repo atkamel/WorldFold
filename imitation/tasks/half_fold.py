@@ -103,6 +103,9 @@ def task_stages(task="half_fold", backend="mujoco"):
         if _second() == "left_fold":
             from cloth_fold_rl.quarter_fold_env import STAGES_LEFT_FOLD
             return STAGES_LEFT_FOLD
+        if _second() == "left_fold_square":
+            from cloth_fold_rl.quarter_fold_env import STAGES_LEFT_FOLD_SQUARE
+            return STAGES_LEFT_FOLD_SQUARE
         return STAGES_FOLD_OVER_STRAIGHTEN if _straighten() else STAGES_FOLD_OVER
     raise ValueError(f"task must be one of {TASKS}, got {task!r}")
 
@@ -111,7 +114,8 @@ def _second():
     """The quarter fold's second fold on LeHome backends. "parallel" (default since 2026-10-14, user: the strip folded
     in half again along the same axis, 7/16 untuned against 0/16 for the fold-over; results.md); "fold_over" (the
     bimanual west-onto-east fold, kept for follow-on work) via WORLDFOLD_QF_SECOND=fold_over; "left_fold" (R2, user
-    2026-10-15: the square by the left arm alone, the right arm anchoring the east half)."""
+    2026-10-15: the square by the left arm alone, the right arm anchoring the east half); "left_fold_square" (that, then
+    the right arm squares the folded corners up, two more stages)."""
     import os
     return os.environ.get("WORLDFOLD_QF_SECOND", "parallel")
 
@@ -133,6 +137,9 @@ def task_grasp_corners(task="half_fold", backend="mujoco"):
         if _second() == "left_fold":
             from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS_LEFT_FOLD
             return GRASP_CORNERS_LEFT_FOLD
+        if _second() == "left_fold_square":
+            from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS_LEFT_FOLD_SQUARE
+            return GRASP_CORNERS_LEFT_FOLD_SQUARE
         return GRASP_CORNERS_FOLD_OVER_STRAIGHTEN if _straighten() else GRASP_CORNERS_FOLD_OVER
     return GRASP_CORNERS
 
@@ -140,8 +147,10 @@ def task_grasp_corners(task="half_fold", backend="mujoco"):
 def _gpu_cap(backend, task="half_fold"):
     if backend == "isaac_friction":
         if task == "quarter_fold":
+            import os
             from imitation.isaac_runtime import FRICTION_QF_MAX_STEPS
-            return FRICTION_QF_MAX_STEPS
+            # WORLDFOLD_QF_MAX_STEPS: a longer cap for the 4-stage square-up variant (R2); unset = the default
+            return int(os.environ.get("WORLDFOLD_QF_MAX_STEPS") or FRICTION_QF_MAX_STEPS)
         from imitation.isaac_runtime import FRICTION_MAX_STEPS
         return FRICTION_MAX_STEPS
     return MAX_STEPS if task == "quarter_fold" else HALF_FOLD_MAX_STEPS

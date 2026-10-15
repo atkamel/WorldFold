@@ -93,6 +93,7 @@ class Move:
     goal: int          # cloth vertex whose start position they go to
     goal_from: str = "stage"   # "stage": the goal vertex where it lies when the stage starts; "reset": at reset (Q3)
     kind: str = "carry"        # "carry"; "anchor" (R2): press the cloth down at `corners` (goal = itself), jaw open
+    tol: float = None          # placed within this of the goal (m); None = SUCCESS_DIST
 
 
 @dataclass(frozen=True)
@@ -145,6 +146,23 @@ STAGE1_LEFT_FOLD = Stage(moves=(Move("left_", (CLOTH_W_MID, CLOTH_W_MID_TOP), CL
                          checks=(((CLOTH_0, CLOTH_10), CLOTH_110), ((CLOTH_5,), CLOTH_115)))
 STAGES_LEFT_FOLD = (STAGES[0], STAGE1_LEFT_FOLD)
 GRASP_CORNERS_LEFT_FOLD = {"left_": (CLOTH_10, CLOTH_W_MID, CLOTH_W_MID_TOP), "right_": (CLOTH_120,)}
+# R2 square-up (user 2026-10-15): one mid-edge pinch lets the folded edge collapse, its corners landing 5-10 cm in
+# toward the grip (results.md R2 option 1). After the left fold settles (its own move and anchor, no square checks),
+# the right arm -- which reaches the east half straight down -- pulls the folded corner stack (0+10, now the top layers
+# over 110) onto 110, then the crease end (5) onto 115. The last stage carries the square checks for both.
+# the rough fold only has to bring the flap over: its midpoint within ROUGH_TOL (the short place alone is 3.5 cm, and
+# 3 traces landed 5.8-11.7 cm off without advancing; trace_sq1)
+ROUGH_TOL = 0.10
+STAGE1_LEFT_FOLD_ROUGH = Stage(moves=(Move("left_", (CLOTH_W_MID, CLOTH_W_MID_TOP), CLOTH_E_MID, tol=ROUGH_TOL),
+                                      STAGE1_LEFT_FOLD.moves[1]),
+                               anchors=STAGE1_LEFT_FOLD.anchors)
+STAGE_SQUARE_STACK = Stage(moves=(Move("right_", (CLOTH_0, CLOTH_10), CLOTH_110),),
+                           anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120)))
+STAGE_SQUARE_CREASE = Stage(moves=(Move("right_", (CLOTH_5,), CLOTH_115),),
+                            anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120)),
+                            checks=STAGE1_LEFT_FOLD.checks)
+STAGES_LEFT_FOLD_SQUARE = (STAGES[0], STAGE1_LEFT_FOLD_ROUGH, STAGE_SQUARE_STACK, STAGE_SQUARE_CREASE)
+GRASP_CORNERS_LEFT_FOLD_SQUARE = {"left_": GRASP_CORNERS_LEFT_FOLD["left_"], "right_": (CLOTH_120, CLOTH_0, CLOTH_10, CLOTH_5)}
 
 
 class QuarterFoldEnv(gym.Wrapper):
@@ -266,7 +284,8 @@ class QuarterFoldEnv(gym.Wrapper):
         return float(max((np.linalg.norm(a - b) for i, a in enumerate(pts) for b in pts[i + 1:]), default=0.0))
 
     def _placed(self, move):
-        return all(np.linalg.norm(self._vertex(c) - self.goal(move)) < SUCCESS_DIST for c in move.corners)
+        tol = SUCCESS_DIST if getattr(move, "tol", None) is None else move.tol
+        return all(np.linalg.norm(self._vertex(c) - self.goal(move)) < tol for c in move.corners)
 
     def _start_distance(self, move):
         return max(float(np.mean([np.linalg.norm(self._start[c] - self.goal(move)) for c in move.corners])), 1e-6)
