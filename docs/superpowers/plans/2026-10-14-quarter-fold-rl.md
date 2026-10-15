@@ -98,6 +98,12 @@ RL acts at the level of the fold, not the joint:
 - **Stretch: joint-level residual RL.** Per-step 14-D action = scripted action + a learned bounded residual,
   PPO. Closer to end-to-end, but it needs 10-100× the samples. Only if A converges early.
 
+**No BC stage.** At the level of fold moves the scripted fold already is a policy: the network outputs offsets
+from the scripted values, starting at zero, so it begins exactly at the scripted fold and PPO moves it from
+there. BC earns its place only when the starting policy is a joint-level network, which can't be written by
+hand. It comes back if a joint-level network is wanted as the final product: roll out the trained fold-move
+policy as the teacher, then the existing collect → BC → DAgger pipeline. That doesn't fit in one night.
+
 ## 6. Work order (each step has a check)
 
 | # | step | check | where it runs |
@@ -112,7 +118,22 @@ RL acts at the level of the fold, not the joint:
 Rules for the night: no goalpost moves; if the bar isn't met, the report gives the best score and video as they
 are. Jobs run detached and write one summary JSON, so polling reads a few lines.
 
-## 7. Leftover notes that bear on this
+## 7. If it doesn't work
+
+Time boxes assume a ~10 h night. Each fallback is tried in order; every switch goes into the pass log.
+
+| what fails | sign | next |
+|---|---|---|
+| no 30 cm layout reaches | layout search finds nothing | shrink the cloth to the largest size that passes (decided) |
+| the scripted second fold won't complete | under 3/10 episodes finish stage 1 after ~3 h of tuning | (1) one-arm second fold from the 15 cm edge's midpoint, the other arm pressing the cloth near the crease; (2) a wide CEM search over the fold-move parameters instead of hand tuning; (3) shrink the cloth further, still square |
+| folds complete but RL stalls above the bar | flat learning curve; the score's per-group breakdown says where the error is | (1) correction moves: after each fold, up to 2 extra pick-and-place moves where the policy picks the point and where it goes, as the expert's retries already do for corners; (2) grasp points along the edge, not only at the corners, to cut the sag; (3) CEM / CMA-ES in place of PPO if returns are too noisy for policy gradients |
+| too slow or too noisy to learn | < 1,000 episodes by midnight, or seed-to-seed spread larger than the gains | train the second fold from saved half-folded states (if the env can restore a cloth state; unchecked), more WATcloud GPUs |
+| nothing meets the bar by morning | deadline | stop and report the best score, its video and the per-group errors. The bar doesn't move without the user. Easier physics (e.g. cloth-table friction) is an option for the user to decide, since it changes the task, not the policy |
+
+Every evaluation episode is recorded as it runs. The cloth sim isn't bit-reproducible, so a passing episode
+has to be captured live; a replay could come out differently.
+
+## 8. Leftover notes that bear on this
 
 - Ruby's `quarter-fold-bc` (MuJoCo): a history-dependent phase-machine expert can't be cloned; a Markov
   (state-only) expert fixed it (expert 81%, BC+DAgger r4 61% held-out). Stage-1 stack placement was the main
