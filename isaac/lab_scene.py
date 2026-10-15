@@ -90,13 +90,14 @@ LININGS = {"gripper": ((-0.017042, 0.000205, -0.073359), (0.997564, 0.0, -0.0697
            "jaw": ((-0.001287, -0.050919, 0.018299), (0.709761, 0.696602, -0.069295, -0.078629), -1.0, 1.0)}
 
 
-def _robot(prim_path, base_pos, drive=None, gripper_drive=None, base_quat=ARM_BASE_QUAT):
+def _robot(prim_path, base_pos, drive=None, gripper_drive=None, base_quat=ARM_BASE_QUAT, home=None):
     """drive: {ImplicitActuatorCfg field: value} applied to every actuator group (the weld profile's
     MUJOCO_ARM_DRIVE); None keeps LeHome's SO101 drives. gripper_drive: the same for the gripper actuator only,
     applied after drive (a friction-grasp knob, isaac_env.FRICTION_GRASP)."""
     pos, rot = usd_root_pose(base_pos, base_quat)
     init = SO101_FOLLOWER_CFG.init_state.replace(pos=tuple(float(v) for v in pos), rot=tuple(float(v) for v in rot),
-                                                 joint_pos=HOME)
+                                                 joint_pos=HOME if home is None else
+                                                 dict(zip(ARM_JOINTS, map(float, home))) | {GRIPPER_JOINT: GRIPPER_OPEN})
     cfg = SO101_FOLLOWER_CFG.replace(prim_path=prim_path, init_state=init)
     if drive:
         cfg = cfg.replace(actuators={name: act.replace(**drive) for name, act in cfg.actuators.items()})
@@ -113,15 +114,17 @@ def _pinhole(H, W, fovy_deg):
         horizontal_aperture=aperture, vertical_aperture=aperture * H / W, clipping_range=CAMERA_CLIP)
 
 
-def _camera(image_size, prim_path="/World/main_camera", data_types=("rgb", "distance_to_image_plane")):
+def _camera(image_size, prim_path="/World/main_camera", data_types=("rgb", "distance_to_image_plane"),
+            pos=CAMERA_POS, target=CAMERA_TARGET):
     H, W = image_size
-    right, up = camera_axes(CAMERA_POS, CAMERA_TARGET)
+    right, up = camera_axes(pos, target)
     forward = np.cross(up, right)
     # "world" camera axes put +X forward; this roll makes image-up equal MuJoCo's camera up
     rot = _quat_from_matrix(np.column_stack([forward, -up, -right]))
     return TiledCameraCfg(
         prim_path=prim_path,
-        offset=TiledCameraCfg.OffsetCfg(pos=tuple(CAMERA_POS), rot=tuple(float(v) for v in rot), convention="world"),
+        offset=TiledCameraCfg.OffsetCfg(pos=tuple(float(v) for v in pos), rot=tuple(float(v) for v in rot),
+                                        convention="world"),
         data_types=list(data_types), spawn=_pinhole(H, W, CAMERA_FOVY_DEG), width=W, height=H)
 
 
@@ -155,6 +158,10 @@ def _wrist_camera(robot_path, size):
         data_types=["rgb"], spawn=_pinhole(size, size, WRIST_CAM_FOVY_DEG), width=size, height=size)
 
 
+TOP_VIEW_HEIGHT = 0.85     # m above the table: a 45 deg view spans +-0.35 m, both quarter-layout bases included
+TOP_VIEW_DY = 0.04         # the view centre sits this far north of the cloth (the right arm's base is north)
+
+
 def rig_camera_cfg(name, size, c=0, view_shift=(0.0, 0.0, 0.0)):
     """The imitation pipeline's camera rig (imitation.vision.render.CAMERAS): main + one camera per wrist, of copy c.
     view_shift slides the main / demo view (same angle) with the cloth: the friction profile's cloth sits 13.5 cm
@@ -167,6 +174,11 @@ def rig_camera_cfg(name, size, c=0, view_shift=(0.0, 0.0, 0.0)):
             pos = np.asarray(CAMERA_POS) + (COPY_OFFSETS[c] if c else 0.0) + shift
             cfg.offset = cfg.offset.replace(pos=tuple(float(v) for v in pos))
         return cfg
+    if name == "top":   # straight down over the cloth, both arm bases in view (the quarter fold's demo view)
+        c0 = np.asarray(view_shift, dtype=float) + (COPY_OFFSETS[c] if c else 0.0)
+        target = (c0[0], c0[1] + TOP_VIEW_DY, TABLE_TOP_Z)
+        return _camera((size, size), prim_path=f"{root}/rig_top", data_types=("rgb",),
+                       pos=(target[0], target[1], TABLE_TOP_Z + TOP_VIEW_HEIGHT), target=target)
     if name in ("left_wrist_cam", "right_wrist_cam"):
         return _wrist_camera(f"{root}/Robot/Left_Robot" if name.startswith("left") else f"{root}/Robot/Right_Robot",
                              size)
@@ -192,8 +204,10 @@ class SceneCfg(DirectRLEnvCfg):
 
 
 def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", arm_drive=None, n_copies=1,
-             gripper_drive=None, view_shift=(0.0, 0.0, 0.0), arm_bases=None, cloth_spacing=CLOTH_SPACING):
-    """arm_bases: {"left_" / "right_": (MJCF base position, wxyz quat)}, None for ARM_BASE_*."""
+             gripper_drive=None, view_shift=(0.0, 0.0, 0.0), arm_bases=None, cloth_spacing=CLOTH_SPACING,
+             arm_home=None):
+    """arm_bases: {"left_" / "right_": (MJCF base position, wxyz quat)}, None for ARM_BASE_*. arm_home: the 5 arm
+    joints at spawn and reset, None for HOME (all zero)."""
     if not 1 <= n_copies <= MAX_COPIES:
         raise ValueError(f"n_copies must be in 1..{MAX_COPIES}, got {n_copies}")
     if n_copies > 1 and device == "cpu":
@@ -206,9 +220,9 @@ def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", ar
     if arm_drive or gripper_drive or arm_bases:
         bases = arm_bases or {"left_": (ARM_BASE_LEFT, ARM_BASE_QUAT), "right_": (ARM_BASE_RIGHT, ARM_BASE_QUAT)}
         cfg.left_robot = _robot("/World/Robot/Left_Robot", bases["left_"][0], arm_drive, gripper_drive,
-                                bases["left_"][1])
+                                bases["left_"][1], arm_home)
         cfg.right_robot = _robot("/World/Robot/Right_Robot", bases["right_"][0], arm_drive, gripper_drive,
-                                 bases["right_"][1])
+                                 bases["right_"][1], arm_home)
     cfg.cloth_spacing = float(cloth_spacing)
     cfg.sim.device = device
     cfg.sim.use_fabric = device != "cpu"        # the GPU pipeline reads state through fabric / tensor views

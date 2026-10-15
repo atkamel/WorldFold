@@ -129,9 +129,16 @@ def quarter(seeds: str = "0,1", per_job: int = 2, video: bool = False, env_json:
     chunks = [",".join(s[i:i + per_job]) for i in range(0, len(s), per_job)]
     stamp = tag or time.strftime("%Y%m%d-%H%M%S")
     outs = [f"quarter/{stamp}/job{k}" for k in range(len(chunks))]
-    n = len(chunks)
-    for r in quarter_job.map(chunks, outs, [video] * n, [json.loads(env_json)] * n):
-        print("RESULT", r)
+    todo = list(zip(chunks, outs))
+    for attempt in range(4):        # a container on a 610-driver host refuses to start: run its chunk again
+        n = len(todo)
+        results = list(quarter_job.map([c for c, _ in todo], [o for _, o in todo], [video] * n,
+                                       [json.loads(env_json)] * n))
+        for r in results:
+            print("RESULT", r)
+        todo = [t for t, r in zip(todo, results) if r["exit"] == "unsupported_driver"]
+        if not todo:
+            break
     print(f"modal volume get worldfold-isaac quarter/{stamp} .")
 
 

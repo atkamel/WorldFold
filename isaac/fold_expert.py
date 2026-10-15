@@ -18,7 +18,8 @@ import numpy as np
 
 from isaac.half_fold_demo import (ARC_HEIGHT, ARC_WAYPOINTS, PINCH_HEIGHT, PLACE_HEIGHT, POSE_SETTLE_STEPS, SEED_Q,
                                   TRACK_TOL, WAYPOINT_TOL)
-from mujuco.cloth_params import JOINT_DELTA_SCALE, TABLE_TOP_Z
+from cloth_fold_rl.quarter_fold_expert import QuarterFoldExpert
+from mujuco.cloth_params import GRIPPER_OPEN, JOINT_DELTA_SCALE, TABLE_TOP_Z
 
 SUCCESS_DIST = 0.05          # = cloth_fold_rl.fold_env.SUCCESS_DIST (placed)
 CLOSE_DWELL = 8              # half_fold_demo SCHEDULE: ("pinch", -1.0, 8)
@@ -36,7 +37,10 @@ OVERSHOOT_FRICTION[(0, "right_")][:] = (0.013, 0.050, 0.0)
 # right (-1.3, +1.5) cm) made it worse: F2 attempts F and G, which both carried it, held 11/20 and placed 10/20 on the
 # right arm against A's 16 / 15 (results.md). The landing point is not independent of the target.
 OVERSHOOT_FRICTION_PROFILE = {key: v.copy() for key, v in OVERSHOOT_FRICTION.items()}
-OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE}
+# quarter profile: none. On its layout a corner stays where it is let go (2026-10-14 run q2, seed 3: the left corner
+# ended 4.6-5.5 cm from its goal under the friction profile's 5.2 cm overshoot); fold_rl tunes placement from here
+OVERSHOOT_QUARTER = {key: np.zeros(3) for key in OVERSHOOT_FRICTION}
+OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE, "quarter": OVERSHOOT_QUARTER}
 
 
 ORIENTATION_WEIGHT = 0.1     # = isaac.pinch.ORIENTATION_WEIGHT (not imported: isaac.pinch needs LeHome)
@@ -110,6 +114,11 @@ class IsaacArmExpert:
     # a position-mode gripper (isaac_env gripper_mode "position") closes to this jaw target (rad); None: the profile's
     # closed target (gripper_closed, +0.05 on friction), as the binary gripper does
     SQUEEZE = None
+    # IsaacQuarterFoldExpert's lift gate: an arm that has closed waits until every arm of its fold has (the two grasp
+    # points of the quarter fold's second fold are on one 13 cm edge: lifting one drags the other away)
+    lift_allowed = True
+    # a position-mode gripper opens this many rad per control step at release (None: at once); release lasts until open
+    RELEASE_RATE = None
 
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
 
@@ -292,6 +301,9 @@ class IsaacArmExpert:
         action = np.zeros(6, dtype=np.float32)
         name = self.PHASES[self.phase]
         action[5] = 1.0 if name in self.OPEN_PHASES else self._close_command()
+        if name == "release" and self.RELEASE_RATE and self.base.grasp_knobs.get("gripper_mode") == "position":
+            jaw = self.base._joint_targets[self.prefix][5]
+            action[5] = self.base.jaw_command(min(GRIPPER_OPEN, jaw + self.RELEASE_RATE))
         if self.plan is None:
             self.plan = self._make_plan()
         target = self._target(name)
@@ -397,6 +409,8 @@ class IsaacArmExpert:
                     return
                 self._next()
         elif name == "close":
+            if not self.lift_allowed:
+                return
             shut = self._jaw_shut() if self.SETTLE_LIFT else True
             if (self.phase_steps >= self.CLOSE_DWELL and shut) or self.phase_steps >= 3 * self.CLOSE_DWELL:
                 self.wp = 0
@@ -417,7 +431,8 @@ class IsaacArmExpert:
         elif name == "hold":
             self._next()
         elif name == "release":
-            if self.phase_steps >= self.OPEN_DWELL:
+            ramp = 0 if not self.RELEASE_RATE else int(np.ceil((GRIPPER_OPEN - self.base._closed_q) / self.RELEASE_RATE))
+            if self.phase_steps >= self.OPEN_DWELL + ramp:
                 self._next()
         elif name == "retreat":
             if self._arrived(TRACK_TOL) or patience:
@@ -488,3 +503,20 @@ def _apply_env_params():
 
 
 _apply_env_params()
+
+
+
+class IsaacQuarterFoldExpert(QuarterFoldExpert):
+    """QuarterFoldExpert with IsaacArmExperts, the quarter profile's overshoot table (a copy: fold_rl edits it) and a
+    lift gate: no arm of the current fold lifts until every arm of it has started closing."""
+
+    def __init__(self, env, seed=0, overshoot=None):
+        super().__init__(env, seed=seed, expert_cls=IsaacArmExpert,
+                         overshoot=overshoot or {k: v.copy() for k, v in OVERSHOOTS["quarter"].items()})
+
+    def act(self):
+        arms = self._arms().values()
+        ready = all(e.phase >= e.PHASES.index("close") for e in arms)
+        for e in arms:
+            e.lift_allowed = ready
+        return super().act()

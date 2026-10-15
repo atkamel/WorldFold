@@ -130,7 +130,12 @@ def _facing(base_xy, target_xy):
 QUARTER_ARM_BASES = {
     p: (np.array([CLOTH_CENTER[0] + x, CLOTH_CENTER[1] + y, ARM_BASE_LEFT[2]]), _facing((x, y), (0.0, 0.0)))
     for p, (x, y) in (("left_", (-0.225, -0.125)), ("right_", (0.1, 0.225)))}
+# At HOME (all zero) each arm reaches 38 cm out at 29 cm: facing the cloth from two sides the arms cross over it and
+# jam (2026-10-14 run q1, seed 1). QUARTER_HOME leans each arm back over its own base: every link within 7.2 cm of it
+# horizontally and >= 12 cm above the table (FK sweep).
+QUARTER_HOME = (0.0, -1.5, 0.87, -1.6, 0.0)
 PROFILES["quarter"] = dict(PROFILES["friction"], cloth_spacing=QUARTER_SPACING, arm_bases=QUARTER_ARM_BASES,
+                           arm_home=QUARTER_HOME,
                            friction_grasp=dict(PROFILES["friction"]["friction_grasp"], gripper_mode="position"))
 # friction grasp_active (Phase F): a closed jaw within this of its target counts as settled (track G traces: 0.14-0.21
 # rad mid-close, exactly the target once shut); the held corner rides 1-4 cm from the gripper frame during the carry
@@ -262,7 +267,8 @@ class IsaacClothFoldEnv(gym.Env):
                        device=self.sim_device, arm_drive=self._prof["arm_drive"], n_copies=n_copies,
                        gripper_drive=self.grasp_knobs.get("gripper_drive"),
                        view_shift=self._prof.get("view_shift", (0.0, 0.0, 0.0)),
-                       arm_bases=self._prof.get("arm_bases"), cloth_spacing=self.cloth_spacing)
+                       arm_bases=self._prof.get("arm_bases"), cloth_spacing=self.cloth_spacing,
+                       arm_home=self._prof.get("arm_home"))
         lab = SceneEnv(cfg, self._prof["cloth_center"], grasp=self.grasp_knobs)
         lab.weld_tau = self._prof["weld_tau"]
         lab.weld_mass = WELD_MASS
@@ -383,9 +389,9 @@ class IsaacClothFoldEnv(gym.Env):
         self._action_clipped = False
         self._domain_params = {}
 
-    @staticmethod
-    def _home():
+    def _home(self):
         q = np.zeros(6)
+        q[:5] = self._prof.get("arm_home") or 0.0
         q[5] = GRIPPER_OPEN
         return q
 
@@ -885,7 +891,7 @@ QUARTER_MAX_STEPS = 700      # two half-fold-length folds (~230 steps each) plus
 
 
 def make_quarter_fold_env(observation_mode="state", seed=None, headless=True, max_episode_steps=QUARTER_MAX_STEPS,
-                          image_size=(84, 84), profile="quarter"):
+                          image_size=(84, 84), profile="quarter", cameras=None):
     """cloth_fold_rl.quarter_fold_env.QuarterFoldEnv on the quarter profile's layout. Fold 1 as on MuJoCo; in fold 2
     the arms swap roles (isaac/layout_search.py): the left arm carries the stack (cloth_0 + cloth_10) onto cloth_110's
     start, the right arm, north of the cloth, the crease end cloth_5 onto cloth_115's."""
@@ -895,5 +901,6 @@ def make_quarter_fold_env(observation_mode="state", seed=None, headless=True, ma
                                anchors=STAGES[1].anchors))
     corners = {"left_": (CLOTH_10, CLOTH_0), "right_": (CLOTH_120, CLOTH_5)}
     base = IsaacClothFoldEnv(observation_mode=observation_mode, max_episode_steps=max_episode_steps, image_size=image_size,
-                             grasp_corners=corners, grasp_radius=GRASP_RADIUS, headless=headless, profile=profile)
+                             grasp_corners=corners, grasp_radius=GRASP_RADIUS, headless=headless, profile=profile,
+                             cameras=cameras)
     return QuarterFoldEnv(base_env=base, seed=seed, cloth_jitter=CLOTH_JITTER, stages=stages)

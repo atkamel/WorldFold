@@ -39,7 +39,7 @@ def fold2_cause(rec):
     return "timeout"
 
 
-def run(env, expert, seed, frames=None):
+def run(env, expert, seed, frames=None, trace=None):
     from cloth_fold_rl.fold_alignment import score
     from cloth_fold_rl.quarter_fold_env import CLOTH_0, CLOTH_10
     base = env.unwrapped
@@ -50,7 +50,7 @@ def run(env, expert, seed, frames=None):
         stage = env.stage
         _, _, terminated, truncated, info = env.step(expert.act())
         if frames is not None:
-            frames.append(base._render_image()[0])
+            frames.append(base.render_rig()["top"].transpose(1, 2, 0))
         phases = expert.phases()
         for k, mv in enumerate(env.stages[stage].moves):
             a = moves.setdefault(str(stage), {}).setdefault(mv.prefix, {"held": False, "held_to_place": False,
@@ -61,6 +61,15 @@ def run(env, expert, seed, frames=None):
                 a["held_to_place"] = True
             if env.stage == stage:
                 a["final_dist"] = round(float(info["move_distance"][k]), 4)
+        if trace is not None and t % 5 == 0:
+            row = {"t": t, "stage": env.stage}
+            for k, mv in enumerate(env.stages[env.stage].moves):
+                p = mv.prefix
+                row[p] = {"phase": phases[p], "grip": np.round(base.gripper_position(p), 3).tolist(),
+                          "jaw": round(float(base.joint_positions(p)[5]), 3), "held": bool(info["grasped"][p]),
+                          "carried": np.round(base.cloth_positions()[list(mv.corners)].mean(axis=0), 3).tolist(),
+                          "goal": np.round(env.goal(mv), 3).tolist()}
+            trace.append(row)
         if env.stage == 1 and fold1 is None:
             s = score(base.cloth_positions(), folds=(("y", 5),))
             fold1 = {"mean": round(s["mean"], 4), "edge_max": round(s["edge_max"], 4)}
@@ -83,17 +92,17 @@ def main():
     ap.add_argument("--profile", default="quarter")
     args = ap.parse_args()
     from isaac.isaac_env import make_quarter_fold_env
-    env = make_quarter_fold_env(observation_mode="hybrid" if args.video else "state", image_size=(320, 320),
-                                profile=args.profile)
-    import cloth_fold_rl.quarter_fold_expert as qfe
-    from isaac.fold_expert import OVERSHOOTS, IsaacArmExpert, _apply_env_params
+    env = make_quarter_fold_env(profile=args.profile, cameras={"top": 400} if args.video else None)
+    from isaac.fold_expert import IsaacQuarterFoldExpert, _apply_env_params
     _apply_env_params()
-    expert = qfe.QuarterFoldExpert(env, seed=0, expert_cls=IsaacArmExpert, overshoot=OVERSHOOTS["friction"])
+    expert = IsaacQuarterFoldExpert(env)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     for seed in (int(s) for s in args.seeds.split(",")):
         frames = [] if args.video else None
-        rec = run(env, expert, seed, frames)
+        trace = []
+        rec = run(env, expert, seed, frames, trace)
+        (out / f"trace_seed{seed}.json").write_text(json.dumps(trace))
         rec["fold2_cause"] = fold2_cause(rec)
         print("EPISODE", json.dumps(rec), flush=True)
         with open(out / "episodes.jsonl", "a") as f:
