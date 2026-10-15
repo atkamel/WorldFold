@@ -891,6 +891,7 @@ def make_half_fold_env(observation_mode="state", seed=None, headless=True):
 
 
 QUARTER_MAX_STEPS = 700      # two half-fold-length folds (~230 steps each) plus releases and settles
+QUARTER_JITTER = 0.005       # the quarter layouts pass layout_search at +-0.5 cm, not at the half fold's +-1 cm
 
 
 def make_quarter_fold_env(observation_mode="state", seed=None, headless=True, max_episode_steps=QUARTER_MAX_STEPS,
@@ -906,4 +907,4 @@ def make_quarter_fold_env(observation_mode="state", seed=None, headless=True, ma
     base = IsaacClothFoldEnv(observation_mode=observation_mode, max_episode_steps=max_episode_steps, image_size=image_size,
                              grasp_corners=corners, grasp_radius=GRASP_RADIUS, headless=headless, profile=profile,
                              cameras=cameras)
-    return QuarterFoldEnv(base_env=base, seed=seed, cloth_jitter=CLOTH_JITTER, stages=stages)
+    return QuarterFoldEnv(base_env=base, seed=seed, cloth_jitter=QUARTER_JITTER, stages=stages)

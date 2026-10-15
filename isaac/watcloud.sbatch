@@ -37,15 +37,24 @@ if ! docker image inspect $IMAGE > /dev/null 2>&1; then
     if [[ -f $IMAGE_TAR ]]; then
         docker load -i "$IMAGE_TAR"
     else
-        # no docker save: streaming the ~20 GB image out ran the job past its memory and killed it (2026-10-15,
-        # job 706908); a build takes ~10 min, so every job builds its own
         docker build -t $IMAGE -f "$REPO/isaac/Dockerfile" "$REPO/isaac"
+        # saving streams the ~20 GB image through the job's memory: with --mem=24G it was killed (job 706908)
+        if [[ ${SAVE_IMAGE:-0} == 1 ]]; then
+            mkdir -p "$(dirname "$IMAGE_TAR")"
+            docker save -o "$IMAGE_TAR" $IMAGE || { rm -f "$IMAGE_TAR"; echo "docker save failed"; }
+        fi
     fi
 fi
 
 mkdir -p "$CACHE"
 # LeHome looks for Assets/ at the git root of the working directory, which here is the mounted repo: link it to
 # the image's copy (/Assets is gitignored)
-docker run --rm --gpus all --network=host \
+# only the GPU SLURM gave this job: with --gpus all, PhysX found "no suitable CUDA GPU" (2026-10-15, jobs 706910 /
+# 706912: the job's cgroup only opens its own device)
+GPUS=all
+[[ -n ${CUDA_VISIBLE_DEVICES:-} ]] && GPUS="\"device=$CUDA_VISIBLE_DEVICES\""    # the job's own numbering (device=1 was unknown)
+echo "SLURM_JOB_GPUS=${SLURM_JOB_GPUS:-} CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-} -> --gpus $GPUS; host: $(ls /dev/nvidia* | tr '\n' ' ')"
+docker run --rm --gpus "$GPUS" $IMAGE bash -c 'ls /dev/nvidia* | tr "\n" " "; echo; "$ISAAC_PY" -c "import torch; print(\"torch cuda\", torch.cuda.is_available(), torch.cuda.device_count())"' || true
+docker run --rm --gpus "$GPUS" --network=host \
     -v "$REPO":/workspace/WorldFold -v "$CACHE":/root/.cache -w /workspace/WorldFold $IMAGE \
     bash -c 'ln -sfn /opt/lehome-challenge/Assets Assets && exec "$ISAAC_PY" -u "$@"' -- "$@"

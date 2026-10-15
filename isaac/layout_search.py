@@ -36,12 +36,15 @@ PINCH_TOL, PLACE_TOL, ARC_TOL = 0.00466, 0.006, 0.02        # reach_check's gras
 # over the +-1.5 cm shifted poses (F3 expert id_hard 94%) its pinches tilt up to 16.3 deg and its places 32.4 deg
 # (nominal 5.5 / 26). The friction pinch needs a near-vertical jaw; the README's 35 deg tilted pinch didn't hold.
 PINCH_TILT, PLACE_TILT = 16.5, 33.0
-# Above the pinch and at it, elbow_flex and wrist_flex stay at or under PINCH_FOLD: folded tighter, the jaw meets the
-# arm's own upper link (self-collision on) and the joints stop short (2026-10-15 run q4: the north arm's pinch 11 cm
-# from its base asked elbow 1.67 / wrist 1.40 and got 1.56 / 1.14). The half fold pinches at elbow -0.07, wrist 0.92.
-PINCH_FOLD = 1.3
+# Collision geometry (isaac.arm_collision, the URDF's meshes): up to the pinch the jaw keeps SELF_MIN from its own
+# base / shoulder / upper arm (2026-10-15 run q4: the north arm's planned pinch had 0.7 mm and its joints stopped
+# where 1-5 mm remained), every link but the hand keeps TABLE_MIN above the table, and the two arms keep ARM_MIN apart
+# (run q5: the left arm's forearm met the right arm standing tucked).
+SELF_MIN, TABLE_MIN, ARM_MIN = 0.008, 0.005, 0.02
+HOME_Q = (0.0, -0.2, -1.34, -1.2, 0.0)       # = isaac_env.QUARTER_HOME
+_GEOM = None
 OFFSETS = [(dx, dy) for dx in (-0.01, 0.0, 0.01) for dy in (-0.01, 0.0, 0.01)]   # cloth reset jitter, +-1 cm
-CLEARANCE = 0.06                                            # link centrelines: ~2 cm link radius each + 2 cm
+CLEARANCE = ARM_MIN
 # move: (pinch point, place point's mirror axis, jaw aim point); the place is the pinch's mirror across x = 0 or y = 0
 MOVES = {
     "A0": ((-H, H), "y", (0.0, 0.0)),
@@ -99,7 +102,10 @@ def _init(assets):
         sys.modules.update({"lehome": types.ModuleType("lehome"), "lehome.utils": types.ModuleType("lehome.utils"),
                             "lehome.utils.constant": mod})
     from isaac.pinch import PinchIK
+    from isaac.arm_collision import ArmGeometry
+    global _GEOM
     _IK = PinchIK()
+    _GEOM = ArmGeometry(str(Path(assets, "robots", "so101_new_calib.urdf")))
 
 
 def plan_move(base_xy, move):
@@ -122,7 +128,6 @@ def _follow(ik, p, q, e_above, jaw, pinch, arc, place):
     path = [q]
     q, e_pinch = ik.solve(p, pinch, jaw, q)
     tilt = math.degrees(math.acos(min(1.0, -ik.site_pose(p, q)[1][2, 2])))   # fingers off vertical at the pinch
-    fold = float(max(path[0][2], path[0][3], q[2], q[3]))                     # elbow / wrist, above and at the pinch
     path.append(q)
     arc_err = []
     for tip in arc:
@@ -132,9 +137,15 @@ def _follow(ik, p, q, e_above, jaw, pinch, arc, place):
     q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02, iters=150)
     path.append(q)
     place_tilt = math.degrees(math.acos(min(1.0, -ik.site_pose(p, path[-2])[1][2, 2])))   # at the place
-    return {"pinch": max(e_above, e_pinch), "tilt": tilt, "fold": fold, "place_tilt": place_tilt, "arc": max(arc_err[:-1]),
+    base = ik.root[p]
+    poses = [np.asarray(HOME_Q) + (np.asarray(path[0]) - HOME_Q) * k / 4 for k in range(4)] + list(path)
+    pts = [_GEOM.points(base[0], base[1], q_, jaw=1.0 if i < 6 else 0.05) for i, q_ in enumerate(poses)]
+    from isaac.arm_collision import self_clearance, table_clearance
+    # self clearance up to the pinch only: the half fold's own place end touches (0.3 mm) and it still folds 92-96%
+    return {"pinch": max(e_above, e_pinch), "tilt": tilt, "self": min(self_clearance(x) for x in pts[:6]),
+            "table": min(table_clearance(x) for x in pts), "place_tilt": place_tilt, "arc": max(arc_err[:-1]),
             "place": arc_err[-1],
-            "path": [list(map(float, x)) for x in path]}
+            "path": [list(map(float, x)) for x in poses]}
 
 
 def _job(args):
@@ -154,48 +165,33 @@ def _reachable(r):
 
 def _badness(r):
     return max(r["pinch"] / PINCH_TOL, r["tilt"] / PINCH_TILT, r["place"] / PLACE_TOL, r["place_tilt"] / PLACE_TILT,
-               r["arc"] / ARC_TOL, r["fold"] / PINCH_FOLD)
+               r["arc"] / ARC_TOL, SELF_MIN / max(r["self"], 1e-4), TABLE_MIN / max(r["table"], 1e-4))
 
 
-def arm_points(base_xy, q):
-    """World points along the arm's chain (base, every joint origin, the gripperframe site) for clearance."""
-    ik = _IK
+def _base(base_xy):
     yaw = math.atan2(-base_xy[1], -base_xy[0])
-    from isaac.isaac_env import _matrix_from_quat
-    R0, p0 = _matrix_from_quat(_yaw_quat(yaw)), np.array([base_xy[0], base_xy[1], BASE_Z])
-    T, k, pts = np.eye(4), 0, [p0.copy()]
-    from isaac.pinch import _rot
-    for origin, axis, _ in ik.chain:
-        T = T @ origin
-        if axis is not None:
-            R = np.eye(4)
-            R[:3, :3] = _rot(axis, q[k])
-            T, k = T @ R, k + 1
-        pts.append(p0 + R0 @ T[:3, 3])
-    return np.array(pts)
+    return np.array([base_xy[0], base_xy[1], BASE_Z]), _yaw_quat(yaw)
 
 
-def _seg_dist(p1, q1, p2, q2):
-    d1, d2, r = q1 - p1, q2 - p2, p1 - p2
-    a, e, f = d1 @ d1, d2 @ d2, d2 @ r
-    c, b = d1 @ r, d1 @ d2
-    denom = a * e - b * b
-    s = np.clip((b * f - c * e) / denom, 0, 1) if denom > 1e-12 else 0.0
-    t = np.clip((b * s + f) / e, 0, 1) if e > 1e-12 else 0.0
-    s = np.clip((b * t - c) / a, 0, 1) if a > 1e-12 else 0.0
-    return float(np.linalg.norm((p1 + d1 * s) - (p2 + d2 * t)))
+def arm_points(base_xy, q, jaw=1.0):
+    pos, quat = _base(base_xy)
+    return np.concatenate(list(_GEOM.points(pos, quat, q, jaw).values()))
 
 
 def clearance(base1, path1, base2, path2):
-    """Smallest distance between the two arms' chains with both paths run in lockstep (resampled to one length)."""
+    """Smallest mesh distance between the arms: both paths in lockstep (resampled to one length), and each path
+    against the other arm tucked at HOME_Q and parked at its path's end."""
+    from isaac.arm_collision import clearance as mesh_clearance
     n = max(len(path1), len(path2))
     worst = np.inf
     for i in range(n):
         a = arm_points(base1, path1[round(i * (len(path1) - 1) / (n - 1))])
         b = arm_points(base2, path2[round(i * (len(path2) - 1) / (n - 1))])
-        for j in range(1, len(a) - 1):          # skip the base -> shoulder pedestal stub
-            for k in range(1, len(b) - 1):
-                worst = min(worst, _seg_dist(a[j], a[j + 1], b[k], b[k + 1]))
+        worst = min(worst, mesh_clearance(a, b))
+    for (ba, pa), (bb, pb) in (((base1, path1), (base2, path2)), ((base2, path2), (base1, path1))):
+        for fixed in (arm_points(bb, HOME_Q), arm_points(bb, pb[-1])):
+            for q in pa[::2]:
+                worst = min(worst, mesh_clearance(arm_points(ba, q), fixed))
     return worst
 
 
