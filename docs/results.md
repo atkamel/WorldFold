@@ -2158,3 +2158,23 @@ the v0 + v10 stack, lift gate, Cartesian stage-1 approach), from the clean start
   - Between t200 and t500 the arm also passes above the right gripper, which is holding v5 at (−0.16, −0.12).
 - **The open question for R2:** is it the descent near the base (IK or reach at table height), or contact with the
   right arm? The trace can't separate the two.
+
+### R2 — fold-over grasps from the clean start (`isaac_friction`, 2026-10-15, `r2/`, `r0/expert_r2a.json`)
+
+From the R0 clean start (`WORLDFOLD_QF_START=clean`, `WORLDFOLD_QF_SECOND=fold_over`). One mechanism per attempt;
+knobs on `IsaacArmExpert`, all off by default. Probe: `isaac/r2_left_probe.py`; traces: `recovery_replay --trace-dir`.
+
+| attempt | change | evidence | result |
+|---|---|---|---|
+| probe | left arm alone, right arm at home | seeds 660000–001 | Left fails alone too, so the cause isn't interference. Its approach cruises at 0.71 m (the home height), out of top-down reach near its base (misses 1.4–5.3 cm, reachable up to about 0.52 m there). The last pose was home-seeded on another IK branch, a 2.4 rad swing. |
+| A | `APPROACH_CRUISE_MAX=0.50`, `APPROACH_CHAIN=1` | n = 16 `tune_id_easy` | **0/16**, but both arms grasp on 13/16 (left closed on 1/16 before). Failures G2@1 13, G1@1 2, M1@1 1. Trace 660001: both arms lose the cloth within 13 steps of the joint lift. |
+| B | `CART_Z_PLAN=0.008` (stage-1 arrival measured from the planned pinch height) | trace 660001 | No help. The left descent is blocked at site z 0.4407, 1.2 cm above the stack, on every retry. |
+| link probe | arm link heights over the cloth | 660001 | The right arm isn't lying on the strip (its links are 5–18 cm up). The left arm's base is at (−0.20, −0.28), **5.6 cm from the stack corner**: fold 1 puts the strip's near edge on the arms' base line. |
+| C | `STAGE1_PINCH_INSET=-0.025` (pinch 3 cm further in, away from the base) | trace 660001 | **The left arm grasps at full depth (site z 0.430) and holds through the carry**, moving the stack 18 cm east. Its stack split to 23 cm, so it took one layer (G3). The right arm still loses v5 at the lift. |
+| tilt probe | right gripper orientation, plus offline IK tilt along the west strip | 660001 | The right gripper is **65° from vertical** at its close on v5 (left 0–2°). Offline minimum tilt for the right arm: v5 51°, the stack 35°, the west edge 27–40°. Under 3° only for x ≥ −0.05, about 0.33 m from its base. The left arm reaches the whole west half at 0°. |
+
+- **Finding:** in LeHome's layout, only the left arm can pinch the west short edge top-down. A fold-over with both arms
+  on the west edge needs the right arm to grip at ≥ 35° tilt, and every such grip slipped at the lift (all attempts,
+  this and Q3 A–F). This is a reach limit of the layout, not an expert bug.
+- **Kept as knobs (default off):** `APPROACH_CRUISE_MAX`, `APPROACH_CHAIN`, `STAGE1_PINCH_INSET`, `CART_Z_PLAN`.
+  A and C fix the left arm's stage-1 grasp.

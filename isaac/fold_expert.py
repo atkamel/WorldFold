@@ -120,6 +120,22 @@ class IsaacArmExpert:
     QF0_CARRY_SPEED = None       # lift/carry joint-speed scale in stage 0
     QF0_ARC_HEIGHT = None        # carry arc peak in stage 0 (m)
     IK_RESTARTS = 6
+    # R2 (2026-10-15, clean-start probe): the stage-1 approach cruised at the start height (0.71 m from home), out of
+    # the left arm's top-down reach near its base (misses 1.4-5.3 cm; reachable up to ~0.52 m there), and its last pose
+    # was home-seeded on another IK branch (a 2.4 rad swing). None / 0 = as before.
+    APPROACH_CRUISE_MAX = None   # m: cap on the approach's cruise height (never below the above-pinch pose)
+    # R2 attempt B: from stage 1 the pinch is planned on the cloth (stack / crease) but CART_ARRIVE's "low" was measured
+    # from the table, so a descent stalled ~1 cm high on the stack counted as arrived and the jaw closed on a shallow
+    # fold (trace 660001: both arms lost the cloth within 13 steps of the lift). m > 0: from stage 1, low = the site
+    # within this of the planned pinch height. Stage 0 measured site - pinch target = 4.8 mm at a holding close.
+    CART_Z_PLAN = 0.0
+    # R2 attempt C: fold 1 leaves the strip's near edge on the arms' base line, so the v0+v10 stack lies 5.6 cm from the
+    # left arm's base (probe 2026-10-15) and a top-down pinch there stalls 1.2 cm high with the arm folded over its base.
+    # Not None: from stage 1, used in place of PINCH_INSET (the gripper site sits this far OUT from the carried point,
+    # against the jaw axis, the fingers reaching in); negative moves the pinch in toward the cloth centre, away from the
+    # base. The stack is two layers throughout, so a deeper pinch still takes both.
+    STAGE1_PINCH_INSET = None
+    APPROACH_CHAIN = 0           # 1: solve above / pinch / arc on from the approach path (kept only if within REACH_TOL)
     SCREEN_ITERS = 100
     ARC_TOL = 0.02
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
@@ -165,6 +181,10 @@ class IsaacArmExpert:
 
     def _stage(self):
         return int(getattr(self.env, "stage", 0))
+
+    def _inset(self):
+        """PINCH_INSET, or STAGE1_PINCH_INSET from stage 1 on when it is set (R2)."""
+        return self.STAGE1_PINCH_INSET if self.STAGE1_PINCH_INSET is not None and self._stage() > 0 else self.PINCH_INSET
 
     def _qf0(self, value):
         """A QF0_* knob, if this is the quarter fold's first fold and the knob is set."""
@@ -243,7 +263,7 @@ class IsaacArmExpert:
             base = np.asarray(ARM_BASE_LEFT if self.prefix == "left_" else ARM_BASE_RIGHT, dtype=float)
             jaw = np.r_[base[:2] - corner[:2], 0.0]
         jaw /= np.linalg.norm(jaw)
-        offset = -self.PINCH_INSET * jaw[:2]
+        offset = -self._inset() * jaw[:2]
         z = TABLE_TOP_Z + self.PINCH_HEIGHT
         # a knocked corner may lie on a fold, and every stage-1 point does (the stack, the crease): pinch at its height
         if self.PINCH_FOLLOW_Z or self._stage() > 0:
@@ -251,7 +271,7 @@ class IsaacArmExpert:
         pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], z])
         place = self._place_point(goal, offset, corner)
         q = list(SEED_Q[p]) if from_q is None else list(from_q)
-        plan = {"jaw": jaw, "corner": corner.copy()}
+        plan = {"jaw": jaw, "corner": corner.copy(), "pinch_tip": pinch.copy()}
         w = ORIENTATION_WEIGHT
         q0 = q
         q, e_above = self._solve(pinch + [0, 0, ABOVE], jaw, q, orientation_weight=w)
@@ -265,7 +285,11 @@ class IsaacArmExpert:
         plan["above"] = q_above
         plan["pinch"] = q
         if self._stage() > 0:
-            plan["approach_path"], plan["awp"] = self._approach_path(pinch + [0, 0, ABOVE], jaw, q_above), 0
+            path, chained = self._approach_path(pinch + [0, 0, ABOVE], jaw, q_above)
+            plan["approach_path"], plan["awp"] = path, 0
+            if chained is not None:             # APPROACH_CHAIN: above, pinch and the arc on the path's IK branch
+                plan["above"], plan["pinch"] = chained
+                q = chained[1]
         plan["arc"], plan["arc_tips"] = [], []
         start = pinch
         for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
@@ -285,6 +309,8 @@ class IsaacArmExpert:
         2026-10-14: the left arm's approach swung out to (-0.06, -0.08) and shoved the right arm off its grip)."""
         start = np.asarray(self.base.gripper_position(self.prefix), dtype=float)
         cruise = max(float(start[2]), float(above[2]))
+        if self.APPROACH_CRUISE_MAX is not None:      # R2: down to a reachable cruise height first
+            cruise = max(float(above[2]), min(cruise, float(self.APPROACH_CRUISE_MAX)))
         path = [np.array([start[0], start[1], cruise])]
         n = max(1, int(np.ceil(np.linalg.norm(above[:2] - start[:2]) / step)))
         path += [np.r_[start[:2] + (above[:2] - start[:2]) * s, cruise] for s in np.linspace(0, 1, n + 1)[1:]]
@@ -293,8 +319,16 @@ class IsaacArmExpert:
         for tip in path:
             q, _ = self._solve(tip, jaw, q, tol=self.ARC_TOL, orientation_weight=0.05)
             qs.append(q)
+        if self.APPROACH_CHAIN:
+            # R2: the above-pinch and pinch poses solved on from the path, on the branch the arm is on; the home-seeded
+            # q_above can sit on another branch (2.4 rad swing at the path's end, clean-start probe 2026-10-15)
+            q_ab, e_ab = self._solve(above, jaw, q, orientation_weight=ORIENTATION_WEIGHT)
+            q_pi, e_pi = self._solve(above - [0, 0, ABOVE], jaw, q_ab, orientation_weight=ORIENTATION_WEIGHT)
+            if max(e_ab, e_pi) <= self.REACH_TOL:
+                qs[-1] = q_ab
+                return qs, (q_ab, q_pi)
         qs[-1] = q_above
-        return qs
+        return qs, None
 
     def _on_layer(self, corner):
         """The corner lies on cloth (PUSH_Z .. 4 cm above a flat corner): settled on the other half, not in the air."""
@@ -328,7 +362,7 @@ class IsaacArmExpert:
         ik, p = self._ik, self.prefix
         goal = np.asarray(self.goal(), dtype=float)
         jaw = self.plan["jaw"] if self.plan else np.array([0.0, -1.0, 0.0])
-        offset = -self.PINCH_INSET * jaw[:2]
+        offset = -self._inset() * jaw[:2]
         place = self._place_point(goal, offset, self._corner())
         start = np.asarray(self.base.gripper_position(p), dtype=float)
         q, arc, tips = self._q(), [], []
@@ -401,9 +435,11 @@ class IsaacArmExpert:
         site = np.asarray(self.base.gripper_position(self.prefix), dtype=float)
         self.site_hist = (self.site_hist + [site])[-(self.CART_STEPS + 1):]
         corner, jaw = self._corner(), self.plan["jaw"]
-        pinch = corner[:2] - self.PINCH_INSET * jaw[:2]
+        pinch = corner[:2] - self._inset() * jaw[:2]
         near = float(np.linalg.norm(site[:2] - pinch)) < self.CART_XY
         low = site[2] - (TABLE_TOP_Z + self.PINCH_HEIGHT) < self.CART_Z
+        if self.CART_Z_PLAN and self._stage() > 0 and "pinch_tip" in self.plan:
+            low = site[2] - float(self.plan["pinch_tip"][2]) < self.CART_Z_PLAN
         still = (len(self.site_hist) > self.CART_STEPS
                  and float(np.linalg.norm(self.site_hist[-1] - self.site_hist[0])) < self.CART_STILL)
         return near and low and still
@@ -412,7 +448,7 @@ class IsaacArmExpert:
         """The gripper frame is more than ALIGN_TOL (horizontally) from the pinch point on the corner as it lies now."""
         corner = self._corner()
         jaw = self.plan["jaw"]
-        pinch = corner[:2] - self.PINCH_INSET * jaw[:2]
+        pinch = corner[:2] - self._inset() * jaw[:2]
         site = np.asarray(self.base.gripper_position(self.prefix), dtype=float)
         return float(np.linalg.norm(site[:2] - pinch)) > self.ALIGN_TOL
 
