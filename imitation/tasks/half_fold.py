@@ -194,7 +194,7 @@ def make_env(backend="mujoco", task="half_fold", **kwargs):
         kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras,
                                              profile=ISAAC_PROFILES[backend],
                                              grasp_corners=task_grasp_corners(task, backend))
-        return HalfFoldEnv(**kwargs)
+        return _diag_start(HalfFoldEnv(**kwargs), task, backend)
     raise ValueError(f"backend must be one of {BACKENDS}, got {backend!r}")
 
 
@@ -217,4 +217,14 @@ def make_env_batch(backend="isaac_weld", n=1, task="half_fold", **kwargs):
         cameras = kwargs.get("cameras") or CAMERAS
     batch = make_isaac_batch(n, kwargs["max_episode_steps"], cameras=cameras, profile=ISAAC_PROFILES[backend],
                              grasp_corners=task_grasp_corners(task, backend))
-    return batch, [HalfFoldEnv(**dict(kwargs, base_env=sub)) for sub in batch.envs]
+    return batch, [_diag_start(HalfFoldEnv(**dict(kwargs, base_env=sub)), task, backend) for sub in batch.envs]
+
+
+def _diag_start(env, task, backend):
+    """R0 diagnostic: WORLDFOLD_QF_START=clean starts the isaac_friction quarter fold at stage 1 from a perfect half
+    fold (isaac.diag_clean_fold). Off by default; the env is returned unchanged."""
+    import os
+    if os.environ.get("WORLDFOLD_QF_START", "") != "clean":
+        return env
+    from isaac.diag_clean_fold import maybe_install
+    return maybe_install(env, task, backend)

@@ -136,6 +136,7 @@ class QuarterFoldEnv(gym.Wrapper):
     """Fold in half, release, fold in half again, release. See module docstring."""
 
     stages = STAGES     # subclasses may run a prefix of the stages (see imitation.tasks.HalfFoldEnv)
+    start_hook = None   # fn(env) run at the end of reset, e.g. isaac.diag_clean_fold.clean_start (R0 diagnostic)
 
     def __init__(self, max_episode_steps=MAX_STEPS, seed=None, cloth_jitter=CLOTH_JITTER, base_env=None,
                  stages=None, carry_obs=False):
@@ -310,6 +311,8 @@ class QuarterFoldEnv(gym.Wrapper):
         self._set_goals()
         self._settle_steps = 0
         self._prev_potential = self._potential()
+        if self.start_hook is not None:     # opt-in diagnostic start (isaac.diag_clean_fold), None by default
+            self.start_hook(self)
         info = dict(info)
         info["goal_keypoints"] = self.env._goal_corners.copy()
         info["domain_parameters"] = dict(self.env._domain_params)

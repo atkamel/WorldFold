@@ -380,6 +380,20 @@ class SceneEnv(DirectRLEnv):
         return self.cloth.transform_points(local, pos.detach().cpu().numpy(), ori.detach().cpu().numpy(),
                                            self.cloth.get_world_scale().detach().cpu().numpy()).astype(np.float64)
 
+    def set_particles(self, positions, c=0):
+        """GPU pipeline: put copy c's particles at positions (its own frame, particle_positions' layout) at rest.
+        The cloth view indexes whole cloths, so the full buffer is written (as _drive_pins does)."""
+        if self.device == "cpu":
+            raise ValueError("set_particles needs the GPU pipeline")
+        cp = self.copies[c]
+        view = cp.cloth._cloth_prim_view
+        pos = view.get_world_positions(clone=True)
+        world = np.asarray(positions, dtype=np.float64) + (cp.offset if c else 0.0)
+        pos[0] = torch.as_tensor(world, dtype=pos.dtype, device=pos.device)
+        all_idx = torch.arange(pos.shape[0], device=pos.device)
+        view._physics_view.set_positions(pos, all_idx)
+        view._physics_view.set_velocities(torch.zeros_like(pos), all_idx)
+
     def reset_cloth(self, offset_xy, height, rpy_deg, c=0):
         # LeHome's soft reset puts the initial particles back at the configured pose; then move the cloth up by
         # height, along by offset_xy and tilt it, so it drops onto the table the way LeHome drops its garments

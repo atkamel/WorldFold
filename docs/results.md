@@ -2114,3 +2114,47 @@ corner (v0 / v110). The expert is the friction expert with every Q2/Q3 change; n
 - **The fast successes** finish in 178–205 steps: on the first fold's narrowed strip the crease ends are only 5–9 cm
   from the near corners.
 - **The open failure mode is slips in the second fold.** The crease end is a two-layer bend.
+
+### R0 — clean half-fold start: geometry (`isaac_friction`, 2026-10-15, `r0/clean_start.jsonl`)
+
+`WORLDFOLD_QF_START=clean` (`isaac/diag_clean_fold.py`, a temporary diagnostic with no weld). After the usual reset and
+settle, the far half's particles are written folded onto the near half: the fold keeps the cloth's length, the crease is
+a 3 mm semicircle, the top layer lies 6 mm above the bottom and every velocity is zeroed. Then 20 control steps of
+settle and the episode starts at stage 1. Measured with `isaac/fold1_summary.py` at the first step of stage 1. Tune
+seeds 660000–001, 1 env, in cm.
+
+| seed | stack spread W / E | strip width W / E (15 expected) | crease shift W / E | v0 / v110 drift |
+|---|---|---|---|---|
+| 660000 | 0.5 / 0.5 | 14.8 / 14.8 | −0.2 / −0.2 | 0.0 / 0.0 |
+| 660001 | 0.5 / 0.5 | 14.8 / 14.8 | −0.2 / −0.2 | 0.0 / 0.0 |
+
+- **The check passes:** width ≥ 14 cm and split ≤ 1 cm. The 0.5 cm spread is the layers' z gap; in xy the stack
+  corners coincide. The fold holds through the settle with no spring-back.
+- **The expected-vs-expert gap:** the expert's fold 1 gives 6.8 cm width, a 6.2 cm split and a −5.4 cm crease shift
+  (Q3 fold-1 table above).
+
+### R0 — fold-over from the clean start (`isaac_friction`, 2026-10-15, `r0/expert_clean.json`, `r0/traces/660000.json`)
+
+The fold-over expert (attempt F settings: `WORLDFOLD_QF_SECOND=fold_over`, right arm closes first on v5, left arm on
+the v0 + v10 stack, lift gate, Cartesian stage-1 approach), from the clean start above. `tune_id_easy` 660000–015,
+1 × 8 envs, 800 cap.
+
+| measure | clean start (R0) | expert fold 1 (attempt F, same seeds) |
+|---|---|---|
+| success | **0/16** (Wilson 0–19.4) | 0/16 (0–19.4) |
+| failures | G1@1 15, G2@1 1 | G2@1 15, G2@0 1 |
+| grasped at the end (left / right) | 1 / 16 | — |
+| mean final fold score | 0.53 | 0.56 |
+
+- **The read (plan R0 rule, ≤ 3/16):** a perfect fold 1 does not unlock the fold-over. Fold 2 needs its own fix (R2).
+  An accurate fold 1 (R1) stays a requirement; it isn't enough on its own.
+- **The failure is the left arm, every time.** The right arm reaches across and closes on the crease end (v5) at
+  t76 and holds it, steady within 2.5 cm, until the cap. The left arm, on 15/16 seeds, never closes on the stack.
+- **Trace, seed 660000:**
+  - The left arm spends 700 steps in `approach`. By t700 its site is 3 cm from the stack in xy and 6 cm above it.
+  - Each `descend` (t547, t781) ends 7–9 cm from the stack, at (−0.22, −0.18 / −0.22). The arm then falls back to
+    `approach`.
+  - The stack is the near-west corner at (−0.15, −0.28), close to the left arm's own base.
+  - Between t200 and t500 the arm also passes above the right gripper, which is holding v5 at (−0.16, −0.12).
+- **The open question for R2:** is it the descent near the base (IK or reach at table height), or contact with the
+  right arm? The trace can't separate the two.

@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-14 · **Branch:** `feature/isaac-imitation` · **Phase:** Q — **paused** (user, 2026-10-14: rethink the quarter-fold process); Q0 ✅ Q1 ✅
+**Updated:** 2026-10-15 · **Branch:** `feature/isaac-imitation` · **Phase:** Q rethink (R0–R3, square fold-over only); Q0 ✅ Q1 ✅ R0 ✅
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -40,6 +40,23 @@ I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expe
 rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
+
+**2026-10-15, Phase Q rethink** (user: square only, i.e. the fold-over with both arms on the same short edge; fold 1 must
+be accurate; no weld anywhere; add a reset skill and a safe-failure benchmark). Plan: the approved plan
+`ok-i-want-to-noble-fairy.md` (Claude plans folder), roadmap rows R0–R3.
+- **R0 ✅ (diagnostic):** `WORLDFOLD_QF_START=clean` (`isaac/diag_clean_fold.py`, temporary) writes a perfect half
+  fold, 14.8 cm wide with a 0.5 cm split, and starts at stage 1.
+  - The fold-over from it scored **0/16**, so fold 2 is broken on its own (results.md R0).
+  - On 15/16 seeds the right arm holds v5 while the left arm hovers over the v0+v10 stack, near its own base, and
+    every descent drifts 7–9 cm off.
+- **Next (user's call):**
+  - R1: fold-1 accuracy. The user must confirm the bar first (proposed: width ≥ 13, split ≤ 2, crease shift ≤ 2,
+    drift ≤ 2 cm).
+  - R2: the left arm's descent onto the stack, iterated from the clean start, which is cheap and fold-1 independent.
+    Its first check is IK reach at table height near the left base vs contact with the right arm.
+- **State:** nothing running.
+
+**Earlier (2026-10-14):**
 
 **2026-10-14, Phase Q PAUSED** (user: "wrap up [Q1] and pause, I want to rethink the quarter fold process").
 - **State:** nothing is running. No Isaac, training or thermal-guard processes, and no pause flag.
@@ -260,6 +277,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-15 · **R0: clean half-fold diagnostic** (`isaac/diag_clean_fold.py`, `WORLDFOLD_QF_START=clean`, `scripts/r0_clean_fold.ps1`). Start geometry 14.8 cm wide / 0.5 cm split; fold-over from it 0/16 (G1@1 15: left arm never closes on the stack). Tests: not-slow 243 passed / 5 skipped; slow 14 passed / 34 skipped; isaac 36 passed / 1 skipped · see git log
 - 2026-10-14 · **Q1 closed, Phase Q paused (user).**
   - Gripper head kept: +16 pp, p = 0.001.
   - Weighting not kept; val-loss selection rejected.
