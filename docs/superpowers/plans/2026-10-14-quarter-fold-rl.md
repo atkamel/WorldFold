@@ -2,6 +2,15 @@
 
 **Status:** proposed, waiting for the user's sign-off. Nothing below has been built.
 
+**Decisions (user, 2026-10-14):** alignment bar mean ≤ 1.0 cm, edges ≤ 1.5 cm; RL at the level of fold moves;
+the user fixes WATcloud access for the long jobs. Geometry: keep the 30 cm square cloth and search arm layouts
+first ("probably just the layout"). By hand, arms on the west and east sides of the cloth miss the second fold's
+straight-down reach by about 2 cm (the arm beside a stage-0 edge must sit within 17 cm of x = 0 to reach both
+ends of a 30 cm sideways carry, and the cloth edge is at 15 cm plus the base's footprint). The probe searches
+base poses, tilted placing (39 cm) and a one-arm second fold before any change to the cloth. If none passes,
+shrink the cloth to the largest size that does (likely 26-28 cm), still a square fold (user). Development waits
+for the user's review of this doc.
+
 **Goal (user, 2026-10-14):** an RL policy that does a two-stage quarter fold on the Isaac env with a physical
 (friction) grasp. Good enough for at least one clean recorded demo in which the cloth's edges and body line up
 near perfectly. Modal for fast iteration, WATcloud for long jobs, few tokens.
