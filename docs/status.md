@@ -50,8 +50,8 @@ Decisions: bar mean ≤ 1.0 cm / edges ≤ 1.5 cm (`cloth_fold_rl/fold_alignment
   on the proven friction layout (profile `strip`).
 - **Scripted strip fold:** completes (3 of 5 episodes), but layers end ~7 cm apart: the bottom layer slides 6-14 cm
   during each carry. Goal-following placement was tried and dropped (unstable).
-- **RL running:** WATcloud job 707333, `isaac/fold_rl.py launch --run outputs/isaac/rl/strip_r2 --workers 6 --gpus 2
-  --hours 10` (2x 3090). Version 0 = the scripted fold; placement offsets ±8 cm. Watch
+- **RL queued:** WATcloud job 707334 (est. start 19:31 cluster time, thor-slurm1), `isaac/fold_rl.py launch --run outputs/isaac/rl/strip_r2 --workers 4 --gpus 1
+  --hours 10` (1x 3090; the 2-GPU request sat pending). Version 0 = the scripted fold; placement offsets ±8 cm. Watch
   `outputs/isaac/rl/strip_r2/learner.jsonl` on WATcloud. Next: eval the best version with video
   (`fold_rl.py eval --video`).
 - **Compute:** Modal unusable for Isaac (all A10G starts on driver 610). WATcloud works after three container fixes
