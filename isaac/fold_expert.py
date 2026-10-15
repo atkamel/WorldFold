@@ -150,6 +150,7 @@ class IsaacArmExpert:
     # R2 attempt G: the left fold's flap, released at ~46 deg tilt on the goal, slid on 4 cm past it (trace 660001).
     # m: from stage 1, place this far short of the goal, back along the carry.
     STAGE1_PLACE_SHORT = 0.0
+    CLOSE_AT_ARRIVAL = 0      # 1: the close holds the joints the descend arrived with (R2 reversed layout)
     SHORT_MOVE = 0.15         # m: stage >= 1 moves shorter than this (square-up pulls) skip PLACE_SHORT, arc <= half
     STAGE1_RETREAT_TOOL = 0   # 1: from stage 1, retreat from the place back along the fingers' axis (attempt H)
     anchor = False
@@ -576,6 +577,11 @@ class IsaacArmExpert:
         patience = self.phase_steps > self.budget    # a pose pressed into the table or cloth may never get closer
         if self.CART_ARRIVE and name == "descend" and not self.push and self._cart_arrived():
             self.site_hist = []
+            if self.CLOSE_AT_ARRIVAL:
+                # hold the joints the arm arrived with: the planned pinch can be another IK branch with the same
+                # endpoint, and driving to it during the close swept the site 7 cm off the cloth (reversed layout,
+                # trace 660013)
+                self.plan["pinch"] = self._q()
             self._next()                             # close: the pads (4.3 cm) grip from here
             return
         if name == "approach" and self.plan.get("approach_path"):

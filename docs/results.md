@@ -2259,3 +2259,35 @@ lift-and-place square-up run above. Trace, seeds 660012–014, cap 1200, from th
 - **This is a layout question:**
   - Fold 1 the other way would put the strip on the far side (y −0.13 to +0.02), away from both bases.
   - Or the cloth could start about 10 cm farther from the arms.
+
+### R2 — reversed fold 1, square from a clean start (`isaac_friction`, 2026-10-15, `r2/trace_rev*.jsonl`)
+
+User decision (2026-10-15): reverse fold 1. The near half is folded onto the far half (0 → 10, 110 → 120), so the
+strip lies away from the arm bases (y −0.13 to +0.02). `WORLDFOLD_QF_SECOND=reversed_square` (`STAGES_REVERSED_SQUARE`):
+1. reversed fold 1;
+2. a rough left fold of the far strip (west-edge midpoint 7 + 3 onto 117, right-arm anchor at 95);
+3. the right arm squares the stack (10 + 0) onto 120;
+4. the right arm squares the crease end (5) onto 115, with checks.
+
+The clean start (`diag_clean_fold`) now folds in stage 0's direction.
+
+**Offline reach** (`isaac.pinch.PinchIK`, minimum tilt within 6 mm, and arc continuity):
+
+| target | result |
+|---|---|
+| Reversed fold 1 | Near-corner pinches 0–6°; carries to the far corners continuous (≤ 0.3 mm, end tilt 15°). |
+| Square-up targets for the right arm | 120 2.8°, 115 0°, the anchor 0°. |
+| Left fold to the east edge of the far strip | 10–30 mm and 60–73° (worse than before: the strip is farther from the left base). |
+| Left fold placing short | Up to x +0.12 is continuous (≤ 2 mm, 34–53°), so `STAGE1_PLACE_SHORT=0.055`. |
+| Right arm on the west edge | Still out of reach. |
+
+**Traces from the clean start** (seeds 660012–014, cap 1200, option-1 knobs plus `PLACE_SHORT` 0.055):
+
+| run | result |
+|---|---|
+| rev1 | **0/3, all `cloth_dragged` in the rough fold.** The left arm closes on the west-edge midpoint (site z 0.444, 1.7 cm above plan) and loses it within 2–8 steps of the carry. During the close the site swings 7 cm west and back, the jaw shuts on nothing and `g = 1` reads falsely. Its retry approach then drags the cloth. |
+| rev2, `CLOSE_AT_ARRIVAL=1` (the close holds the arrived joints) | Same: the site still swings 4 cm during the close. So it's not an IK-branch switch. The descent stalls 1.7 cm high (site z 0.4443 against a planned 0.4275, still) and the closing jaw shoves the arm. The likely cause is the wide-open moving jaw meeting the table or cloth at this posture. |
+
+- **Finding:** the reversed layout fixes the square-up's reach on paper (every right-arm target is near-vertical). But
+  the left arm's edge pinch on the far strip now stalls high and swings on close, so the rough fold fails first
+  (0/3). The square-up stages were not reached. Reversed fold 1 itself (stage 0 by the expert) is not built yet.

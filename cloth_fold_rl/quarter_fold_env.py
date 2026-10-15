@@ -177,6 +177,29 @@ STAGE_SQUARE_CREASE_PUSH = Stage(moves=(Move("right_", (CLOTH_5,), CLOTH_115, ki
                                  anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120)),
                                  checks=STAGE1_LEFT_FOLD.checks)
 STAGES_LEFT_FOLD_PUSH = (STAGES[0], STAGE1_LEFT_FOLD_ROUGH, STAGE_SQUARE_STACK_PUSH, STAGE_SQUARE_CREASE_PUSH)
+# R2 reversed fold 1 (user 2026-10-15): fold 1 laid the strip along the arms' base line (its near edge at y -0.28,
+# the bases at -0.284), so every second-fold target on that edge sat 4-8 cm from a base, where top-down IK stalls
+# (results.md R2). Reversed, each arm carries its NEAR corner onto its far one (0 -> 10, 110 -> 120): the strip lies on
+# the far half (y -0.13 .. +0.02), crease on the near side. Offline: both near-corner pinches 0-6 deg, both carries
+# continuous; the left fold reaches up to x +0.12 (so it places short, ~x +0.10); the right arm reaches every
+# square-up target straight down (0-3 deg).
+# Far strip: west-edge midpoint = bottom vertex 7 with near-half vertex 3 folded onto it; east goal 117; the right
+# arm's anchor at (8, 7) = 95; the corner stack is 10 + 0 (over 120), the crease end still 5 (onto 115).
+CLOTH_W_MID_R, CLOTH_W_MID_TOP_R, CLOTH_E_MID_R = N - 1 - 3, 3, (N - 1) * N + (N - 1 - 3)
+CLOTH_ANCHOR_R = (N - 3) * N + (N - 1 - 3)
+STAGE0_REVERSED = Stage(moves=(Move("left_", (CLOTH_0,), CLOTH_10), Move("right_", (CLOTH_110,), CLOTH_120)),
+                        anchors=((CLOTH_10, CLOTH_10), (CLOTH_120, CLOTH_120)))
+STAGE1_LEFT_FOLD_ROUGH_R = Stage(moves=(Move("left_", (CLOTH_W_MID_R, CLOTH_W_MID_TOP_R), CLOTH_E_MID_R, tol=ROUGH_TOL),
+                                        Move("right_", (CLOTH_ANCHOR_R,), CLOTH_ANCHOR_R, kind="anchor")),
+                                 anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120)))
+STAGE_SQUARE_STACK_R = Stage(moves=(Move("right_", (CLOTH_10, CLOTH_0), CLOTH_120),),
+                             anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120)))
+STAGE_SQUARE_CREASE_R = Stage(moves=(Move("right_", (CLOTH_5,), CLOTH_115),),
+                              anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120)),
+                              checks=(((CLOTH_10, CLOTH_0), CLOTH_120), ((CLOTH_5,), CLOTH_115)))
+STAGES_REVERSED_SQUARE = (STAGE0_REVERSED, STAGE1_LEFT_FOLD_ROUGH_R, STAGE_SQUARE_STACK_R, STAGE_SQUARE_CREASE_R)
+GRASP_CORNERS_REVERSED_SQUARE = {"left_": (CLOTH_0, CLOTH_W_MID_R, CLOTH_W_MID_TOP_R),
+                                 "right_": (CLOTH_110, CLOTH_10, CLOTH_0, CLOTH_5)}
 
 
 class QuarterFoldEnv(gym.Wrapper):

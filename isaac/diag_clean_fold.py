@@ -56,8 +56,10 @@ def clean_start(env):
     """QuarterFoldEnv.start_hook: write the perfect half fold, settle, and begin stage 1."""
     base = env.unwrapped
     cloth = base.cloth_positions()
-    from cloth_fold_rl.quarter_fold_env import CLOTH_0, CLOTH_10
-    folded = fold_half(base._particles, cloth[CLOTH_10], cloth[CLOTH_0])
+    # the flap is the side stage 0's first move carries from, folded onto its goal's side (10 onto 0 by default; 0
+    # onto 10 with fold 1 reversed, R2)
+    move = env.stages[0].moves[0]
+    folded = fold_half(base._particles, cloth[move.corners[0]], cloth[move.goal])
     base._scene_call(base.lab.set_particles, folded, base._copy)
     base._particles = folded
     for _ in range(SETTLE_STEPS):

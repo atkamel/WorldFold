@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-15 · **Branch:** `feature/isaac-imitation` · **Phase:** Q rethink (R0–R3, square fold-over only); Q0 ✅ Q1 ✅ R0 ✅ R2 ◐ (square-up 1/16; push 0/3; layout call)
+**Updated:** 2026-10-15 · **Branch:** `feature/isaac-imitation` · **Phase:** Q rethink (R0–R3, square fold-over only); Q0 ✅ Q1 ✅ R0 ✅ R2 ◐ (reversed layout: rough fold 0/3; user call)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -49,6 +49,11 @@ be accurate; no weld anywhere; add a reset skill and a safe-failure benchmark). 
   - The fold-over from it scored **0/16**, so fold 2 is broken on its own (results.md R0).
   - On 15/16 seeds the right arm holds v5 while the left arm hovers over the v0+v10 stack, near its own base, and
     every descent drifts 7–9 cm off.
+- **R2 reversed fold 1 ◐ (user 2026-10-15):** `reversed_square` (near half onto far half, the strip away from the
+  bases). Offline, every right-arm square-up target is near-vertical.
+  - From the clean start, the left arm's edge pinch on the far strip stalls 1.7 cm high and the closing jaw swings the
+    arm 4–7 cm, so the rough fold fails 0/3 (results.md R2 reversed). The square-up was not reached.
+  - Reversed fold 1 by the expert is not built yet.
 - **R2 drag-only square-up ✗ (user 2026-10-15):** `left_fold_push` (push moves, left anchor at the fold line). 0/3 in
   traces. The 110 goal is 8 cm from the right base, so the push path stalls or swings, and a closed-jaw descent hooked
   the cloth.
@@ -298,6 +303,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-15 · **R2 reversed fold 1** (`reversed_square` stages, clean start follows stage 0's direction, `CLOSE_AT_ARRIVAL` knob): offline reach good for the square-up, but from the clean start the left edge pinch stalls high and swings on close, so the rough fold is 0/3. Tests: not-slow 251 passed / 5 skipped · see git log
 - 2026-10-15 · **R2 drag-only square-up** (`left_fold_push`, `Move.kind="push"`, `set_push`, rough-fold role fix): 0/3 traces. Targets on the strip's near edge sit 4–8 cm from the arm bases (fold 1 puts the strip on the base line); a layout call goes to the user. Tests: not-slow 250 passed / 5 skipped · see git log
 - 2026-10-15 · **R2 square-up stages** (`left_fold_square`, idle-arm parking, per-move `tol`, `SHORT_MOVE`, `WORLDFOLD_QF_MAX_STEPS`): n = 16 from the clean start **1/16** (rough fold 11/16, stack square-up 3/11, crease 1/3). The bottleneck is the stack square-up (G2 / drag). Tests: not-slow 249 passed / 5 skipped · see git log
 - 2026-10-15 · **R2 option 1 (left fold + right anchor)**: `STAGES_LEFT_FOLD`, anchor moves, square `Stage.checks`, knobs D–H. The carry and anchor work, with 1 replay success (660001), but n = 16 is 0/16: the single mid-edge grip lets the corners collapse 5–10 cm inward. Next options for the user: a right-arm square-up stage, a two-grip left fold, or relaxed checks. Tests: not-slow 247 passed / 5 skipped · see git log

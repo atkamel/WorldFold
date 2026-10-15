@@ -189,3 +189,37 @@ def test_push_square_up_stages_and_timing(monkeypatch):
     assert left.release_allowed and right.release_allowed
     q.env = types.SimpleNamespace(stage=1, stages=STAGES_LEFT_FOLD_PUSH)   # the rough fold keeps its role
     assert q._stage_role() == "left_fold"
+
+
+def test_reversed_fold_puts_the_strip_away_from_the_arms(monkeypatch):
+    from cloth_fold_rl.quarter_fold_env import (CLOTH_120, CLOTH_ANCHOR_R, CLOTH_E_MID_R, CLOTH_W_MID_R,
+                                                CLOTH_W_MID_TOP_R, GRASP_CORNERS_REVERSED_SQUARE, STAGES_REVERSED_SQUARE)
+    from imitation.tasks.half_fold import task_grasp_corners, task_stages
+    from isaac.diag_clean_fold import fold_half
+    monkeypatch.setenv("WORLDFOLD_QF_SECOND", "reversed_square")
+    st = task_stages("quarter_fold", "isaac_friction")
+    assert st == STAGES_REVERSED_SQUARE and len(st) == 4
+    assert task_grasp_corners("quarter_fold", "isaac_friction") == GRASP_CORNERS_REVERSED_SQUARE
+    s0 = {m.prefix: m for m in st[0].moves}
+    assert (s0["left_"].corners, s0["left_"].goal) == ((CLOTH_0,), CLOTH_10)          # near corners onto far ones
+    for stage in st:
+        for m in stage.moves:
+            if m.kind == "carry":
+                assert set(m.corners) <= set(GRASP_CORNERS_REVERSED_SQUARE[m.prefix])
+    # geometry: fold the near half (vertex 0's side, -y, the arms' side) onto the far half
+    h = 0.15
+    xs = np.linspace(-h, h, N)
+    gx, gy = np.meshgrid(xs, xs, indexing="ij")
+    flat = np.stack([gx.ravel(), gy.ravel(), np.full(N * N, 0.424)], axis=1)
+    p = fold_half(flat, flat[s0["left_"].corners[0]], flat[s0["left_"].goal], radius=0.003)
+    assert p[:, 1].min() > -0.01                                      # the strip is the far half now
+    assert np.linalg.norm(p[CLOTH_0, :2] - p[CLOTH_10, :2]) < 1e-3     # the near corner lies on the far one
+    assert np.linalg.norm(p[CLOTH_W_MID_TOP_R, :2] - p[CLOTH_W_MID_R, :2]) < 1e-6
+    assert np.allclose(p[CLOTH_E_MID_R, :2], p[CLOTH_W_MID_R, :2] * [-1, 1])
+    a = p[CLOTH_ANCHOR_R]
+    assert 0 < a[0] < h - 0.03 and 0.03 < a[1] < h - 0.03
+    fold, stack, crease = st[1:]
+    assert {m.kind for m in fold.moves} == {"carry", "anchor"} and fold.moves[0].tol == 0.10
+    assert (stack.moves[0].corners, stack.moves[0].goal) == ((CLOTH_10, CLOTH_0), CLOTH_120)
+    assert (crease.moves[0].corners, crease.moves[0].goal) == ((CLOTH_5,), CLOTH_115)
+    assert crease.checks == (((CLOTH_10, CLOTH_0), CLOTH_120), ((CLOTH_5,), CLOTH_115))

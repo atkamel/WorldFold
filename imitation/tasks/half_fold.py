@@ -109,6 +109,9 @@ def task_stages(task="half_fold", backend="mujoco"):
         if _second() == "left_fold_push":
             from cloth_fold_rl.quarter_fold_env import STAGES_LEFT_FOLD_PUSH
             return STAGES_LEFT_FOLD_PUSH
+        if _second() == "reversed_square":
+            from cloth_fold_rl.quarter_fold_env import STAGES_REVERSED_SQUARE
+            return STAGES_REVERSED_SQUARE
         return STAGES_FOLD_OVER_STRAIGHTEN if _straighten() else STAGES_FOLD_OVER
     raise ValueError(f"task must be one of {TASKS}, got {task!r}")
 
@@ -119,7 +122,8 @@ def _second():
     bimanual west-onto-east fold, kept for follow-on work) via WORLDFOLD_QF_SECOND=fold_over; "left_fold" (R2, user
     2026-10-15: the square by the left arm alone, the right arm anchoring the east half); "left_fold_square" (that, then
     the right arm squares the folded corners up, two more stages); "left_fold_push" (the square-up as drag-only pushes
-    with the left arm anchoring at the fold line)."""
+    with the left arm anchoring at the fold line); "reversed_square" (fold 1 reversed -- near corners onto far ones, the
+    strip away from the arm bases -- then the rough left fold and the right-arm square-up)."""
     import os
     return os.environ.get("WORLDFOLD_QF_SECOND", "parallel")
 
@@ -144,6 +148,9 @@ def task_grasp_corners(task="half_fold", backend="mujoco"):
         if _second() in ("left_fold_square", "left_fold_push"):
             from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS_LEFT_FOLD_SQUARE
             return GRASP_CORNERS_LEFT_FOLD_SQUARE
+        if _second() == "reversed_square":
+            from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS_REVERSED_SQUARE
+            return GRASP_CORNERS_REVERSED_SQUARE
         return GRASP_CORNERS_FOLD_OVER_STRAIGHTEN if _straighten() else GRASP_CORNERS_FOLD_OVER
     return GRASP_CORNERS
 
