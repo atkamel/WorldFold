@@ -924,4 +924,5 @@ def make_quarter_fold_env(observation_mode="state", seed=None, headless=True, ma
                              cameras=cameras)
     env = QuarterFoldEnv(base_env=base, seed=seed, cloth_jitter=jitter, stages=stages)
     env.alignment_folds = folds
+    env.goal_follows = True        # place onto the partner corner where it is (it slides as the fold is laid on it)
     return env

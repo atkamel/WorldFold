@@ -57,6 +57,12 @@ echo "SLURM_JOB_GPUS=${SLURM_JOB_GPUS:-} CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEV
 docker run --rm --gpus "$GPUS" $IMAGE bash -c 'ls /dev/nvidia* | tr "\n" " "; echo; "$ISAAC_PY" -c "import torch; print(\"torch cuda\", torch.cuda.is_available(), torch.cuda.device_count())"' || true
 # graphics too: with docker's default (compute, utility) Kit has no Vulkan driver, and PhysX then finds "no suitable
 # CUDA GPU" even though torch sees it (job 707319)
-docker run --rm --gpus "$GPUS" -e NVIDIA_DRIVER_CAPABILITIES=all --network=host \
+# Kit's hang detector (120 s) killed 3 of 4 starts here while RTX built its first acceleration structures (kit log of
+# job 707324: "Creating scene acceleration structures" -> "Hang detected"), so it is off on WATcloud
+KIT_ARGS=${WORLDFOLD_KIT_ARGS:---/app/hangDetector/enabled=false}
+docker run --rm --gpus "$GPUS" -e NVIDIA_DRIVER_CAPABILITIES=all -e JOB=${SLURM_JOB_ID:-local} \
+    -e WORLDFOLD_KIT_ARGS="$KIT_ARGS" --network=host \
     -v "$REPO":/workspace/WorldFold -v "$CACHE":/root/.cache -w /workspace/WorldFold $IMAGE \
-    bash -c 'ln -sfn /opt/lehome-challenge/Assets Assets && exec "$ISAAC_PY" -u "$@"' -- "$@"
+    bash -c 'ln -sfn /opt/lehome-challenge/Assets Assets && "$ISAAC_PY" -u "$@"; rc=$?
+             mkdir -p outputs/watcloud/kitlogs-$JOB && cp -r /opt/lehome-challenge/.venv/lib/python3.11/site-packages/isaacsim/kit/logs/. outputs/watcloud/kitlogs-$JOB/ 2>/dev/null
+             echo "python exit $rc"; exit $rc' -- "$@"

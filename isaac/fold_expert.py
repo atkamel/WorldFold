@@ -40,9 +40,9 @@ OVERSHOOT_FRICTION_PROFILE = {key: v.copy() for key, v in OVERSHOOT_FRICTION.ite
 # quarter profile: none. On its layout a corner stays where it is let go (2026-10-14 run q2, seed 3: the left corner
 # ended 4.6-5.5 cm from its goal under the friction profile's 5.2 cm overshoot); fold_rl tunes placement from here
 OVERSHOOT_QUARTER = {key: np.zeros(3) for key in OVERSHOOT_FRICTION}
-# strip profile (the friction layout): fold 1 is the half fold with its tuned overshoot; fold 2 starts at none
-OVERSHOOT_STRIP = {key: (OVERSHOOT_FRICTION_PROFILE[key].copy() if key[0] == 0 else np.zeros(3))
-                   for key in OVERSHOOT_FRICTION}
+# strip profile (the friction layout): both folds place on the near corners, 7 cm from the bases, so fold 2 takes fold
+# 1's tuned overshoot too (with none, the arms stopped short there and the retries dragged the strip: run strip1)
+OVERSHOOT_STRIP = {(s, p): OVERSHOOT_FRICTION_PROFILE[(0, p)].copy() for s, p in OVERSHOOT_FRICTION}
 OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE, "quarter": OVERSHOOT_QUARTER,
               "quarter_s": OVERSHOOT_QUARTER, "strip": OVERSHOOT_STRIP}
 
@@ -118,6 +118,9 @@ class IsaacArmExpert:
     # a position-mode gripper (isaac_env gripper_mode "position") closes to this jaw target (rad); None: the profile's
     # closed target (gripper_closed, +0.05 on friction), as the binary gripper does
     SQUEEZE = None
+    # m > 0: past the carry's midpoint, when the goal has moved this far from where the plan put it, bend the rest of
+    # the arc onto where it is now (IsaacQuarterFoldExpert: the bottom layer slides while the top one is carried over)
+    RETARGET = 0.0
     # IsaacQuarterFoldExpert's lift gate: an arm that has closed waits until every arm of its fold has (the two grasp
     # points of the quarter fold's second fold are on one 13 cm edge: lifting one drags the other away)
     lift_allowed = True
@@ -186,7 +189,7 @@ class IsaacArmExpert:
         pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], z])
         place = self._place(goal, offset, corner)
         q = self._home_seed(pinch + [0, 0, ABOVE], jaw) if from_q is None else list(from_q)
-        plan = {"jaw": jaw, "corner": corner.copy()}
+        plan = {"jaw": jaw, "corner": corner.copy(), "goal": goal.copy()}
         w = ORIENTATION_WEIGHT
         q0 = q
         q, e_above = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q, orientation_weight=w)
@@ -218,6 +221,24 @@ class IsaacArmExpert:
         place = np.array([goal[0] + offset[0], goal[1] + offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
         place[k] = goal[k] - offset[k]
         return place
+
+    def _retarget(self):
+        """RETARGET: shift the arc's remaining tips by how far the goal has moved, blended in over them, re-solved."""
+        tips, goal0 = self.plan.get("arc_tips"), self.plan.get("goal")
+        if not self.RETARGET or not tips or goal0 is None or self.wp < len(tips) // 2:
+            return
+        delta = np.asarray(self.goal(), dtype=float) - goal0
+        delta[2] = 0.0
+        if np.linalg.norm(delta) < self.RETARGET:
+            return
+        ik, p, jaw, q = self._ik, self.prefix, self.plan["jaw"], self._q()
+        n = len(tips) - self.wp
+        for k, i in enumerate(range(self.wp, len(tips))):
+            tips[i] = tips[i] + delta * (k + 1) / n
+            q, _ = ik.solve(p, tips[i], jaw, q, orientation_weight=0.05)
+            self.plan["arc"][i] = q
+        self.plan["retreat"], _ = ik.solve(p, tips[-1] + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
+        self.plan["goal"] = goal0 + delta
 
     def _home_seed(self, tip, jaw):
         """SEED_Q on the MJCF layout; on another layout (quarter profile) the best of a pan sweep for the first pose,
@@ -286,7 +307,7 @@ class IsaacArmExpert:
             arc.append(q)
             tips.append(tip)
         plan = dict(self.plan or {"jaw": jaw})
-        plan["arc"], plan["arc_tips"] = arc, tips
+        plan["arc"], plan["arc_tips"], plan["goal"] = arc, tips, goal.copy()
         q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
         plan["retreat"] = q
         return plan
@@ -427,6 +448,7 @@ class IsaacArmExpert:
             if self._arrived(WAYPOINT_TOL) or patience:
                 self.wp = min(self.wp + 1, last)
                 self.phase_steps = 0
+                self._retarget()
             if name == "lift" and self.wp >= LIFT_WAYPOINTS:
                 self._next()
             elif name == "carry" and self.wp >= last:
@@ -520,6 +542,8 @@ class IsaacQuarterFoldExpert(QuarterFoldExpert):
         self.base_overshoot = {k: v.copy() for k, v in OVERSHOOTS[profile].items()}
         super().__init__(env, seed=seed, expert_cls=IsaacArmExpert,
                          overshoot={k: v.copy() for k, v in self.base_overshoot.items()})
+        for e in self.experts.values():
+            e.RETARGET = 0.01
 
     def act(self):
         arms = self._arms()
