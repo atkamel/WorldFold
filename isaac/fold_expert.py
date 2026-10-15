@@ -153,6 +153,11 @@ class IsaacArmExpert:
     SHORT_MOVE = 0.15         # m: stage >= 1 moves shorter than this (square-up pulls) skip PLACE_SHORT, arc <= half
     STAGE1_RETREAT_TOOL = 0   # 1: from stage 1, retreat from the place back along the fingers' axis (attempt H)
     anchor = False
+    # R2 drag-only square-up (user 2026-10-15): a push move (Move.kind == "push") rests the closed jaw on the flap just
+    # inside its corner (PUSH_BEHIND) and slides it to the goal with no lift (the PUSH_ON_LAYER path); the fingertip
+    # SQUARE_PUSH_PRESS against the corner's height (negative: into the cloth, for grip by friction).
+    push = False
+    SQUARE_PUSH_PRESS = -0.002
     APPROACH_CHAIN = 0           # 1: solve above / pinch / arc on from the approach path (kept only if within REACH_TOL)
     SCREEN_ITERS = 100
     ARC_TOL = 0.02
@@ -210,6 +215,13 @@ class IsaacArmExpert:
         action[0:5] = delta / max(1.0, float(np.max(np.abs(delta))))
         action[5] = 1.0
         return action
+
+    def set_push(self):
+        """Make this arm's move a push (see SQUARE_PUSH_PRESS): approach, descend onto the flap, slide, let go."""
+        self.push = True
+        self.PUSH_PRESS = self.SQUARE_PUSH_PRESS
+        self.PHASES = ("approach", "descend", "carry", "place", "hold", "release", "retreat", "done")
+        self.reset()
 
     def set_anchor(self):
         """Make this arm's move an anchor (see ANCHOR_PRESS_DZ): no close, lift or carry."""
@@ -294,6 +306,8 @@ class IsaacArmExpert:
 
     # ---- planning (half_fold_demo.plan, per arm) ---------------------------
     def _make_plan(self, from_q=None):
+        if self.push:
+            return self._square_push_plan()
         ik, p = self._ik, self.prefix
         cloth = self.base.cloth_positions()
         center = cloth.mean(axis=0)
@@ -402,6 +416,19 @@ class IsaacArmExpert:
         dz = float(corner[2]) - TABLE_TOP_Z - CORNER_REST_DZ
         return self.PUSH_Z < dz < 0.04
 
+    def _square_push_plan(self):
+        """A push move's plan: _push_plan's path split into above / onto-the-flap (approach, descend) and the slide
+        (carry, place), with a Cartesian approach from where the gripper is (stage >= 1)."""
+        corner, goal = self._corner(), np.asarray(self.goal(), dtype=float)
+        self.plan = None          # _push_plan merges into self.plan and takes its jaw: start fresh
+        plan = self._push_plan(corner, goal)
+        plan["above"], plan["pinch"] = plan["arc"][0], plan["arc"][1]
+        plan["pinch_tip"], plan["corner"] = plan["arc_tips"][1], corner.copy()
+        plan["arc"], plan["arc_tips"] = plan["arc"][2:], plan["arc_tips"][2:]
+        plan["approach_path"], _ = self._approach_path(plan["pinch_tip"] + [0, 0, ABOVE], plan["jaw"], plan["above"])
+        plan["awp"] = 0
+        return plan
+
     def _push_plan(self, corner, goal):
         """Waypoints for a push: above the start, down onto the cloth behind the corner, then a straight slide at the
         corner's height to the goal (the place pose's xy), and a retreat above the goal."""
@@ -468,6 +495,8 @@ class IsaacArmExpert:
             return action          # right gripper (trace 2026-10-14). No plan yet: it is made when the turn comes
         name = self.PHASES[self.phase]
         action[5] = 1.0 if (name in self.OPEN_PHASES or self.anchor) else -1.0
+        if self.push:              # the closed jaw is the pusher; it opens only to let go
+            action[5] = 1.0 if name in ("release", "retreat", "done") else -1.0
         if self.plan is None:
             self.plan = self._make_plan()
         target = self._target(name)
@@ -545,7 +574,7 @@ class IsaacArmExpert:
                 self.plan = self._make_plan(from_q=self._q())
                 self.phase_steps = 0
         patience = self.phase_steps > self.budget    # a pose pressed into the table or cloth may never get closer
-        if self.CART_ARRIVE and name == "descend" and self._cart_arrived():
+        if self.CART_ARRIVE and name == "descend" and not self.push and self._cart_arrived():
             self.site_hist = []
             self._next()                             # close: the pads (4.3 cm) grip from here
             return
@@ -575,7 +604,8 @@ class IsaacArmExpert:
                     self.phase_steps = 0
                     self.q_target = None
                     return
-                elif self.ALIGN_TOL and self.align_tries < self.ALIGN_TRIES and self._misaligned():
+                elif (self.ALIGN_TOL and not self.push and self.align_tries < self.ALIGN_TRIES
+                      and self._misaligned()):
                     self.align_tries += 1
                     self.plan = self._make_plan(from_q=self._q())
                     self.phase_steps = 0

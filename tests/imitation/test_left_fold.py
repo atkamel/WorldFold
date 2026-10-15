@@ -145,3 +145,47 @@ def test_one_arm_stage_parks_the_idle_arm():
     act = q.act()
     assert act.shape == (12,) and np.all(act[:6] == -0.25) and np.all(act[6:] == 0.5)
     assert q.phases() == {"left_": "idle", "right_": "approach"}
+
+
+def test_push_square_up_stages_and_timing(monkeypatch):
+    from cloth_fold_rl.quarter_fold_env import CLOTH_FOLD_MID, STAGE1_LEFT_FOLD, STAGES_LEFT_FOLD_PUSH
+    from cloth_fold_rl.quarter_fold_expert import QuarterFoldExpert
+    from imitation.tasks.half_fold import task_stages
+    monkeypatch.setenv("WORLDFOLD_QF_SECOND", "left_fold_push")
+    st = task_stages("quarter_fold", "isaac_friction")
+    assert st == STAGES_LEFT_FOLD_PUSH and len(st) == 4
+    for stage, (pts, goal) in zip(st[2:], (((CLOTH_0, CLOTH_10), CLOTH_110), ((CLOTH_5,), CLOTH_115))):
+        moves = {m.prefix: m for m in stage.moves}
+        assert (moves["right_"].kind, moves["right_"].corners, moves["right_"].goal) == ("push", pts, goal)
+        assert (moves["left_"].kind, moves["left_"].corners) == ("anchor", (CLOTH_FOLD_MID,))
+    assert st[3].checks == STAGE1_LEFT_FOLD.checks
+
+    push_ph = ("approach", "descend", "carry", "place", "hold", "release", "retreat", "done")
+    anchor_ph = ("approach", "descend", "hold", "release", "retreat", "park", "done")
+
+    class Arm:
+        RELEASE_PHASES = ("release", "retreat", "done")
+
+        def __init__(self, phases, phase, anchor=False, push=False):
+            self.PHASES, self.anchor, self.push = phases, anchor, push
+            self.phase, self.waiting, self.release_allowed, self.lift_allowed = phases.index(phase), False, False, True
+
+    q = QuarterFoldExpert.__new__(QuarterFoldExpert)
+    q.env = types.SimpleNamespace(stage=2, stages=STAGES_LEFT_FOLD_PUSH)
+    left, right = Arm(anchor_ph, "descend", anchor=True), Arm(push_ph, "approach", push=True)
+    q.experts = {(2, "left_"): left, (2, "right_"): right}
+    q.turn_done = set()
+    assert q._stage_role() == "square_push"
+    q._update_sequence()
+    assert right.waiting and not left.waiting             # the anchor presses before the push starts
+    left.phase = anchor_ph.index("hold")
+    q._update_sequence()
+    assert not right.waiting
+    right.phase = push_ph.index("carry")
+    q._update_release_gate()
+    assert not left.release_allowed                        # held down through the slide
+    right.phase = push_ph.index("hold")
+    q._update_release_gate()
+    assert left.release_allowed and right.release_allowed
+    q.env = types.SimpleNamespace(stage=1, stages=STAGES_LEFT_FOLD_PUSH)   # the rough fold keeps its role
+    assert q._stage_role() == "left_fold"

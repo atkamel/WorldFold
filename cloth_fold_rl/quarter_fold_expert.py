@@ -53,7 +53,8 @@ class QuarterFoldExpert:
     # Only for per-arm experts with a `waiting` flag (isaac.fold_expert.IsaacArmExpert); MuJoCo's FoldExpert and
     # stage 0 are unchanged.
     # R2 left_fold: the right arm presses its anchor first, then the left arm approaches the west edge.
-    SEQUENCE = {"fold_over": ("right_", "left_"), "left_fold": ("right_", "left_")}  # keyed by stage role (_stage_role)
+    SEQUENCE = {"fold_over": ("right_", "left_"), "left_fold": ("right_", "left_"),
+                "square_push": ("left_", "right_")}  # keyed by stage role (_stage_role); the anchor presses first
     ANCHOR_RELEASE_PHASE = "carry"     # the carrying arms' phase at which an anchor lifts off (R2 left_fold)
 
     def __init__(self, env, seed=0, expert_cls=None, overshoot=None):
@@ -78,6 +79,8 @@ class QuarterFoldExpert:
                                                             raw_vertex=True)
                 if getattr(move, "kind", "carry") == "anchor":
                     self.experts[(s, move.prefix)].set_anchor()     # Isaac per-arm experts only (R2)
+                elif getattr(move, "kind", "carry") == "push":
+                    self.experts[(s, move.prefix)].set_push()
         self.reset()
 
     def reset(self):
@@ -127,10 +130,13 @@ class QuarterFoldExpert:
     def _stage_role(self):
         """"fold_over" for the Isaac quarter fold's second fold (whatever its index), else the stage index."""
         try:
-            from cloth_fold_rl.quarter_fold_env import STAGE1_FOLD_OVER, STAGE1_LEFT_FOLD
+            from cloth_fold_rl.quarter_fold_env import STAGE1_FOLD_OVER
             if self.env.stages[self.env.stage] == STAGE1_FOLD_OVER:
                 return "fold_over"
-            if self.env.stages[self.env.stage] == STAGE1_LEFT_FOLD:
+            kinds = {getattr(m, "kind", "carry") for m in self.env.stages[self.env.stage].moves}
+            if "push" in kinds:
+                return "square_push"
+            if kinds == {"carry", "anchor"}:      # the left fold, exact or rough (STAGE1_LEFT_FOLD[_ROUGH])
                 return "left_fold"
         except (AttributeError, IndexError, TypeError):
             pass
@@ -180,7 +186,9 @@ class QuarterFoldExpert:
                 e.release_allowed = True
         # R2: an anchor lifts off once every carrying arm has lifted its point and starts the carry, so the anchor arm
         # is gone before the carry crosses the east half (its links reach over it; trace 660001, attempt E)
-        if anchors and all(e.phase >= e.PHASES.index(self.ANCHOR_RELEASE_PHASE) for e in carry.values()):
+        # (a push keeps its anchor down until the slide is done: the anchor holds the layers it slides over)
+        if anchors and all(e.phase >= e.PHASES.index("hold" if getattr(e, "push", False) else self.ANCHOR_RELEASE_PHASE)
+                           for e in carry.values()):
             for e in anchors:
                 e.release_allowed = True
 

@@ -92,7 +92,8 @@ class Move:
     corners: tuple     # cloth vertices it carries (reached for at their mean position)
     goal: int          # cloth vertex whose start position they go to
     goal_from: str = "stage"   # "stage": the goal vertex where it lies when the stage starts; "reset": at reset (Q3)
-    kind: str = "carry"        # "carry"; "anchor" (R2): press the cloth down at `corners` (goal = itself), jaw open
+    kind: str = "carry"        # "carry"; "anchor" (R2): press the cloth down at `corners` (goal = itself), jaw open;
+                               # "push" (R2): slide `corners` to the goal under the closed jaw, no lift
     tol: float = None          # placed within this of the goal (m); None = SUCCESS_DIST
 
 
@@ -163,6 +164,19 @@ STAGE_SQUARE_CREASE = Stage(moves=(Move("right_", (CLOTH_5,), CLOTH_115),),
                             checks=STAGE1_LEFT_FOLD.checks)
 STAGES_LEFT_FOLD_SQUARE = (STAGES[0], STAGE1_LEFT_FOLD_ROUGH, STAGE_SQUARE_STACK, STAGE_SQUARE_CREASE)
 GRASP_CORNERS_LEFT_FOLD_SQUARE = {"left_": GRASP_CORNERS_LEFT_FOLD["left_"], "right_": (CLOTH_120, CLOTH_0, CLOTH_10, CLOTH_5)}
+# R2 drag-only square-up (user 2026-10-15): lift-and-place squared the stack up on 3/11 (slips, or the lower layers
+# dragged along; results.md). Instead the right arm presses on the flap just inside its corner with the closed jaw and
+# slides it to the goal, no lift, while the idle left arm presses all four layers down at the fold line's middle
+# (CLOTH_FOLD_MID, x 0): held there, the flap is stretched out toward its corner instead of the stack sliding.
+CLOTH_FOLD_MID = (N // 2) * N + 2
+STAGE_SQUARE_STACK_PUSH = Stage(moves=(Move("right_", (CLOTH_0, CLOTH_10), CLOTH_110, kind="push"),
+                                       Move("left_", (CLOTH_FOLD_MID,), CLOTH_FOLD_MID, kind="anchor")),
+                                anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120)))
+STAGE_SQUARE_CREASE_PUSH = Stage(moves=(Move("right_", (CLOTH_5,), CLOTH_115, kind="push"),
+                                        Move("left_", (CLOTH_FOLD_MID,), CLOTH_FOLD_MID, kind="anchor")),
+                                 anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120)),
+                                 checks=STAGE1_LEFT_FOLD.checks)
+STAGES_LEFT_FOLD_PUSH = (STAGES[0], STAGE1_LEFT_FOLD_ROUGH, STAGE_SQUARE_STACK_PUSH, STAGE_SQUARE_CREASE_PUSH)
 
 
 class QuarterFoldEnv(gym.Wrapper):

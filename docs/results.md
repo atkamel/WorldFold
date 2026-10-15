@@ -2234,3 +2234,28 @@ Expert knobs as in option 1 (A + E–H). From the clean start.
   corner) off a four-layer stack. It slips (G2, 5/11) or drags the lower layers with it (M1, 2/11).
 - **Next mechanisms, not tried yet:** a deeper or lower stage-2/3 pinch on the flap corner; the left arm (now idle)
   anchoring the bottom layers during the pulls; a drag-only pull (jaw closed, no lift) instead of lift-and-place.
+
+### R2 — drag-only square-up (`isaac_friction`, 2026-10-15, `r2/trace_push1.jsonl`, `r2/traces_push1/`)
+
+User decision (2026-10-15): square up by pushing instead of lift-and-place. The right arm rests its closed jaw on the
+flap just inside the corner and slides it to the goal (`Move.kind="push"`, `IsaacArmExpert.set_push`, the
+`_push_plan` path, fingertip `SQUARE_PUSH_PRESS` = −2 mm). Meanwhile the idle left arm presses all four layers at the
+fold line's middle (anchor at vertex 57) until the push is done. `WORLDFOLD_QF_SECOND=left_fold_push`. Also fixed: the
+rough fold now gets the `left_fold` role by its move kinds, so its anchor-first sequence applies. It did not in the
+lift-and-place square-up run above. Trace, seeds 660012–014, cap 1200, from the clean start.
+
+| seed | what happened |
+|---|---|
+| 660012 | Stack push stage: the right arm's descent with the jaw closed hooked the cloth (g = 1 before any slide) and dragged it 4 → 12 cm. The cycle then repeated. |
+| 660013 | The flap corner lay 5 cm east of its goal (x 0.20). The push from outside the corner was solved next to the right base (goal 110 is 8 cm from it): descents timed out and re-approached for 450 steps. During the slide the site moved east (0.213 → 0.248) and the corner did not move (d 9.4 cm at the end). |
+| 660014 | Never left the rough fold (its own move 8.8 cm off). |
+
+- **0/3; the n = 16 was not run.**
+- **The common cause, R0 to here:** fold 1 lays the strip along the arms' base line (its near edge at y ≈ −0.28, the
+  bases at y −0.284). Every target on that edge sits 4–8 cm from a base:
+  - the left arm's stack pinch (R2 A–C);
+  - the right arm's 110 goal (this run; and the lift-and-place stack square-up, 3/11);
+  - top-down IK there stalls or swings the arm.
+- **This is a layout question:**
+  - Fold 1 the other way would put the strip on the far side (y −0.13 to +0.02), away from both bases.
+  - Or the cloth could start about 10 cm farther from the arms.

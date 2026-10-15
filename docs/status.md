@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-15 · **Branch:** `feature/isaac-imitation` · **Phase:** Q rethink (R0–R3, square fold-over only); Q0 ✅ Q1 ✅ R0 ✅ R2 ◐ (left fold + square-up: 1/16)
+**Updated:** 2026-10-15 · **Branch:** `feature/isaac-imitation` · **Phase:** Q rethink (R0–R3, square fold-over only); Q0 ✅ Q1 ✅ R0 ✅ R2 ◐ (square-up 1/16; push 0/3; layout call)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -49,6 +49,11 @@ be accurate; no weld anywhere; add a reset skill and a safe-failure benchmark). 
   - The fold-over from it scored **0/16**, so fold 2 is broken on its own (results.md R0).
   - On 15/16 seeds the right arm holds v5 while the left arm hovers over the v0+v10 stack, near its own base, and
     every descent drifts 7–9 cm off.
+- **R2 drag-only square-up ✗ (user 2026-10-15):** `left_fold_push` (push moves, left anchor at the fold line). 0/3 in
+  traces. The 110 goal is 8 cm from the right base, so the push path stalls or swings, and a closed-jaw descent hooked
+  the cloth.
+  - Every R2 failure traces to fold 1 laying the strip on the arms' base line (results.md R2 drag-only).
+  - Waiting on the user's layout call: fold 1 the other way, or the cloth started farther from the arms.
 - **R2 square-up ◐ (user 2026-10-15):** `WORLDFOLD_QF_SECOND=left_fold_square` runs the rough left fold, then the right
   arm pulls the corner stack onto 110 and the crease end onto 115. From the clean start, n = 16: **1/16** (Wilson
   1–28).
@@ -293,6 +298,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-15 · **R2 drag-only square-up** (`left_fold_push`, `Move.kind="push"`, `set_push`, rough-fold role fix): 0/3 traces. Targets on the strip's near edge sit 4–8 cm from the arm bases (fold 1 puts the strip on the base line); a layout call goes to the user. Tests: not-slow 250 passed / 5 skipped · see git log
 - 2026-10-15 · **R2 square-up stages** (`left_fold_square`, idle-arm parking, per-move `tol`, `SHORT_MOVE`, `WORLDFOLD_QF_MAX_STEPS`): n = 16 from the clean start **1/16** (rough fold 11/16, stack square-up 3/11, crease 1/3). The bottleneck is the stack square-up (G2 / drag). Tests: not-slow 249 passed / 5 skipped · see git log
 - 2026-10-15 · **R2 option 1 (left fold + right anchor)**: `STAGES_LEFT_FOLD`, anchor moves, square `Stage.checks`, knobs D–H. The carry and anchor work, with 1 replay success (660001), but n = 16 is 0/16: the single mid-edge grip lets the corners collapse 5–10 cm inward. Next options for the user: a right-arm square-up stage, a two-grip left fold, or relaxed checks. Tests: not-slow 247 passed / 5 skipped · see git log
 - 2026-10-15 · **R2 attempts A–C** from the clean start: the left arm's stage-1 grasp is fixed (cruise cap + chained IK + inward pinch: both arms grasp 13/16, left holds through the carry). The right arm's top-down reach ends ~0.33 m from its base (offline: ≥ 35° tilt anywhere on the west edge), so a two-arm west-edge fold-over is a layout limit; waiting on the user's task call. Tests: not-slow 243 passed / 5 skipped · see git log
