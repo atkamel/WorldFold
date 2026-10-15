@@ -92,12 +92,14 @@ class Move:
     corners: tuple     # cloth vertices it carries (reached for at their mean position)
     goal: int          # cloth vertex whose start position they go to
     goal_from: str = "stage"   # "stage": the goal vertex where it lies when the stage starts; "reset": at reset (Q3)
+    kind: str = "carry"        # "carry"; "anchor" (R2): press the cloth down at `corners` (goal = itself), jaw open
 
 
 @dataclass(frozen=True)
 class Stage:
     moves: tuple
     anchors: tuple     # (vertex, reference vertex): vertex must stay within DRAG_LIMIT of the reference's start
+    checks: tuple = ()  # (vertices, goal vertex): their mean must also lie within SUCCESS_DIST of the goal's stage start
 
 
 STAGES = (
@@ -130,6 +132,19 @@ STAGES_PARALLEL = (STAGES[0], STAGE1_PARALLEL)
 GRASP_CORNERS_PARALLEL = {"left_": (CLOTH_10, CLOTH_5), "right_": (CLOTH_120, CLOTH_115)}
 GRASP_CORNERS_FOLD_OVER_STRAIGHTEN = {"left_": (CLOTH_10, CLOTH_5, CLOTH_0), "right_": (CLOTH_120, CLOTH_115, CLOTH_5)}
 GRASP_CORNERS_FOLD_OVER = {"left_": (CLOTH_10, CLOTH_0), "right_": (CLOTH_120, CLOTH_5)}
+# R2 (2026-10-15, user: option 1): the square's second fold by the left arm alone. Only the left arm pinches the west
+# short edge top-down (the right arm's minimum tilt there is >= 35 deg and every such grip slipped at the lift;
+# results.md R2). The left arm carries the west edge's midpoint, both layers (bottom vertex 3, top vertex 7 lies on
+# it), onto the east edge's (113); the right arm presses the east half down at vertex 90 (x +0.09) with its jaw open
+# and lifts off before the flap lands. Success also needs the west corners on the east ones (a square, not a sag).
+CLOTH_W_MID, CLOTH_W_MID_TOP, CLOTH_E_MID = 3, N - 1 - 3, (N - 1) * N + 3
+CLOTH_ANCHOR = (N - 3) * N + 2
+STAGE1_LEFT_FOLD = Stage(moves=(Move("left_", (CLOTH_W_MID, CLOTH_W_MID_TOP), CLOTH_E_MID),
+                                Move("right_", (CLOTH_ANCHOR,), CLOTH_ANCHOR, kind="anchor")),
+                         anchors=((CLOTH_110, CLOTH_110), (CLOTH_120, CLOTH_120)),
+                         checks=(((CLOTH_0, CLOTH_10), CLOTH_110), ((CLOTH_5,), CLOTH_115)))
+STAGES_LEFT_FOLD = (STAGES[0], STAGE1_LEFT_FOLD)
+GRASP_CORNERS_LEFT_FOLD = {"left_": (CLOTH_10, CLOTH_W_MID, CLOTH_W_MID_TOP), "right_": (CLOTH_120,)}
 
 
 class QuarterFoldEnv(gym.Wrapper):
@@ -287,8 +302,14 @@ class QuarterFoldEnv(gym.Wrapper):
     def _potential(self):
         return sum(self._move_potential(m) for m in self.stages[self.stage].moves)
 
+    def _check_met(self, vertices, goal):
+        return float(np.linalg.norm(np.mean([self._vertex(v) for v in vertices], axis=0)
+                                    - self._stage_start[goal])) < SUCCESS_DIST
+
     def _stage_settled(self):
-        return all(not self._grasped(m.prefix) and self._placed(m) for m in self.stages[self.stage].moves)
+        stage = self.stages[self.stage]
+        return (all(not self._grasped(m.prefix) and self._placed(m) for m in stage.moves)
+                and all(self._check_met(v, g) for v, g in stage.checks))
 
     # ---- gym API ----------------------------------------------------------
 

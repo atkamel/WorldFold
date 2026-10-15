@@ -2178,3 +2178,32 @@ knobs on `IsaacArmExpert`, all off by default. Probe: `isaac/r2_left_probe.py`; 
   this and Q3 A–F). This is a reach limit of the layout, not an expert bug.
 - **Kept as knobs (default off):** `APPROACH_CRUISE_MAX`, `APPROACH_CHAIN`, `STAGE1_PINCH_INSET`, `CART_Z_PLAN`.
   A and C fix the left arm's stage-1 grasp.
+
+### R2 — option 1: the left arm folds, the right arm anchors (`isaac_friction`, 2026-10-15, `r2/traces_lf*`, `r0/expert_lf_h.json`)
+
+User decision (2026-10-15): the square's second fold by the left arm alone, carrying the west edge's midpoint (both
+layers, vertices 3 + 7) onto the east edge's (113). The right arm presses the east half down (vertex 90) with its jaw
+open and lifts off before the carry crosses. `WORLDFOLD_QF_SECOND=left_fold` (`STAGES_LEFT_FOLD`). The stage also has
+square checks: the west corners' mean (0 + 10) within 5 cm of 110, and 5 within 5 cm of 115. From the R0 clean
+start; traces on 660001 unless noted.
+
+| attempt | change (`IsaacArmExpert` knob unless noted) | what the trace showed |
+|---|---|---|
+| LF1 | stage + anchor, A + C knobs (inset −2.5 cm) | The anchor held (drift 0.5 cm). The left pinch took one layer and lost it mid-carry; the anchor's lift-off dragged the cloth 4 cm. |
+| D | `STAGE1_PINCH_INSET=-0.05`, `STAGE1_ARC_HEIGHT=0.08` | The free 5 cm of edge trails instead of flipping (point moved 8.6 cm, gripper 17 cm). Inset rejected. |
+| (offline) | arc IK, west pinch → east place | At orientation weight 0.05 no single branch covers it (37 mm off at the end, or 14–31 cm off at the start). At 0.01 one does (worst 1–2 mm), easing to 40–46° tilt at the place. |
+| E | `STAGE1_ARC_ORIENT_W=0.01`, peak 0.08 | The carry ran into the anchor arm's links at x +0.04 (they reach over the east half to its base), and the jaw shut on nothing. |
+| F | default edge pinch; anchor lifts off at the left arm's `carry` (`QuarterFoldExpert.ANCHOR_RELEASE_PHASE`) and parks home | **The left arm carried the midpoint all the way** (grip held t323 to release, point at x 0.1585 vs goal 0.157, layers within 2 cm). The anchor's joint-space move home swept low across the strip and dragged it 10 cm. |
+| F′ | the anchor goes straight up `ANCHOR_LIFT=0.12` first, then parks | Drift stays ≤ 3 cm through the carry. After release the flap slid 4 cm on past the goal. |
+| G | `STAGE1_PLACE_SHORT=0.035` | 660000: the point landed short as intended, then rose with the straight-up retreat (fingers at ~45° tilt) and slid 5 cm on. |
+| H | `STAGE1_RETREAT_TOOL=1` (retreat back along the fingers' axis) | **660001: first success, 588 steps**, all square checks met. 660000: the jaw opening flung the flap 4 cm; 660002: 5.5 cm off. |
+| H, n = 16 | `tune_id_easy`, 1 × 8, 800 cap | **0/16** (Wilson 0–19.4); mean fold score 0.88 (0.70–0.95), every episode truncated. "G1 16" is a labelling artefact: the anchor arm never closes by design. |
+| why | final square-check vectors (replay, seeds 660012–013, short 0.035 and 0) | **The edge collapses toward the single grip.** The corner stack (0 + 10) lands 5.1–9.5 cm toward the crease (+y) and the crease end (5) 6.2–6.9 cm toward the near edge (−y). The x errors are small (≤ 4.6 cm, ≤ 2 cm for the crease end in 3 of 4). The midpoint lands within 3–5.4 cm. |
+
+- **Finding:** the left arm and the anchor now do their parts. Grip, carry and lift-off all hold, and the carried
+  midpoint lands on target. But one pinch on a 15 cm edge lets the edge hang from a point, and its corners swing
+  in by 5–10 cm. The square checks (5 cm) fail on every seed except 660001 in one replay.
+- **Not the jaw:** `isaac/pinch.py` closes the jaw along `jaw_dir`, across the edge already. Rotating it 90° tilts the
+  pinch 54° (offline).
+- **Kept as knobs (default off):** `STAGE1_ARC_HEIGHT`, `STAGE1_ARC_ORIENT_W`, `STAGE1_PLACE_SHORT`,
+  `STAGE1_RETREAT_TOOL`; the anchor mode (`Move.kind="anchor"`, `ANCHOR_PRESS_DZ`, `ANCHOR_LIFT`) and `Stage.checks`.

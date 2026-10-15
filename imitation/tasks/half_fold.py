@@ -100,6 +100,9 @@ def task_stages(task="half_fold", backend="mujoco"):
         if _second() == "parallel":
             from cloth_fold_rl.quarter_fold_env import STAGES_PARALLEL
             return STAGES_PARALLEL
+        if _second() == "left_fold":
+            from cloth_fold_rl.quarter_fold_env import STAGES_LEFT_FOLD
+            return STAGES_LEFT_FOLD
         return STAGES_FOLD_OVER_STRAIGHTEN if _straighten() else STAGES_FOLD_OVER
     raise ValueError(f"task must be one of {TASKS}, got {task!r}")
 
@@ -107,7 +110,8 @@ def task_stages(task="half_fold", backend="mujoco"):
 def _second():
     """The quarter fold's second fold on LeHome backends. "parallel" (default since 2026-10-14, user: the strip folded
     in half again along the same axis, 7/16 untuned against 0/16 for the fold-over; results.md); "fold_over" (the
-    bimanual west-onto-east fold, kept for follow-on work) via WORLDFOLD_QF_SECOND=fold_over."""
+    bimanual west-onto-east fold, kept for follow-on work) via WORLDFOLD_QF_SECOND=fold_over; "left_fold" (R2, user
+    2026-10-15: the square by the left arm alone, the right arm anchoring the east half)."""
     import os
     return os.environ.get("WORLDFOLD_QF_SECOND", "parallel")
 
@@ -126,6 +130,9 @@ def task_grasp_corners(task="half_fold", backend="mujoco"):
         if _second() == "parallel":
             from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS_PARALLEL
             return GRASP_CORNERS_PARALLEL
+        if _second() == "left_fold":
+            from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS_LEFT_FOLD
+            return GRASP_CORNERS_LEFT_FOLD
         return GRASP_CORNERS_FOLD_OVER_STRAIGHTEN if _straighten() else GRASP_CORNERS_FOLD_OVER
     return GRASP_CORNERS
 

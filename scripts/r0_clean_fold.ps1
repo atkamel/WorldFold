@@ -6,13 +6,13 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\r0_clean_fold.ps1 -Step smoke
 # -Params "A=1,B=2" sets WORLDFOLD_EXPERT_PARAMS (IsaacArmExpert knobs, R2 attempts); -Tag names the outputs.
 param([ValidateSet("smoke", "eval")][string]$Step = "smoke", [int]$N = 16, [int]$EnvsPerProc = 8, [string]$Params = "",
-      [string]$Tag = "clean")
+      [string]$Tag = "clean", [string]$Second = "fold_over")
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
 . (Join-Path $repo "isaac\env_windows.ps1")
 $py = $env:ISAAC_PY
-$env:WORLDFOLD_QF_SECOND = "fold_over"
+$env:WORLDFOLD_QF_SECOND = $Second      # fold_over (R0) or left_fold (R2, option 1)
 $env:WORLDFOLD_QF_START = "clean"
 $env:WORLDFOLD_EXPERT_PARAMS = $Params
 $out = "outputs\imitation\isaac_friction\r0"

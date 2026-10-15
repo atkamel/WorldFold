@@ -160,6 +160,14 @@ def main():
                "d": [round(float(x), 4) for x in info["move_distance"]], "domain": dict(base._domain_params),
                "knobs": args.set, "max_steps": base.max_episode_steps, "max_retries": qfe.MAX_RETRIES,
                "retry_log": list(retry_log), "stage_end": stage_end,
+               # R2: why a stage does not settle -- each move placed? each square check's distance (m)?
+               "placed": [bool(env._placed(m)) for m in env.stages[env.stage].moves],
+               "checks": [round(float(np.linalg.norm(np.mean([base.cloth_positions()[v] for v in vs], axis=0)
+                                                     - env._stage_start[g])), 4)
+                          for vs, g in getattr(env.stages[env.stage], "checks", ())],
+               "check_xy": [np.round((np.mean([base.cloth_positions()[v] for v in vs], axis=0)
+                                      - env._stage_start[g])[:2], 4).tolist()
+                            for vs, g in getattr(env.stages[env.stage], "checks", ())],
                "timeline": timeline}
         if args.trace_dir:
             Path(args.trace_dir).mkdir(parents=True, exist_ok=True)

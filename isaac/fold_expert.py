@@ -135,6 +135,23 @@ class IsaacArmExpert:
     # against the jaw axis, the fingers reaching in); negative moves the pinch in toward the cloth centre, away from the
     # base. The stack is two layers throughout, so a deeper pinch still takes both.
     STAGE1_PINCH_INSET = None
+    # R2, option 1 (user 2026-10-15): an anchor move (Move.kind == "anchor") presses the cloth down at its point with
+    # the jaw open -- approach, descend, hold until QuarterFoldExpert releases it, retreat. Fingertip this far below
+    # the cloth top at the press (into the cloth, against the table).
+    ANCHOR_PRESS_DZ = -0.004
+    ANCHOR_LIFT = 0.12       # m straight up off the press before parking at home
+    # R2 attempt D: the left fold's arc peaked at z 0.55 (ARC_HEIGHT 0.12), out of the left arm's reach at x 0..0.05
+    # (IK errors 17-31 mm, restarts jumping branches mid-carry). m: the carry arc's peak from stage 1 on.
+    STAGE1_ARC_HEIGHT = None
+    # R2 attempt E: no single IK branch carries the left fold from the west pinch to the east place at the arc's
+    # orientation weight 0.05 (end 37 mm off, or 14-31 cm off at the start from the branches that reach the end);
+    # at 0.01 one branch does (worst 2 mm, the wrist easing to 32 deg tilt at the place; offline, peak 0.08).
+    STAGE1_ARC_ORIENT_W = None
+    # R2 attempt G: the left fold's flap, released at ~46 deg tilt on the goal, slid on 4 cm past it (trace 660001).
+    # m: from stage 1, place this far short of the goal, back along the carry.
+    STAGE1_PLACE_SHORT = 0.0
+    STAGE1_RETREAT_TOOL = 0   # 1: from stage 1, retreat from the place back along the fingers' axis (attempt H)
+    anchor = False
     APPROACH_CHAIN = 0           # 1: solve above / pinch / arc on from the approach path (kept only if within REACH_TOL)
     SCREEN_ITERS = 100
     ARC_TOL = 0.02
@@ -182,8 +199,16 @@ class IsaacArmExpert:
     def _stage(self):
         return int(getattr(self.env, "stage", 0))
 
+    def set_anchor(self):
+        """Make this arm's move an anchor (see ANCHOR_PRESS_DZ): no close, lift or carry."""
+        self.anchor = True
+        self.PHASES = ("approach", "descend", "hold", "release", "retreat", "park", "done")
+        self.reset()
+
     def _inset(self):
         """PINCH_INSET, or STAGE1_PINCH_INSET from stage 1 on when it is set (R2)."""
+        if self.anchor:
+            return 0.0
         return self.STAGE1_PINCH_INSET if self.STAGE1_PINCH_INSET is not None and self._stage() > 0 else self.PINCH_INSET
 
     def _qf0(self, value):
@@ -239,7 +264,11 @@ class IsaacArmExpert:
         z = TABLE_TOP_Z + self.PLACE_HEIGHT
         if self._stage() > 0:
             z = max(z, self._surface_z(goal) - CORNER_REST_DZ + self.PLACE_HEIGHT)
-        return np.array([goal[0] + o[0], goal[1] + o[1], z])
+        xy = np.array([goal[0] + o[0], goal[1] + o[1]])
+        if self.STAGE1_PLACE_SHORT and self._stage() > 0:      # back toward where the point came from
+            d = np.asarray(corner[:2], float) - np.asarray(goal[:2], float)
+            xy = xy + self.STAGE1_PLACE_SHORT * d / max(np.linalg.norm(d), 1e-6)
+        return np.array([xy[0], xy[1], z])
 
     def _surface_z(self, xy, radius=0.02):
         """Highest cloth particle within `radius` (horizontally) of xy, ignoring the vertices this arm carries."""
@@ -268,6 +297,9 @@ class IsaacArmExpert:
         # a knocked corner may lie on a fold, and every stage-1 point does (the stack, the crease): pinch at its height
         if self.PINCH_FOLLOW_Z or self._stage() > 0:
             z = max(z, float(corner[2]) - CORNER_REST_DZ + self.PINCH_HEIGHT)
+        if self.anchor:
+            offset = np.zeros(2)
+            z = float(corner[2]) + self.ANCHOR_PRESS_DZ
         pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], z])
         place = self._place_point(goal, offset, corner)
         q = list(SEED_Q[p]) if from_q is None else list(from_q)
@@ -292,16 +324,36 @@ class IsaacArmExpert:
                 q = chained[1]
         plan["arc"], plan["arc_tips"] = [], []
         start = pinch
+        if self.anchor:                 # no carry: hold the press, then retreat straight up
+            plan["arc"], plan["arc_tips"] = [q], [pinch]
+            # straight up ANCHOR_LIFT, then park at home, clear of the east half: the anchor arm's links reach over it
+            # toward the base and the left arm's carry ran into them (trace 660001, attempt E); a direct joint-space
+            # move home swept the open fingers low across the strip and dragged it 10 cm (attempt F)
+            plan["retreat"], _ = self._solve(pinch + [0, 0, self.ANCHOR_LIFT], jaw, q, orientation_weight=ORIENTATION_WEIGHT)
+            plan["park"] = list(SEED_Q[p])
+            return plan
         for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
             tip = start + (place - start) * (1.0 - math.cos(math.pi * s)) / 2.0
             arc_h = self._qf0(self.QF0_ARC_HEIGHT) or self.ARC_HEIGHT
+            if self.STAGE1_ARC_HEIGHT is not None and self._stage() > 0:
+                arc_h = self.STAGE1_ARC_HEIGHT
             tip[2] = start[2] + (place[2] - start[2]) * s + arc_h * math.sin(math.pi * s)
-            q, _ = self._solve(tip, jaw, q, tol=self.ARC_TOL, orientation_weight=0.05)
+            w_arc = self.STAGE1_ARC_ORIENT_W if (self.STAGE1_ARC_ORIENT_W is not None and self._stage() > 0) else 0.05
+            q, _ = self._solve(tip, jaw, q, tol=self.ARC_TOL, orientation_weight=w_arc)
             plan["arc"].append(q)
             plan["arc_tips"].append(tip)
-        q, _ = self._solve(place + [0, 0, RETREAT], jaw, q, tol=self.ARC_TOL, orientation_weight=0.02)
+        q, _ = self._solve(self._retreat_point(place, q), jaw, q, tol=self.ARC_TOL, orientation_weight=0.02)
         plan["retreat"] = q
         return plan
+
+    def _retreat_point(self, place, q_place):
+        """Where the gripper goes after letting go: RETREAT straight up, or from stage 1 with STAGE1_RETREAT_TOOL back
+        along the fingers' own axis (the left fold places at ~45 deg tilt, and a straight-up retreat lifted the flap
+        with it, which then slid 5 cm on; trace 660000, attempt G)."""
+        if self.STAGE1_RETREAT_TOOL and self._stage() > 0:
+            axis = self._ik.site_pose(self.prefix, q_place)[1][:, 2]      # the gripper frame's z: down the fingers
+            return np.asarray(place, float) - RETREAT * axis
+        return np.asarray(place, float) + [0, 0, RETREAT]
 
     def _approach_path(self, above, jaw, q_above, step=0.03):
         """Q2, stage >= 1: Cartesian waypoints from the gripper to the above-pinch pose, level at cruise height, so the
@@ -375,7 +427,7 @@ class IsaacArmExpert:
             tips.append(tip)
         plan = dict(self.plan or {"jaw": jaw})
         plan["arc"], plan["arc_tips"] = arc, tips
-        q, _ = self._solve(place + [0, 0, RETREAT], jaw, q, tol=self.ARC_TOL, orientation_weight=0.02)
+        q, _ = self._solve(self._retreat_point(place, q), jaw, q, tol=self.ARC_TOL, orientation_weight=0.02)
         plan["retreat"] = q
         return plan
 
@@ -384,12 +436,14 @@ class IsaacArmExpert:
         if name in ("approach",):
             path = self.plan.get("approach_path")
             return path[min(self.plan["awp"], len(path) - 1)] if path else self.plan["above"]
-        if name in ("descend", "close"):
+        if name in ("descend", "close") or (self.anchor and name in ("hold", "release")):
             return self.plan["pinch"]
         if name in ("lift", "carry", "place", "hold", "release"):
             return self.plan["arc"][min(self.wp, len(self.plan["arc"]) - 1)]
         if name == "retreat":
             return self.plan["retreat"]
+        if name == "park":
+            return self.plan["park"]
         return None          # done: stop moving
 
     def act(self):
@@ -398,7 +452,7 @@ class IsaacArmExpert:
             action[5] = 1.0        # (SEED_Q) put the left arm over the cloth's far side, and its way back crossed the
             return action          # right gripper (trace 2026-10-14). No plan yet: it is made when the turn comes
         name = self.PHASES[self.phase]
-        action[5] = 1.0 if name in self.OPEN_PHASES else -1.0
+        action[5] = 1.0 if (name in self.OPEN_PHASES or self.anchor) else -1.0
         if self.plan is None:
             self.plan = self._make_plan()
         target = self._target(name)
@@ -537,7 +591,7 @@ class IsaacArmExpert:
         elif name == "release":
             if self.phase_steps >= self.OPEN_DWELL:
                 self._next()
-        elif name == "retreat":
+        elif name in ("retreat", "park"):
             if self._arrived(TRACK_TOL) or patience:
                 self._next()
 

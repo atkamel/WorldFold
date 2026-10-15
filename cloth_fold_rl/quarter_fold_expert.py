@@ -38,6 +38,11 @@ SETTLE_WAIT = 15   # steps to wait in "done" before judging placement -- the
                     # released corner is still springing back right after release
 
 
+def _gripping(e):
+    """Phase index from which an arm counts as having its point: "close", or an anchor's "hold" (R2)."""
+    return e.PHASES.index("close" if "close" in e.PHASES else "hold")
+
+
 class QuarterFoldExpert:
     # Q2: per stage, the order in which the arms approach and close. The second fold on Isaac (the fold-over) puts
     # both arms on the west edge, and approaching together they tangle: the right arm reaches across over the left
@@ -47,7 +52,9 @@ class QuarterFoldExpert:
     # behind, the stack cannot reach the far corner (they are 15 cm apart in the cloth; trace 2026-10-14).
     # Only for per-arm experts with a `waiting` flag (isaac.fold_expert.IsaacArmExpert); MuJoCo's FoldExpert and
     # stage 0 are unchanged.
-    SEQUENCE = {"fold_over": ("right_", "left_")}     # keyed by stage role (see _stage_role)
+    # R2 left_fold: the right arm presses its anchor first, then the left arm approaches the west edge.
+    SEQUENCE = {"fold_over": ("right_", "left_"), "left_fold": ("right_", "left_")}  # keyed by stage role (_stage_role)
+    ANCHOR_RELEASE_PHASE = "carry"     # the carrying arms' phase at which an anchor lifts off (R2 left_fold)
 
     def __init__(self, env, seed=0, expert_cls=None, overshoot=None):
         # expert_cls: the per-arm phase machine (default the MuJoCo FoldExpert; isaac.fold_expert.IsaacArmExpert on
@@ -68,6 +75,8 @@ class QuarterFoldExpert:
                 self.experts[(s, move.prefix)] = expert_cls(env, seed=seed + 10 * s + k, prefix=move.prefix,
                                                             corner=list(move.corners), goal=goal, release=True,
                                                             raw_vertex=True)
+                if getattr(move, "kind", "carry") == "anchor":
+                    self.experts[(s, move.prefix)].set_anchor()     # Isaac per-arm experts only (R2)
         self.reset()
 
     def reset(self):
@@ -114,9 +123,11 @@ class QuarterFoldExpert:
     def _stage_role(self):
         """"fold_over" for the Isaac quarter fold's second fold (whatever its index), else the stage index."""
         try:
-            from cloth_fold_rl.quarter_fold_env import STAGE1_FOLD_OVER
+            from cloth_fold_rl.quarter_fold_env import STAGE1_FOLD_OVER, STAGE1_LEFT_FOLD
             if self.env.stages[self.env.stage] == STAGE1_FOLD_OVER:
                 return "fold_over"
+            if self.env.stages[self.env.stage] == STAGE1_LEFT_FOLD:
+                return "left_fold"
         except (AttributeError, IndexError, TypeError):
             pass
         return self.env.stage
@@ -138,7 +149,7 @@ class QuarterFoldExpert:
         ahead = True
         for p in order:
             e = arms[p]
-            if e.phase >= e.PHASES.index("close"):
+            if e.phase >= _gripping(e):
                 self.turn_done.add((self.env.stage, p))
             e.waiting = not ahead
             ahead = ahead and (self.env.stage, p) in self.turn_done
@@ -150,7 +161,7 @@ class QuarterFoldExpert:
         arms = self._arms()
         if self.env.stage == 0 or not all(hasattr(e, "lift_allowed") for e in arms.values()):
             return
-        ready = all(e.phase >= e.PHASES.index("close") for e in arms.values())
+        ready = all(e.phase >= _gripping(e) for e in arms.values())
         for e in arms.values():
             e.lift_allowed = ready
 
@@ -158,8 +169,15 @@ class QuarterFoldExpert:
         # release once every arm has reached hold. An arm already past hold (a
         # learner released it) counts too, or the other arm would hold forever.
         arms = self._arms()
-        if all(e.PHASES[e.phase] in ("hold",) + e.RELEASE_PHASES for e in arms.values()):
-            for e in arms.values():
+        carry = {p: e for p, e in arms.items() if not getattr(e, "anchor", False)}
+        anchors = [e for e in arms.values() if getattr(e, "anchor", False)]
+        if all(e.PHASES[e.phase] in ("hold",) + e.RELEASE_PHASES for e in carry.values()):
+            for e in carry.values():
+                e.release_allowed = True
+        # R2: an anchor lifts off once every carrying arm has lifted its point and starts the carry, so the anchor arm
+        # is gone before the carry crosses the east half (its links reach over it; trace 660001, attempt E)
+        if anchors and all(e.phase >= e.PHASES.index(self.ANCHOR_RELEASE_PHASE) for e in carry.values()):
+            for e in anchors:
                 e.release_allowed = True
 
     def act(self):

@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-15 · **Branch:** `feature/isaac-imitation` · **Phase:** Q rethink (R0–R3, square fold-over only); Q0 ✅ Q1 ✅ R0 ✅ R2 ◐ (blocked on a task-design call)
+**Updated:** 2026-10-15 · **Branch:** `feature/isaac-imitation` · **Phase:** Q rethink (R0–R3, square fold-over only); Q0 ✅ Q1 ✅ R0 ✅ R2 ◐ (option 1 built; edge collapse, user call)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -49,7 +49,12 @@ be accurate; no weld anywhere; add a reset skill and a safe-failure benchmark). 
   - The fold-over from it scored **0/16**, so fold 2 is broken on its own (results.md R0).
   - On 15/16 seeds the right arm holds v5 while the left arm hovers over the v0+v10 stack, near its own base, and
     every descent drifts 7–9 cm off.
-- **R2 ◐ (blocked on the user):** the left arm's stage-1 grasp is fixed (knobs `APPROACH_CRUISE_MAX=0.50`,
+- **R2 option 1 ◐ (user 2026-10-15: the left arm folds, the right anchors):** `WORLDFOLD_QF_SECOND=left_fold`.
+  - The grip, the carry and the anchor's lift-off all work; the midpoint lands on target.
+  - One success in replay (660001); n = 16 from the clean start: **0/16**, fold score 0.88.
+  - A single mid-edge pinch lets the 15 cm edge collapse, so the corners land 5–10 cm inward of the square (results.md
+    R2 option 1). Waiting on the user's call; options are in the pass log.
+- **R2 (earlier, the two-arm fold-over):** the left arm's stage-1 grasp is fixed (knobs `APPROACH_CRUISE_MAX=0.50`,
   `APPROACH_CHAIN=1`, `STAGE1_PINCH_INSET=-0.025`). Both arms grasp on 13/16, and the left holds through the carry.
   - The right arm cannot pinch the west edge top-down (≥ 35° tilt; 65° at v5), and its grip slips at every lift.
   - Both arms on the west short edge is a reach limit of LeHome's layout (results.md R2). The task definition needs
@@ -282,6 +287,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-15 · **R2 option 1 (left fold + right anchor)**: `STAGES_LEFT_FOLD`, anchor moves, square `Stage.checks`, knobs D–H. The carry and anchor work, with 1 replay success (660001), but n = 16 is 0/16: the single mid-edge grip lets the corners collapse 5–10 cm inward. Next options for the user: a right-arm square-up stage, a two-grip left fold, or relaxed checks. Tests: not-slow 247 passed / 5 skipped · see git log
 - 2026-10-15 · **R2 attempts A–C** from the clean start: the left arm's stage-1 grasp is fixed (cruise cap + chained IK + inward pinch: both arms grasp 13/16, left holds through the carry). The right arm's top-down reach ends ~0.33 m from its base (offline: ≥ 35° tilt anywhere on the west edge), so a two-arm west-edge fold-over is a layout limit; waiting on the user's task call. Tests: not-slow 243 passed / 5 skipped · see git log
 - 2026-10-15 · **R0: clean half-fold diagnostic** (`isaac/diag_clean_fold.py`, `WORLDFOLD_QF_START=clean`, `scripts/r0_clean_fold.ps1`). Start geometry 14.8 cm wide / 0.5 cm split; fold-over from it 0/16 (G1@1 15: left arm never closes on the stack). Tests: not-slow 243 passed / 5 skipped; slow 14 passed / 34 skipped; isaac 36 passed / 1 skipped · see git log
 - 2026-10-14 · **Q1 closed, Phase Q paused (user).**
