@@ -107,6 +107,51 @@ def half_fold(episodes: int = 3):
                 out_dir)
 
 
+@app.function(image=image, gpu=PIPELINE_GPU, cpu=8, memory=32768, timeout=3 * 3600, volumes={VOL_PATH: vol})
+def quarter_job(seeds: str, out: str, video: bool, env: dict):
+    """isaac/quarter_fold_run.py on some seeds; episodes.jsonl (+ videos) in its own folder on the volume."""
+    import os
+    os.environ.update(env)
+    out_dir = pathlib.Path(VOL_PATH, out)
+    args = ["isaac/quarter_fold_run.py", "--seeds", seeds, "--out", str(out_dir)] + (["--video"] if video else [])
+    return _run("run", args, out_dir)
+
+
+@app.local_entrypoint()
+def quarter(seeds: str = "0,1", per_job: int = 2, video: bool = False, env_json: str = "{}", tag: str = ""):
+    """Scripted quarter fold, seeds split over parallel A10Gs: modal run isaac/modal_isaac.py::quarter --seeds 0-9"""
+    import json
+    import time
+    if "-" in seeds:
+        lo, hi = seeds.split("-")
+        seeds = ",".join(str(s) for s in range(int(lo), int(hi) + 1))
+    s = seeds.split(",")
+    chunks = [",".join(s[i:i + per_job]) for i in range(0, len(s), per_job)]
+    stamp = tag or time.strftime("%Y%m%d-%H%M%S")
+    outs = [f"quarter/{stamp}/job{k}" for k in range(len(chunks))]
+    n = len(chunks)
+    for r in quarter_job.map(chunks, outs, [video] * n, [json.loads(env_json)] * n):
+        print("RESULT", r)
+    print(f"modal volume get worldfold-isaac quarter/{stamp} .")
+
+
+@app.function(image=image, cpu=8, memory=16384, timeout=3600, volumes={VOL_PATH: vol})
+def cpu_job(args: list, tag: str):
+    """`python <args>` with no GPU, for scripts that never start Isaac (IK probes, asset reads). Log under cpu/."""
+    return _run(tag, args, pathlib.Path(VOL_PATH, "cpu"), isaac=False)
+
+
+@app.local_entrypoint()
+def cpu(cmd: str, tag: str = ""):
+    """Runs one no-GPU command in the Isaac image: modal run isaac/modal_isaac.py::cpu --cmd "isaac/layout_search.py" """
+    import shlex
+    import time
+    args = shlex.split(cmd)
+    tag = tag or time.strftime("%Y%m%d-%H%M%S")
+    print("RESULT", cpu_job.remote(args, tag))
+    print(f"log: modal volume get worldfold-isaac cpu/{tag}.log .")
+
+
 @app.local_entrypoint()
 def main(modes: str = "state,hybrid"):
     import time

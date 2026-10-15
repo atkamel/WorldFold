@@ -1923,3 +1923,33 @@ Demos only, not a measurement: the first 3 seeds of each set, 1 env, `imitation.
   - id_hard 2/3: 200001 times out at 400 steps;
   - knock_arm 1/3: 310000 and 310002 time out.
 - **Expert:** knock_arm 3/3, in 183 / 175 / 185 steps.
+
+## Quarter fold layout search on Isaac (2026-10-14)
+
+`isaac/layout_search.py`, no physics: `isaac.pinch.PinchIK` on LeHome's SO101 URDF, IsaacArmExpert's waypoint rules
+(pinch 5 mm in from the point, straight down; arc 12 cm high; place at the pinch's mirror). Fold 1 is north onto
+south, two arms; fold 2 is west onto east, either two arms (stack S + crease end C) or one arm from the short edge's
+midpoint (M). Arm bases on a 2.5 cm grid around the cloth, at least 5 cm outside it, facing its centre.
+
+- **Reach is bounded by tilt.** PinchIK trades orientation for position, so position errors are ~0 almost everywhere.
+  Bounds are what today's half fold already does over the ±1.5 cm shifted poses (F3 expert id_hard 94%): pinch tilt
+  ≤ 16.5° (measured max 16.3°; nominal 5.5°), place tilt ≤ 33° (measured 32.4°). Clearance between the arms'
+  link centrelines ≥ 6 cm.
+- On today's layout the fold-2 pinches would tilt 36–64°.
+- **Robust** = every move within bounds at all 9 cloth offsets of ±1 cm (the reset jitter). Badness = worst ratio to a
+  bound; ≤ 1 passes. Only the best-margin layouts were re-checked (top 40, then top 15 per variant).
+
+| cloth | two-arm fold 2, best robust badness | one-arm fold 2, best robust badness |
+|---|---|---|
+| 30 cm | none in the checked set | 1.23 |
+| 28.5 cm | not checked | **0.77** (39/40 checked pass) |
+| 27 cm | 1.64 | 0.84 |
+| **25.5 cm** | **0.78** | 0.72 |
+| 24 cm | 2.19 | 2.36 |
+
+Mount height ±4 cm on the 30 cm cloth: no reach-feasible layout either way (10° tilt bound). Smaller is not
+monotonically easier: points close to a base need a steep tilt too, and the grid is coarse.
+
+**Chosen:** 25.5 cm, two-arm fold 2 (holding both ends of the carried edge is what the edge-alignment bar needs).
+Cloth-local bases: left (−0.225, −0.125), right (0.10, 0.225); clearance 18.3 cm (fold 1) and 11.6 cm (fold 2).
+`isaac_env.PROFILES["quarter"]`. The one-arm fold at 28.5 cm is the alternative if the two-arm fold fails physically.

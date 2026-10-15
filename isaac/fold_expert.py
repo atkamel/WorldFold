@@ -16,7 +16,6 @@ import math
 
 import numpy as np
 
-from mujuco.cloth_params import ARM_BASE_LEFT, ARM_BASE_RIGHT
 from isaac.half_fold_demo import (ARC_HEIGHT, ARC_WAYPOINTS, PINCH_HEIGHT, PLACE_HEIGHT, POSE_SETTLE_STEPS, SEED_Q,
                                   TRACK_TOL, WAYPOINT_TOL)
 from mujuco.cloth_params import JOINT_DELTA_SCALE, TABLE_TOP_Z
@@ -108,6 +107,10 @@ class IsaacArmExpert:
     PUSH_PRESS = 0.002       # fingertip this far above the corner's top while pushing (contact, no gouge)
     PUSH_BEHIND = 0.015      # start this far behind the corner along the push direction
 
+    # a position-mode gripper (isaac_env gripper_mode "position") closes to this jaw target (rad); None: the profile's
+    # closed target (gripper_closed, +0.05 on friction), as the binary gripper does
+    SQUEEZE = None
+
     _ik = None               # one PinchIK for all arms in the process (it parses LeHome's URDF)
 
     def __init__(self, env, seed=0, prefix="left_", corner=(10,), goal=None, release=False, raw_vertex=True):
@@ -124,6 +127,7 @@ class IsaacArmExpert:
         if IsaacArmExpert._ik is None:
             from isaac.pinch import PinchIK
             IsaacArmExpert._ik = PinchIK()
+        IsaacArmExpert._ik.root = self.base.arm_bases       # the env's layout (quarter profile: its own)
         self.reset()
 
     # ---- state ------------------------------------------------------------
@@ -159,7 +163,7 @@ class IsaacArmExpert:
         goal = np.asarray(self.goal(), dtype=float)
         jaw = np.r_[center[:2] - corner[:2], 0.0]
         if self.REGRASP_JAW and self.resynced:      # along the arm's reach: base -> corner, pointing back at the base
-            base = np.asarray(ARM_BASE_LEFT if self.prefix == "left_" else ARM_BASE_RIGHT, dtype=float)
+            base = self._ik.root[self.prefix][0]
             jaw = np.r_[base[:2] - corner[:2], 0.0]
         jaw /= np.linalg.norm(jaw)
         offset = -self.PINCH_INSET * jaw[:2]
@@ -167,9 +171,8 @@ class IsaacArmExpert:
         if self.PINCH_FOLLOW_Z:      # a knocked corner may lie on a fold: pinch at its height, not the table's
             z = max(z, float(corner[2]) - CORNER_REST_DZ + self.PINCH_HEIGHT)
         pinch = np.array([corner[0] + offset[0], corner[1] + offset[1], z])
-        # the held point's mirror image across the fold line, so the corner lands on the goal
-        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
-        q = list(SEED_Q[p]) if from_q is None else list(from_q)
+        place = self._place(goal, offset, corner)
+        q = self._home_seed(pinch + [0, 0, ABOVE], jaw) if from_q is None else list(from_q)
         plan = {"jaw": jaw, "corner": corner.copy()}
         w = ORIENTATION_WEIGHT
         q0 = q
@@ -194,6 +197,35 @@ class IsaacArmExpert:
         q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
         plan["retreat"] = q
         return plan
+
+    def _place(self, goal, offset, corner):
+        """The held point's mirror image across the fold line, so the corner lands on the goal: the inset offset flips
+        along the fold's carry axis (y for the half fold, x for the quarter fold's second fold)."""
+        k = 0 if abs(goal[0] - corner[0]) > abs(goal[1] - corner[1]) else 1
+        place = np.array([goal[0] + offset[0], goal[1] + offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
+        place[k] = goal[k] - offset[k]
+        return place
+
+    def _home_seed(self, tip, jaw):
+        """SEED_Q on the MJCF layout; on another layout (quarter profile) the best of a pan sweep for the first pose,
+        upright first (isaac/layout_search.py: one seed can land the chain on a flipped branch)."""
+        p = self.prefix
+        if self.base._prof.get("arm_bases") is None:
+            return list(SEED_Q[p])
+        best = None
+        for pan in np.linspace(-1.8, 1.8, 7):
+            for rest in (SEED_Q["left_"][1:], SEED_Q["right_"][1:]):
+                q, e = self._ik.solve(p, tip, jaw, [pan] + list(rest), iters=150)
+                key = (round(e, 4), self._ik.site_pose(p, q)[1][2, 2])     # closest, then fingers most nearly down
+                if best is None or key < best[0]:
+                    best = (key, q)
+        return list(best[1])
+
+    def _close_command(self):
+        """-1 shuts a binary gripper; a position-mode one gets the command for SQUEEZE or the profile's closed target."""
+        if self.base.grasp_knobs.get("gripper_mode") != "position":
+            return -1.0
+        return self.base.jaw_command(self.base._closed_q if self.SQUEEZE is None else self.SQUEEZE)
 
     def _on_layer(self, corner):
         """The corner lies on cloth (PUSH_Z .. 4 cm above a flat corner): settled on the other half, not in the air."""
@@ -228,7 +260,7 @@ class IsaacArmExpert:
         goal = np.asarray(self.goal(), dtype=float)
         jaw = self.plan["jaw"] if self.plan else np.array([0.0, -1.0, 0.0])
         offset = -self.PINCH_INSET * jaw[:2]
-        place = np.array([goal[0] + offset[0], goal[1] - offset[1], TABLE_TOP_Z + self.PLACE_HEIGHT])
+        place = self._place(goal, offset, self._corner())
         start = np.asarray(self.base.gripper_position(p), dtype=float)
         q, arc, tips = self._q(), [], []
         n = max(2, int(np.ceil(np.linalg.norm(place - start) / 0.02)))
@@ -259,7 +291,7 @@ class IsaacArmExpert:
     def act(self):
         action = np.zeros(6, dtype=np.float32)
         name = self.PHASES[self.phase]
-        action[5] = 1.0 if name in self.OPEN_PHASES else -1.0
+        action[5] = 1.0 if name in self.OPEN_PHASES else self._close_command()
         if self.plan is None:
             self.plan = self._make_plan()
         target = self._target(name)

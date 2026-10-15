@@ -35,7 +35,7 @@ from lehome.assets.robots.lerobot import SO101_FOLLOWER_CFG
 
 from mujuco.cloth_params import (
     ARM_BASE_LEFT, ARM_BASE_RIGHT, ARM_BASE_QUAT, ARM_JOINTS, CAMERA_FOVY_DEG, CAMERA_POS, CAMERA_TARGET,
-    CLOTH_COUNT, CLOTH_MASS, GRIPPER_OPEN, TABLE_TOP_Z, camera_axes,
+    CLOTH_COUNT, CLOTH_MASS, CLOTH_SPACING, GRIPPER_OPEN, TABLE_TOP_Z, camera_axes,
 )
 from isaac.isaac_env import (
     CAMERA_CLIP, CLOTH_ADHESION, CLOTH_GRAVITY_SCALE, CLOTH_SUBDIV, FLOOR_COLOR, FLOOR_SIZE, GRIPPER_JOINT,
@@ -90,11 +90,11 @@ LININGS = {"gripper": ((-0.017042, 0.000205, -0.073359), (0.997564, 0.0, -0.0697
            "jaw": ((-0.001287, -0.050919, 0.018299), (0.709761, 0.696602, -0.069295, -0.078629), -1.0, 1.0)}
 
 
-def _robot(prim_path, base_pos, drive=None, gripper_drive=None):
+def _robot(prim_path, base_pos, drive=None, gripper_drive=None, base_quat=ARM_BASE_QUAT):
     """drive: {ImplicitActuatorCfg field: value} applied to every actuator group (the weld profile's
     MUJOCO_ARM_DRIVE); None keeps LeHome's SO101 drives. gripper_drive: the same for the gripper actuator only,
     applied after drive (a friction-grasp knob, isaac_env.FRICTION_GRASP)."""
-    pos, rot = usd_root_pose(base_pos, ARM_BASE_QUAT)
+    pos, rot = usd_root_pose(base_pos, base_quat)
     init = SO101_FOLLOWER_CFG.init_state.replace(pos=tuple(float(v) for v in pos), rot=tuple(float(v) for v in rot),
                                                  joint_pos=HOME)
     cfg = SO101_FOLLOWER_CFG.replace(prim_path=prim_path, init_state=init)
@@ -188,10 +188,12 @@ class SceneCfg(DirectRLEnvCfg):
     rig: dict | None = None         # {camera name: square size}, the imitation camera rig (opt-in)
     n_copies: int = 1               # milestone V: independent copies of arms + table + cloth (GPU pipeline)
     view_shift: tuple = (0.0, 0.0, 0.0)   # main / demo rig camera translation (rig_camera_cfg)
+    cloth_spacing: float = CLOTH_SPACING  # grid vertex gap; the cloth side is (CLOTH_COUNT - 1) times it
 
 
 def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", arm_drive=None, n_copies=1,
-             gripper_drive=None, view_shift=(0.0, 0.0, 0.0)):
+             gripper_drive=None, view_shift=(0.0, 0.0, 0.0), arm_bases=None, cloth_spacing=CLOTH_SPACING):
+    """arm_bases: {"left_" / "right_": (MJCF base position, wxyz quat)}, None for ARM_BASE_*."""
     if not 1 <= n_copies <= MAX_COPIES:
         raise ValueError(f"n_copies must be in 1..{MAX_COPIES}, got {n_copies}")
     if n_copies > 1 and device == "cpu":
@@ -201,9 +203,13 @@ def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", ar
     cfg = SceneCfg()
     cfg.n_copies = n_copies
     cfg.action_space = 12 * n_copies
-    if arm_drive or gripper_drive:
-        cfg.left_robot = _robot("/World/Robot/Left_Robot", ARM_BASE_LEFT, arm_drive, gripper_drive)
-        cfg.right_robot = _robot("/World/Robot/Right_Robot", ARM_BASE_RIGHT, arm_drive, gripper_drive)
+    if arm_drive or gripper_drive or arm_bases:
+        bases = arm_bases or {"left_": (ARM_BASE_LEFT, ARM_BASE_QUAT), "right_": (ARM_BASE_RIGHT, ARM_BASE_QUAT)}
+        cfg.left_robot = _robot("/World/Robot/Left_Robot", bases["left_"][0], arm_drive, gripper_drive,
+                                bases["left_"][1])
+        cfg.right_robot = _robot("/World/Robot/Right_Robot", bases["right_"][0], arm_drive, gripper_drive,
+                                 bases["right_"][1])
+    cfg.cloth_spacing = float(cloth_spacing)
     cfg.sim.device = device
     cfg.sim.use_fabric = device != "cpu"        # the GPU pipeline reads state through fabric / tensor views
     cfg.rig = dict(rig) if rig else None
@@ -321,7 +327,7 @@ class SceneEnv(DirectRLEnv):
     def _spawn_cloth(self, cp):
         # WorldFold's square cloth packaged the way LeHome packages a garment: a USD whose default prim holds a
         # "mesh", plus a garment config. GarmentObject applies LeHome's particle system, material and cloth settings.
-        points, faces = cloth_grid_mesh(CLOTH_SUBDIV)
+        points, faces = cloth_grid_mesh(CLOTH_SUBDIV, self.cfg.cloth_spacing)
         usd = os.path.join(tempfile.mkdtemp(), "square_cloth.usd")
         stage = Usd.Stage.CreateNew(usd)
         UsdGeom.SetStageUpAxis(stage, "Z")
@@ -336,7 +342,9 @@ class SceneEnv(DirectRLEnv):
         stage.GetRootLayer().Save()
         n = (CLOTH_COUNT - 1) * CLOTH_SUBDIV + 1
         particle_cfg = OmegaConf.load(PARTICLE_CFG)
-        particle_cfg.objects.garment_config.particle_mass = CLOTH_MASS / (n * n)
+        # CLOTH_MASS is the 30 cm sheet's; a smaller sheet keeps its mass per area
+        particle_cfg.objects.garment_config.particle_mass = (CLOTH_MASS * (self.cfg.cloth_spacing / CLOTH_SPACING) ** 2
+                                                             / (n * n))
         particle_cfg.objects.particle_material.gravity_scale = CLOTH_GRAVITY_SCALE
         particle_cfg.objects.particle_material.adhesion = CLOTH_ADHESION
         mat = particle_cfg.objects.particle_material
