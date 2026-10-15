@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-08 · **Branch:** `feature/isaac-imitation` · **Phase:** F4 finals done (BC only); F4 ☐ until DAgger
+**Updated:** 2026-10-14 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (quarter fold RL on Isaac), plan awaiting sign-off
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -40,6 +40,13 @@ I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expe
 rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
+
+**2026-10-14, new goal (user):** an RL policy that does the two-stage quarter fold on Isaac with the friction
+grasp, good for at least one clean demo with edges and body lined up near perfectly. Plan:
+[superpowers/plans/2026-10-14-quarter-fold-rl.md](superpowers/plans/2026-10-14-quarter-fold-rl.md). Waiting on the
+user's sign-off and four decisions: fold geometry (stage 1 is out of the arms' reach on today's layout), the
+alignment bar, what counts as the RL policy (primitive-level recommended), and WATcloud access or a Modal cap.
+The F4 DAgger item below is parked behind it.
 
 **2026-10-08, F4 finals (BC only, 3.5 h plan):** privileged diffusion BC on `isaac_v1_friction` scored id_easy
 81 / id_hard 71 / knock_arm 35 (n = 100), joint_noise 26 and overshoot 4 (n = 50). The expert scored 92 / 94 / 75 on the same sets. Stalls (S1) dominate the
@@ -156,7 +163,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 187 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 205 fast on macOS 2026-10-14, 1 failing there (#15) (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -197,6 +204,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
+| 16 | WATcloud's login node (`wato-login1.ext.watonomous.ca:22`) times out from the Mac (2026-10-14); the WATcloud image (`isaac/Dockerfile`) has never been built | long Isaac jobs | Q |
+| 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujuco/` first on `sys.path`; `mujuco/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
 | 12 | `imitation.cpu_slot` isn't fair: a lane that releases and re-takes it between eval sets starves a lane polling every 2 s (lane A waited 37 min) | parallel queues | — |
 | 11 | `v1_dagger_v1_r1`/`_r2` frozen with bad teacher labels — never train on them | DAgger | — |
@@ -215,6 +224,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-14 · **Quarter fold RL: survey and plan, no code.** Plan `superpowers/plans/2026-10-14-quarter-fold-rl.md`. Found: stage 1 out of reach on the Isaac layout (37 / 40.5 cm vs 32 cm), gripper binary only, no whole-cloth alignment number for the friction expert, WATcloud unreachable (#16), Modal CLI works. Fast tests on macOS: 205 passed, 1 failed (#15, 1-ulp platform diff), 6 skipped · (this commit)
 
 - 2026-10-08 · **Phase F report:** `docs/reports/2026-10-08-physical-grasp.md` (+ HTML, shareable https://claude.ai/artifact/Jj6aJ5aTKBNQEFzLkU9uuF), 4 videos (student clean 2/3, shifted 2/3, arm bump 1/3; expert arm bump 3/3) · tests unchanged (207 fast) · 43a4d8b
 - 2026-10-08 · **F4 finals, BC only:** id_easy 81, id_hard 71, knock_arm 35 (n = 100), joint_noise 26, overshoot 4 (n = 50). Docs. Tests: 207 passed, 5 skipped (not slow) · 5f7e931
