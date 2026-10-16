@@ -91,7 +91,12 @@ PROFILES = {
 # 2, we spawn 1), physics_hz (100; a multiple of 20 so it divides the 0.05 s control step).
 FRICTION_GRASP          = {"particle_friction": None, "pad_friction": None, "pad_thickness": None,
                            "gripper_drive": None, "gripper_closed": None, "jaw_open_rate": None,
-                           "adhesion": None, "adhesion_offset_scale": None, "gravity_scale": None, "physics_hz": None}
+                           "adhesion": None, "adhesion_offset_scale": None, "gravity_scale": None, "physics_hz": None,
+                           "release_open": None, "release_open_steps": None}
+# QD (2026-10-16, user: the fold-1 release is violent): the jaw swings 0.05 -> 1.15 rad in 3 control steps and throws
+# the released corner 4-5 cm at 40-90 cm/s (qd/traces_f1_base, isaac/release_summary.py). release_open (rad): after a
+# close, opening goes only this far for release_open_steps control steps (enough to let go, little swing through the
+# flap), then on to GRIPPER_OPEN once the arm has risen clear; jaw_open_rate still limits the speed of both.
 ADHESION_MAX            = 0.3                 # user rule (2026-10-07): friction + adhesion only, adhesion <= 0.3
 PROFILES["lehome"]["friction_grasp"] = FRICTION_GRASP
 # "friction" (Phase F): the weld profile's setup (cloth pose, flat drop, MuJoCo arm drives, dynamics DR, GPU pipeline,
@@ -547,6 +552,17 @@ class IsaacClothFoldEnv(gym.Env):
         elif command > 0.3:
             self._gripper_closed[prefix] = False
         target = self._closed_q if self._gripper_closed[prefix] else GRIPPER_OPEN
+        # steps since the jaw was last commanded open after a close (None: never closed this episode)
+        since = getattr(self, "_open_since", {}).get(prefix)
+        if self._gripper_closed[prefix]:
+            since = 0
+        elif since is not None:
+            since += 1
+        self._open_since = {**getattr(self, "_open_since", {}), prefix: since}
+        r_open, r_steps = self.grasp_knobs.get("release_open"), self.grasp_knobs.get("release_open_steps")
+        if (r_open is not None and self.grasp_mode == "friction" and not self._gripper_closed[prefix]
+                and since is not None and since <= int(r_steps or 0)):
+            target = min(GRIPPER_OPEN, float(r_open))
         rate = self.grasp_knobs.get("jaw_open_rate")
         if rate and self.grasp_mode == "friction" and not self._gripper_closed[prefix]:
             target = min(target, self._joint_targets[prefix][5] + float(rate))     # open gradually (track G)
@@ -652,6 +668,7 @@ class IsaacClothFoldEnv(gym.Env):
         for prefix in self.prefixes:
             self._gripper_closed[prefix] = False
             self._joint_targets[prefix] = self._home()
+        self._open_since = {}           # release_open: no close yet this episode
 
         scales = None
         if self._prof["dynamics_dr"]:

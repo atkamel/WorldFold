@@ -13,6 +13,7 @@ joint_positions, grasp_active).
 from __future__ import annotations
 
 import math
+import os
 
 import numpy as np
 
@@ -99,6 +100,13 @@ class IsaacArmExpert:
     MISS_STEPS = 3
     REPLAN_MOVE = 0.0        # m > 0: re-plan the approach whenever the corner has moved this far from the planned pinch
     CARRY_SPEED = 1.0        # joint-speed scale in lift/carry (< 1: a slower carry)
+    # QD (2026-10-16, user: a gentler release with a slow raise). RETREAT_SPEED: joint-speed scale in retreat (< 1:
+    # the arm rises slowly off the released cloth). SETTLE_DWELL: steps the closed jaw keeps holding at the place before
+    # it opens, so the flap comes to rest first. STAGE1_CARRY_SPEED: lift/carry speed scale from stage 1 on (the second
+    # fold's grip on a two-layer bend slips: G2@1); None = CARRY_SPEED.
+    RETREAT_SPEED = 1.0
+    SETTLE_DWELL = 0
+    STAGE1_CARRY_SPEED = None
     # m > 0: close only once the gripper frame is within this (horizontally) of the pinch point re-solved on the corner
     # as it lies now; otherwise re-plan and descend again (at most ALIGN_TRIES times). F2: right-arm slips start as a
     # pinch ~1 cm off that the closing jaw sweeps 3.5 cm across the pinch (shallow grip, 2.8 vs 1.4 cm deep)
@@ -212,6 +220,14 @@ class IsaacArmExpert:
     def __init__(self, env, seed=0, prefix="left_", corner=(10,), goal=None, release=False, raw_vertex=True):
         self.env = env
         self.base = env.unwrapped
+        # a task preset (imitation.tasks.half_fold.QF_GENTLE_EXPERT) as instance defaults; WORLDFOLD_EXPERT_PARAMS wins
+        explicit = {item.split("=", 1)[0].strip() for item in os.environ.get("WORLDFOLD_EXPERT_PARAMS", "").split(",")
+                    if "=" in item}
+        for key, val in getattr(self.base, "expert_defaults", {}).items():
+            if not hasattr(IsaacArmExpert, key):
+                raise ValueError(f"expert_defaults: IsaacArmExpert has no {key}")
+            if key not in explicit:
+                setattr(self, key, val)
         self.seed = seed
         self.rng = np.random.default_rng(seed)
         self.prefix = prefix
@@ -553,15 +569,26 @@ class IsaacArmExpert:
             self.q_target = np.asarray(target, dtype=float)
             if self.phase_steps == 0:     # a new target: what its largest joint move needs at the speed limit
                 last = name not in ("lift", "carry") or self.wp >= len(self.plan["arc"]) - 1
-                self.budget = (int(np.ceil(np.max(np.abs(self.q_target - self._q())) / JOINT_DELTA_SCALE))
+                self.budget = (int(np.ceil(np.max(np.abs(self.q_target - self._q())) / JOINT_DELTA_SCALE
+                                           / self._speed(name)))
                                + (POSE_SETTLE_STEPS if last else 0))
             delta = (self.q_target - self._q()) / JOINT_DELTA_SCALE
             action[0:5] = delta / max(1.0, float(np.max(np.abs(delta))))     # all joints arrive together
-            if name in ("lift", "carry"):
-                action[0:5] *= self._qf0(self.QF0_CARRY_SPEED) or self.CARRY_SPEED
+            action[0:5] *= self._speed(name)
         self.phase_steps += 1
         self._maybe_advance(name)
         return action
+
+    def _speed(self, name):
+        """Joint-speed scale for this phase: lift/carry (CARRY_SPEED, QF0_CARRY_SPEED in the quarter fold's first fold,
+        STAGE1_CARRY_SPEED from stage 1 on), retreat (RETREAT_SPEED); 1 elsewhere. The step budget stretches with it."""
+        if name in ("lift", "carry"):
+            if self.STAGE1_CARRY_SPEED is not None and self._stage() > 0:
+                return float(self.STAGE1_CARRY_SPEED)
+            return float(self._qf0(self.QF0_CARRY_SPEED) or self.CARRY_SPEED)
+        if name == "retreat":
+            return float(self.RETREAT_SPEED)
+        return 1.0
 
     def _arrived(self, tol):
         return self.q_target is not None and float(np.max(np.abs(self.q_target - self._q()))) < tol
@@ -686,7 +713,8 @@ class IsaacArmExpert:
             if self._arrived(TRACK_TOL) or patience:
                 self._next()
         elif name == "hold":
-            self._next()
+            if self.phase_steps > self.SETTLE_DWELL:
+                self._next()
         elif name == "release":
             if self.phase_steps >= self.OPEN_DWELL:
                 self._next()

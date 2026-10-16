@@ -3,6 +3,8 @@
 import importlib
 
 import numpy as np
+import types
+
 import pytest
 
 _CLI_ARGS = {"imitation.data.collect": [], "imitation.evaluate": ["--ckpt", "expert"],
@@ -54,9 +56,9 @@ def test_make_env_dispatch(monkeypatch):
     class Stop(Exception):
         pass
 
-    def fake_base(steps=None, cameras=None, profile="lehome", grasp_corners=None):
-        calls.append({"max_episode_steps": steps, "cameras": cameras, "profile": profile})
-        return object()
+    def fake_base(steps=None, cameras=None, profile="lehome", grasp_corners=None, grasp_knobs=None):
+        calls.append({"max_episode_steps": steps, "cameras": cameras, "profile": profile, "grasp_knobs": grasp_knobs})
+        return types.SimpleNamespace()      # the quarter fold's gentle preset hangs expert_defaults on it (QD-2)
 
     class FakeEnv:
         def __init__(self, **kw):
@@ -65,9 +67,18 @@ def test_make_env_dispatch(monkeypatch):
     monkeypatch.setattr(rt, "make_isaac_base", fake_base)
     monkeypatch.setattr(half_fold, "HalfFoldEnv", FakeEnv)
     half_fold.make_env("isaac_weld")
-    assert calls[-1] == {"max_episode_steps": 250, "cameras": None, "profile": "weld", "cloth_jitter": 0.025}
+    assert calls[-1] == {"max_episode_steps": 250, "cameras": None, "profile": "weld", "cloth_jitter": 0.025,
+                         "grasp_knobs": None}
     half_fold.make_env("isaac")
-    assert calls[-1] == {"max_episode_steps": 400, "cameras": None, "profile": "lehome", "cloth_jitter": 0.01}
+    assert calls[-1] == {"max_episode_steps": 400, "cameras": None, "profile": "lehome", "cloth_jitter": 0.01,
+                         "grasp_knobs": None}
+    # QD-2: the quarter fold on isaac_friction gets the gentle-release jaw knobs; the half fold does not
+    monkeypatch.delenv("WORLDFOLD_QF_GENTLE", raising=False)
+    monkeypatch.setattr(half_fold, "_diag_start", lambda env, task, backend: env)
+    half_fold.make_env("isaac_friction", task="quarter_fold")
+    assert calls[-1]["grasp_knobs"] == half_fold.QF_GENTLE_GRASP
+    half_fold.make_env("isaac_friction", task="half_fold")
+    assert calls[-1]["grasp_knobs"] is None
 
 
 @pytest.mark.parametrize("module", list(_CLI_ARGS))

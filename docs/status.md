@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-16 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ (parallel quarter-fold expert demo, 2026-10-16); Q4 collect + BC running in the background; R1–R3 (square) open
+**Updated:** 2026-10-16 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (16/16 on tune, was 9/16); Q4 collect + BC running with it; R1–R3 (square) open
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -40,6 +40,26 @@ I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expe
 rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
+
+**2026-10-16, QD-2 (user: the fold-1 release is violent and jerky; try a slower, gentler release with a slow raise;
+the second fold's friction grip looks like the main problem, try a gentler pick-up and drop-off).** results.md "QD-2".
+- **Cause found:** the jaw swings 0.05 → 1.15 rad in 0.15 s and flings the released corner 4.8 cm at 58 cm/s (the arm
+  rises at only 10 cm/s). The same fling at the second fold's drop throws the crease end 3–5 cm off its goal; the
+  stage-1 grips themselves held through the carry. 4 of the baseline's 9 successes did no real second fold (fold 1 had
+  collapsed the strip).
+- **Fix, adopted as the quarter fold's default on isaac_friction** (`QF_GENTLE_GRASP` / `QF_GENTLE_EXPERT` in
+  `imitation/tasks/half_fold.py`; `WORLDFOLD_QF_GENTLE=0` turns it off): after a close the jaw opens only to 0.6 rad
+  at 0.04 rad/step until the next grasp; the closed jaw holds 6 steps first; the arm rises at 30% speed; stage 1 lifts
+  ≤ half its short move at 50% speed. Release fling 4.8 → 1.9 cm, 58 → 23 cm/s.
+- **Result (tune_id_easy n = 16, paired):** 16/16 (Wilson 81–100), 15 real second folds, no failure codes, against
+  9/16 and 5. The gentle release alone also gives 16/16; the pick-up change adds nothing measurable but was kept at
+  the user's request. The half fold is unchanged (not re-measured). Next check: n = 100 on `sel_`/`final_` seeds.
+- **New video:** `docs/reports/media/quarter_fold_parallel_expert_gentle.mp4`, 3/3 (660000, 660004, 660007). The
+  earlier `quarter_fold_parallel_expert.mp4` (2/3, old release) is kept for comparison.
+- **Running:** the Q4 chain restarted with the gentle expert (the earlier collect was stopped before its first episode:
+  its data would have come from the old expert): collect 200 → `train_bc_grip` → student demo
+  `docs/reports/media/quarter_fold_parallel_bc.mp4`. Resume: `scripts/q_retrain.ps1 -Only collect`, then
+  `-Only train_bc_grip`.
 
 **2026-10-16, QD (user: a quarter-fold demo by the end of the session; parallel fold first, expert first, policy if
 time; the square stays the target).** Plan: `i-need-a-quarter-mellow-puppy.md` (Claude plans folder); results.md "QD".
@@ -273,7 +293,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 255 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 14 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 263 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 14 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -333,6 +353,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-16 · **QD-2: gentle release** (jaw `release_open` / `release_open_steps` + `jaw_open_rate`; expert `SETTLE_DWELL`, `RETREAT_SPEED`, `STAGE1_CARRY_SPEED`; quarter-fold preset): tune n = 16 9/16 → 16/16 (real second folds 5 → 15); video `quarter_fold_parallel_expert_gentle.mp4` 3/3; `isaac/release_summary.py`, `scripts/qd_compare.py`; Q4 chain restarted. Tests: not-slow 263 passed / 5 skipped · see git log
 - 2026-10-16 · **QD: parallel quarter-fold expert demo** (2/3, `docs/reports/media/quarter_fold_parallel_expert.mp4`); baseline 9/16; fold-1 traces (crease pushed, anchors fine); QF0 arc knobs `ARC_FLAT` / `CHORD_CAP` / `LAYDOWN` + `carry_arc_z` / `laydown_tip` tests; `WORLDFOLD_GRASP_KNOBS` hook; `scripts/qd_demo.ps1`, `video_frames.py`, `isaac/slip_summary.py`; Q4 collect launched. Tests: not-slow 255 passed / 5 skipped · see git log
 - 2026-10-15 · **Paused (user)** before the reversed-layout inward-pinch trace finished; docs only · see git log
 - 2026-10-15 · **R2 reversed fold 1** (`reversed_square` stages, clean start follows stage 0's direction, `CLOSE_AT_ARRIVAL` knob): offline reach good for the square-up, but from the clean start the left edge pinch stalls high and swings on close, so the rough fold is 0/3. Tests: not-slow 251 passed / 5 skipped · see git log

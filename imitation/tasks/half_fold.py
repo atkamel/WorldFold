@@ -9,6 +9,7 @@ QuarterFoldExpert drives it as-is.
 
 from __future__ import annotations
 
+import os
 import time
 
 import gymnasium as gym
@@ -182,6 +183,21 @@ def is_isaac(backend) -> bool:
     return str(backend).startswith("isaac")
 
 
+# QD-2 (user 2026-10-16: the releases are violent; the second fold's friction grip is the problem). The quarter fold on
+# isaac_friction lets go gently and picks up the second fold low and slow (results.md QD-2; tune_id_easy n = 16:
+# 16/16, 15 real second folds, against 9/16 and 5). Jaw: after a close it opens only to 0.6 rad, at 0.04 rad/step,
+# until the next grasp. Expert: the closed jaw holds 6 steps at the place, the open dwell covers the slow opening, the
+# arm rises at 30% speed; stage 1 lifts at most half its (short) move, at 50% speed. The half fold is unchanged (not
+# re-measured). WORLDFOLD_QF_GENTLE=0 turns it off; WORLDFOLD_EXPERT_PARAMS / WORLDFOLD_GRASP_KNOBS still override.
+QF_GENTLE_GRASP = {"release_open": 0.6, "release_open_steps": 80, "jaw_open_rate": 0.04}
+QF_GENTLE_EXPERT = {"OPEN_DWELL": 18, "SETTLE_DWELL": 6, "RETREAT_SPEED": 0.3, "STAGE1_ARC_HEIGHT": 0.06,
+                    "STAGE1_CARRY_SPEED": 0.5}
+
+
+def qf_gentle(task, backend):
+    return task == "quarter_fold" and backend == "isaac_friction" and os.environ.get("WORLDFOLD_QF_GENTLE", "1") != "0"
+
+
 def make_env(backend="mujoco", task="half_fold", **kwargs):
     """The half-fold env on either simulator; the only place an env should be built (Phase I).
 
@@ -218,9 +234,13 @@ def make_env(backend="mujoco", task="half_fold", **kwargs):
         if kwargs.get("obs_mode", "state") == "dict":
             from imitation.vision.render import CAMERAS
             cameras = kwargs.get("cameras") or CAMERAS
+        gentle = qf_gentle(task, backend)
         kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras,
                                              profile=ISAAC_PROFILES[backend],
-                                             grasp_corners=task_grasp_corners(task, backend))
+                                             grasp_corners=task_grasp_corners(task, backend),
+                                             grasp_knobs=QF_GENTLE_GRASP if gentle else None)
+        if gentle:
+            kwargs["base_env"].expert_defaults = dict(QF_GENTLE_EXPERT)
         return _diag_start(HalfFoldEnv(**kwargs), task, backend)
     raise ValueError(f"backend must be one of {BACKENDS}, got {backend!r}")
 

@@ -2388,3 +2388,60 @@ strip (3–8 cm instead of 15) makes the second fold a shuffle. Three new stage-
 env hook were added for R1. The anchor pull is solved by the chord cap; the crease shift is not solved by any path
 shape, and the bottom layer sliding on the table is the open R1 question (friction, or holding the near edge down
 during the lay-down). No stage-1 slip tuning was run: a higher success rate would not change what the video shows.
+
+### QD-2 — gentle release and pick-up (user, 2026-10-16: "the release from the first fold is very violent and jerky ... the friction grip looks to be the main problem in the second fold")
+
+**Where the jerk comes from** (`isaac/release_summary.py` on `qd/traces_f1_base/`, per-step corner and jaw):
+- The jaw target jumps from closed (0.05 rad) to open (1.0); the jaw reaches 1.15 rad within 3 control steps (0.15 s).
+  The released corner, held 4–6 cm up inside the jaw, drops and is thrown: **moved 4.8 cm, peak 58 cm/s** (mean of
+  8 releases), while the gripper itself moves at 10 cm/s. So it is the jaw swing, not the arm's raise. The weld profile
+  documents the same fling (`isaac_env.py`, up to 9 cm on the W3 traces).
+- The fling costs fold-1 successes: on 660000 it knocked both corners 5–7 cm off (drift 3.4 → 7.9 cm in 4 steps) and
+  the retries never recovered (G2@0).
+- **Full-episode traces (`qd/traces_full_base/`, 660000–004):** stage-1 grips held through the whole carry on every
+  first grasp (660001, 660003); the stage-1 failures start at the **drop**, where the same jaw swing throws the crease
+  end 3–5 cm at 45–66 cm/s off its goal (3 of 4 stage-1 releases). Re-grasps then slip mid-carry.
+- **Two of the three trace successes did no second fold:** on 660002 and 660004 fold 1 collapsed the strip to ~2 cm, so
+  stage 1 completed within its settle with no grasp. `scripts/qd_compare.py` counts a "real second fold" (stage 1
+  longer than 25 steps): **the 9/16 baseline is 5/16 real** (the 2026-10-14 run: 7/16, 4/16 real).
+
+**Knobs added (all default off, sim-free tests in `tests/imitation/test_gentle_release.py`):**
+- env (`FRICTION_GRASP`, `isaac_env.set_gripper`): `release_open` / `release_open_steps`: after a close, the jaw opens
+  only to `release_open` for that many steps, then fully; `jaw_open_rate` (existing) limits the opening speed.
+  Diagnostic override: `WORLDFOLD_GRASP_KNOBS`.
+- expert (`IsaacArmExpert`): `SETTLE_DWELL` (closed jaw holds at the place before opening), `RETREAT_SPEED` (slow
+  raise), `STAGE1_CARRY_SPEED` (slow stage-1 lift / carry); one `_speed` helper; budgets stretch with the speed.
+
+**Fold-1 probes** (seeds 660000–003, stop at stage 1, overshoot unchanged):
+
+| config | corner moved at release | peak corner speed | peak gripper speed | fold 1 done | crease W / E (mean) |
+|---|---|---|---|---|---|
+| baseline | 4.8 cm | 58 cm/s | 9.7 cm/s | 4/4 | −4.6 / −3.8 |
+| gentle 1: open 0.35 rad at 0.05 rad/step for 30 steps, dwell 6, retreat 0.3 | 3.4 | 32 | 2.4 | 4/4 | −2.4 / −1.9 |
+| **gentle 2: open 0.6 rad at 0.04 rad/step until the next grasp, dwell 6, open dwell 18, retreat 0.3** | **1.9** | **23** | 1.9 | 3/4 | −2.5 / −2.1 |
+
+- Gentle 1's leftover snaps: at 0.35 rad the corner stays bunched in the jaw and rises with the gripper (corner z 1.6 →
+  3.8 cm in the retreat), then drops when the jaw opens fully 30 steps later, 3 cm up. Gentle 2 fixes both.
+- Gentle 2's miss: 660001 placed a corner 9 cm off and retried (truncated). 660002 fails fold 1 in every variant
+  (bottom corners dragged 15 cm, as in the baseline).
+- The crease shift halves with any gentle release: the flick was also shoving the strip.
+
+**Full task, paired n = 16** (`tune_id_easy` 660000–015, 1 × 8, 800 cap; `scripts/qd_compare.py`; "real 2nd fold" = a
+success whose stage 1 took > 25 steps):
+
+| config | success (Wilson) | real 2nd fold | failures | mean fold score | mean steps (successes) |
+|---|---|---|---|---|---|
+| baseline (`qd/expert_base.json`) | 9/16 (33–77) | 5/16 | G2@1 5, G2@0 1, M1@1 1 | 0.836 | 313 |
+| **gentle release** (gentle 2; `qd/expert_gentle.json`) | **16/16 (81–100)** | **15/16** | — | 0.928 | 326 |
+| gentle release + gentle stage-1 pick-up (`STAGE1_ARC_HEIGHT=0.06`, i.e. ≤ half the move; `STAGE1_CARRY_SPEED=0.5`; `qd/expert_gentle_s1.json`) | 16/16 (81–100) | 15/16 | — | 0.916 | 348 |
+
+- **The gentle release is the whole gain:** 7 discordant seeds, all to the gentle side (exact McNemar p = 0.016); every
+  failure code is gone, fold 1 included (G2@0).
+- **The gentler stage-1 pick-up adds nothing measurable** (same 16/16 and 15/16; fold score within noise; 22 steps
+  slower). The traces had shown the stage-1 grips holding through the carry; the second fold failed at the drop.
+  Kept in the preset at the user's request (a 3–4 cm lift instead of 12 cm for a 5–9 cm move looks gentler), at no
+  cost in success.
+- **Adopted as the quarter fold's default on `isaac_friction`** (`imitation.tasks.half_fold.QF_GENTLE_GRASP` /
+  `QF_GENTLE_EXPERT`, `WORLDFOLD_QF_GENTLE=0` to turn off). The half fold is unchanged and was not re-measured with it.
+- Caveat: n = 16 tune seeds, one run; the Q0 noise floor flips ~25% of seeds run to run, so a `sel_`/`final_` n = 100
+  run is the next check before the gate.
