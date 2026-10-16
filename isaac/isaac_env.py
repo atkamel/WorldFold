@@ -8,6 +8,7 @@ camera come from mujuco/cloth_params.py. Nothing attaches the cloth: the jaws ho
 Call start_app() (or construct the env, which does it) before importing anything else from Isaac Sim or IsaacLab.
 """
 
+import os
 import time
 
 import numpy as np
@@ -283,6 +284,15 @@ class IsaacClothFoldEnv(gym.Env):
             if unknown:
                 raise ValueError(f"unknown grasp knobs {sorted(unknown)}")
             self.grasp_knobs.update(grasp_knobs)
+        # QD (2026-10-16) diagnostic hook: WORLDFOLD_GRASP_KNOBS="particle_friction=1.0,..." overrides a friction
+        # profile's knobs for a whole run (e.g. a fold-1 geometry probe); empty = no change. Same checks as grasp_knobs.
+        env_knobs = os.environ.get("WORLDFOLD_GRASP_KNOBS", "")
+        if env_knobs and grasp_mode == "friction" and "friction_grasp" in self._prof:
+            for item in env_knobs.split(","):
+                key, val = (x.strip() for x in item.split("=", 1))
+                if key not in FRICTION_GRASP:
+                    raise ValueError(f"WORLDFOLD_GRASP_KNOBS: unknown grasp knob {key}")
+                self.grasp_knobs[key] = float(val)
         if (self.grasp_knobs.get("adhesion") or 0.0) > ADHESION_MAX:
             raise ValueError(f"adhesion {self.grasp_knobs['adhesion']} is over the cap {ADHESION_MAX}")
         hz = self.grasp_knobs.get("physics_hz")

@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-15 · **Branch:** `feature/isaac-imitation` · **Phase:** Q rethink (R0–R3, square fold-over only); Q0 ✅ Q1 ✅ R0 ✅ R2 ⏸ paused (user, 2026-10-15)
+**Updated:** 2026-10-16 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ (parallel quarter-fold expert demo, 2026-10-16); Q4 collect + BC running in the background; R1–R3 (square) open
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -40,6 +40,31 @@ I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expe
 rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
+
+**2026-10-16, QD (user: a quarter-fold demo by the end of the session; parallel fold first, expert first, policy if
+time; the square stays the target).** Plan: `i-need-a-quarter-mellow-puppy.md` (Claude plans folder); results.md "QD".
+- **Deliverable ✅:** `docs/reports/media/quarter_fold_parallel_expert.mp4` + `.json`: scripted expert, parallel
+  second fold, real fold 1, seeds 660002 ✓ (200 steps), 660004 ✓ (178), 660013 ✗ dragged. Launcher
+  `scripts/qd_demo.ps1` (eval / demo / trace), frames `scripts/video_frames.py`.
+- **Honest read:** the baseline expert is 9/16 today (7/16 on the 14th), but fold 1 leaves the strip 3–8 cm wide, so
+  the second fold on video is a 5–9 cm shuffle of the crease end. A convincing quarter fold needs R1 (fold-1 width).
+- **R1 work done tonight (traces, `outputs/imitation/isaac_friction/qd/`):** the anchors drift only 3 cm (at the jaw
+  close); the crease is *pushed* 4–9 cm toward the arms because the 12 cm arc is lower than the 15 cm flap and
+  descends from the midpoint on. New stage-0 knobs (default off): `QF0_ARC_FLAT`, `QF0_CHORD_CAP` (fixes the anchor
+  pull, 4/4 clean carries), `QF0_LAYDOWN` (taut lay-down from the crease outward). None keeps the crease within 2 cm:
+  slack piles up (−4 to −12 cm), taut drags the root (−9 cm). Cloth friction 1.0 (`WORLDFOLD_GRASP_KNOBS`, diagnostic
+  hook in `isaac_env.py`) widens the strip on 2/3 seeds but doubles the anchor drift; not adopted (needs the user's OK).
+- **Running / next:** `scripts/q_retrain.ps1 -Only collect` (200 eps, cameras, 2 × 6) was launched at 18:42 into
+  `outputs/imitation/datasets/isaac_qf_v1`; then `-Only train_bc_grip` (GPU only, no Isaac alongside), then
+  `imitation.demo --ckpt outputs/imitation/runs/isaac_qf_v1_bc_grip/final.pt --replan-every 4 --set tune_id_easy --n 6
+  --out docs/reports/media/quarter_fold_parallel_bc.mp4`. Every stage is resumable with the same command.
+- **R1 next (user's call):** hold the near edge down while the flap is laid (the idle gripper, or the stage-0 anchor
+  press), or a cloth–table friction that is separate from the jaw friction (a second material), then re-measure
+  width / crease on n = 8 with the QF0 knobs. Phase D (reversed-layout square trace) was not run: no free slot.
+- **State:** Q4 collect running (2 Isaac procs + thermal guard). Stop with `Stop-Process` on the collect's python
+  processes; the dataset resumes.
+
+**Earlier (2026-10-15):**
 
 **2026-10-15, Phase Q rethink** (user: square only, i.e. the fold-over with both arms on the same short edge; fold 1 must
 be accurate; no weld anywhere; add a reset skill and a safe-failure benchmark). Plan: the approved plan
@@ -248,7 +273,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 236 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 14 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 255 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 14 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -308,6 +333,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-16 · **QD: parallel quarter-fold expert demo** (2/3, `docs/reports/media/quarter_fold_parallel_expert.mp4`); baseline 9/16; fold-1 traces (crease pushed, anchors fine); QF0 arc knobs `ARC_FLAT` / `CHORD_CAP` / `LAYDOWN` + `carry_arc_z` / `laydown_tip` tests; `WORLDFOLD_GRASP_KNOBS` hook; `scripts/qd_demo.ps1`, `video_frames.py`, `isaac/slip_summary.py`; Q4 collect launched. Tests: not-slow 255 passed / 5 skipped · see git log
 - 2026-10-15 · **Paused (user)** before the reversed-layout inward-pinch trace finished; docs only · see git log
 - 2026-10-15 · **R2 reversed fold 1** (`reversed_square` stages, clean start follows stage 0's direction, `CLOSE_AT_ARRIVAL` knob): offline reach good for the square-up, but from the clean start the left edge pinch stalls high and swings on close, so the rough fold is 0/3. Tests: not-slow 251 passed / 5 skipped · see git log
 - 2026-10-15 · **R2 drag-only square-up** (`left_fold_push`, `Move.kind="push"`, `set_push`, rough-fold role fix): 0/3 traces. Targets on the strip's near edge sit 4–8 cm from the arm bases (fold 1 puts the strip on the base line); a layout call goes to the user. Tests: not-slow 250 passed / 5 skipped · see git log

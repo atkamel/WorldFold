@@ -2291,3 +2291,100 @@ The clean start (`diag_clean_fold`) now folds in stage 0's direction.
 - **Finding:** the reversed layout fixes the square-up's reach on paper (every right-arm target is near-vertical). But
   the left arm's edge pinch on the far strip now stalls high and swings on close, so the rough fold fails first
   (0/3). The square-up stages were not reached. Reversed fold 1 itself (stage 0 by the expert) is not built yet.
+
+## QD — parallel quarter-fold demo (2026-10-16, `outputs/imitation/isaac_friction/qd/`)
+
+User decision (2026-10-16): a quarter-fold demo by the end of the session, the parallel second fold first (the only
+quarter fold that has completed from a real fold 1), the expert on video first and a learned policy if time; the
+square stays the target of R1–R3. Everything here is from a real fold 1 (no `WORLDFOLD_QF_START=clean`).
+
+### Parallel fold, expert baseline re-run (`qd/expert_base.json`)
+
+`WORLDFOLD_QF_SECOND=parallel`, no expert knobs, `tune_id_easy` 660000–015, 1 × 8 envs, 800 cap (73 min wall).
+
+| run | success | failures | mean steps (successes) | mean fold score |
+|---|---|---|---|---|
+| 2026-10-14 (`q3/expert_parallel.json`) | 7/16 (Wilson 23–67) | G2@1 8, M1@1 1 | 339 | 0.85 |
+| **2026-10-16 (`qd/expert_base.json`)** | **9/16 (Wilson 33–77)** | G2@0 1, G2@1 5, M1@1 1 | 313 | 0.84 |
+
+- Same rate within the Q0 noise floor; 6 of 16 seeds flipped between the two runs.
+- Still all stage-1 slips (G2@1) plus one drag.
+
+### Expert demo video (`docs/reports/media/quarter_fold_parallel_expert.mp4`, `.json`)
+
+`imitation.demo --backend isaac_friction --task quarter_fold --ckpt expert --seeds 660002 660004 660013`
+(`scripts/qd_demo.ps1 -Step demo`), 1 env, 512² demo camera, 20 fps.
+
+| seed | result | steps | fold score |
+|---|---|---|---|
+| 660002 | success | 200 | 0.96 |
+| 660004 | success | 178 | 0.90 |
+| 660013 | fail, cloth dragged (stage 1) | 650 | 0.73 |
+
+- 2/3 successes; an earlier render (`qd/demo_expert_v1.log`: 660002 ✓ 200, 660004 ✓ 681, 660009 ✗ dragged) was lost
+  to a launcher bug (`$Out` vs `$out`: PowerShell variable names are case-insensitive).
+- **What the video shows (frames `qd/frames_v2/`):** fold 1 completes, but the second fold is a 5–9 cm shuffle of the
+  crease end on a strip that fold 1 left ~5 cm wide. The success test (crease end within 5 cm of the near corner)
+  passes without a visible second fold. The demo is honest but weak until fold 1 is fixed (R1), see below.
+
+### Fold 1 from per-step traces: the flap is pushed, not laid (`qd/traces_f1_base/`, `qd/trace_f1_base.jsonl`)
+
+`recovery_replay --task quarter_fold --no-knock --stop-at-stage 1 --trace-dir`, seeds 660000–003, defaults.
+
+| seed | strip width W / E (cm, 15 expected) | crease shift W / E | anchor drift v0 / v110 |
+|---|---|---|---|
+| 660000 | 3.5 / 7.1 | −8.9 / −6.3 | 2.8 / 2.4 |
+| 660001 | 3.2 / 8.6 | −8.6 / −3.4 | 3.3 / 3.1 |
+| 660002 | 2.2 / 0.4 | −0.9 / 0.0 | 16.4 / 14.6 |
+| 660003 | 12.4 / 5.2 | −0.2 / −5.6 | 2.9 / 4.5 |
+
+- **The anchors drift only ~3 cm, all of it at the jaw close** (the closing jaw sweeps the far corner 3 cm toward the
+  centre and back; the sheet follows). Through the whole carry the drift stays at 3.0 cm (trace 660000).
+- **The crease is pushed, not pulled.** The carried corner lands on target (y −0.25, then −0.28 after the release),
+  yet the crease sits at y −0.22 instead of −0.13. The 12 cm arc is lower than the 15 cm flap and descends from the
+  midpoint on, so the flap's tail rests on the bottom layer and is pushed ahead of the gripper: the top layer piles
+  up against the crease. Not a speed or spring-back effect (Q3), a path-shape one.
+- **Plain arc at 0.20 m (`QF0_ARC_HEIGHT=0.20`, `qd/traces_f1_arc20/`): 0/4, `cloth_dragged` at t70–75.** The rise
+  is mostly vertical early (chord to the anchor > 30 cm), and the sheet is pulled off its anchors by 5–16 cm.
+- **Flat-top chord-capped arc, first try (`QF0_ARC_HEIGHT=0.15, QF0_ARC_FLAT=2, QF0_CHORD_CAP=0.01`,
+  `qd/traces_f1_flat15/`):** the plan keeps the tip within 28 cm of the anchor, but the executed path runs 2–3 cm
+  above it (IK tolerance 2 cm plus joint tracking), the pull starts at ~30 cm, and the anchors drifted 3 → 7 cm
+  between z 9 and 16 cm. The corners then landed off and the retries never re-grasped (truncated).
+- **Flat-top arc with a 4 cm chord margin (`QF0_CHORD_CAP=0.04`, `qd/traces_f1_flat15c4/`): the pull is gone, the
+  pile-up is not.** Fold 1 completed 4/4 with no retries, anchors at 3.2–4.1 cm (the close only). But the crease
+  sits 8.8–13.7 cm toward the arms (width 0.9–2.7 cm west): a 15 cm flap dropped from 15 cm up piles up at the
+  landing point. In the plain arc's second half the gripper is 10–11 cm from the crease point while holding a 15 cm
+  flap, so ~5 cm of slack is pushed ahead of it; dropping from above makes that 15 cm of slack.
+
+  | seed | width W / E | crease W / E | drift v0 / v110 | stage 0 |
+  |---|---|---|---|---|
+  | 660000 | 2.1 / 4.7 | −13.7 / −9.0 | 3.5 / 3.2 | done t187 |
+  | 660001 | 2.7 / 3.8 | −12.4 / −9.1 | 4.1 / 2.1 | done t182 |
+  | 660002 | 2.7 / 4.9 | −8.8 / −6.4 | 3.5 / 3.6 | done t182 |
+  | 660003 | 0.9 / 3.3 | −10.9 / −7.8 | 3.2 / 3.9 | done t185 |
+- **Taut lay-down, R = 13 cm (`QF0_LAYDOWN=0.13` with the flat-top arc and `QF0_OVERSHOOT_SCALE=0`,
+  `qd/traces_f1_lay13/`):** from the peak over the fold line the tip descends on a quarter circle about the crease
+  point. Crease −4.3 / −4.3 (660000), −4.1 / −4.0, −3.7 / −6.2, one seed −12.4 / −5.6; width 7.4 / 7.6, 7.1 / 7.3,
+  8.3 / 4.9, 0.6 / 6.9; anchors 3.1–3.9 cm; 4/4 completed (one retry). About the baseline: 2 cm of slack plus the
+  corner riding 1–2 cm beyond the gripper is still pushed ahead, and the circle ends 2 cm short of the anchor
+  (stack spread 5–8 cm).
+- **Taut lay-down, R = 15 and 16 cm (`qd/traces_f1_lay15/`, `qd/traces_f1_lay16/`): too taut.** R = 16: crease
+  −8.3 to −9.0 / −8.5 to −10.3, width 2.0–2.7 / 0.8–3.0 (4/4 completed): a taut flap drags the crease root toward the
+  arms. R = 15: the corners are held 5 cm off the table at the release (the flap cannot reach), retries, truncated;
+  stopped after seed 660000.
+- **Reading across the shapes:** slack (plain arc, ~5 cm) pushes the crease −5 cm; 2 cm slack (R 13) −4 cm; taut
+  (R 16) −9 cm; vertical drop −12 cm. No path shape keeps the crease within 2 cm, which points at the bottom layer
+  sliding on the table under any horizontal load (cloth particle friction 0.5, LeHome's value, applies to the table
+  and the jaws alike). A cloth-friction probe follows; adopting a physics change needs the user's OK (R1 plan).
+- **Cloth particle friction 1.0 (LeHome's 0.5 doubled; `WORLDFOLD_GRASP_KNOBS=particle_friction=1.0`, plain arc,
+  `qd/traces_f1_pf10/`): mixed, not adopted.** Width 9.3 / 12.2, 2.6 / 3.2, 12.9 / 10.1 on the three seeds that
+  finished (660001 failed, 4 retries); crease −8.6 / −3.4, +0.7 / +1.2, −4.0 / −2.3; but the anchors drift 10.5 / 5.6,
+  13.1 / 12.9, 6.5 / 2.5 (the one material also governs the jaws, so the closing sweep drags the sheet harder). A
+  physics change in any case needs the user's OK (R1). The hook stays as a diagnostic (`isaac_env.py`).
+
+**QD conclusion (2026-10-16):** the parallel quarter-fold expert video exists (2/3 from a real fold 1), but fold 1's
+strip (3–8 cm instead of 15) makes the second fold a shuffle. Three new stage-0 knobs (`QF0_ARC_FLAT`, `QF0_CHORD_CAP`,
+`QF0_LAYDOWN`, all default off, `isaac.fold_expert.carry_arc_z` / `laydown_tip`, sim-free tests) and a grasp-knob
+env hook were added for R1. The anchor pull is solved by the chord cap; the crease shift is not solved by any path
+shape, and the bottom layer sliding on the table is the open R1 question (friction, or holding the near edge down
+during the lay-down). No stage-1 slip tuning was run: a higher success rate would not change what the video shows.

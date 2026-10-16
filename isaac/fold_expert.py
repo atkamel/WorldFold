@@ -47,6 +47,35 @@ JAW_SHUT_TOL = 0.05          # = isaac_env.JAW_SETTLED_TOL
 JAW_STILL = 0.01             # rad per control step
 
 
+def carry_arc_z(s, start, place, goal, arc_h, flat=None, cap=None):
+    """Height of the carry arc at fraction s of the cosine-profiled path from start to place (tip points, m).
+    Plain: a sine bump of arc_h. flat = k (QF0_ARC_FLAT): the bump rises k times faster and holds arc_h, so the flap
+    hangs clear of the bottom layer until the drop. cap = m (QF0_CHORD_CAP): the tip never goes further from the
+    anchor corner (goal xy) than the pinch-to-anchor distance minus m, so the rise never pulls the sheet taut."""
+    rise = math.sin(math.pi * s)
+    if flat:
+        rise = min(1.0, float(flat) * rise)
+    z = float(start[2] + (place[2] - start[2]) * s + arc_h * rise)
+    if cap:
+        reach = float(np.linalg.norm(np.asarray(start[:2], float) - np.asarray(goal[:2], float))) - float(cap)
+        tip_xy = np.asarray(start[:2], float) + (np.asarray(place[:2], float) - np.asarray(start[:2], float)) * (1.0 - math.cos(math.pi * s)) / 2.0
+        horiz = float(np.linalg.norm(tip_xy - np.asarray(goal[:2], float)))
+        z = min(z, float(start[2]) + math.sqrt(max(0.0, reach * reach - horiz * horiz)))
+    return z
+
+
+def laydown_tip(s, start, place, goal, radius):
+    """QF0_LAYDOWN: the tip for s in (0.5, 1], on a quarter circle of `radius` about the crease point (midway between
+    the pinch and the anchor corner in xy, at the place height), from straight above it (s = 0.5) to the table along
+    the carry direction (s = 1). The flap stays nearly taut, laid from the crease outward."""
+    start, place, goal = (np.asarray(v, float) for v in (start, place, goal))
+    u = place[:2] - start[:2]
+    u = u / max(float(np.linalg.norm(u)), 1e-9)
+    crease = start[:2] + 0.5 * (goal[:2] - start[:2])
+    th = (s - 0.5) * math.pi
+    return np.r_[crease + radius * math.sin(th) * u, place[2] + radius * math.cos(th)]
+
+
 class IsaacArmExpert:
     PHASES = ("approach", "descend", "close", "lift", "carry", "place", "hold")
     RELEASE_PHASES = ("release", "retreat", "done")
@@ -119,6 +148,22 @@ class IsaacArmExpert:
     QF0_OVERSHOOT_SCALE = 1.0    # x the stage-0 spring-back overshoot (applied by ScriptedTeacher)
     QF0_CARRY_SPEED = None       # lift/carry joint-speed scale in stage 0
     QF0_ARC_HEIGHT = None        # carry arc peak in stage 0 (m)
+    # QD (2026-10-16, fold-1 traces qd/traces_f1_base): the anchors drift only 3 cm (at the close), but the 12 cm arc is
+    # lower than the 15 cm flap and descends from the midpoint on, so the hanging flap's tail is pushed ahead of the
+    # gripper across the bottom layer: the crease forms 4-9 cm toward the arms and the strip ends 3-8 cm wide instead
+    # of 15. QF0_ARC_FLAT = k: the stage-0 arc rises k times faster (z = h * min(1, k sin(pi s))), holds its peak so
+    # the flap hangs clear, and drops near-vertically over the target. QF0_CHORD_CAP = m: the tip never goes further
+    # than (pinch-to-anchor distance - m) from the anchor corner (the goal), so the rise never pulls the sheet taut
+    # (a 0.20 arc with the plain profile dragged the anchors 16 cm: qd/traces_f1_arc20).
+    QF0_ARC_FLAT = None
+    QF0_CHORD_CAP = None
+    # QD: with the flat-top arc the anchors stay put (4/4, drift 3 cm), but the flap dropped from above piles up at the
+    # landing point (crease 8-14 cm toward the arms, qd/traces_f1_flat15c4). In the plain arc's second half the gripper
+    # is 10-11 cm from the crease point while holding a 15 cm flap, so 5 cm of slack cloth is pushed ahead of it.
+    # QF0_LAYDOWN = R (m): from the peak over the fold line, the tip descends along a quarter circle of radius R about
+    # the crease point (midway between the pinch and the anchor corner, at the place height), keeping the flap nearly
+    # taut so it is laid from the crease outward; R < 15 cm leaves (15 - R) cm of slack. Use with QF0_OVERSHOOT_SCALE=0.
+    QF0_LAYDOWN = None
     IK_RESTARTS = 6
     # R2 (2026-10-15, clean-start probe): the stage-1 approach cruised at the start height (0.71 m from home), out of
     # the left arm's top-down reach near its base (misses 1.4-5.3 cm; reachable up to ~0.52 m there), and its last pose
@@ -367,8 +412,11 @@ class IsaacArmExpert:
                 span = float(np.linalg.norm(place[:2] - start[:2]))
                 if span < self.SHORT_MOVE:          # a square-up pull: lift only about half its length
                     arc_h = min(arc_h, 0.5 * span)
-            tip[2] = start[2] + (place[2] - start[2]) * s + arc_h * math.sin(math.pi * s)
-            w_arc = self.STAGE1_ARC_ORIENT_W if (self.STAGE1_ARC_ORIENT_W is not None and self._stage() > 0) else 0.05
+            tip[2] = carry_arc_z(s, start, place, goal, arc_h, self._qf0(self.QF0_ARC_FLAT), self._qf0(self.QF0_CHORD_CAP))
+            lay = self._qf0(self.QF0_LAYDOWN)
+            if lay and s > 0.5:
+                tip = laydown_tip(s, start, place, goal, lay)
+            w_arc =self.STAGE1_ARC_ORIENT_W if (self.STAGE1_ARC_ORIENT_W is not None and self._stage() > 0) else 0.05
             q, _ = self._solve(tip, jaw, q, tol=self.ARC_TOL, orientation_weight=w_arc)
             plan["arc"].append(q)
             plan["arc_tips"].append(tip)
