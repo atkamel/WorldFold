@@ -40,11 +40,11 @@ def make_isaac_base(max_episode_steps: int = ISAAC_MAX_STEPS, cameras: dict | No
 
 
 def make_isaac_batch(n: int, max_episode_steps: int = ISAAC_MAX_STEPS, cameras: dict | None = None,
-                     profile: str = "weld", grasp_corners: dict | None = None):
+                     profile: str = "weld", grasp_corners: dict | None = None, grasp_knobs: dict | None = None):
     """IsaacClothFoldBatch of n sub-envs, each built as make_isaac_base builds its env (milestone V)."""
     sys.argv = sys.argv[:1]
     from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS
     from isaac.isaac_env import IsaacClothFoldBatch
     return IsaacClothFoldBatch(n, observation_mode="state", max_episode_steps=max_episode_steps,
                                grasp_corners=grasp_corners or GRASP_CORNERS, grasp_radius=GRASP_RADIUS, cameras=cameras,
-                               profile=profile)
+                               profile=profile, grasp_knobs=grasp_knobs)

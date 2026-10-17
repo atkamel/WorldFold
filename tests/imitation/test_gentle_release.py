@@ -88,3 +88,24 @@ def test_expert_takes_preset_as_instance_defaults(monkeypatch):
     assert e.SETTLE_DWELL == 6
     assert "RETREAT_SPEED" not in vars(e)              # explicit params win (they set the class attribute)
     assert IsaacArmExpert.SETTLE_DWELL == 0            # the class default is untouched
+
+
+def test_batch_factory_applies_the_preset(monkeypatch):
+    """The collect and the multi-env evals build envs through make_env_batch: the preset must reach that path too."""
+    from imitation.tasks import half_fold
+    import imitation.isaac_runtime as rt
+    calls = []
+
+    def fake_batch(n, steps, cameras=None, profile="weld", grasp_corners=None, grasp_knobs=None):
+        calls.append(grasp_knobs)
+        return SimpleNamespace(envs=[SimpleNamespace() for _ in range(n)])
+
+    monkeypatch.setattr(rt, "make_isaac_batch", fake_batch)
+    monkeypatch.setattr(half_fold, "HalfFoldEnv", lambda **kw: kw["base_env"])
+    monkeypatch.setattr(half_fold, "_diag_start", lambda env, task, backend: env)
+    monkeypatch.delenv("WORLDFOLD_QF_GENTLE", raising=False)
+    batch, envs = half_fold.make_env_batch("isaac_friction", n=3, task="quarter_fold")
+    assert calls[-1] == half_fold.QF_GENTLE_GRASP
+    assert all(e.expert_defaults == half_fold.QF_GENTLE_EXPERT for e in envs)
+    half_fold.make_env_batch("isaac_friction", n=2, task="half_fold")
+    assert calls[-1] is None

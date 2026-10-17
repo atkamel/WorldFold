@@ -2478,3 +2478,10 @@ The gentle release is now the quarter fold's default, so the fold-1 probes were 
   (QD). R1's remaining levers are the jaw-close sweep (a slower close, or a close along the edge) and the bottom
   layer's hold on the table (friction, or a press). The chord cap (`QF0_CHORD_CAP`) does cure the one seed whose
   anchors drag 16 cm (660002) and is worth keeping in mind as a safety for R1.
+
+**Preset gap found 22:00 (QD-3):** `QF_GENTLE_*` was applied only in `make_env`; `make_env_batch` (the collect and
+every multi-env eval) did not have it. The n = 16 gentle evals above are valid because they set the knobs through
+`WORLDFOLD_EXPERT_PARAMS` / `WORLDFOLD_GRASP_KNOBS`; the 1-env demo video used the preset. The first state-only Q4
+collect ran the old release (first batch 3/9, four unperturbed truncations) and was discarded
+(`datasets/isaac_qf_v1_oldrelease_discarded`). Fixed (`make_env_batch` passes `grasp_knobs` and sets
+`expert_defaults` on every sub-env; `test_batch_factory_applies_the_preset`); the collect restarted 22:05.

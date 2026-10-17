@@ -262,8 +262,15 @@ def make_env_batch(backend="isaac_weld", n=1, task="half_fold", **kwargs):
     if kwargs.get("obs_mode", "state") == "dict":
         from imitation.vision.render import CAMERAS
         cameras = kwargs.get("cameras") or CAMERAS
+    # QD-2: the gentle preset applies on this path too (collect and multi-env evals build their envs here). Until
+    # 2026-10-16 22:00 only make_env had it, so the first Q4 collect ran the old release (results.md QD-3).
+    gentle = qf_gentle(task, backend)
     batch = make_isaac_batch(n, kwargs["max_episode_steps"], cameras=cameras, profile=ISAAC_PROFILES[backend],
-                             grasp_corners=task_grasp_corners(task, backend))
+                             grasp_corners=task_grasp_corners(task, backend),
+                             grasp_knobs=QF_GENTLE_GRASP if gentle else None)
+    if gentle:
+        for sub in batch.envs:
+            sub.expert_defaults = dict(QF_GENTLE_EXPERT)
     return batch, [_diag_start(HalfFoldEnv(**dict(kwargs, base_env=sub)), task, backend) for sub in batch.envs]
 
 
