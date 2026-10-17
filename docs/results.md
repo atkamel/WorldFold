@@ -2500,3 +2500,28 @@ path since f48af9d), seeds 0–199, 50% `knock_arm`, state-only, 2 × 8 envs. Wa
 - 87.5% expert success over 200 seeds, 50% knocked: clean 94/100 (6 failures, 2 drags, 4 truncations), knocked 81/100.
   Against the old release's first batch on the same seeds (3/9) and the F4 half-fold collect (clean 93/101, bumped 78/99).
 - BC (`train_bc_grip`, diffusion, gripper head, 20k steps) started 00:14 on 154 train / 21 val episodes, 56,616 samples.
+
+### Q4 — first learned quarter-fold policy: diffusion BC with the gripper head (2026-10-17, `runs/isaac_qf_v1_bc_grip`, `q4/train_bc_grip.log`)
+
+`train --policy diffusion --loss-cfg gripper_head=true`, 20k steps, seed 0, on `isaac_qf_v1` (154 train / 21 val
+episodes, 56,616 samples). 23 min on the GPU. Train loss 0.0091 at 20k; val(ema) climbs 0.49 → 0.55 from 16k, as in Q1
+(val loss does not track success on this data; `final.pt` is used).
+
+**Demo, privileged state policy, replan 4, `tune_id_easy` 660000–005, 1 env, 800 cap
+(`docs/reports/media/quarter_fold_parallel_bc.mp4`, `.json`):**
+
+| seed | result | steps | fold score |
+|---|---|---|---|
+| 660000 | success | 353 | 0.95 |
+| 660001 | fail (truncated) | 800 | 0.83 |
+| 660002 | success | 392 | 0.94 |
+| 660003 | success | 425 | 0.94 |
+| 660004 | success | 324 | 0.95 |
+| 660005 | fail (truncated) | 800 | 0.88 |
+
+- **4/6 (Wilson 30–90).** The successes finish in 324–425 steps with both folds and the gentle release reproduced
+  (frames `qd/frames_bc/`: fold scores 0.94–0.95, same as the expert's). The two failures are stalls, not drags: fold 1
+  is done, the right arm holds the crease end and the left arm hovers open until the cap (the S1 pattern DAgger
+  fixed on the half fold).
+- This is a demo on 6 tune seeds, not a rate; the `sel_`/`final_` n = 100 evals are the Q4 finals, not run tonight.
+- No DAgger, vision student or detector yet (the collect is state-only).

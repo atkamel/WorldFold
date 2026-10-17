@@ -1,0 +1,48 @@
+{
+ "ckpt": "outputs\\imitation\\runs\\isaac_qf_v1_bc_grip\\final.pt",
+ "backend": "isaac_friction",
+ "episodes": [
+  {
+   "seed": 660000,
+   "steps": 353,
+   "success": true,
+   "fold_score": 0.9457863587915417,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 660001,
+   "steps": 800,
+   "success": false,
+   "fold_score": 0.8322952443029378,
+   "termination_reason": null
+  },
+  {
+   "seed": 660002,
+   "steps": 392,
+   "success": true,
+   "fold_score": 0.9423884717234524,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 660003,
+   "steps": 425,
+   "success": true,
+   "fold_score": 0.9397003286311434,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 660004,
+   "steps": 324,
+   "success": true,
+   "fold_score": 0.946691486174103,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 660005,
+   "steps": 800,
+   "success": false,
+   "fold_score": 0.8830831440089986,
+   "termination_reason": null
+  }
+ ]
+}

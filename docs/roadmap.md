@@ -256,7 +256,7 @@ Added 2026-10-13 (user):
 | QD-2 | Gentle release and pick-up (user, 2026-10-16) | release fling measured and reduced; paired n = 16 on tune_id_easy not below the baseline | ✅ 2026-10-16: fling 4.8 → 1.9 cm (58 → 23 cm/s); 16/16 vs 9/16 (real second folds 15 vs 5), p = 0.016; adopted as the quarter fold's default (`QF_GENTLE_*`); video 3/3 |
 | R3 | Reset skill + safe-failure benchmark: `reset` stage reserved in obs v2, expert lift-and-re-spread, `qf_crumpled_s0` / `qf_bunched` / `qf_knock_mid`, outcome codes success / safe reset / unsafe | reset bar (user to confirm; proposed ≥ 85% flat area in ≥ 80% of n = 16) | ☐ |
 | Q3 | Quarter-fold expert gate (one mechanism per attempt, tune seeds n = 40, paired) | bars confirmed by the user before the run (proposed: stage-1 ≥ 92, qf_id_easy ≥ 85, qf_id_hard ≥ 80, knock sets ≥ 60, G2 + G3 ≤ 8%), n = 100 on `final_` | ⏸ paused 2026-10-14 |
-| Q4 | Fast-track pipeline (`scripts/q_retrain.ps1`): 200 eps, BC baseline loss and loss v2, DAgger 1 round, vision student, detector, demos | finals n = 100 on `final_` sets, paired comparisons between adjacent rows, per-stage breakdown | ☐ |
+| Q4 | Fast-track pipeline (`scripts/q_retrain.ps1`): 200 eps, BC baseline loss and loss v2, DAgger 1 round, vision student, detector, demos | finals n = 100 on `final_` sets, paired comparisons between adjacent rows, per-stage breakdown | ◐ 2026-10-17: collect 175 + 25 (gentle expert, state-only, `-NoVision`), BC gripper head trained, student demo 4/6 on tune seeds; finals, DAgger, vision, detector not run |
 | Q5 | Report + HTML page | `verify Q0..Q5` PASS | ☐ |
 
 ## Phase 6 — Language-conditioned folds and the VLA  *(ref. milestone 3, reframed)*

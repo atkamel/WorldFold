@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-16 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (16/16 on tune, was 9/16); Q4 collect + BC running with it; R1–R3 (square) open
+**Updated:** 2026-10-16 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (16/16 on tune, was 9/16); Q4 collect ✅ (isaac_qf_v1, 175 eps) + BC student ✅ (demo 4/6); R1 probes running in a linked session; R1–R3 (square) open
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -40,6 +40,13 @@ I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expe
 rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
+
+**2026-10-17 00:53, Q4 first pass done.** Collect 175 + 25 failures (`isaac_qf_v1`, hash `42bd9eb13451`, 87.5% expert
+success over 200 seeds, 50% knocked); diffusion BC with the gripper head trained in 23 min; **student demo 4/6 on
+tune_id_easy** (`docs/reports/media/quarter_fold_parallel_bc.mp4`, both folds and the gentle release reproduced; the two
+failures are stalls with the left arm hovering). Not run: `sel_`/`final_` n = 100 finals, DAgger, vision (state-only data),
+detector. Linked sessions: R1 fold-1 probes (table friction) hold both Isaac slots now; the n = 100 gentle-release
+confirmation runs after them (`scripts/qd2_scale.ps1`, HOLD file in `outputs/imitation/isaac_friction/qd2/`).
 
 **2026-10-16 evening, QD-3 (user: keep pushing).** results.md "QD-3". On the gentle release the fold-1 strip is 7–9 cm
 (stacks now 1–3 cm tight, crease −4 / −3 cm); the flat-arc lay-down and the overshoot-off variants are both worse, so
@@ -367,6 +374,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-17 · **Q4 first pass:** `isaac_qf_v1` frozen (175 + 25, `42bd9eb13451` / `e6c6023fd81d`), BC gripper-head student 20k steps, demo 4/6 (`quarter_fold_parallel_bc.mp4`); preset applied on the batch path (f48af9d). Tests: not-slow 264 passed / 5 skipped · see git log
 - 2026-10-16 · **QD-3: fold-1 width on the gentle release** (3 probes, none adopted; `-NoVision` on `q_retrain.ps1`; camera collect too slow, discarded; the gentle preset was missing on the batch path, fixed + test, first state-only collect discarded); Q4 state-only chain running. Tests: not-slow 264 passed / 5 skipped · see git log
 - 2026-10-16 · **QD-2: gentle release** (jaw `release_open` / `release_open_steps` + `jaw_open_rate`; expert `SETTLE_DWELL`, `RETREAT_SPEED`, `STAGE1_CARRY_SPEED`; quarter-fold preset): tune n = 16 9/16 → 16/16 (real second folds 5 → 15); video `quarter_fold_parallel_expert_gentle.mp4` 3/3; `isaac/release_summary.py`, `scripts/qd_compare.py`; Q4 chain restarted. Tests: not-slow 263 passed / 5 skipped · see git log
 - 2026-10-16 · **QD: parallel quarter-fold expert demo** (2/3, `docs/reports/media/quarter_fold_parallel_expert.mp4`); baseline 9/16; fold-1 traces (crease pushed, anchors fine); QF0 arc knobs `ARC_FLAT` / `CHORD_CAP` / `LAYDOWN` + `carry_arc_z` / `laydown_tip` tests; `WORLDFOLD_GRASP_KNOBS` hook; `scripts/qd_demo.ps1`, `video_frames.py`, `isaac/slip_summary.py`; Q4 collect launched. Tests: not-slow 255 passed / 5 skipped · see git log
