@@ -109,3 +109,10 @@ def test_batch_factory_applies_the_preset(monkeypatch):
     assert all(e.expert_defaults == half_fold.QF_GENTLE_EXPERT for e in envs)
     half_fold.make_env_batch("isaac_friction", n=2, task="half_fold")
     assert calls[-1] is None
+
+
+def test_table_friction_is_a_grasp_knob():
+    # R1 (2026-10-16): the table-top rigid material is a knob of its own, separate from particle_friction
+    from isaac.isaac_env import FRICTION_GRASP
+    assert "table_friction" in FRICTION_GRASP and "particle_friction" in FRICTION_GRASP
+    assert "particle_friction_scale" in FRICTION_GRASP     # cloth-on-cloth only (PhysX particleFrictionScale)

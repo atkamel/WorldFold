@@ -268,8 +268,12 @@ class SceneEnv(DirectRLEnv):
         pad_mu = float(self.grasp.get("pad_friction", PAD_LINING_FRICTION))
         lining = sim_utils.RigidBodyMaterialCfg(static_friction=pad_mu, dynamic_friction=pad_mu)
         floor = sim_utils.GroundPlaneCfg(size=(2 * FLOOR_SIZE, 2 * FLOOR_SIZE), color=FLOOR_COLOR)
+        table_mat = None            # R1 probe (isaac_env.FRICTION_GRASP table_friction): the table top's own rigid material
+        if "table_friction" in self.grasp:
+            mu_t = float(self.grasp["table_friction"])
+            table_mat = sim_utils.RigidBodyMaterialCfg(static_friction=mu_t, dynamic_friction=mu_t)
         table = sim_utils.CuboidCfg(size=(TABLE_SIZE, TABLE_SIZE, TABLE_TOP_Z),
-                                    collision_props=sim_utils.CollisionPropertiesCfg(),
+                                    collision_props=sim_utils.CollisionPropertiesCfg(), physics_material=table_mat,
                                     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.4, 0.25)))
         for cp in self.copies:
             c, root, dx = cp.index, copy_root(cp.index), cp.offset
@@ -342,6 +346,8 @@ class SceneEnv(DirectRLEnv):
         mat = particle_cfg.objects.particle_material
         if "particle_friction" in self.grasp:          # friction-grasp knobs (isaac_env.FRICTION_GRASP)
             mat.friction = float(self.grasp["particle_friction"])
+        if "particle_friction_scale" in self.grasp:    # R1 probe: cloth-on-cloth friction multiplier (LeHome 0.6)
+            mat.particle_friction_scale = float(self.grasp["particle_friction_scale"])
         if "adhesion" in self.grasp:                   # Phase F: LeHome's own value is 0.1; capped at ADHESION_MAX
             mat.adhesion = float(self.grasp["adhesion"])
         if "adhesion_offset_scale" in self.grasp:

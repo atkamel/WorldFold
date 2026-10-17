@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-16 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (16/16 on tune, was 9/16); Q4 collect ✅ (isaac_qf_v1, 175 eps) + BC student ✅ (demo 4/6); R1 probes running in a linked session; R1–R3 (square) open
+**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (16/16 on tune, was 9/16); Q4 collect ✅ (isaac_qf_v1, 175 eps) + BC student ✅ (demo 4/6); R1 ◐ fold-1 friction probes done (a physics change meets the bar on n = 8, user's OK needed); R1–R3 (square) open
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -40,6 +40,27 @@ I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expe
 rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
+
+**2026-10-17 01:50, R1 fold-1 probes (linked session; results.md "R1 — fold-1 width on isaac_friction").** 19 probes,
+n = 4 then n = 8, `qd/trace_f1_*.jsonl`, all with the gentle preset, stop at stage 1, bar width ≥ 13 / crease ≤ 2 /
+anchors ≤ 3 cm.
+- **Table friction is inert:** a rigid material on the table cuboid (new knob `table_friction`, 1.0 / 2.0 / 0.05)
+  changes nothing; PhysX takes the particle material's friction alone for cloth–rigid contact. Mechanism closed.
+- **No path shape fixes the crease** (lower, later peak + lay-down 11 / 12 cm: best 9.0 / 7.2 cm wide at n = 8).
+- **Cloth-on-cloth friction is the lever:** new knob `particle_friction_scale` (PhysX `particleFrictionScale`, LeHome
+  0.6 = the layers slide at 0.3). At 2.0 the crease holds within 1 cm (n = 8). With `particle_friction` 1.0 (whose QD
+  "doubled drift" was the old release's fling) and `QF0_ARC_FLAT=2, QF0_ARC_HEIGHT=0.10, QF0_CHORD_CAP=0.04,
+  QF0_LAYDOWN=0.11, QF0_OVERSHOOT_SCALE=0`: **13.6 / 13.0 cm wide, crease −1.3 / −1.9, anchors ≈ 3 cm, 8/8 completed**
+  (per seed 3/8 clear every bar; misses ≤ 1.2 cm). The last centimetre is the 3 cm anchor sweep at the jaw close.
+- **Not adopted: it is a physics change (cloth friction 0.5 → 1.0 against the rigids, 0.3 → 2.0 against itself;
+  adhesion stays 0.1, no weld) and needs the user's OK.** Defaults unchanged; both knobs default None.
+- **Next R1 step (user's call):** if OK'd, add `particle_friction=1.0, particle_friction_scale=2.0` and the QF0 lay-down
+  to the quarter-fold preset (`QF_GENTLE_GRASP` / `QF_GENTLE_EXPERT`, so the half fold stays untouched), re-run the full
+  quarter fold on tune_id_easy n = 16 (against 16/16: the stage-1 grip and the second fold's slide both see the
+  cloth-on-cloth friction), then the jaw-close sweep for the last centimetre. If not, the path-only fallback is lay-down
+  11 cm (9 cm wide) and the sweep.
+  Repro: `scripts\qd_demo.ps1 -Step trace -StopAtStage 1 -Tag x -Seeds 660000:660008 -Params "QF0_ARC_FLAT=2,QF0_ARC_HEIGHT=0.10,QF0_CHORD_CAP=0.04,QF0_LAYDOWN=0.11,QF0_OVERSHOOT_SCALE=0" -Grasp "particle_friction=1.0,particle_friction_scale=2.0"`,
+  then `python isaac/fold1_summary.py outputs/imitation/isaac_friction/qd/trace_x.jsonl`.
 
 **2026-10-17 00:53, Q4 first pass done.** Collect 175 + 25 failures (`isaac_qf_v1`, hash `42bd9eb13451`, 87.5% expert
 success over 200 seeds, 50% knocked); diffusion BC with the gripper head trained in 23 min; **student demo 4/6 on
@@ -313,7 +334,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 264 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 14 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 265 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 14 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -374,6 +395,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-17 · **R1 fold-1 friction probes** (linked session): knobs `table_friction` (inert: PhysX ignores the table's rigid material for the cloth) and `particle_friction_scale` (cloth-on-cloth; 2.0 holds the crease); with `particle_friction` 1.0 + the QF0 lay-down 13.6 / 13.0 cm on n = 8, a physics change, not adopted (user's OK); no path shape alone gets past 9 cm; 19 probes in results.md R1, roadmap R1 ◐. Tests: not-slow 265 passed / 5 skipped · see git log
 - 2026-10-17 · **Q4 first pass:** `isaac_qf_v1` frozen (175 + 25, `42bd9eb13451` / `e6c6023fd81d`), BC gripper-head student 20k steps, demo 4/6 (`quarter_fold_parallel_bc.mp4`); preset applied on the batch path (f48af9d). Tests: not-slow 264 passed / 5 skipped · see git log
 - 2026-10-16 · **QD-3: fold-1 width on the gentle release** (3 probes, none adopted; `-NoVision` on `q_retrain.ps1`; camera collect too slow, discarded; the gentle preset was missing on the batch path, fixed + test, first state-only collect discarded); Q4 state-only chain running. Tests: not-slow 264 passed / 5 skipped · see git log
 - 2026-10-16 · **QD-2: gentle release** (jaw `release_open` / `release_open_steps` + `jaw_open_rate`; expert `SETTLE_DWELL`, `RETREAT_SPEED`, `STAGE1_CARRY_SPEED`; quarter-fold preset): tune n = 16 9/16 → 16/16 (real second folds 5 → 15); video `quarter_fold_parallel_expert_gentle.mp4` 3/3; `isaac/release_summary.py`, `scripts/qd_compare.py`; Q4 chain restarted. Tests: not-slow 263 passed / 5 skipped · see git log

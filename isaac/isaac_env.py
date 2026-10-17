@@ -92,7 +92,14 @@ PROFILES = {
 FRICTION_GRASP          = {"particle_friction": None, "pad_friction": None, "pad_thickness": None,
                            "gripper_drive": None, "gripper_closed": None, "jaw_open_rate": None,
                            "adhesion": None, "adhesion_offset_scale": None, "gravity_scale": None, "physics_hz": None,
-                           "release_open": None, "release_open_steps": None}
+                           "release_open": None, "release_open_steps": None,
+                           "table_friction": None, "particle_friction_scale": None}
+# R1 (2026-10-16) probe: table_friction binds a rigid material (static = dynamic = value) to the table top only, so the
+# cloth's hold on the table can be probed without touching the particle material that also governs the jaws (the
+# table is spawned without a material, i.e. PhysX's default 0.5). Whether PhysX combines it with the PBD friction for
+# particle-rigid contact is not documented; results.md R1 records what the probe measured. particle_friction_scale:
+# PhysX's multiplier on the particle friction for particle-particle (cloth-on-cloth) contact only (LeHome 0.6, so the
+# layers slide on each other at 0.3 while the cloth meets the table and the jaws at 0.5); the other separable friction.
 # QD (2026-10-16, user: the fold-1 release is violent): the jaw swings 0.05 -> 1.15 rad in 3 control steps and throws
 # the released corner 4-5 cm at 40-90 cm/s (qd/traces_f1_base, isaac/release_summary.py). release_open (rad): after a
 # close, opening goes only this far for release_open_steps control steps (enough to let go, little swing through the

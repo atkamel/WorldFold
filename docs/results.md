@@ -2525,3 +2525,91 @@ episodes, 56,616 samples). 23 min on the GPU. Train loss 0.0091 at 20k; val(ema)
   fixed on the half fold).
 - This is a demo on 6 tune seeds, not a rate; the `sel_`/`final_` n = 100 evals are the Q4 finals, not run tonight.
 - No DAgger, vision student or detector yet (the collect is state-only).
+
+
+## R1 — fold-1 width on isaac_friction: the friction probes (2026-10-17 00:40–01:47, `qd/trace_f1_*.jsonl`)
+
+Side session of QD-3 (user: keep pushing fold 1; the strip must be 15 cm). Same setup as QD-3: `scripts/qd_demo.ps1 -Step
+trace -StopAtStage 1` (`isaac/recovery_replay.py --task quarter_fold --no-knock`, 1 env, the gentle preset on, no knock),
+tune seeds 660000–660003 (n = 4), 660004–660007 added for n = 8, metrics `isaac/fold1_summary.py`. Bar (R1): width
+≥ 13 cm on both edges, |crease shift| ≤ 2 cm, anchor drift ≤ 3 cm. One mechanism per attempt. Each 4-seed probe took
+~6 min wall (1 env, stop at stage 1), so 19 probes ran in the hour after the Q4 chain freed the slots.
+
+Two grasp knobs were added for this (`isaac/isaac_env.py` `FRICTION_GRASP`, applied in `isaac/lab_scene.py`, default
+None = the scene as ported): `table_friction` binds a rigid material (static = dynamic = value) to the table cuboid only
+(it had none, i.e. PhysX's default), and `particle_friction_scale` sets PhysX's `particleFrictionScale`, the multiplier
+on the particle material's friction for particle–particle contact only (LeHome's config: 0.6, so the cloth slides on
+itself at 0.5 × 0.6 = 0.3 while it meets the table and the jaws at 0.5). Set through `WORLDFOLD_GRASP_KNOBS` (`-Grasp`),
+on top of the gentle preset.
+
+| config (knobs on top of the gentle default) | fold 1 done | width W / E mean (range, cm) | crease W / E mean | anchor drift range | seeds at bar: width / crease / drift |
+|---|---|---|---|---|---|
+| gentle default (QD-3, `f1_g_base`) | 7/8 | 6.2 / 7.7 (0.6–8.3) | -4.1 / -2.8 | 3.0–16.7 | 0 / 1 / 0 |
+| table friction 1.0 (`f1_tf10`) | 4/4 | 5.8 / 4.2 (0.1–8.2) | -5.0 / -6.0 | 3.4–16.5 | 0 / 1 / 0 |
+| table friction 2.0 (`f1_tf20`) | 3/4 | 3.6 / 5.2 (0.6–6.4) | -3.4 / -2.1 | 2.9–16.2 | 0 / 1 / 0 |
+| table friction 0.05 (`f1_tf005`) | 2/4 | 7.6 / 11.6 (6.8–8.4) | -3.6 / -0.5 | 2.7–4.3 | 0 / 0 / 0 |
+| flat 10, cap 4, lay-down 12, overshoot 0 (`f1_lo12`) | 4/4 | 6.7 / 7.7 (4.2–8.0) | -4.9 / -3.7 | 2.5–4.8 | 0 / 0 / 1 |
+| flat 10, cap 4, lay-down 11, overshoot 0 (`f1_lo11`, `_b`) | 8/8 | 9.0 / 7.2 (6.1–12.9) | -3.8 / -4.3 | 2.3–4.8 | 0 / 0 / 1 |
+| cloth-cloth scale 0.2 (`f1_pfs02`) | 4/4 | 6.5 / 5.2 (2.8–11.1) | -4.0 / -3.7 | 2.9–16.2 | 0 / 1 / 0 |
+| cloth-cloth scale 1.0 (`f1_pfs10`) | 4/4 | 7.7 / 6.9 (2.3–13.1) | -1.7 / -1.6 | 2.9–17.8 | 0 / 1 / 0 |
+| **cloth-cloth scale 2.0** (`f1_pfs20`, `_b`) | 8/8 | 9.5 / 9.4 (2.4–11.6) | -0.8 / -0.9 | 2.9–14.9 | 0 / 5 / 0 |
+| cloth-cloth 2.0 + cap 4 (`f1_pfs20cap`) | 4/4 | 10.9 / 8.2 (8.3–13.3) | -3.5 / -5.8 | 2.3–6.5 | 0 / 1 / 1 |
+| particle friction 1.0, flat 15 + cap 4 (`f1_pf10cap`) | 4/4 | 3.9 / 5.5 (2.7–4.7) | -10.3 / -8.5 | 1.2–3.9 | 0 / 0 / 2 |
+| particle friction 1.0, plain arc (`f1_pf10g`) | 4/4 | 10.2 / 9.3 (3.4–13.5) | -1.4 / -0.9 | 1.8–13.3 | 0 / 2 / 0 |
+| particle friction 1.0 + lay-down 11 (`f1_pf10lo11`) | 4/4 | 12.0 / 11.6 (11.6–12.6) | -2.9 / -2.8 | 1.4–4.3 | 0 / 0 / 0 |
+| pf 1.0 + cc 2.0, plain arc (`f1_pf10pfs20`) | 3/4 | 9.4 / 8.7 (2.1–13.2) | -4.6 / -4.2 | 2.1–4.2 | 0 / 2 / 2 |
+| pf 1.0 + cc 2.0 + cap 4 (`f1_combo_cap`) | 3/4 | 12.7 / 12.2 (12.4–13.2) | -2.0 / -0.9 | 1.2–4.0 | 0 / 2 / 1 |
+| **pf 1.0 + cc 2.0 + lay-down 11** (`f1_combo_lo11`, `_b`) | 8/8 | 13.6 / 13.0 (12.7–14.9) | -1.3 / -1.9 | 0.8–4.2 | 3 / 3 / 2 |
+| pf 1.0 + cc 3.0 + lay-down 11 (`f1_combo3_lo11`) | 4/4 | 13.4 / 12.9 (12.7–14.4) | -1.8 / -1.6 | 1.3–4.6 | 1 / 1 / 0 |
+| pf 1.0 + cc 2.0 + lay-down 12 (`f1_combo_lo12`) | 4/4 | 11.9 / 11.2 (11.3–12.4) | -2.4 / -2.2 | 0.7–3.0 | 0 / 1 / 4 |
+| pf 1.0 + cc 2.0 + lay-down 13 (`f1_combo_lo13`) | 4/4 | 10.5 / 9.2 (10.0–10.9) | -2.5 / -3.3 | 0.9–3.6 | 0 / 0 / 2 |
+
+"pf" = `particle_friction` (cloth against every rigid, LeHome 0.5); "cc" = `particle_friction_scale` (cloth on cloth,
+LeHome 0.6); "flat 10, cap 4, lay-down 11" = `QF0_ARC_FLAT=2, QF0_ARC_HEIGHT=0.10, QF0_CHORD_CAP=0.04, QF0_LAYDOWN=0.11,
+QF0_OVERSHOOT_SCALE=0` (stage 0 of the quarter fold only). "fold 1 done" counts seeds whose stage 0 completed (the
+others retried out; their rows are not in the means). The drift range covers both anchors; seed 660002's 13–18 cm is
+its carry drag (QD-3), which the chord cap cures in every config that has it.
+
+- **Mechanism 1, the table's own friction: closed, PhysX ignores it.** Table friction 1.0, 2.0 and 0.05 all reproduce
+  the default within seed noise (660000 at 0.05: 6.8 / 11.4 wide, crease −3.9 / −0.2; at the default 7.8 / 10.1, −5.5 /
+  −2.4), and nothing skates on the near-frictionless table. Particle–rigid contact takes the PBD material's friction
+  alone (the schema says so for the particle side; the rigid material's combine mode is not applied). The knob stays
+  as a documented negative; no physics change was made.
+- **Mechanism 2, a lower, later peak (cheap variant): no path shape gets the crease under 3 cm.** Lay-down 12 cm is
+  the baseline; lay-down 11 cm (the best path-only config, n = 8) is 9.0 / 7.2 wide with the crease −3.8 / −4.3 and all
+  anchors ≤ 4.8 cm, 8/8 completed. Width stays bounded by the crease push plus the 3 cm anchor sweep at the jaw close.
+- **The separable friction is cloth-on-cloth, and it is the first lever that holds the crease.** `particle_friction_scale`
+  0.2 is worse (−4.0 / −3.7), 1.0 halves the shift (−1.7 / −1.6), 2.0 holds it at −0.8 / −0.9 on n = 8 with 5/8 seeds
+  within 2 cm, and 3.0 adds nothing (in the combination). So the push is the laid flap sliding across the bottom layer:
+  with the layers gripping each other the flap's slack piles on top of the strip instead of shoving its root. Width is
+  still 9.5 cm because the anchors slide 3 cm at the close and the flap lands 1–2 cm short.
+- **`particle_friction` 1.0 re-measured on the gentle release: QD's "doubled anchor drift" was the old fling.** The
+  per-step traces show the anchors at 1.2–2.3 cm through the close and the carry and the jump at the release
+  (`trace_f1_pf10.log`, old release; `f1_pf10g` on the gentle one: anchors 1.8–3.9 cm, width 10.2 / 9.3, crease −1.4 /
+  −0.9 on the clean seeds). With the lay-down it completes 4/4 at 11.6–12.6 cm wide.
+- **The combination meets the bar on the means at n = 8, not per seed:** pf 1.0 + cc 2.0 + flat 10 / cap 4 / lay-down
+  11 / overshoot 0, 8/8 completed, **13.6 / 13.0 cm wide (12.7–14.9), crease −1.3 / −1.9 (worst −3.2), anchors 0.8–4.2
+  cm (means 3.0 / 2.9), stack split 2.3 / 3.0**. Per seed, 3/8 reach 13 cm on both edges, 3/8 keep both crease shifts
+  within 2 cm and 2/8 keep both anchors within 3 cm; the misses are all 0.3–1.2 cm. The last centimetre is the jaw-close
+  sweep (the anchor moves 3–4 cm toward the centre as the jaw shuts, QD) and the corner landing 1–2 cm short with the
+  overshoot off. Lay-down 12 and 13 cm are narrower (11.9 / 11.2, 10.5 / 9.2: tauter drags the root again), the plain
+  arc with the same friction retries out on 2/4 (corners placed off), the cap alone 3/4.
+
+  | seed | split W / E | width W / E | crease W / E | drift v0 / v110 |
+  |---|---|---|---|---|
+  | 660000 | 3.6 / 4.6 | 13.7 / 12.9 | −2.5 / −2.8 | 4.2 / 3.2 |
+  | 660001 | 4.0 / 2.3 | 13.7 / 14.1 | −2.6 / −1.9 | 4.1 / 3.2 |
+  | 660002 | 1.7 / 3.2 | 13.7 / 12.8 | −0.4 / −2.4 | 1.2 / 3.7 |
+  | 660003 | 3.1 / 3.1 | 12.7 / 11.2 | −2.0 / −1.5 | 3.6 / 2.3 |
+  | 660004 | 1.1 / 2.4 | 13.4 / 12.4 | −1.0 / −3.2 | 0.8 / 3.4 |
+  | 660005 | 2.4 / 1.4 | 13.4 / 13.6 | −0.4 / 0.3 | 1.6 / 1.8 |
+  | 660006 | 0.9 / 2.9 | 14.9 / 14.2 | 1.1 / −0.9 | 1.2 / 2.9 |
+  | 660007 | 1.9 / 3.4 | 13.2 / 12.5 | −2.7 / −3.0 | 3.2 / 2.9 |
+
+**R1 conclusion (2026-10-17):** no mechanism meets the bar without a physics change, and the defaults are unchanged.
+The one that gets there (on the means) raises the cloth's friction against the rigids from 0.5 to 1.0 and against
+itself from 0.3 to 2.0 (adhesion stays 0.1, no weld), plus the stage-0 lay-down; **adopting it needs the user's OK**.
+What is not measured: the full quarter fold on it (the stage-1 grip on the two-layer bend and the second fold's slide
+both see the cloth-on-cloth friction), the half fold (untouched as long as the knobs go in through the quarter-fold
+preset), and the drag-type failures on `tune_id_hard` / knock seeds. The path-only fallback is lay-down 11 cm (9 cm
+wide), which does not change the picture the video shows.
