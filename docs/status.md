@@ -46,8 +46,10 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 the gentle default stands and fold-1 width goes to R1 (levers left: the jaw-close sweep, the bottom layer's hold).
 - **Q4 chain (state-only, `-NoVision`, 2 × 8; the camera collect ran at 4.7 s/step and was discarded after 2 episodes):**
   collect 200 → `train_bc_grip` → student demo `docs/reports/media/quarter_fold_parallel_bc.mp4`. Paused once for the
-  fold-1 probes (resumable), resumed 20:55; ~1.5 s per lockstep step, ~2 h for the collect, then ~1 h GPU training with
-  no Isaac alongside. Resume: `scripts/q_retrain.ps1 -Only collect -Episodes 200 -NoVision`, then `-Only train_bc_grip`.
+  fold-1 probes (resumable), resumed 20:55. Measured 21:50: 3–4 s per lockstep step per worker (two 8-env workers plus the user's own GPU job on
+  the same card), so ~4 h for 200 episodes (ETA ~01:30), then ~1 h GPU training with no Isaac alongside. An orphaned
+  worker from the paused collect (parent dead, 10 GB) was found and killed at 21:35: `Stop-Process` on a launcher does
+  not kill its spawned Isaac workers. Resume: `scripts/q_retrain.ps1 -Only collect -Episodes 200 -NoVision`, then `-Only train_bc_grip`.
 
 **2026-10-16, QD-2 (user: the fold-1 release is violent and jerky; try a slower, gentler release with a slow raise;
 the second fold's friction grip looks like the main problem, try a gentler pick-up and drop-off).** results.md "QD-2".
