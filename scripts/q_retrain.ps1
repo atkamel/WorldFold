@@ -8,7 +8,9 @@
 # a sim (2026-10-13 PhysX crash); <= 2 Isaac processes; thermal_guard alongside. Log: outputs\imitation\isaac_friction\q4\q4.log
 #   powershell -ExecutionPolicy Bypass -File scripts\q_retrain.ps1 [-Only <stage>] [-Episodes 200] [-FinalN 100]
 param([string]$Only = "", [int]$Episodes = 200, [int]$FinalN = 100, [int]$SelN = 100, [int]$BCSteps = 20000,
-      [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [int]$DaggerEpisodes = 128, [switch]$NoVision)
+      [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [int]$DaggerEpisodes = 128, [switch]$NoVision,
+      [string]$Tag = "isaac_qf_v1")
+# -Tag (2026-10-17): the dataset / run name. isaac_qf_v1 was collected with the QD-2 preset; isaac_qf_v2 with the R1 preset.
 # -NoVision (QD-2, 2026-10-16): state-only demos at the full envs per process. The camera collect ran at ~4.7 s per step
 # (2 x 6 envs, 3 cameras, GPU 97%): 27 min to the first episodes, ~7 h for 200. The vision stages then have no images.
 $ErrorActionPreference = "Stop"
@@ -18,7 +20,7 @@ Set-Location $repo
 $py = $env:ISAAC_PY
 $B = "isaac_friction"
 $T = "quarter_fold"
-$tag = "isaac_qf_v1"
+$tag = $Tag
 $out = "outputs\imitation\$B\q4"
 $runs = "outputs\imitation\runs"
 $ds = "outputs\imitation\datasets"

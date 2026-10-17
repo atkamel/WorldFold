@@ -41,6 +41,17 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
+**2026-10-17 17:20, Q4 second pass on the R1 expert (coordinating session).** All four linked sessions are done and
+committed (R1 probes 72440b6, R1 adopted 770857f, QD-2 at scale 4c1e88d, R1 demo + hard sets f3b0297, R1 at n = 100
+7caa12b). The R1 preset is the quarter fold's default: n = 100 paired 93 / 82 vs the gentle 92 / 78 (no significant
+change), fold 1 100/100, every success a real second fold, ~50 steps slower.
+- **Running:** `scripts/q_retrain.ps1 -Only collect -Episodes 200 -NoVision -Tag isaac_qf_v2` (R1 expert, 2 × 8,
+  started 17:20, ~2.5 h) → `-Only train_bc_grip -Tag isaac_qf_v2` (GPU only) → student demo
+  `docs/reports/media/quarter_fold_parallel_bc_v2.mp4` (6 tune seeds). Resume with the same commands.
+- **Then (next decision):** paired finals on the v2 student vs the v1 student and the expert (`sel_` sets, n = 100), a
+  DAgger round if the student stalls as v1 did (4/6, left-arm stalls), and the Q3 gate bars (user to confirm).
+- `isaac_qf_v1` and `runs/isaac_qf_v1_bc_grip` are the QD-2 (pre-R1) expert; keep them for the comparison row.
+
 **2026-10-17 17:20, R1 preset at n = 100 (linked session; results.md "QD-2 at scale" → "the R1-adopted preset vs the gentle preset").**
 `qd2/expert_r1.json`, runner `scripts/qd2_scale.ps1 -Job q_r1 -Workers 2` (new job; `-Workers` option).
 - **Paired against the QD-2 gentle run on the same seeds: sel_id_hard 93/100 (Wilson 86–97) vs 92, sel_knock_arm 82/100
