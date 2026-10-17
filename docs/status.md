@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (16/16 on tune, was 9/16); Q4 collect ✅ (isaac_qf_v1, 175 eps) + BC student ✅ (demo 4/6); R1 ◐ fold-1 friction + lay-down adopted into the quarter-fold preset (user, 2026-10-17; full fold 15/16, strip 13.6 / 13.0 cm on n = 8); R1–R3 (square) open
+**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (n = 100 paired: 92 vs 41 on sel_id_hard, 78 vs 31 on sel_knock_arm; the half fold keeps the old release, no measurable gain); Q4 collect ✅ (isaac_qf_v1, 175 eps) + BC student ✅ (demo 4/6); R1 ◐ fold-1 friction + lay-down adopted into the quarter-fold preset (user, 2026-10-17; full fold 15/16, strip 13.6 / 13.0 cm on n = 8); R1–R3 (square) open
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -40,6 +40,20 @@ I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expe
 rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
+
+**2026-10-17 10:25, QD-2 at scale (linked session; the n = 100 check before the Q3 gate).** results.md "QD-2 at scale",
+`outputs/imitation/isaac_friction/qd2/`, runner `scripts/qd2_scale.ps1` (queues behind other Isaac work).
+- **Quarter fold, old vs gentle release, paired n = 100 (QD-2 preset, pre-R1):** sel_id_hard 41 → **92/100** (Wilson
+  85–96), sel_knock_arm 31 → **78/100** (69–85); 107 seeds flip to gentle, 9 the other way, McNemar p < 10⁻¹⁰ on both.
+  Fold 1 completes equally (98/100); the gain is the stage-1 drop (G2@1 36–40 → 6–14, M1@1 16–21 → 0). Real second
+  folds 92 / 77. The quarter-fold default stands (R1's preset builds on it).
+- **Half fold, old vs the gentle release knobs, paired n = 100:** 97 vs 97 and 73 vs 79 (p = 0.29, pooled +3 pp
+  [−2, +8]): inside the noise floor, so **the half fold keeps its defaults.** Placement probe (`isaac/place_miss.py`,
+  20 clean seeds): the gentle release does not place short, it settles ~1 cm *past* the goal along the overshoot axis
+  (old: 0.5 cm short), so `OVERSHOOT_SCALE` needs no recalibration (0.8 would be the value to try if it is ever adopted).
+  It does remove the 8–11 cm outliers and all 6 retries, a motion-quality gain the success rate does not see; adopting
+  it for demo quality is the user's call (`qd2_scale.ps1 -Job h_gentle` reproduces it).
+- Not measured: R1's adopted preset at n = 100 (its fold-1 friction change landed after these runs started).
 
 **2026-10-17 02:45, R1 fold-1 change adopted (user: "do this task here").** `imitation/tasks/half_fold.py` `QF_FOLD1_GRASP`
 / `QF_FOLD1_EXPERT` ride on the gentle preset for the quarter fold on isaac_friction (`qf_preset()`; `WORLDFOLD_QF_FOLD1=0`
@@ -410,6 +424,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-17 · **QD-2 at scale** (linked session): quarter fold old vs gentle release paired n = 100 on `sel_id_hard` / `sel_knock_arm`: 41 → 92, 31 → 78 (p < 10⁻¹⁰); half fold old vs gentle knobs 97/97, 73/79 (p = 0.29, defaults kept); half-fold settled miss probe (`isaac/place_miss.py`, new): gentle lands ~1 cm past the goal, no `OVERSHOOT_SCALE` change; runner `scripts/qd2_scale.ps1`, `qd_compare.py --set`. Tests: not-slow 267 passed / 5 skipped · see git log
 - 2026-10-17 · **R1 adopted** (user): `QF_FOLD1_GRASP` / `QF_FOLD1_EXPERT` + `qf_preset()` in `half_fold.py` (`WORLDFOLD_QF_FOLD1=0` off), teacher reads the preset's `QF0_OVERSHOOT_SCALE`; full quarter fold 15/16 (was 16/16), 15 real second folds, 4/4 full traces; dataset note (isaac_qf_v1 is pre-R1 → v2 next). Tests: not-slow 267 passed / 5 skipped · see git log
 - 2026-10-17 · **R1 fold-1 friction probes** (linked session): knobs `table_friction` (inert: PhysX ignores the table's rigid material for the cloth) and `particle_friction_scale` (cloth-on-cloth; 2.0 holds the crease); with `particle_friction` 1.0 + the QF0 lay-down 13.6 / 13.0 cm on n = 8, a physics change, not adopted (user's OK); no path shape alone gets past 9 cm; 19 probes in results.md R1, roadmap R1 ◐. Tests: not-slow 265 passed / 5 skipped · see git log
 - 2026-10-17 · **Q4 first pass:** `isaac_qf_v1` frozen (175 + 25, `42bd9eb13451` / `e6c6023fd81d`), BC gripper-head student 20k steps, demo 4/6 (`quarter_fold_parallel_bc.mp4`); preset applied on the batch path (f48af9d). Tests: not-slow 264 passed / 5 skipped · see git log

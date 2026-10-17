@@ -2651,3 +2651,94 @@ r1_adopt`, 18 min wall; `scripts/qd_compare.py`):
 - **Dataset note (from the Q4 session):** `isaac_qf_v1` (hash `42bd9eb13451`) and the BC gripper-head student were
   made with the QD-2 preset, i.e. *before* this change. Any new quarter-fold collect is a different expert: use a new
   tag (`isaac_qf_v2`), never resume `isaac_qf_v1`.
+
+## QD-2 at scale — the gentle release at n = 100, and the same release on the half fold (2026-10-17, `outputs/imitation/isaac_friction/qd2/`)
+
+Linked session (QD-2 checks before the Q3 gate). Runner `scripts/qd2_scale.ps1` (queues behind other Isaac work, then
+two processes of 1 worker × 8 envs per phase, thermal guard alongside); comparisons `scripts/qd_compare.py --set` and
+`imitation.stats`. Scripted expert, `isaac_friction`, `WORLDFOLD_QF_SECOND=parallel`, `--replan-every 8`, `--n 100` on
+`sel_id_hard` (seeds 705000–099) and `sel_knock_arm` (715000–099), the same seeds in every row. The quarter-fold rows are
+the **QD-2 preset only**: the gentle job imported the module before R1's fold-1 change landed (commit 770857f, 02:45),
+and the old-release job ran with `WORLDFOLD_QF_GENTLE=0 WORLDFOLD_QF_FOLD1=0`; R1's preset is not measured here.
+
+### Quarter fold: old release vs the gentle preset (paired, n = 100 per set)
+
+"real 2nd fold" = a success whose stage 1 took > 25 steps (`qd_compare.py`); codes `G2` slip, `M1` drag, `@stage`.
+
+| set | config | success (Wilson 95%) | real 2nd fold | fold 1 done | failures | mean fold score | mean steps (successes) |
+|---|---|---|---|---|---|---|---|
+| sel_id_hard | old release (`expert_old.json`) | 41/100 (32–51) | 34/100 | 98/100 | G2@1 36, M1@1 21, M1@0 2 | 0.819 | 340 |
+| sel_id_hard | **gentle preset** (`expert_gentle.json`) | **92/100 (85–96)** | **92/100** | 98/100 | G2@1 6, G2@0 2 | 0.915 | 366 |
+| sel_knock_arm | old release | 31/100 (23–41) | 27/100 | 87/100 | G2@1 40, M1@1 16, G2@0 9, M1@0 4 | 0.767 | 364 |
+| sel_knock_arm | **gentle preset** | **78/100 (69–85)** | **77/100** | 92/100 | G2@1 14, G2@0 4, M1@0 4 | 0.871 | 394 |
+
+| paired (`imitation.stats`) | diff (gentle − old) [95% CI] | only old / only gentle | exact McNemar p |
+|---|---|---|---|
+| sel_id_hard | +51 pp [+40, +61] | 4 / 55 | 1.7 × 10⁻¹² |
+| sel_knock_arm | +47 pp [+35, +59] | 5 / 52 | 6.4 × 10⁻¹¹ |
+| pooled (n = 200) | +49 pp [+41, +57] | 9 / 107 | < 10⁻¹⁰ |
+
+- **The n = 16 result holds at n = 100, on the selection seeds, and on knocked episodes.** The gain is the second fold:
+  fold 1 completes equally often (98/100 on both), but with the old release 36–40 of 100 episodes then slip at the
+  stage-1 drop (`G2@1`) and 16–21 drag the anchor (`M1@1`), exactly the fling the QD-2 traces showed. With the gentle
+  release those codes fall to 6–14 and 0.
+- Successes that were not real second folds (fold 1 had collapsed the strip) drop from 7 / 4 to 0 / 1 per set, so the
+  gentle rate is also an honest rate.
+- Cost: successes take 26–30 steps longer (slow raise, settle dwell); the knocked set keeps the same 4 `M1@0` drags.
+- Wall time, 1 × 8 envs: gentle 2 h 38 min for both sets; old release 5 h 49 min (its failures run to the cap, and it
+  shared the GPU with a BC training run and a user job for part of that).
+- **Decision: the gentle preset stays the quarter fold's default** (unchanged; it is the parent of R1's preset).
+
+### Half fold: old release vs the gentle release knobs (paired, n = 100 per set)
+
+Gentle arm: `WORLDFOLD_GRASP_KNOBS="release_open=0.6,release_open_steps=80,jaw_open_rate=0.04"` and
+`WORLDFOLD_EXPERT_PARAMS="OPEN_DWELL=18,SETTLE_DWELL=6,RETREAT_SPEED=0.3"` (the release part of `QF_GENTLE_*`, no
+stage-1 knobs: the half fold has no stage 1). Overshoot unchanged (`OVERSHOOT_FRICTION`, 5 cm along y).
+
+| set | config | success (Wilson 95%) | failures | mean fold score | mean steps (successes) |
+|---|---|---|---|---|---|
+| sel_id_hard | old release (`half_base.json`) | 97/100 (92–99) | G2@0 3 | 0.907 | 172 |
+| sel_id_hard | gentle release (`half_gentle.json`) | 97/100 (92–99) | G2@0 3 | 0.912 | 189 |
+| sel_knock_arm | old release | 73/100 (64–81) | G2@0 22, M1@0 5 | 0.854 | 189 |
+| sel_knock_arm | gentle release | 79/100 (70–86) | G2@0 19, M1@0 2 | 0.866 | 198 |
+
+| paired | diff (gentle − old) [95% CI] | only old / only gentle | exact McNemar p |
+|---|---|---|---|
+| sel_id_hard | 0 pp [−4, +4] | 2 / 2 | 1.0 |
+| sel_knock_arm | +6 pp [−3, +15] | 8 / 14 | 0.29 |
+| pooled (n = 200) | +3 pp [−2, +8] | 10 / 16 | 0.33 |
+
+- **No measurable gain on the half fold.** The release fling never cost the half fold much: its corner is placed and
+  the episode ends at the settle, there is no later drop for the fling to spoil. The +6 pp on the knocked set is inside
+  the Q0 noise floor (SE ≈ 7 pp at n = 100; 22 of 100 knocked seeds flip between the two runs either way).
+- Fold score is 0.005–0.012 higher and 3 of 5 anchor drags are gone, both within noise; successes take 9–17 steps longer.
+- **Decision: the half fold keeps its defaults** (no paired gain beyond the noise floor, per the brief). The knobs are
+  free of cost on success and look gentler on video, so adopting them for demo quality is the user's call, not a
+  performance one; `scripts/qd2_scale.ps1 -Job h_gentle` reproduces the run.
+
+### Half fold: settled placement miss, old vs gentle release (`isaac/place_miss.py`, 20 clean tune seeds 610000–019)
+
+Clean episodes (no knock), 1 env, `--seeds 610000:610020`, the half fold run to termination; the miss is each carried
+corner's settled offset from its goal (the goal vertex's position at the stage start), table frame, cm; "held" = within
+10 cm (none dropped). Rows `half_miss_base.jsonl` / `half_miss_gentle.jsonl`. The overshoot (+5 cm along y, both arms)
+was on in both.
+
+| config | success | expert retries | arm | placed (5 cm) | mean miss x, y (cm) | SD x, y | median \|miss\| | max \|miss\| |
+|---|---|---|---|---|---|---|---|---|
+| old release | 19/20 | 6 | left | 19/20 | +2.2, −0.6 | 1.7, 1.5 | 2.9 | 11.4 |
+| old release | | | right | 19/20 | −1.5, −0.4 | 1.9, 2.1 | 2.6 | 8.4 |
+| gentle release | 20/20 | 0 | left | 20/20 | +0.9, +0.6 | 0.7, 2.2 | 2.4 | 3.7 |
+| gentle release | | | right | 20/20 | −0.4, +1.0 | 0.9, 1.4 | 1.7 | 3.9 |
+
+Paired per seed (gentle − old), mean ± SE: left (−1.5 ± 0.5, +1.6 ± 0.7) cm, right (+1.1 ± 0.5, +1.3 ± 0.5) cm.
+
+- **The gentle half fold does not place short.** Along the overshoot axis (y) the old release settles 0.4–0.6 cm short
+  of the goal and the gentle one 0.6–1.0 cm past it: the 5 cm overshoot was cancelling a fling that the gentle release
+  mostly removes, and what is left over-corrects by about 1 cm, i.e. the gentle release's own spring-back is ~4 cm, not 5.
+- **`OVERSHOOT_SCALE` does not need recalibrating for the half fold.** The residual is a fifth of the overshoot, a
+  third of the per-axis SD, and inside the 5 cm placement tolerance on 20/20 corners; the F2 lesson (results.md Phase F,
+  "the landing point is not independent of the target") says a 1 cm trim is not worth a paired n = 100 run. If the gentle
+  release is ever adopted for the half fold, `OVERSHOOT_SCALE=0.8` is the value to try, not a new table.
+- What the gentle release does change is the spread: the 8–11 cm outliers (the old release's retries, 6 in 20 episodes)
+  are gone, the max miss is 3.9 cm and the expert never retried. That is a motion-quality gain the success rate at n = 100
+  (above) does not see, because the retries recover those corners anyway.

@@ -1,6 +1,7 @@
 """QD (2026-10-16): paired comparison of quarter-fold eval JSONs on the same seeds, with a "real second fold" count:
 a success whose stage 1 took more than FREE_STEPS steps (fold 1 had not already left the crease end on its corner).
-    .venv/Scripts/python.exe scripts/qd_compare.py base.json other.json [more.json]
+    .venv/Scripts/python.exe scripts/qd_compare.py [--set sel_id_hard] base.json other.json [more.json]
+--set picks one eval set from reports that hold several (QD-2 scale); default: the first set in each report.
 """
 import json
 import math
@@ -19,9 +20,9 @@ def wilson(k, n, z=1.96):
     return (100 * (c - h), 100 * (c + h))
 
 
-def load(path):
+def load(path, set_name=None):
     r = json.load(open(path))["results"]
-    eps = next(iter(r.values()))["episodes"]
+    eps = (r[set_name] if set_name else next(iter(r.values())))["episodes"]
     return {e["seed"]: e for e in eps}
 
 
@@ -30,7 +31,12 @@ def real(e):
 
 
 def main():
-    runs = [(p, load(p)) for p in sys.argv[1:]]
+    argv, set_name = list(sys.argv[1:]), None
+    if argv and argv[0] == "--set":
+        set_name, argv = argv[1], argv[2:]
+    runs = [(p, load(p, set_name)) for p in argv]
+    if set_name:
+        print(f"set {set_name}")
     seeds = sorted(set.intersection(*[set(r) for _, r in runs]))
     print(f"n = {len(seeds)} paired seeds")
     print("run                                         success   (Wilson)     real 2nd fold  fold 1 done  codes")
