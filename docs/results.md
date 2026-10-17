@@ -2743,6 +2743,41 @@ Paired per seed (gentle − old), mean ± SE: left (−1.5 ± 0.5, +1.6 ± 0.7) 
   are gone, the max miss is 3.9 cm and the expert never retried. That is a motion-quality gain the success rate at n = 100
   (above) does not see, because the retries recover those corners anyway.
 
+### Quarter fold: the R1-adopted preset vs the gentle preset (paired, n = 100 per set; 2026-10-17 15:38–17:15, `expert_r1.json`)
+
+Linked session (the n = 100 check before the Q3 gate relies on the preset). `scripts/qd2_scale.ps1 -Job q_r1 -Workers 2`
+(new job and `-Workers` option): the preset as shipped at commit 770857f (`qf_preset()` defaults, `WORLDFOLD_QF_FOLD1`
+unset, no knobs set by hand; verified before launch to resolve to gentle + `particle_friction` 1.0,
+`particle_friction_scale` 2.0, `QF0_ARC_FLAT` 2, `QF0_ARC_HEIGHT` 0.10, `QF0_CHORD_CAP` 0.04, `QF0_LAYDOWN` 0.11,
+`QF0_OVERSHOOT_SCALE` 0), scripted expert, `isaac_friction`, `WORLDFOLD_QF_SECOND=parallel`, `--replan-every 8`, the same
+seeds as the gentle row above (`sel_id_hard` 705000–099, `sel_knock_arm` 715000–099). 2 workers × 8 envs, 95 min wall
+(46 + 49 min), thermal guard alongside. Compared with `qd_compare.py --set` and `imitation.stats`.
+
+| set | config | success (Wilson 95%) | real 2nd fold | fold 1 done | failures | mean fold score | mean steps (successes) |
+|---|---|---|---|---|---|---|---|
+| sel_id_hard | gentle preset (`expert_gentle.json`, from above) | 92/100 (85–96) | 92/100 | 98/100 | G2@1 6, G2@0 2 | 0.915 | 366 |
+| sel_id_hard | **R1 preset** (`expert_r1.json`) | **93/100 (86–97)** | 93/100 | 100/100 | G2@1 7 | 0.922 | 420 |
+| sel_knock_arm | gentle preset | 78/100 (69–85) | 77/100 | 92/100 | G2@1 14, G2@0 4, M1@0 4 | 0.871 | 394 |
+| sel_knock_arm | **R1 preset** | **82/100 (73–88)** | 82/100 | 93/100 | G2@1 7, M1@1 4, M1@0 5, G2@0 1, S1@0 1 | 0.880 | 424 |
+
+| paired (`imitation.stats`) | diff (R1 − gentle) [95% CI] | only gentle / only R1 | exact McNemar p |
+|---|---|---|---|
+| sel_id_hard | +1 pp [−6, +9] | 7 / 8 | 1.0 |
+| sel_knock_arm | +4 pp [−6, +14] | 11 / 15 | 0.56 |
+| pooled (n = 200) | +2.5 pp [−4, +8.5] | 18 / 23 | 0.53 |
+
+- **The fold-1 change costs nothing at n = 100 and the n = 16 lead (16/16, 15/16 vs 14, 13 on the first 16 seeds, above)
+  does not grow into a measurable gain:** +1 / +4 pp with confidence intervals that straddle zero on both sets, 41 of 200
+  seeds flip either way. The preset's purpose is the strip width (R1), not the success rate, and the success rate
+  survives it.
+- Fold 1 completes 100/100 and 93/100 (gentle 98 / 92) and every success is a real second fold (gentle: 0 / 1 free ones).
+- The knocked failure mix shifts rather than shrinks: stage-1 slips `G2@1` halve (14 → 7), but 4 stage-1 anchor drags
+  `M1@1` appear (the stickier cloth is harder to let go of after the second fold: the same drag as the one miss of
+  the n = 16 adoption run) and `M1@0` goes 4 → 5.
+- Cost: successes take 30–54 steps longer (420 / 424 vs 366 / 394: the flat arc, the chord cap and the lay-down).
+- **Decision: the R1 preset stays the quarter-fold default; it is safe to rely on for the Q3 gate and the `isaac_qf_v2`
+  collect** (which is what the gate needs: not worse than the gentle parent on the hard and knocked sets at n = 100).
+
 ## R1 preset: expert demo and the hard sets (2026-10-17, linked session; `qd/expert_r1_hard.json`, `qd/demo_r1.log`, `qd/frames_r1/`)
 
 The adopted R1 preset (gentle release + fold-1 friction + lay-down, `qf_preset()` defaults, nothing set by hand),

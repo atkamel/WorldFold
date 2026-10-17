@@ -4,10 +4,13 @@
 #   phase 1  quarter fold, sel_id_hard + sel_knock_arm, n = 100: gentle preset (default) || WORLDFOLD_QF_GENTLE=0
 #   phase 2  half fold, same sets, n = 100: baseline || the gentle knobs (QF_GENTLE_GRASP / QF_GENTLE_EXPERT's release part)
 #   phase 3  half fold settled placement miss (isaac/place_miss.py), 20 clean tune seeds: baseline || gentle
+#   q_r1     (2026-10-17, by hand) quarter fold, same sets and seeds, the R1-adopted preset (fold-1 friction + lay-down
+#            on top of gentle, WORLDFOLD_QF_FOLD1 unset = default on) -> expert_r1.json, paired against expert_gentle.json;
+#            -Workers 2 runs it on both slots (2 x 8 envs) when the machine is otherwise clear
 # Everything is resumable: re-run the same command. Outputs: outputs\imitation\isaac_friction\qd2\
 #   powershell -ExecutionPolicy Bypass -File scripts\qd2_scale.ps1            # orchestrate (waits for a clear machine)
 #   powershell -ExecutionPolicy Bypass -File scripts\qd2_scale.ps1 -Job q_gentle   # one job (used by the orchestrator)
-param([string]$Job = "", [int]$N = 100, [int]$EnvsPerProc = 8, [string]$MissSeeds = "610000:610020", [switch]$NoWait)
+param([string]$Job = "", [int]$N = 100, [int]$EnvsPerProc = 8, [int]$Workers = 1, [string]$MissSeeds = "610000:610020", [switch]$NoWait)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
@@ -25,7 +28,7 @@ $sets = @("sel_id_hard", "sel_knock_arm")
 
 function Eval($task, $out) {
     & $py -u -m imitation.evaluate --backend isaac_friction --task $task --ckpt expert --sets @sets --n $N `
-        --workers 1 --replan-every 8 --out "$dir\$out.json" --resume
+        --workers $Workers --replan-every 8 --out "$dir\$out.json" --resume
 }
 
 if ($Job) {
@@ -37,6 +40,8 @@ if ($Job) {
                      $env:WORLDFOLD_EXPERT_PARAMS = "$GentleExpert,STAGE1_ARC_HEIGHT=0.06,STAGE1_CARRY_SPEED=0.5"
                      Eval "quarter_fold" "expert_gentle" }
         "q_old"    { $env:WORLDFOLD_QF_GENTLE = "0"; Eval "quarter_fold" "expert_old" }
+        "q_r1"     { Remove-Item Env:WORLDFOLD_QF_FOLD1 -ErrorAction SilentlyContinue     # the adopted preset, as shipped
+                     Eval "quarter_fold" "expert_r1" }
         "h_base"   { Eval "half_fold" "half_base" }
         "h_gentle" { $env:WORLDFOLD_GRASP_KNOBS = $GentleGrasp; $env:WORLDFOLD_EXPERT_PARAMS = $GentleExpert
                      Eval "half_fold" "half_gentle" }

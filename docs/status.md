@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (n = 100 paired: 92 vs 41 on sel_id_hard, 78 vs 31 on sel_knock_arm; the half fold keeps the old release, no measurable gain); Q4 collect ✅ (isaac_qf_v1, 175 eps) + BC student ✅ (demo 4/6); R1 ◐ fold-1 friction + lay-down adopted into the quarter-fold preset (user, 2026-10-17; full fold 15/16, strip 13.6 / 13.0 cm on n = 8); R1 preset demo 3/3 (real second folds) and hard sets 16/16 + 15/16 at n = 16 vs 14 + 13 for QD-2 → ready for an `isaac_qf_v2` collect; R1–R3 (square) open
+**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (n = 100 paired: 92 vs 41 on sel_id_hard, 78 vs 31 on sel_knock_arm; the half fold keeps the old release, no measurable gain); Q4 collect ✅ (isaac_qf_v1, 175 eps) + BC student ✅ (demo 4/6); R1 ◐ fold-1 friction + lay-down adopted into the quarter-fold preset (user, 2026-10-17; full fold 15/16, strip 13.6 / 13.0 cm on n = 8); R1 preset demo 3/3 (real second folds) and hard sets 16/16 + 15/16 at n = 16 vs 14 + 13 for QD-2; **R1 preset at n = 100 paired: 93 / 82 vs gentle 92 / 78 (p = 1.0 / 0.56, within noise, no cost) → safe for the Q3 gate and an `isaac_qf_v2` collect**; R1–R3 (square) open
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -41,6 +41,17 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
+**2026-10-17 17:20, R1 preset at n = 100 (linked session; results.md "QD-2 at scale" → "the R1-adopted preset vs the gentle preset").**
+`qd2/expert_r1.json`, runner `scripts/qd2_scale.ps1 -Job q_r1 -Workers 2` (new job; `-Workers` option).
+- **Paired against the QD-2 gentle run on the same seeds: sel_id_hard 93/100 (Wilson 86–97) vs 92, sel_knock_arm 82/100
+  (73–88) vs 78; only-R1 / only-gentle 8 / 7 and 15 / 11, McNemar p = 1.0 / 0.56, pooled +2.5 pp [−4, +8.5].** The fold-1
+  friction + lay-down change costs nothing at scale and gives no measurable success gain (the n = 16 lead was noise);
+  fold 1 completes 100 / 93 of 100, every success is a real second fold, successes take ~50 steps longer. Knocked
+  failures shift: `G2@1` slips 14 → 7, but 4 `M1@1` stage-1 drags appear (the stickier cloth is harder to let go of).
+- **The R1 preset stays the quarter-fold default and is safe to rely on for the Q3 gate and the `isaac_qf_v2` collect.**
+- Next (unchanged): `isaac_qf_v2` collect with the R1 expert (the demo session's work order), then the R1 per-seed bar at
+  n = 16 and the jaw-close sweep.
+
 **2026-10-17 15:45, R1 preset: expert demo + hard sets (linked session; results.md "R1 preset: expert demo and the hard sets").**
 `docs/reports/media/quarter_fold_parallel_expert_r1.mp4` (+ `.json`), `qd/expert_r1_hard.json`, frames `qd/frames_r1/`.
 - **Demo 3/3 on the gentle video's seeds (660000 660004 660007), fold scores 0.99 / 0.93 / 0.96.** Fold 1 leaves a
@@ -70,7 +81,7 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
   (old: 0.5 cm short), so `OVERSHOOT_SCALE` needs no recalibration (0.8 would be the value to try if it is ever adopted).
   It does remove the 8–11 cm outliers and all 6 retries, a motion-quality gain the success rate does not see; adopting
   it for demo quality is the user's call (`qd2_scale.ps1 -Job h_gentle` reproduces it).
-- Not measured: R1's adopted preset at n = 100 (its fold-1 friction change landed after these runs started).
+- R1's adopted preset at n = 100: measured 17:15 (see the block above): 93 / 82, within noise of the gentle preset.
 
 **2026-10-17 02:45, R1 fold-1 change adopted (user: "do this task here").** `imitation/tasks/half_fold.py` `QF_FOLD1_GRASP`
 / `QF_FOLD1_EXPERT` ride on the gentle preset for the quarter fold on isaac_friction (`qf_preset()`; `WORLDFOLD_QF_FOLD1=0`
@@ -441,6 +452,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-17 · **R1 preset at n = 100** (linked session): the adopted quarter-fold preset vs the QD-2 gentle run, paired n = 100 on `sel_id_hard` / `sel_knock_arm`: 93 vs 92, 82 vs 78 (McNemar p = 1.0 / 0.56, pooled +2.5 pp [−4, +8.5]), no cost, no measurable gain, preset stays and is safe for the Q3 gate / `isaac_qf_v2`; `scripts/qd2_scale.ps1` gained `-Job q_r1` and `-Workers`. Tests: not-slow 267 passed / 5 skipped · see git log
 - 2026-10-17 · **R1 preset demo + hard sets** (linked session): expert demo on the adopted preset 3/3 with full-width strips and real second folds (`quarter_fold_parallel_expert_r1.mp4`); `sel_id_hard` 16/16, `sel_knock_arm` 15/16 at n = 16 vs 14 / 13 for the QD-2 preset on the same seeds; `qd_demo.ps1 -Sets`. Tests: not-slow 267 passed / 5 skipped · see git log
 - 2026-10-17 · **QD-2 at scale** (linked session): quarter fold old vs gentle release paired n = 100 on `sel_id_hard` / `sel_knock_arm`: 41 → 92, 31 → 78 (p < 10⁻¹⁰); half fold old vs gentle knobs 97/97, 73/79 (p = 0.29, defaults kept); half-fold settled miss probe (`isaac/place_miss.py`, new): gentle lands ~1 cm past the goal, no `OVERSHOOT_SCALE` change; runner `scripts/qd2_scale.ps1`, `qd_compare.py --set`. Tests: not-slow 267 passed / 5 skipped · see git log
 - 2026-10-17 · **R1 adopted** (user): `QF_FOLD1_GRASP` / `QF_FOLD1_EXPERT` + `qf_preset()` in `half_fold.py` (`WORLDFOLD_QF_FOLD1=0` off), teacher reads the preset's `QF0_OVERSHOOT_SCALE`; full quarter fold 15/16 (was 16/16), 15 real second folds, 4/4 full traces; dataset note (isaac_qf_v1 is pre-R1 → v2 next). Tests: not-slow 267 passed / 5 skipped · see git log
