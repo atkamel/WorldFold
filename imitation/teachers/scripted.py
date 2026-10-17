@@ -23,6 +23,7 @@ arm re-inferred from the sim.
 from __future__ import annotations
 
 import copy
+import os
 
 import numpy as np
 
@@ -42,6 +43,18 @@ def _group(name):
     return next(i for i, g in enumerate(_GROUPS) if name in g)
 
 
+def qf0_overshoot_scale(cls, base):
+    """QF0_OVERSHOOT_SCALE the way IsaacArmExpert resolves its knobs: the class attribute, overridden by the task
+    preset (base.expert_defaults, R1: the quarter fold's lay-down needs 0) unless WORLDFOLD_EXPERT_PARAMS names it."""
+    scale = getattr(cls, "QF0_OVERSHOOT_SCALE", 1.0)
+    explicit = {item.split("=", 1)[0].strip() for item in os.environ.get("WORLDFOLD_EXPERT_PARAMS", "").split(",")
+                if "=" in item}
+    defaults = getattr(base, "expert_defaults", None) or {}
+    if "QF0_OVERSHOOT_SCALE" in defaults and "QF0_OVERSHOOT_SCALE" not in explicit:
+        scale = defaults["QF0_OVERSHOOT_SCALE"]
+    return scale
+
+
 class ScriptedTeacher(Teacher):
     def __init__(self, env, seed=0):
         self.env = env
@@ -55,7 +68,7 @@ class ScriptedTeacher(Teacher):
                 from isaac.servo_expert import IsaacServoExpert as cls
             table = OVERSHOOTS[getattr(env.unwrapped, "profile", "lehome")]
             scale = float(cls.OVERSHOOT_SCALE)
-            qf0 = float(getattr(cls, "QF0_OVERSHOOT_SCALE", 1.0)) if len(env.stages) > 1 else 1.0
+            qf0 = float(qf0_overshoot_scale(cls, env.unwrapped)) if len(env.stages) > 1 else 1.0
             self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=cls,
                                             overshoot={k: scale * (qf0 if k[0] == 0 else 1.0) * v
                                                        for k, v in table.items()})

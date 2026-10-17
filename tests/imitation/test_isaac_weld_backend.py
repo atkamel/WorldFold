@@ -76,7 +76,9 @@ def test_make_env_dispatch(monkeypatch):
     monkeypatch.delenv("WORLDFOLD_QF_GENTLE", raising=False)
     monkeypatch.setattr(half_fold, "_diag_start", lambda env, task, backend: env)
     half_fold.make_env("isaac_friction", task="quarter_fold")
-    assert calls[-1]["grasp_knobs"] == half_fold.QF_GENTLE_GRASP
+    monkeypatch.delenv("WORLDFOLD_QF_FOLD1", raising=False)
+    assert calls[-1]["grasp_knobs"] == half_fold.qf_preset("quarter_fold", "isaac_friction")[0]   # gentle + R1 fold 1
+    assert half_fold.QF_GENTLE_GRASP.items() <= calls[-1]["grasp_knobs"].items()
     half_fold.make_env("isaac_friction", task="half_fold")
     assert calls[-1]["grasp_knobs"] is None
 

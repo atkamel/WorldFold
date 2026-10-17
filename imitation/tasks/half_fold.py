@@ -192,10 +192,34 @@ def is_isaac(backend) -> bool:
 QF_GENTLE_GRASP = {"release_open": 0.6, "release_open_steps": 80, "jaw_open_rate": 0.04}
 QF_GENTLE_EXPERT = {"OPEN_DWELL": 18, "SETTLE_DWELL": 6, "RETREAT_SPEED": 0.3, "STAGE1_ARC_HEIGHT": 0.06,
                     "STAGE1_CARRY_SPEED": 0.5}
+# R1 (user 2026-10-17: adopt the fold-1 friction change). Fold 1 left a 7-9 cm strip because the laid flap slid across
+# the bottom layer (cloth on cloth at 0.5 x 0.6 = 0.3) and pushed the crease. With the cloth at 1.0 against the rigids
+# and 2.0 against itself (adhesion stays 0.1, no weld) and the stage-0 flat arc / chord cap / 11 cm lay-down, the strip
+# is 13.6 / 13.0 cm on n = 8 (results.md R1). Quarter fold on isaac_friction only, on top of the gentle preset;
+# WORLDFOLD_QF_FOLD1=0 turns it off (the QD-2 preset, which the n = 100 QD-2 evals and isaac_qf_v1 were made with).
+QF_FOLD1_GRASP = {"particle_friction": 1.0, "particle_friction_scale": 2.0}
+QF_FOLD1_EXPERT = {"QF0_ARC_FLAT": 2, "QF0_ARC_HEIGHT": 0.10, "QF0_CHORD_CAP": 0.04, "QF0_LAYDOWN": 0.11,
+                   "QF0_OVERSHOOT_SCALE": 0}
 
 
 def qf_gentle(task, backend):
     return task == "quarter_fold" and backend == "isaac_friction" and os.environ.get("WORLDFOLD_QF_GENTLE", "1") != "0"
+
+
+def qf_fold1(task, backend):
+    return qf_gentle(task, backend) and os.environ.get("WORLDFOLD_QF_FOLD1", "1") != "0"
+
+
+def qf_preset(task, backend):
+    """(grasp knobs, expert defaults) for this task on this backend: the gentle preset plus the fold-1 change, or
+    (None, None) when neither applies (the half fold, other backends, or WORLDFOLD_QF_GENTLE=0)."""
+    if not qf_gentle(task, backend):
+        return None, None
+    grasp, expert = dict(QF_GENTLE_GRASP), dict(QF_GENTLE_EXPERT)
+    if qf_fold1(task, backend):
+        grasp.update(QF_FOLD1_GRASP)
+        expert.update(QF_FOLD1_EXPERT)
+    return grasp, expert
 
 
 def make_env(backend="mujoco", task="half_fold", **kwargs):
@@ -234,13 +258,12 @@ def make_env(backend="mujoco", task="half_fold", **kwargs):
         if kwargs.get("obs_mode", "state") == "dict":
             from imitation.vision.render import CAMERAS
             cameras = kwargs.get("cameras") or CAMERAS
-        gentle = qf_gentle(task, backend)
+        grasp, expert = qf_preset(task, backend)
         kwargs["base_env"] = make_isaac_base(kwargs["max_episode_steps"], cameras=cameras,
                                              profile=ISAAC_PROFILES[backend],
-                                             grasp_corners=task_grasp_corners(task, backend),
-                                             grasp_knobs=QF_GENTLE_GRASP if gentle else None)
-        if gentle:
-            kwargs["base_env"].expert_defaults = dict(QF_GENTLE_EXPERT)
+                                             grasp_corners=task_grasp_corners(task, backend), grasp_knobs=grasp)
+        if expert is not None:
+            kwargs["base_env"].expert_defaults = expert
         return _diag_start(HalfFoldEnv(**kwargs), task, backend)
     raise ValueError(f"backend must be one of {BACKENDS}, got {backend!r}")
 
@@ -264,13 +287,12 @@ def make_env_batch(backend="isaac_weld", n=1, task="half_fold", **kwargs):
         cameras = kwargs.get("cameras") or CAMERAS
     # QD-2: the gentle preset applies on this path too (collect and multi-env evals build their envs here). Until
     # 2026-10-16 22:00 only make_env had it, so the first Q4 collect ran the old release (results.md QD-3).
-    gentle = qf_gentle(task, backend)
+    grasp, expert = qf_preset(task, backend)
     batch = make_isaac_batch(n, kwargs["max_episode_steps"], cameras=cameras, profile=ISAAC_PROFILES[backend],
-                             grasp_corners=task_grasp_corners(task, backend),
-                             grasp_knobs=QF_GENTLE_GRASP if gentle else None)
-    if gentle:
+                             grasp_corners=task_grasp_corners(task, backend), grasp_knobs=grasp)
+    if expert is not None:
         for sub in batch.envs:
-            sub.expert_defaults = dict(QF_GENTLE_EXPERT)
+            sub.expert_defaults = dict(expert)
     return batch, [_diag_start(HalfFoldEnv(**dict(kwargs, base_env=sub)), task, backend) for sub in batch.envs]
 
 

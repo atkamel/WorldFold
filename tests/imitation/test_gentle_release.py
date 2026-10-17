@@ -70,9 +70,29 @@ def test_quarter_fold_gentle_preset_scope(monkeypatch):
 def test_preset_keys_are_real_knobs():
     from isaac.fold_expert import IsaacArmExpert
     from isaac.isaac_env import FRICTION_GRASP
-    from imitation.tasks.half_fold import QF_GENTLE_EXPERT, QF_GENTLE_GRASP
+    from imitation.tasks.half_fold import QF_FOLD1_EXPERT, QF_FOLD1_GRASP, QF_GENTLE_EXPERT, QF_GENTLE_GRASP
     assert all(hasattr(IsaacArmExpert, k) for k in QF_GENTLE_EXPERT)
     assert set(QF_GENTLE_GRASP) <= set(FRICTION_GRASP)
+    assert all(hasattr(IsaacArmExpert, k) for k in QF_FOLD1_EXPERT)       # R1
+    assert set(QF_FOLD1_GRASP) <= set(FRICTION_GRASP)
+
+
+def test_fold1_preset_stacks_on_gentle(monkeypatch):
+    # R1 (2026-10-17): the fold-1 friction + lay-down change rides on the gentle preset; WORLDFOLD_QF_FOLD1=0 leaves
+    # the QD-2 preset exactly (what isaac_qf_v1 and the n = 100 QD-2 evals were made with)
+    from imitation.tasks import half_fold
+    monkeypatch.delenv("WORLDFOLD_QF_GENTLE", raising=False)
+    monkeypatch.delenv("WORLDFOLD_QF_FOLD1", raising=False)
+    grasp, expert = half_fold.qf_preset("quarter_fold", "isaac_friction")
+    assert grasp == {**half_fold.QF_GENTLE_GRASP, **half_fold.QF_FOLD1_GRASP}
+    assert expert == {**half_fold.QF_GENTLE_EXPERT, **half_fold.QF_FOLD1_EXPERT}
+    assert grasp["particle_friction"] == 1.0 and grasp["particle_friction_scale"] == 2.0
+    assert "adhesion" not in grasp                                        # adhesion stays LeHome's 0.1
+    monkeypatch.setenv("WORLDFOLD_QF_FOLD1", "0")
+    assert half_fold.qf_preset("quarter_fold", "isaac_friction") == (half_fold.QF_GENTLE_GRASP, half_fold.QF_GENTLE_EXPERT)
+    assert half_fold.qf_preset("half_fold", "isaac_friction") == (None, None)
+    monkeypatch.setenv("WORLDFOLD_QF_GENTLE", "0")
+    assert half_fold.qf_preset("quarter_fold", "isaac_friction") == (None, None)
 
 
 def test_expert_takes_preset_as_instance_defaults(monkeypatch):
@@ -104,9 +124,11 @@ def test_batch_factory_applies_the_preset(monkeypatch):
     monkeypatch.setattr(half_fold, "HalfFoldEnv", lambda **kw: kw["base_env"])
     monkeypatch.setattr(half_fold, "_diag_start", lambda env, task, backend: env)
     monkeypatch.delenv("WORLDFOLD_QF_GENTLE", raising=False)
+    monkeypatch.delenv("WORLDFOLD_QF_FOLD1", raising=False)
     batch, envs = half_fold.make_env_batch("isaac_friction", n=3, task="quarter_fold")
-    assert calls[-1] == half_fold.QF_GENTLE_GRASP
-    assert all(e.expert_defaults == half_fold.QF_GENTLE_EXPERT for e in envs)
+    grasp, expert = half_fold.qf_preset("quarter_fold", "isaac_friction")
+    assert calls[-1] == grasp and grasp["particle_friction_scale"] == 2.0     # gentle + fold 1 (R1)
+    assert all(e.expert_defaults == expert for e in envs)
     half_fold.make_env_batch("isaac_friction", n=2, task="half_fold")
     assert calls[-1] is None
 
@@ -116,3 +138,16 @@ def test_table_friction_is_a_grasp_knob():
     from isaac.isaac_env import FRICTION_GRASP
     assert "table_friction" in FRICTION_GRASP and "particle_friction" in FRICTION_GRASP
     assert "particle_friction_scale" in FRICTION_GRASP     # cloth-on-cloth only (PhysX particleFrictionScale)
+
+
+def test_teacher_takes_overshoot_scale_from_the_preset(monkeypatch):
+    # R1: ScriptedTeacher scales the stage-0 overshoot from the class attribute; the preset's instance default must
+    # reach it too (the probes set QF0_OVERSHOOT_SCALE=0 through WORLDFOLD_EXPERT_PARAMS, i.e. the class attribute)
+    from imitation.teachers.scripted import qf0_overshoot_scale
+    cls = SimpleNamespace(QF0_OVERSHOOT_SCALE=1.0)
+    monkeypatch.delenv("WORLDFOLD_EXPERT_PARAMS", raising=False)
+    assert qf0_overshoot_scale(cls, SimpleNamespace()) == 1.0
+    assert qf0_overshoot_scale(cls, SimpleNamespace(expert_defaults={"QF0_OVERSHOOT_SCALE": 0})) == 0
+    monkeypatch.setenv("WORLDFOLD_EXPERT_PARAMS", "QF0_OVERSHOOT_SCALE=0.5")
+    cls.QF0_OVERSHOOT_SCALE = 0.5                    # what the env var does to the class
+    assert qf0_overshoot_scale(cls, SimpleNamespace(expert_defaults={"QF0_OVERSHOOT_SCALE": 0})) == 0.5

@@ -2613,3 +2613,41 @@ What is not measured: the full quarter fold on it (the stage-1 grip on the two-l
 both see the cloth-on-cloth friction), the half fold (untouched as long as the knobs go in through the quarter-fold
 preset), and the drag-type failures on `tune_id_hard` / knock seeds. The path-only fallback is lay-down 11 cm (9 cm
 wide), which does not change the picture the video shows.
+
+
+### R1 adopted (user, 2026-10-17 02:10: "do this task here" on the adoption card; `qd/expert_r1_adopt.json`, `qd/trace_r1_adopt_full.jsonl`)
+
+The fold-1 change is now the quarter fold's default on isaac_friction, as a second layer on the gentle preset
+(`imitation/tasks/half_fold.py`: `QF_FOLD1_GRASP = {particle_friction: 1.0, particle_friction_scale: 2.0}`,
+`QF_FOLD1_EXPERT = {QF0_ARC_FLAT: 2, QF0_ARC_HEIGHT: 0.10, QF0_CHORD_CAP: 0.04, QF0_LAYDOWN: 0.11, QF0_OVERSHOOT_SCALE: 0}`,
+resolved by `qf_preset()`; `WORLDFOLD_QF_FOLD1=0` gives back the QD-2 preset exactly). Adhesion stays LeHome's 0.1, no
+weld. The half fold and the other backends are untouched (`qf_preset` returns nothing for them; tests). One fix on the
+way: `ScriptedTeacher` scaled the stage-0 overshoot from the expert *class* attribute, so a preset's
+`QF0_OVERSHOOT_SCALE` never reached it (the probes had set it through `WORLDFOLD_EXPERT_PARAMS`, which sets the class);
+`imitation/teachers/scripted.py::qf0_overshoot_scale` now reads the preset with the same precedence, with a test.
+
+**Full task, paired n = 16** (`tune_id_easy` 660000–015, 1 × 8 envs, 800 cap, `scripts/qd_demo.ps1 -Step eval -Tag
+r1_adopt`, 18 min wall; `scripts/qd_compare.py`):
+
+| config | success (Wilson) | real 2nd fold | failures | mean fold score | mean steps (successes) |
+|---|---|---|---|---|---|
+| gentle release (QD-2 preset, `qd/expert_gentle.json`) | 16/16 (81–100) | 15/16 | — | 0.928 | 326 |
+| **gentle + R1 fold 1** (`qd/expert_r1_adopt.json`) | **15/16 (72–99)** | **15/16** | M1@1 1 (660000: anchor dragged in stage 1) | 0.922 | 398 |
+
+- One discordant seed, to the old side (660000); within the n = 16 noise (the adoption brief's floor was 13/16). The
+  same 15 real second folds; the fold score is unchanged; successes take ~70 steps longer (the flat arc, the lay-down and
+  the lifted-then-laid flap are slower than the plain arc).
+- **Full-episode traces, 4 seeds (`-Step trace`, no stop, 660000–003): 4/4 successes, no retries, both corners
+  placed on every seed, anchors ≤ 2.5 cm through the whole second fold** (stage 1 at t 200–350: drift 1.5–2.5 cm;
+  the gentle default had 3–4 cm after fold 1 alone). So the stage-1 grip on the two-layer bend and the second fold's
+  slide both survive the cloth-on-cloth friction of 2.0; 660000 succeeds here at 327 steps (its eval failure is the
+  8-env batch's seed draw, not a systematic drag).
+- Fold-1 width inside the full task is the stage-0 measurement above (same knobs, `f1_combo_lo11` / `_b`: 13.6 /
+  13.0 cm, crease −1.3 / −1.9, n = 8); the full-episode traces record no stage-end snapshot.
+- **Not measured yet:** the half fold is untouched by construction (not re-run); `tune_id_hard` / knock seeds on the
+  new preset (the n = 100 QD-2 evals running in the linked session use `WORLDFOLD_QF_FOLD1=0` on restart, so they stay
+  the QD-2 preset); the R1 bar at n = 16 (roadmap: ≥ 13 / ≤ 2 / ≤ 2 cm; the stage-0 traces are n = 8, means at the bar,
+  3/8 seeds per seed).
+- **Dataset note (from the Q4 session):** `isaac_qf_v1` (hash `42bd9eb13451`) and the BC gripper-head student were
+  made with the QD-2 preset, i.e. *before* this change. Any new quarter-fold collect is a different expert: use a new
+  tag (`isaac_qf_v2`), never resume `isaac_qf_v1`.

@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (16/16 on tune, was 9/16); Q4 collect ✅ (isaac_qf_v1, 175 eps) + BC student ✅ (demo 4/6); R1 ◐ fold-1 friction probes done (a physics change meets the bar on n = 8, user's OK needed); R1–R3 (square) open
+**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (16/16 on tune, was 9/16); Q4 collect ✅ (isaac_qf_v1, 175 eps) + BC student ✅ (demo 4/6); R1 ◐ fold-1 friction + lay-down adopted into the quarter-fold preset (user, 2026-10-17; full fold 15/16, strip 13.6 / 13.0 cm on n = 8); R1–R3 (square) open
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -40,6 +40,21 @@ I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expe
 rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
+
+**2026-10-17 02:45, R1 fold-1 change adopted (user: "do this task here").** `imitation/tasks/half_fold.py` `QF_FOLD1_GRASP`
+/ `QF_FOLD1_EXPERT` ride on the gentle preset for the quarter fold on isaac_friction (`qf_preset()`; `WORLDFOLD_QF_FOLD1=0`
+restores the QD-2 preset; the half fold is untouched). `ScriptedTeacher` now takes `QF0_OVERSHOOT_SCALE` from the preset
+(it read only the class attribute). results.md "R1 adopted".
+- **Full quarter fold, tune_id_easy n = 16: 15/16 (Wilson 72–99), 15 real second folds, fold score 0.922, 398 steps**
+  (gentle preset: 16/16, 15, 0.928, 326); the miss is a stage-1 anchor drag on 660000. Full-episode traces 4/4 with
+  anchors ≤ 2.5 cm through fold 2: the cloth-on-cloth friction does not break the stage-1 grip or the second fold.
+- **Dataset / student are pre-R1:** `isaac_qf_v1` and the BC gripper-head student were collected with the QD-2 preset.
+  A new collect is a new expert → tag `isaac_qf_v2`, never resume v1. The linked n = 100 QD-2 evals restart with
+  `WORLDFOLD_QF_FOLD1=0`.
+- **Next R1 steps:** (1) the bar at n = 16 per seed (stage-0 traces 660000–015; 3/8 seeds clear every bar today, misses
+  ≤ 1.2 cm) — the jaw-close sweep (anchor 3–4 cm toward the centre as the jaw shuts) is the last centimetre; (2) a new
+  expert demo video on the adopted preset (`scripts/qd_demo.ps1 -Step demo -Out docs/reports/media/quarter_fold_parallel_expert_r1.mp4`),
+  the user judges motion quality; (3) `tune_id_hard` / knock on the new preset before any `isaac_qf_v2` collect.
 
 **2026-10-17 01:50, R1 fold-1 probes (linked session; results.md "R1 — fold-1 width on isaac_friction").** 19 probes,
 n = 4 then n = 8, `qd/trace_f1_*.jsonl`, all with the gentle preset, stop at stage 1, bar width ≥ 13 / crease ≤ 2 /
@@ -334,7 +349,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 265 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 14 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 267 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 14 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -395,6 +410,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-17 · **R1 adopted** (user): `QF_FOLD1_GRASP` / `QF_FOLD1_EXPERT` + `qf_preset()` in `half_fold.py` (`WORLDFOLD_QF_FOLD1=0` off), teacher reads the preset's `QF0_OVERSHOOT_SCALE`; full quarter fold 15/16 (was 16/16), 15 real second folds, 4/4 full traces; dataset note (isaac_qf_v1 is pre-R1 → v2 next). Tests: not-slow 267 passed / 5 skipped · see git log
 - 2026-10-17 · **R1 fold-1 friction probes** (linked session): knobs `table_friction` (inert: PhysX ignores the table's rigid material for the cloth) and `particle_friction_scale` (cloth-on-cloth; 2.0 holds the crease); with `particle_friction` 1.0 + the QF0 lay-down 13.6 / 13.0 cm on n = 8, a physics change, not adopted (user's OK); no path shape alone gets past 9 cm; 19 probes in results.md R1, roadmap R1 ◐. Tests: not-slow 265 passed / 5 skipped · see git log
 - 2026-10-17 · **Q4 first pass:** `isaac_qf_v1` frozen (175 + 25, `42bd9eb13451` / `e6c6023fd81d`), BC gripper-head student 20k steps, demo 4/6 (`quarter_fold_parallel_bc.mp4`); preset applied on the batch path (f48af9d). Tests: not-slow 264 passed / 5 skipped · see git log
 - 2026-10-16 · **QD-3: fold-1 width on the gentle release** (3 probes, none adopted; `-NoVision` on `q_retrain.ps1`; camera collect too slow, discarded; the gentle preset was missing on the batch path, fixed + test, first state-only collect discarded); Q4 state-only chain running. Tests: not-slow 264 passed / 5 skipped · see git log
