@@ -8,7 +8,9 @@
 # a sim (2026-10-13 PhysX crash); <= 2 Isaac processes; thermal_guard alongside. Log: outputs\imitation\isaac_friction\q4\q4.log
 #   powershell -ExecutionPolicy Bypass -File scripts\q_retrain.ps1 [-Only <stage>] [-Episodes 200] [-FinalN 100]
 param([string]$Only = "", [int]$Episodes = 200, [int]$FinalN = 100, [int]$SelN = 100, [int]$BCSteps = 20000,
-      [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [int]$DaggerEpisodes = 128)
+      [int]$EnvsPerProc = 8, [int]$CameraEnvsPerProc = 6, [int]$DaggerEpisodes = 128, [switch]$NoVision)
+# -NoVision (QD-2, 2026-10-16): state-only demos at the full envs per process. The camera collect ran at ~4.7 s per step
+# (2 x 6 envs, 3 cameras, GPU 97%): 27 min to the first episodes, ~7 h for 200. The vision stages then have no images.
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
@@ -63,9 +65,14 @@ function Eval($name, $ckpt, $sets, $n, $replan, $envs) {
 
 # 1. demos with images (the vision student needs them); the camera rig caps envs per process
 Stage "collect" "$ds\$tag\manifest.json" {
-    $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "$CameraEnvsPerProc"
-    & $py -u -m imitation.data.collect --backend $B --task $T --episodes $Episodes --workers 2 --recovery-fraction 0.5 `
-        --perturb-kinds $kinds --render --cameras $cams --version $tag --root $ds --resume }
+    if ($NoVision) {
+        & $py -u -m imitation.data.collect --backend $B --task $T --episodes $Episodes --workers 2 --recovery-fraction 0.5 `
+            --perturb-kinds $kinds --version $tag --root $ds --resume
+    } else {
+        $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "$CameraEnvsPerProc"
+        & $py -u -m imitation.data.collect --backend $B --task $T --episodes $Episodes --workers 2 --recovery-fraction 0.5 `
+            --perturb-kinds $kinds --render --cameras $cams --version $tag --root $ds --resume
+    } }
 
 # 2. BC: the pre-Q1 loss and the Q1 gripper head (kept, results.md), same seed and recipe (GPU only)
 Stage "train_bc_base" "$runs\${tag}_bc_base\final.pt" {

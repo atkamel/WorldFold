@@ -2445,3 +2445,36 @@ success whose stage 1 took > 25 steps):
   `QF_GENTLE_EXPERT`, `WORLDFOLD_QF_GENTLE=0` to turn off). The half fold is unchanged and was not re-measured with it.
 - Caveat: n = 16 tune seeds, one run; the Q0 noise floor flips ~25% of seeds run to run, so a `sel_`/`final_` n = 100
   run is the next check before the gate.
+
+### Q4 collect with cameras is too slow for a session (2026-10-16, `q4/collect.log`, first attempt)
+
+`q_retrain.ps1` collect as written: 2 × 6 envs, `--render --cameras main=128,left_wrist_cam=64,right_wrist_cam=64`,
+quarter fold, gentle expert. First two episodes landed at 1650 s and 1725 s wall (344 / 352 steps each, so ~4.7 s
+per lockstep step), GPU 97% busy, 15.5 GB VRAM, 82 °C. 200 episodes would take ~7 h. Stopped after 2 episodes; the
+two camera episodes were set aside (`datasets/isaac_qf_v1_cam_partial_discarded`), and the collect restarted
+state-only (`-NoVision`, 2 × 8). The vision student needs a later camera collect, or an image replay of the
+state-only episodes (`v1_img` did that on MuJoCo).
+
+### QD-3 — fold-1 width on top of the gentle release (2026-10-16 evening, `qd/trace_f1_g_*.jsonl`)
+
+The gentle release is now the quarter fold's default, so the fold-1 probes were re-run on it (stop at stage 1).
+
+| config | n | width W / E (cm, mean) | crease W / E | spread W / E | anchors | fold 1 done |
+|---|---|---|---|---|---|---|
+| gentle (default), `f1_g_base` | 8 | 6.2 / 7.7 (7.2 / 8.6 without 660002) | −4.1 / −2.8 | 3.7 / 4.0 (1.7 / 2.1 without 660002) | 3.0–3.9 (660002: 16) | 7/8 (660001 retried out) |
+| gentle + flat-top arc, chord cap 4 cm, lay-down 13 cm, overshoot 0, `f1_g_flat` | 4 | 6.2 / 6.4 | −5.3 / −5.0 | 6.0 / 6.6 | 3.1–4.1 | 4/4 (660002 included: the cap stops its 16 cm drag) |
+
+- With the gentle release the stacks are tight (1–3 cm, the old release split them 3–6 cm) and the crease shift is
+  half the old −5.4 / −4.2, but the strip is still 7–9 cm, not 15.
+- The flat-arc lay-down adds nothing on top of the gentle release except curing seed 660002's anchor drag; its
+  corners land 6–7 cm from the anchors (overshoot 0, 13 cm radius) so it is not adopted.
+| gentle + placement overshoot off (`QF0_OVERSHOOT_SCALE=0`), `f1_g_os0` | 4 | 5.7 / 2.2 (1 seed) | −6.5 / −8.4 | 5.1 / 7.1 | 2.9–4.5 | **1/4**: the corners land 5–6 cm short and the retries fail; 660002 dragged |
+
+- **The overshoot stays.** It was calibrated against the old fling, but without it the gently placed corner still
+  stops 5 cm short of the anchor (the carried corner rides 1–4 cm behind the gripper and the arm stops where the
+  plan ends), so the strip gets narrower, not wider.
+- **QD-3 conclusion:** on the gentle release the width is bounded at ~7–9 cm by the crease being pushed 3–5 cm
+  toward the arms and the near corner sliding 3 cm the other way at the jaw close. Neither is a path-shape effect
+  (QD). R1's remaining levers are the jaw-close sweep (a slower close, or a close along the edge) and the bottom
+  layer's hold on the table (friction, or a press). The chord cap (`QF0_CHORD_CAP`) does cure the one seed whose
+  anchors drag 16 cm (660002) and is worth keeping in mind as a safety for R1.

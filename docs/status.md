@@ -41,6 +41,14 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
+**2026-10-16 evening, QD-3 (user: keep pushing).** results.md "QD-3". On the gentle release the fold-1 strip is 7–9 cm
+(stacks now 1–3 cm tight, crease −4 / −3 cm); the flat-arc lay-down and the overshoot-off variants are both worse, so
+the gentle default stands and fold-1 width goes to R1 (levers left: the jaw-close sweep, the bottom layer's hold).
+- **Q4 chain (state-only, `-NoVision`, 2 × 8; the camera collect ran at 4.7 s/step and was discarded after 2 episodes):**
+  collect 200 → `train_bc_grip` → student demo `docs/reports/media/quarter_fold_parallel_bc.mp4`. Paused once for the
+  fold-1 probes (resumable), resumed 20:55; ~1.5 s per lockstep step, ~2 h for the collect, then ~1 h GPU training with
+  no Isaac alongside. Resume: `scripts/q_retrain.ps1 -Only collect -Episodes 200 -NoVision`, then `-Only train_bc_grip`.
+
 **2026-10-16, QD-2 (user: the fold-1 release is violent and jerky; try a slower, gentler release with a slow raise;
 the second fold's friction grip looks like the main problem, try a gentler pick-up and drop-off).** results.md "QD-2".
 - **Cause found:** the jaw swings 0.05 → 1.15 rad in 0.15 s and flings the released corner 4.8 cm at 58 cm/s (the arm
@@ -353,6 +361,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-16 · **QD-3: fold-1 width on the gentle release** (3 probes, none adopted; `-NoVision` on `q_retrain.ps1`; camera collect too slow, discarded); Q4 state-only chain running. Tests: not-slow 263 passed / 5 skipped · see git log
 - 2026-10-16 · **QD-2: gentle release** (jaw `release_open` / `release_open_steps` + `jaw_open_rate`; expert `SETTLE_DWELL`, `RETREAT_SPEED`, `STAGE1_CARRY_SPEED`; quarter-fold preset): tune n = 16 9/16 → 16/16 (real second folds 5 → 15); video `quarter_fold_parallel_expert_gentle.mp4` 3/3; `isaac/release_summary.py`, `scripts/qd_compare.py`; Q4 chain restarted. Tests: not-slow 263 passed / 5 skipped · see git log
 - 2026-10-16 · **QD: parallel quarter-fold expert demo** (2/3, `docs/reports/media/quarter_fold_parallel_expert.mp4`); baseline 9/16; fold-1 traces (crease pushed, anchors fine); QF0 arc knobs `ARC_FLAT` / `CHORD_CAP` / `LAYDOWN` + `carry_arc_z` / `laydown_tip` tests; `WORLDFOLD_GRASP_KNOBS` hook; `scripts/qd_demo.ps1`, `video_frames.py`, `isaac/slip_summary.py`; Q4 collect launched. Tests: not-slow 255 passed / 5 skipped · see git log
 - 2026-10-15 · **Paused (user)** before the reversed-layout inward-pinch trace finished; docs only · see git log
