@@ -2832,3 +2832,20 @@ The baseline is the **QD-2 preset's n = 100 gentle run restricted to the same 16
   folds, 16/16 + 15/16 on the hard sets, no regression anywhere at n = 16). Wait for the n = 100 paired run before
   spending the 2 h collect if it is due within the hour; otherwise collect with the preset as it stands (new tag,
   never resume `isaac_qf_v1`).
+
+### Q4 v2 — `isaac_qf_v2` collection with the R1 expert (2026-10-17 18:53, `q4/collect.log`, `datasets/isaac_qf_v2`)
+
+`q_retrain.ps1 -Only collect -Episodes 200 -NoVision -Tag isaac_qf_v2`: the quarter fold with the R1 preset (gentle
+release + fold-1 friction + lay-down, the default since 770857f), seeds 0–199, 50% `knock_arm`, state-only, 2 × 8 envs.
+Wall 96 min (5788 s; v1 took 156 min sharing the GPU with another job).
+
+| | episodes | steps | perturbed | hash |
+|---|---|---|---|---|
+| `isaac_qf_v2` (successes) | **167 / 200** | 68,466 | 75 | `730e33e52bee` |
+| `isaac_qf_v2_failures` | 33 | 25,274 | 24 | `ba5c6d5e29a8` |
+
+- 83.5% over 200 seeds against v1's 87.5% (QD-2 preset): clean 91/100 vs 94, knocked 76/100 vs 81. Within the
+  R1-at-n=100 picture (93 / 82 vs 92 / 78 on the `sel_` sets, p = 1.0 / 0.56): the R1 expert is not better on
+  success, it is better on what the fold looks like (every success a real second fold).
+- Episodes are longer (410 steps per success vs 370), so the dataset has 6% more steps from 5% fewer episodes.
+- BC (`train_bc_grip -Tag isaac_qf_v2`, diffusion, gripper head, 20k steps) started 18:53.

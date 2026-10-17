@@ -423,6 +423,7 @@ grasping is contact-dominated and MuJoCo minors change results.
 | harvest_v2 | 1,679 | 4 policies × σ {0.1, 0.3}, ≥ 60 per failure code | `febfb9275058` | 68% success |
 | v1_img128 / v1_failures_img128 | 384 / 16 | v1 replayed, 128² main + 64² wrists | `532f8a9c08b6` / `3c1f9e376161` | images in the digest |
 | v1_img128_distill_v2_r1 / r2 | 512 / 640 | camera-student rollouts, teacher-relabelled | `b87a7e4ef895` / `ab63f57fe382` | not kept |
+| isaac_qf_v2 / _failures | 167 / 33 | R1 quarter-fold expert (gentle + fold-1 friction + lay-down), seeds 0–199, 50% knock_arm, state-only | `730e33e52bee` / `ba5c6d5e29a8` | Q4 v2 (2026-10-17); clean 91/100, knocked 76/100 |
 | isaac_qf_v1 / _failures | 175 / 25 | gentle quarter-fold expert (parallel second fold), seeds 0–199, 50% knock_arm, state-only | `42bd9eb13451` / `e6c6023fd81d` | Q4 (2026-10-17); clean 94/100, knocked 81/100 |
 | isaac_v1_friction / _failures | 171 / 29 | friction expert (F3b defaults), seeds 0–199, 50% knock_arm, state-only | `71a993b12a3c` / `be7f7e50083b` | Phase F4; clean 93/101, bumped 78/99 |
 
