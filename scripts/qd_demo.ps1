@@ -1,12 +1,14 @@
 # QD (2026-10-16): the parallel quarter-fold demo. Expert runs on tune seeds, no knobs unless -Params is given, a real
 # fold 1 (never WORLDFOLD_QF_START=clean). One Isaac process per call; keep <= 2 running (heat cap), thermal_guard alongside.
-#   -Step eval  : expert on tune_id_easy, n = -N, 1 x -EnvsPerProc  -> outputs\imitation\isaac_friction\qd\expert_<Tag>.json
+#   -Step eval  : expert on -Sets (default tune_id_easy; "tune_id_hard tune_knock_arm"), n = -N, 1 x -EnvsPerProc
+#                 -> outputs\imitation\isaac_friction\qd\expert_<Tag>.json (--resume: sets already there are kept)
 #   -Step demo  : video of -Seeds (space-separated)                 -> -Out (default docs\reports\media\quarter_fold_parallel_expert.mp4)
 #   -Step trace : recovery_replay per-step traces of -Seeds (a:b range) -> qd\trace_<Tag>.jsonl + qd\traces_<Tag>\
 #   powershell -ExecutionPolicy Bypass -File scripts\qd_demo.ps1 -Step eval -Tag base
 param([ValidateSet("eval", "demo", "trace")][string]$Step = "eval", [int]$N = 16, [int]$EnvsPerProc = 8,
       [string]$Params = "", [string]$Tag = "base", [string]$Seeds = "660002 660004 660009", [string]$Out = "",
-      [string]$Set = "", [string]$Ckpt = "expert", [int]$Replan = 8, [int]$MaxSteps = 0, [int]$StopAtStage = -1, [string]$Grasp = "")
+      [string]$Set = "", [string]$Ckpt = "expert", [int]$Replan = 8, [int]$MaxSteps = 0, [int]$StopAtStage = -1, [string]$Grasp = "",
+      [string]$Sets = "tune_id_easy")
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
@@ -23,7 +25,7 @@ $ErrorActionPreference = "Continue"
 "STEP qd_$Step $Tag $(Get-Date -Format s) params='$Params'"
 if ($Step -eq "eval") {
     $env:WORLDFOLD_ISAAC_ENVS_PER_PROC = "$EnvsPerProc"
-    & $py -u -m imitation.evaluate --backend isaac_friction --task quarter_fold --ckpt $Ckpt --sets tune_id_easy `
+    & $py -u -m imitation.evaluate --backend isaac_friction --task quarter_fold --ckpt $Ckpt --sets @($Sets -split " ") `
         --n $N --workers 1 --replan-every $Replan --out "$dir\expert_$Tag.json" --resume *>&1 | Out-File -Append -Encoding utf8 "$dir\expert_$Tag.log"
 } elseif ($Step -eq "demo") {
     if (-not $Out) { $Out = "docs\reports\media\quarter_fold_parallel_expert.mp4" }

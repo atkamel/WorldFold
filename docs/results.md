@@ -2742,3 +2742,58 @@ Paired per seed (gentle − old), mean ± SE: left (−1.5 ± 0.5, +1.6 ± 0.7) 
 - What the gentle release does change is the spread: the 8–11 cm outliers (the old release's retries, 6 in 20 episodes)
   are gone, the max miss is 3.9 cm and the expert never retried. That is a motion-quality gain the success rate at n = 100
   (above) does not see, because the retries recover those corners anyway.
+
+## R1 preset: expert demo and the hard sets (2026-10-17, linked session; `qd/expert_r1_hard.json`, `qd/demo_r1.log`, `qd/frames_r1/`)
+
+The adopted R1 preset (gentle release + fold-1 friction + lay-down, `qf_preset()` defaults, nothing set by hand),
+scripted expert, `isaac_friction`, `WORLDFOLD_QF_SECOND=parallel`, `--replan-every 8`. `scripts/qd_demo.ps1` gained a
+`-Sets` option for the eval step (default unchanged, `tune_id_easy`). Note: there is no `tune_id_hard` set
+(`imitation/seeds.py` has tune copies of recovery / knock_arm / drop / joint_noise / overshoot / id_easy only), so the
+hard sets here are the Q0 selection blocks, whose first 16 seeds pair with the n = 100 gentle run of "QD-2 at scale".
+
+### Expert demo, 1 env (`docs/reports/media/quarter_fold_parallel_expert_r1.mp4`, 1122 frames, seeds 660000 660004 660007)
+
+| seed | R1: success / steps / fold score | gentle video (`_gentle.mp4`): success / steps / fold score |
+|---|---|---|
+| 660000 | ✓ 341 / 0.989 | ✓ 303 / 0.924 |
+| 660004 | ✓ 372 / 0.928 | ✓ 357 / 0.928 |
+| 660007 | ✓ 349 / 0.960 | ✓ 295 / 0.939 |
+
+3/3, same seeds as the gentle video; 38–54 steps longer per episode (flat arc + lay-down). Frames at steps 141 / 186 /
+231 / 271 / end per seed (`qd/frames_r1/`, against `qd/frames_gentle/` at 141 / 186):
+- **Fold 1 now leaves a full-width strip on every seed.** At step 186 (fold 1 done, jaws open) the strip spans the
+  cloth's whole width as one flat band with a straight crease; on the gentle video at the same step (660000) the strip is
+  bunched into a crumpled 3–8 cm shuffle with the crease end folded under. The lay-down (step 141) is a flat square flap
+  held low, not the lifted crumple of the gentle arc.
+- **The second fold is a real fold on all three seeds:** at step 231 both jaws close on the strip's far edge
+  (`grasped L 1 R 1`), at step 271 both arms carry the edge across the strip, and the final frame is a narrow stack about
+  a quarter of the cloth, placed under the open jaws. No snapping or fling at either release (the gentle release is unchanged).
+- Final stacks on 660004 / 660007 have a wrinkled left end (the left corner lands ~2 cm short of square); 660000 is flat.
+
+### Hard sets, n = 16 (1 × 8 envs, 800 cap; `sel_id_hard` 705000–015, `sel_knock_arm` 715000–015; `qd_compare.py --set`)
+
+The baseline is the **QD-2 preset's n = 100 gentle run restricted to the same 16 seeds** (`qd2/expert_gentle.json`,
+"QD-2 at scale"), not a re-run, so the pairing carries the batch's seed-draw caveat (R1 adopted: 660000 fails in the
+8-env batch and succeeds alone).
+
+| set | config | success (Wilson 95%) | real 2nd fold | fold 1 done | failures | mean fold score | mean steps (successes) |
+|---|---|---|---|---|---|---|---|
+| sel_id_hard | gentle (QD-2 preset), same 16 seeds | 14/16 (64–97) | 14/16 | 16/16 | G2@1 2 (705006, 705010) | 0.918 | 362 |
+| sel_id_hard | **R1 preset** | **16/16 (81–100)** | **16/16** | 16/16 | — | 0.936 | 403 |
+| sel_knock_arm | gentle (QD-2 preset), same 16 seeds | 13/16 (57–93) | 13/16 | 16/16 | G2@1 3 (715002, 715003, 715009) | 0.919 | 376 |
+| sel_knock_arm | **R1 preset** | **15/16 (72–99)** | 14/16 | 15/16 | G2@0 1 (715001, knocked grip slipped in fold 1, ran to the cap) | 0.900 | 445 |
+| pooled (n = 32) | gentle | 27/32 (68–93) | | | | | |
+| pooled (n = 32) | **R1 preset** | **31/32 (84–99)** | | | | | |
+
+- Discordant seeds: id_hard 0 / 2 (R1-only wins), knock 1 / 3; pooled 1 / 5. The direction is the same as the full
+  fold on tune_id_easy (15/16 vs 16/16 there was one drag the other way): **the R1 preset does not cost hard-set or
+  knocked success at n = 16**, and the stage-1 slips (`G2@1`) that remain on the gentle preset vanish, which is the
+  wider strip giving the stage-1 jaws a real edge to close on. Noise floor at n = 16 is ±12 pp; the n = 100 paired
+  run on the same sets is the linked session's `qd2/expert_r1.json` (not finished at this writing).
+- Cost: +40–70 steps per success (the lay-down and the slower stage-1 carry on the wider strip); one knocked episode
+  lost fold 1 itself (`G2@0`), the first fold-1 loss on either preset at this n.
+- Wall: id_hard 740 s, knock 2540 s including a 1356 s thermal pause (the user's device ran hot; `outputs/.thermal_pause`).
+- **Verdict for `isaac_qf_v2`:** on these numbers the R1 preset is ready for a collect (demo 3/3 with real second
+  folds, 16/16 + 15/16 on the hard sets, no regression anywhere at n = 16). Wait for the n = 100 paired run before
+  spending the 2 h collect if it is due within the hour; otherwise collect with the preset as it stands (new tag,
+  never resume `isaac_qf_v1`).
