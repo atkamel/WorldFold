@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · QD ✅ · QD-2 ✅ gentle release adopted for the quarter fold (n = 100 paired: 92 vs 41 on sel_id_hard, 78 vs 31 on sel_knock_arm; the half fold keeps the old release, no measurable gain); Q4 collect ✅ (isaac_qf_v1, 175 eps) + BC student ✅ (demo 4/6); R1 ◐ fold-1 friction + lay-down adopted into the quarter-fold preset (user, 2026-10-17; full fold 15/16, strip 13.6 / 13.0 cm on n = 8); R1 preset demo 3/3 (real second folds) and hard sets 16/16 + 15/16 at n = 16 vs 14 + 13 for QD-2; **R1 preset at n = 100 paired: 93 / 82 vs gentle 92 / 78 (p = 1.0 / 0.56, within noise, no cost) → safe for the Q3 gate and an `isaac_qf_v2` collect**; R1–R3 (square) open
+**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · Q · QD ✅ · QD-2 ✅ (gentle release, n = 100 confirmed) · R1 ✅ adopted (fold-1 friction + lay-down, n = 100 confirmed) · Q4 ◐: isaac_qf_v1 + v1 student (QD-2 expert), isaac_qf_v2 + v2 student (R1 expert, demo 4/6, real quarter folds); sel_ finals running · R2–R3 (square) open
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -48,6 +48,10 @@ change), fold 1 100/100, every success a real second fold, ~50 steps slower.
 - **Running:** `scripts/q_retrain.ps1 -Only collect -Episodes 200 -NoVision -Tag isaac_qf_v2` (R1 expert, 2 × 8,
   started 17:20, ~2.5 h) → `-Only train_bc_grip -Tag isaac_qf_v2` (GPU only) → student demo
   `docs/reports/media/quarter_fold_parallel_bc_v2.mp4` (6 tune seeds). Resume with the same commands.
+- **19:10 v2 student done:** demo 4/6 (`quarter_fold_parallel_bc_v2.mp4`), successes are real quarter folds; failures are
+  fold-1 mishandling (drag / never completed), not v1's stalls. **Running:** `q_retrain.ps1 -Only sel_bc_grip -Tag isaac_qf_v2`
+  (sel_id_hard + sel_knock_arm, n = 100, replan 4, 2 × 8; ~1.5 h) → then the same for `-Tag isaac_qf_v1`; paired against
+  `qd2/expert_r1.json` and `qd2/expert_gentle.json` with `scripts/qd_compare.py` / `imitation.stats`.
 - **Then (next decision):** paired finals on the v2 student vs the v1 student and the expert (`sel_` sets, n = 100), a
   DAgger round if the student stalls as v1 did (4/6, left-arm stalls), and the Q3 gate bars (user to confirm).
 - `isaac_qf_v1` and `runs/isaac_qf_v1_bc_grip` are the QD-2 (pre-R1) expert; keep them for the comparison row.
@@ -470,6 +474,7 @@ Newest first. One line per work pass: date · what changed · commit.
 - 2026-10-17 · **R1 adopted** (user): `QF_FOLD1_GRASP` / `QF_FOLD1_EXPERT` + `qf_preset()` in `half_fold.py` (`WORLDFOLD_QF_FOLD1=0` off), teacher reads the preset's `QF0_OVERSHOOT_SCALE`; full quarter fold 15/16 (was 16/16), 15 real second folds, 4/4 full traces; dataset note (isaac_qf_v1 is pre-R1 → v2 next). Tests: not-slow 267 passed / 5 skipped · see git log
 - 2026-10-17 · **R1 fold-1 friction probes** (linked session): knobs `table_friction` (inert: PhysX ignores the table's rigid material for the cloth) and `particle_friction_scale` (cloth-on-cloth; 2.0 holds the crease); with `particle_friction` 1.0 + the QF0 lay-down 13.6 / 13.0 cm on n = 8, a physics change, not adopted (user's OK); no path shape alone gets past 9 cm; 19 probes in results.md R1, roadmap R1 ◐. Tests: not-slow 265 passed / 5 skipped · see git log
 - 2026-10-17 · **Q4 first pass:** `isaac_qf_v1` frozen (175 + 25, `42bd9eb13451` / `e6c6023fd81d`), BC gripper-head student 20k steps, demo 4/6 (`quarter_fold_parallel_bc.mp4`); preset applied on the batch path (f48af9d). Tests: not-slow 264 passed / 5 skipped · see git log
+- 2026-10-17 · **Q4 v2 (coordination + run):** four linked sessions managed to completion; `isaac_qf_v2` frozen (167 + 33, R1 expert); v2 BC student 20k steps, demo 4/6 with real quarter folds (`quarter_fold_parallel_bc_v2.mp4`); `q_retrain -Tag`; sel_ finals launched. Tests: not-slow 267 passed (linked sessions' runs) · see git log
 - 2026-10-16 · **QD-3: fold-1 width on the gentle release** (3 probes, none adopted; `-NoVision` on `q_retrain.ps1`; camera collect too slow, discarded; the gentle preset was missing on the batch path, fixed + test, first state-only collect discarded); Q4 state-only chain running. Tests: not-slow 264 passed / 5 skipped · see git log
 - 2026-10-16 · **QD-2: gentle release** (jaw `release_open` / `release_open_steps` + `jaw_open_rate`; expert `SETTLE_DWELL`, `RETREAT_SPEED`, `STAGE1_CARRY_SPEED`; quarter-fold preset): tune n = 16 9/16 → 16/16 (real second folds 5 → 15); video `quarter_fold_parallel_expert_gentle.mp4` 3/3; `isaac/release_summary.py`, `scripts/qd_compare.py`; Q4 chain restarted. Tests: not-slow 263 passed / 5 skipped · see git log
 - 2026-10-16 · **QD: parallel quarter-fold expert demo** (2/3, `docs/reports/media/quarter_fold_parallel_expert.mp4`); baseline 9/16; fold-1 traces (crease pushed, anchors fine); QF0 arc knobs `ARC_FLAT` / `CHORD_CAP` / `LAYDOWN` + `carry_arc_z` / `laydown_tip` tests; `WORLDFOLD_GRASP_KNOBS` hook; `scripts/qd_demo.ps1`, `video_frames.py`, `isaac/slip_summary.py`; Q4 collect launched. Tests: not-slow 255 passed / 5 skipped · see git log

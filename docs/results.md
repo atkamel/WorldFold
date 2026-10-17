@@ -2849,3 +2849,27 @@ Wall 96 min (5788 s; v1 took 156 min sharing the GPU with another job).
   success, it is better on what the fold looks like (every success a real second fold).
 - Episodes are longer (410 steps per success vs 370), so the dataset has 6% more steps from 5% fewer episodes.
 - BC (`train_bc_grip -Tag isaac_qf_v2`, diffusion, gripper head, 20k steps) started 18:53.
+
+### Q4 v2 — learned quarter-fold policy on the R1 expert's data (2026-10-17 19:10, `runs/isaac_qf_v2_bc_grip`, `q4/train_bc_grip.log`)
+
+`train --policy diffusion --loss-cfg gripper_head=true`, 20k steps, seed 0, on `isaac_qf_v2` (167 episodes). 16 min on
+the GPU (933 s). Demo, privileged state policy, replan 4, `tune_id_easy` 660000–005, 1 env, 800 cap
+(`docs/reports/media/quarter_fold_parallel_bc_v2.mp4`, `.json`):
+
+| seed | v2 student (R1 data) | v1 student (QD-2 data, same seeds) |
+|---|---|---|
+| 660000 | success 330, 0.92 | success 353, 0.95 |
+| 660001 | success 392, 0.92 | fail (stall), 0.83 |
+| 660002 | success 377, 0.93 | success 392, 0.94 |
+| 660003 | fail (truncated), 0.79 | success 425, 0.94 |
+| 660004 | fail (truncated), 0.56 | success 324, 0.95 |
+| 660005 | success 437, 0.91 | fail (stall), 0.88 |
+
+- **4/6 again, and the successes are real quarter folds** (frames `qd/frames_bc_v2/`): after fold 1 the strip spans the
+  cloth's full width, and each success ends as a narrow stack, as in the R1 expert's video; the v1 student's
+  successes were the QD-2 shuffle.
+- **Different failures.** v1 stalled after a good fold 1 (left arm hovering). v2's are fold-1 mishandling: on 660003 the
+  strip is dragged and twisted off its line; on 660004 fold 1 never completes and the sheet lies almost flat at the
+  cap (0.56). The student has to learn the longer, two-stage fold-1 carry (flat arc + lay-down) from 167 episodes.
+- n = 6 is a demo; the paired `sel_` finals (n = 100, v2 student vs v1 student vs the R1 and gentle experts on the same
+  seeds) are the measurement and are launched next.
