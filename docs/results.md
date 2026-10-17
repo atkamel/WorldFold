@@ -2485,3 +2485,18 @@ every multi-env eval) did not have it. The n = 16 gentle evals above are valid b
 collect ran the old release (first batch 3/9, four unperturbed truncations) and was discarded
 (`datasets/isaac_qf_v1_oldrelease_discarded`). Fixed (`make_env_batch` passes `grasp_knobs` and sets
 `expert_defaults` on every sub-env; `test_batch_factory_applies_the_preset`); the collect restarted 22:05.
+
+
+### Q4 — `isaac_qf_v1` collection with the gentle expert (2026-10-17 00:14, `q4/collect.log`, `datasets/isaac_qf_v1`)
+
+`q_retrain.ps1 -Only collect -Episodes 200 -NoVision`: quarter fold, parallel second fold, gentle preset (on the batch
+path since f48af9d), seeds 0–199, 50% `knock_arm`, state-only, 2 × 8 envs. Wall 2 h 36 min (9390 s).
+
+| | episodes | steps | perturbed | hash |
+|---|---|---|---|---|
+| `isaac_qf_v1` (successes) | **175 / 200** | 64,783 | 80 | `42bd9eb13451` |
+| `isaac_qf_v1_failures` | 25 | 17,913 | 19 | `e6c6023fd81d` |
+
+- 87.5% expert success over 200 seeds, 50% knocked: clean 94/100 (6 failures, 2 drags, 4 truncations), knocked 81/100.
+  Against the old release's first batch on the same seeds (3/9) and the F4 half-fold collect (clean 93/101, bumped 78/99).
+- BC (`train_bc_grip`, diffusion, gripper head, 20k steps) started 00:14 on 154 train / 21 val episodes, 56,616 samples.
