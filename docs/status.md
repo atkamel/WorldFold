@@ -55,6 +55,7 @@ change), fold 1 100/100, every success a real second fold, ~50 steps slower.
 - **21:37 v2 finals:** v2 student 44 / 44 on sel_id_hard / sel_knock_arm vs the R1 expert's 93 / 82 (paired p < 0.001; G2@1
   slips in half the episodes: the second-fold grasp does not transfer). v1 student finals running (comparison row); DAgger
   from the v2 student with the R1 teacher queued behind them (`-Only dagger -Tag isaac_qf_v2`, ~4 h).
+- **23:55 v1 finals:** v1 student 18 / 13 vs v2's 44 / 44 (paired p < 0.001): the R1 data trains the better student. DAgger (v2 student, R1 teacher, 1 round, 128 eps) running; ~4 h.
 - **Then (next decision):** paired finals on the v2 student vs the v1 student and the expert (`sel_` sets, n = 100), a
   DAgger round if the student stalls as v1 did (4/6, left-arm stalls), and the Q3 gate bars (user to confirm).
 - `isaac_qf_v1` and `runs/isaac_qf_v1_bc_grip` are the QD-2 (pre-R1) expert; keep them for the comparison row.

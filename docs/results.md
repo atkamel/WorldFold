@@ -2892,3 +2892,18 @@ were measured on (`qd2/expert_r1.json`, `qd2/expert_gentle.json`).
   half-fold BC rows (F4: 71 vs the expert's 94 on id_hard), where DAgger closed most of the gap.
 - Next on the path: the v1 student's finals (comparison row, running), then DAgger from the v2 student with the R1
   teacher (`q_retrain.ps1 -Only dagger -Tag isaac_qf_v2`, 1 round, 128 episodes, takeover labels).
+
+### Q4 — the four-way `sel_` comparison, experts and BC students (paired, n = 100 per set; 2026-10-17 23:55)
+
+| policy | data / teacher | sel_id_hard | sel_knock_arm | fold 1 done (id_hard) | dominant failure |
+|---|---|---|---|---|---|
+| R1 expert | — | 93 | 82 | 100 | — |
+| gentle expert (QD-2) | — | 92 | 78 | 98 | — |
+| **v2 BC student** | `isaac_qf_v2` (R1 expert) | **44** (35–54) | **44** (35–54) | 97 | G2@1 52 / 50 |
+| v1 BC student | `isaac_qf_v1` (QD-2 expert) | 18 (12–27) | 13 (7–21) | 90 | G2@1 71 / 75 |
+
+- v2 vs v1, paired: id_hard +26 pp (only-v2 33 / only-v1 7), knock +31 pp; McNemar p < 0.001 on both
+  (`q4/sel_bc_grip_v2.json`, `q4/sel_bc_grip_v1.json`). The R1 expert's data trains a better student, not only a
+  better-looking one: the flat fold 1 gives the second fold a wide, consistent crease end to grasp.
+- Both students lose most episodes at the second fold's grasp (G2@1). DAgger from the v2 student with the R1 teacher
+  starts next (`-Only dagger -Tag isaac_qf_v2`).
