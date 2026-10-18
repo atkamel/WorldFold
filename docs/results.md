@@ -2907,3 +2907,22 @@ were measured on (`qd2/expert_r1.json`, `qd2/expert_gentle.json`).
   better-looking one: the flat fold 1 gives the second fold a wide, consistent crease end to grasp.
 - Both students lose most episodes at the second fold's grasp (G2@1). DAgger from the v2 student with the R1 teacher
   starts next (`-Only dagger -Tag isaac_qf_v2`).
+
+### Q4 v2 — DAgger round 1 from the v2 student, R1 teacher: **not kept** (2026-10-18 08:50, `runs/isaac_qf_v2_dagger`, `q4/dagger.log`)
+
+`q_retrain.ps1 -Only dagger -Tag isaac_qf_v2`: 1 round, takeover labels (p = 0.6), β 0.3, 128 student rollouts, 15k
+training steps on `isaac_qf_v2` + the round's episodes (295 total, `isaac_qf_v2_isaac_qf_v2_dagger_r1`), paired keep
+rule on the `sel_` sets. Wall 8 h 54 min (round-0 re-eval 2 h, rollouts 4 h 20 min, training 13 min, eval 2 h 16 min).
+
+| checkpoint | sel_id_hard | sel_knock_arm | failures (id_hard / knock) | fold score |
+|---|---|---|---|---|
+| round 0 = v2 BC student (re-eval) | 49 | 39 | G2 51 / G2 61 | 0.848 / 0.817 |
+| **round 1 (DAgger)** | **26** (18–35) | **28** (20–37) | G2 65, M1 6, G1 3 / G2 69, M1 2, G1 1 | 0.665 / 0.678 |
+
+- Score 0.540 vs 0.880, gain −0.340 = −3.8 SE: **not kept**; `history.json` points `best` at the BC student.
+- Rollouts: the student succeeded 23/128 (18%) while driving with β 0.3 teacher takeover; 4852 labels.
+- Unlike the half fold (M3.2: 38.5 → 65 recovery; M5b.1: +1.74 SE), one DAgger round on the quarter fold hurts.
+  Candidate causes, not tested: the teacher's stage-1 labels on student-visited states (a two-layer crease end a few
+  cm off its lane) may be unreachable corrections for a 12-D delta policy; 15k steps on 295 mixed episodes vs 20k on
+  167 clean ones; final-checkpoint selection (val loss climbs from 10k). The failure code stays G2 (stage-1 slips).
+- Q4's privileged best remains the v2 BC student (`runs/isaac_qf_v2_bc_grip/final.pt`, 44 / 44 in the finals).
