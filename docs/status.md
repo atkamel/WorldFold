@@ -236,6 +236,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-18 · **Diagnosis, no code:** the square quarter fold looked infeasible because layout_search capped pinch tilt at 16.5° (our corner pinch); Roy's LeHome layout needs 30–46° and works with his slide-and-press grasp, plus a drag between steps. Grasp/env differences vs Roy inventoried. Tests not run (no code change) · (this commit)
+
 - 2026-10-14/15 · **Phase Q overnight:** layout search (reach, tilt, collision meshes), quarter profiles, position gripper, alignment score, fold-move PPO (untested on Isaac), WATcloud container fixes; 20 Isaac episodes on new layouts, 0 quarter folds; no collision-free two-arm layout at 24 cm. Fast tests: 221 passed, 1 failed (#15) · (this commit)
 
 - 2026-10-14 · **Quarter fold RL: survey and plan, no code.** Plan `superpowers/plans/2026-10-14-quarter-fold-rl.md`. Found: stage 1 out of reach on the Isaac layout (37 / 40.5 cm vs 32 cm), gripper binary only, no whole-cloth alignment number for the friction expert, WATcloud unreachable (#16), Modal CLI works. Fast tests on macOS: 205 passed, 1 failed (#15, 1-ulp platform diff), 6 skipped · (this commit)
