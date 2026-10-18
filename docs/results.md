@@ -2873,3 +2873,22 @@ the GPU (933 s). Demo, privileged state policy, replan 4, `tune_id_easy` 660000�
   cap (0.56). The student has to learn the longer, two-stage fold-1 carry (flat arc + lay-down) from 167 episodes.
 - n = 6 is a demo; the paired `sel_` finals (n = 100, v2 student vs v1 student vs the R1 and gentle experts on the same
   seeds) are the measurement and are launched next.
+
+### Q4 v2 — `sel_` finals, v2 student vs the R1 expert (paired, n = 100 per set; 2026-10-17 21:37, `q4/sel_bc_grip_v2.json`)
+
+v2 BC student (`runs/isaac_qf_v2_bc_grip/final.pt`, replan 4, 2 × 8 envs, 2 h 14 min) on the `sel_` seeds the experts
+were measured on (`qd2/expert_r1.json`, `qd2/expert_gentle.json`).
+
+| policy | sel_id_hard | sel_knock_arm | failures (id_hard / knock) | fold score |
+|---|---|---|---|---|
+| R1 expert (teacher) | 93 | 82 | — | 0.922 / 0.880 |
+| gentle expert (QD-2) | 92 | 78 | — | 0.915 / 0.871 |
+| **v2 BC student** | **44** (Wilson 35–54) | **44** (35–54) | G2@1 52, G2@0 3, M1@1 1 / G2@1 50, G2@0 6 | 0.84 / 0.82 |
+
+- Paired vs the R1 expert: id_hard −49 pp [−60, −38], knock −38 pp [−50, −26], McNemar p < 0.001 on both; only-expert
+  52 / only-student 3 and 45 / 7.
+- **The gap is the second fold's grasp:** half the episodes slip in stage 1 (G2@1), i.e. the student closes on the
+  crease end imprecisely and loses it in the carry. Fold 1 itself transfers (G2@0 only 3 / 6). The same shape as the
+  half-fold BC rows (F4: 71 vs the expert's 94 on id_hard), where DAgger closed most of the gap.
+- Next on the path: the v1 student's finals (comparison row, running), then DAgger from the v2 student with the R1
+  teacher (`q_retrain.ps1 -Only dagger -Tag isaac_qf_v2`, 1 round, 128 episodes, takeover labels).
