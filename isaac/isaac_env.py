@@ -897,10 +897,13 @@ def make_half_fold_env(observation_mode="state", seed=None, headless=True):
 _ROY_DZ = TABLE_TOP_Z - 0.52
 ROY_ARM_BASES = {p: (np.array([x - 0.0208, -0.25 - 0.0157, 0.5 + 0.0325 + _ROY_DZ]), np.asarray(ARM_BASE_QUAT, float))
                  for p, x in (("left_", -0.23), ("right_", 0.23))}
-PROFILES["roy"] = dict(PROFILES["friction"], cloth_center=(-0.025, 0.0), arm_bases=ROY_ARM_BASES,
+# On the "lehome" profile, as Roy runs it: LeHome's own (soft) arm and gripper drives, the CPU device, no dynamics DR,
+# LeHome's adhesion 0.1. Built on "friction" first (MuJoCo-stiff arms, GPU), the pressed slide grasp closed empty
+# (results.md, roy port steps 2-3b).
+PROFILES["roy"] = dict(PROFILES["lehome"], cloth_center=(-0.025, 0.0), arm_bases=ROY_ARM_BASES,
                        view_shift=(-0.025, 0.0, 0.0),
-                       friction_grasp=dict(PROFILES["friction"]["friction_grasp"], gripper_mode="position",
-                                           pads="box", gripper_closed=-0.17))
+                       friction_grasp=dict(FRICTION_GRASP, adhesion=0.1, gripper_mode="position", pads="box",
+                                           gripper_closed=-0.17))
 
 # Roy's flat fingertip pads (origin/ROY-vla-teacher, teacher/oracle/pads.py). LeHome's two capsule pads (r 10 mm) cross
 # when the gripper closes, so a fingertip pinch can't form; knob pads="box" turns their collision off and puts a thin

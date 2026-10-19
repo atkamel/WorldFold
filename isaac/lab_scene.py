@@ -161,6 +161,8 @@ def _wrist_camera(robot_path, size):
 
 TOP_VIEW_HEIGHT = 0.85     # m above the table: a 45 deg view spans +-0.35 m, both quarter-layout bases included
 TOP_VIEW_DY = 0.04         # the view centre sits this far north of the cloth (the right arm's base is north)
+SIDE_VIEW_TARGET = (-0.13, 0.135, 0.005)   # from the cloth centre: just inside the far-left corner
+SIDE_VIEW_OFFSET = (0.0, 0.17, 0.05)       # camera 17 cm beyond it and 5 cm up, looking back toward the arms
 
 
 def rig_camera_cfg(name, size, c=0, view_shift=(0.0, 0.0, 0.0)):
@@ -180,6 +182,11 @@ def rig_camera_cfg(name, size, c=0, view_shift=(0.0, 0.0, 0.0)):
         target = (c0[0], c0[1] + TOP_VIEW_DY, TABLE_TOP_Z)
         return _camera((size, size), prim_path=f"{root}/rig_top", data_types=("rgb",),
                        pos=(target[0], target[1], TABLE_TOP_Z + TOP_VIEW_HEIGHT), target=target)
+    if name == "side_left":   # low, from beyond the far edge, at the left arm's far corner: the jaws meeting the cloth
+        c0 = np.asarray(view_shift, dtype=float) + (COPY_OFFSETS[c] if c else 0.0)
+        target = (c0[0] + SIDE_VIEW_TARGET[0], c0[1] + SIDE_VIEW_TARGET[1], TABLE_TOP_Z + SIDE_VIEW_TARGET[2])
+        pos = tuple(t + o for t, o in zip(target, SIDE_VIEW_OFFSET))
+        return _camera((size, size), prim_path=f"{root}/rig_side_left", data_types=("rgb",), pos=pos, target=target)
     if name in ("left_wrist_cam", "right_wrist_cam"):
         return _wrist_camera(f"{root}/Robot/Left_Robot" if name.startswith("left") else f"{root}/Robot/Right_Robot",
                              size)
