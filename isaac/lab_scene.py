@@ -41,7 +41,8 @@ from isaac.isaac_env import (
     CAMERA_CLIP, CLOTH_ADHESION, CLOTH_GRAVITY_SCALE, CLOTH_SUBDIV, FLOOR_COLOR, FLOOR_SIZE, GRIPPER_JOINT,
     GRIPPERFRAME_POS, GRIPPERFRAME_QUAT,
     HEADLIGHT_AMBIENT, HEADLIGHT_DIFFUSE, LIGHT_INTENSITY, LIGHTS, TABLE_SIZE, PAD_LINING_FRICTION,
-    PAD_LINING_THICKNESS, cloth_grid_mesh, usd_root_pose, _matrix_from_quat, _quat_facing, _quat_from_matrix,
+    PAD_LINING_THICKNESS, box_pad_poses, cloth_grid_mesh, usd_root_pose, _matrix_from_quat, _quat_facing,
+    _quat_from_matrix,
 )
 
 PARTICLE_CFG = Path(lehome.__file__).parent / "tasks" / "bedroom" / "config_file" / "particle_garment_cfg.yaml"
@@ -306,7 +307,10 @@ class SceneEnv(DirectRLEnv):
             if c == 0:
                 lining.func("/World/Looks/pad_lining", lining)
             for r in robots.values():
-                self._add_linings(r.prim_path)
+                if self.grasp.get("pads") == "box":
+                    self._add_box_pads(r.prim_path)
+                else:
+                    self._add_linings(r.prim_path)
             if c == 0:
                 floor.func("/World/floor", floor)
             table.func(f"{root}/table", table, translation=(float(dx[0]), float(dx[1]), TABLE_TOP_Z / 2.0))
@@ -334,6 +338,29 @@ class SceneEnv(DirectRLEnv):
             box.AddTranslateOp().Set(Gf.Vec3d(*(np.asarray(center) + R @ local)))
             box.AddOrientOp().Set(Gf.Quatf(float(quat[0]), Gf.Vec3f(*(float(v) for v in quat[1:]))))
             box.AddScaleOp().Set(Gf.Vec3f(t + 0.001, 0.016, 0.043))
+            box.GetDisplayColorAttr().Set([Gf.Vec3f(0.1, 0.1, 0.1)])
+            UsdPhysics.CollisionAPI.Apply(box.GetPrim())
+            sim_utils.bind_physics_material(box.GetPath().pathString, "/World/Looks/pad_lining")
+
+    def _add_box_pads(self, robot_path):
+        # pads="box": LeHome's capsule pads stop colliding; a flat box sits on each jaw tip (isaac_env.box_pad_poses)
+        stage = self.sim.stage
+        for link in ("gripper", "jaw"):
+            stage.GetPrimAtPath(f"{robot_path}/{link}/Capsule").GetAttribute("physics:collisionEnabled").Set(False)
+        joint = next(p for p in Usd.PrimRange(stage.GetPrimAtPath(robot_path))
+                     if p.GetName() == "gripper" and p.IsA(UsdPhysics.RevoluteJoint))
+        q = joint.GetAttribute("physics:localRot0").Get()
+        T0 = np.eye(4)
+        T0[:3, :3] = _matrix_from_quat([q.GetReal(), *q.GetImaginary()])
+        T0[:3, 3] = np.array(joint.GetAttribute("physics:localPos0").Get())
+        fixed, moving, size = box_pad_poses(T0)
+        for link, T in (("gripper", fixed), ("jaw", moving)):
+            quat = _quat_from_matrix(T[:3, :3])
+            box = UsdGeom.Cube.Define(stage, f"{robot_path}/{link}/flat_pad")
+            box.CreateSizeAttr(1.0)
+            box.AddTranslateOp().Set(Gf.Vec3d(*(float(v) for v in T[:3, 3])))
+            box.AddOrientOp().Set(Gf.Quatf(float(quat[0]), Gf.Vec3f(*(float(v) for v in quat[1:]))))
+            box.AddScaleOp().Set(Gf.Vec3f(*(float(v) for v in size)))
             box.GetDisplayColorAttr().Set([Gf.Vec3f(0.1, 0.1, 0.1)])
             UsdPhysics.CollisionAPI.Apply(box.GetPrim())
             sim_utils.bind_physics_material(box.GetPath().pathString, "/World/Looks/pad_lining")

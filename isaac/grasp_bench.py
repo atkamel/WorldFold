@@ -66,7 +66,10 @@ def parse_kv(text):
     out = {}
     for item in filter(None, (s.strip() for s in (text or "").split(","))):
         key, val = item.split("=", 1)
-        val = json.loads(val)
+        try:
+            val = json.loads(val)
+        except json.JSONDecodeError:      # a bare word: pads=box
+            pass
         if "." in key:
             outer, inner = key.split(".", 1)
             out.setdefault(outer, {})[inner] = val
@@ -170,7 +173,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", default="600000:600020", help="start:end (imitation.seeds TUNE_SEED_BASE block)")
     ap.add_argument("--out", help="output directory (absolute when cwd is another checkout)")
-    ap.add_argument("--profile", choices=("lehome", "friction"), default="lehome",
+    ap.add_argument("--profile", choices=("lehome", "friction", "strip", "roy"), default="lehome",
                     help="IsaacClothFoldEnv profile; friction = Phase F's GPU profile")
     ap.add_argument("--device", default=None, help="override the profile's device (cpu / cuda:0), a diagnostic")
     ap.add_argument("--no-dr", action="store_true", help="dynamics DR off (a diagnostic; the GPU profiles have it on)")

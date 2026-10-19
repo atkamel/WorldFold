@@ -44,7 +44,8 @@ OVERSHOOT_QUARTER = {key: np.zeros(3) for key in OVERSHOOT_FRICTION}
 # 1's tuned overshoot too (with none, the arms stopped short there and the retries dragged the strip: run strip1)
 OVERSHOOT_STRIP = {(s, p): OVERSHOOT_FRICTION_PROFILE[(0, p)].copy() for s, p in OVERSHOOT_FRICTION}
 OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE, "quarter": OVERSHOOT_QUARTER,
-              "quarter_s": OVERSHOOT_QUARTER, "strip": OVERSHOOT_STRIP}
+              "quarter_s": OVERSHOOT_QUARTER, "strip": OVERSHOOT_STRIP,
+              "roy": {key: np.zeros(3) for key in OVERSHOOT_FRICTION}}   # roy: not measured yet
 
 
 ORIENTATION_WEIGHT = 0.1     # = isaac.pinch.ORIENTATION_WEIGHT (not imported: isaac.pinch needs LeHome)
@@ -118,6 +119,24 @@ class IsaacArmExpert:
     # a position-mode gripper (isaac_env gripper_mode "position") closes to this jaw target (rad); None: the profile's
     # closed target (gripper_closed, +0.05 on friction), as the binary gripper does
     SQUEEZE = None
+    # IK orientation weight at the pinch and the pose above it (m per rad). 0.1 keeps the jaw near vertical, which caps
+    # reach at ~32 cm; Roy's grasp runs at 0.005 and tilts 30-46 deg (docs/superpowers/plans/2026-10-19-roy-grasp-port.md)
+    PINCH_ORIENTATION_WEIGHT = ORIENTATION_WEIGHT
+    # GRASP "slide", Roy's grasp (origin/ROY-vla-teacher, teacher/oracle/fold_plans.py pick_place): the open jaws land
+    # on the table SLIDE_LEN outside the grasp point, press PRESS below the height at which they rest on it
+    # (CONTACT_HEIGHT), and slide into the cloth along the jaw axis, moving finger leading, so the cloth bunches
+    # between the jaws; then close and lift. The grasp point is SLIDE_INSET (x, y) in from the corner and the slide runs
+    # inward along the cloth's x (SLIDE_AXIS 0) or y (1) axis. Release backs off RELEASE_BACKOFF along the slide axis,
+    # then lifts RETREAT_STEP per waypoint. Roy's numbers, his 1/90 s ticks scaled to our 0.05 s step.
+    GRASP = "pinch"
+    SLIDE_LEN = 0.04
+    SLIDE_INSET = (0.027, 0.02)
+    SLIDE_AXIS = 0
+    CONTACT_HEIGHT = 0.011
+    PRESS = 0.013
+    HOVER = 0.0725
+    RELEASE_BACKOFF = 0.02
+    RETREAT_STEP = 0.003
     # IsaacQuarterFoldExpert's lift gate: an arm that has closed waits until every arm of its fold has (the two grasp
     # points of the quarter fold's second fold are on one 13 cm edge: lifting one drags the other away)
     lift_allowed = True
@@ -136,6 +155,10 @@ class IsaacArmExpert:
         self.goal = goal
         if release:
             self.PHASES = self.PHASES + self.RELEASE_PHASES
+        if self.GRASP == "slide":
+            i = self.PHASES.index("descend") + 1
+            self.PHASES = self.PHASES[:i] + ("slide",) + self.PHASES[i:]
+            self.OPEN_PHASES = self.OPEN_PHASES + ("slide",)
         self.release_allowed = True
         if IsaacArmExpert._ik is None:
             from isaac.pinch import PinchIK
@@ -169,6 +192,8 @@ class IsaacArmExpert:
 
     # ---- planning (half_fold_demo.plan, per arm) ---------------------------
     def _make_plan(self, from_q=None):
+        if self.GRASP == "slide":
+            return self._slide_plan(from_q)
         ik, p = self._ik, self.prefix
         cloth = self.base.cloth_positions()
         center = cloth.mean(axis=0)
@@ -187,7 +212,7 @@ class IsaacArmExpert:
         place = self._place(goal, offset, corner)
         q = self._home_seed(pinch + [0, 0, ABOVE], jaw) if from_q is None else list(from_q)
         plan = {"jaw": jaw, "corner": corner.copy()}
-        w = ORIENTATION_WEIGHT
+        w = self.PINCH_ORIENTATION_WEIGHT
         q0 = q
         q, e_above = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q, orientation_weight=w)
         q_above = q
@@ -199,15 +224,52 @@ class IsaacArmExpert:
             q, _ = ik.solve(p, pinch, jaw, q, orientation_weight=w)
         plan["above"] = q_above
         plan["pinch"] = q
+        q = self._add_arc(plan, pinch, place, jaw, q)
+        q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
+        plan["retreat"] = q
+        return plan
+
+    def _add_arc(self, plan, start, place, jaw, q):
+        """The carry: a half ellipse from start to place rising ARC_HEIGHT, IK-solved into plan["arc"]; returns the last q."""
+        ik, p = self._ik, self.prefix
         plan["arc"], plan["arc_tips"] = [], []
-        start = pinch
         for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
             tip = start + (place - start) * (1.0 - math.cos(math.pi * s)) / 2.0
             tip[2] = start[2] + (place[2] - start[2]) * s + self.ARC_HEIGHT * math.sin(math.pi * s)
             q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05)
             plan["arc"].append(q)
             plan["arc_tips"].append(tip)
-        q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
+        return q
+
+    def _slide_plan(self, from_q=None):
+        """GRASP "slide": above the slide start, pressed at it, the slide into the grasp point, the carry, and a
+        retreat that backs off along the slide axis before lifting."""
+        ik, p = self._ik, self.prefix
+        corner = self._corner()
+        inward = np.sign(self.base.cloth_positions().mean(axis=0)[:2] - corner[:2])
+        g = corner[:2] + inward * np.asarray(self.SLIDE_INSET)
+        d = np.zeros(2)
+        d[self.SLIDE_AXIS] = inward[self.SLIDE_AXIS]
+        jaw = np.r_[d, 0.0]                              # the jaw opens along d: the moving finger leads
+        z = TABLE_TOP_Z + self.CONTACT_HEIGHT - self.PRESS
+        start, grasp = np.r_[g - self.SLIDE_LEN * d, z], np.r_[g, z]
+        above = np.r_[start[:2], TABLE_TOP_Z + self.HOVER]
+        w = self.PINCH_ORIENTATION_WEIGHT
+        q = self._home_seed(above, jaw) if from_q is None else list(from_q)
+        plan = {"jaw": jaw, "corner": corner.copy(), "slide_dir": d}
+        plan["above"], _ = ik.solve(p, above, jaw, q, orientation_weight=w)
+        plan["pinch"], _ = ik.solve(p, start, jaw, plan["above"], orientation_weight=w)
+        q, plan["slide"] = plan["pinch"], []
+        for s in np.linspace(0.0, 1.0, max(2, int(np.ceil(self.SLIDE_LEN / 0.006))) + 1)[1:]:
+            q, _ = ik.solve(p, start + (grasp - start) * s, jaw, q, orientation_weight=w)
+            plan["slide"].append(q)
+        place = self._place(np.asarray(self.goal(), dtype=float), g - corner[:2], corner)
+        q = self._add_arc(plan, grasp, place, jaw, q)
+        back = np.r_[place[:2] - self.RELEASE_BACKOFF * d, place[2]]
+        plan["retreat_path"] = []
+        for tip in [back] + [back + [0, 0, h] for h in np.arange(self.RETREAT_STEP, RETREAT + 1e-9, self.RETREAT_STEP)]:
+            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.02)
+            plan["retreat_path"].append(q)
         plan["retreat"] = q
         return plan
 
@@ -295,12 +357,15 @@ class IsaacArmExpert:
     def _target(self, name):
         if name in ("approach",):
             return self.plan["above"]
+        if name == "slide" or (name == "close" and "slide" in self.plan):
+            return self.plan["slide"][min(self.wp, len(self.plan["slide"]) - 1)]
         if name in ("descend", "close"):
             return self.plan["pinch"]
         if name in ("lift", "carry", "place", "hold", "release"):
             return self.plan["arc"][min(self.wp, len(self.plan["arc"]) - 1)]
         if name == "retreat":
-            return self.plan["retreat"]
+            path = self.plan.get("retreat_path")
+            return self.plan["retreat"] if path is None else path[min(self.wp, len(path) - 1)]
         return None          # done: stop moving
 
     def act(self):
@@ -385,6 +450,19 @@ class IsaacArmExpert:
                 self.plan = self._make_plan(from_q=self._q())
                 self.phase_steps = 0
         patience = self.phase_steps > self.budget    # a pose pressed into the table or cloth may never get closer
+        if name in ("slide", "retreat") or (name == "descend" and "slide" in self.plan):
+            path = self.plan["slide"] if name == "slide" else self.plan.get("retreat_path")
+            if path is not None or name == "descend":    # the slide grasp's waypoint paths (pressed: patience ends them)
+                if self._arrived(WAYPOINT_TOL if name != "descend" else TRACK_TOL) or patience:
+                    if name == "descend":
+                        self.wp = 0
+                        self._next()
+                    elif self.wp >= len(path) - 1:
+                        self._next()         # slide -> close holds at the grasp point; retreat -> done
+                    else:
+                        self.wp += 1
+                        self.phase_steps = 0
+                return
         if self.CART_ARRIVE and name == "descend" and self._cart_arrived():
             self.site_hist = []
             self._next()                             # close: the pads (4.3 cm) grip from here
@@ -439,6 +517,7 @@ class IsaacArmExpert:
         elif name == "release":
             ramp = 0 if not self.RELEASE_RATE else int(np.ceil((GRIPPER_OPEN - self.base._closed_q) / self.RELEASE_RATE))
             if self.phase_steps >= self.OPEN_DWELL + ramp:
+                self.wp = 0                  # the slide grasp's retreat path starts at its first point
                 self._next()
         elif name == "retreat":
             if self._arrived(TRACK_TOL) or patience:

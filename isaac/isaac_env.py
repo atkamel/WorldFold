@@ -19,7 +19,7 @@ from mujuco.cloth_params import (
     CLOTH_COUNT, CLOTH_SPACING, CLOTH_MASS, ARM_JOINTS, GRIPPER_OPEN, GRIPPER_CLOSED, JOINT_DELTA_SCALE,
     GRASP_CORNERS, GRASP_RADIUS, HOLD_STEPS, SETTLE_STEPS, ARM_TIMESTEP, WORKSPACE_XY, SUCCESS_FOLD_SCORE,
     CORNER_PLACED_DIST, TASK_NAMES, DEPTH_MAX, CAMERA_FOVY_DEG, sensor_depth, ARM_BASE_LEFT, ARM_BASE_RIGHT,
-    ARM_BASE_QUAT,
+    ARM_BASE_QUAT, TABLE_TOP_Z,
 )
 
 # Isaac-only knobs (MuJoCo has its own equivalents inside the MJCF / flexcomp)
@@ -87,12 +87,12 @@ PROFILES = {
 # kd 0.6, 10 N m). gripper_closed: the closed jaw target (rad, GRIPPER_CLOSED; the joint's limit is -0.1745).
 # jaw_open_rate: opening moves the jaw target at most this many rad per control step (None: straight to GRIPPER_OPEN)
 # gripper_mode: None (binary, hysteresis) or "position" (the command sets the jaw target over its whole range; see
-# _set_jaw_position)
+# _set_jaw_position). pads: None (the lining over LeHome's capsules) or "box" (BOX_PAD, Roy's flat fingertip pads)
 # Phase F (F2), the rest of LeHome's particle material and the physics rate: adhesion (LeHome 0.1, we spawn 0; the
 # user's cap is ADHESION_MAX), adhesion_offset_scale (LeHome 0: adhesion acts in contact only), gravity_scale (LeHome
 # 2, we spawn 1), physics_hz (100; a multiple of 20 so it divides the 0.05 s control step).
 FRICTION_GRASP          = {"particle_friction": None, "pad_friction": None, "pad_thickness": None,
-                           "gripper_drive": None, "gripper_closed": None, "jaw_open_rate": None, "gripper_mode": None,
+                           "gripper_drive": None, "gripper_closed": None, "jaw_open_rate": None, "gripper_mode": None, "pads": None,
                            "adhesion": None, "adhesion_offset_scale": None, "gravity_scale": None, "physics_hz": None}
 ADHESION_MAX            = 0.3                 # user rule (2026-10-07): friction + adhesion only, adhesion <= 0.3
 PROFILES["lehome"]["friction_grasp"] = FRICTION_GRASP
@@ -888,6 +888,37 @@ def make_half_fold_env(observation_mode="state", seed=None, headless=True):
     base = IsaacClothFoldEnv(observation_mode=observation_mode, max_episode_steps=HALF_FOLD_MAX_STEPS,
                              grasp_corners=GRASP_CORNERS, grasp_radius=GRASP_RADIUS, headless=headless)
     return HalfFoldEnv(base_env=base, seed=seed, cloth_jitter=CLOTH_JITTER)
+
+
+# "roy" (2026-10-19, docs/superpowers/plans/2026-10-19-roy-grasp-port.md): Roy's LeHome layout (origin/ROY-vla-teacher,
+# teacher/oracle/so101_kin.py: bases at (+-0.23, -0.25, 0.5) plus the USD-to-URDF base offset (-0.0208, -0.0157,
+# 0.0325), on a table whose surface is ~0.52; ours is TABLE_TOP_Z) with his towel centred near (-0.025, 0), his flat
+# box pads and a position-mode gripper closing to his -0.17 rad
+_ROY_DZ = TABLE_TOP_Z - 0.52
+ROY_ARM_BASES = {p: (np.array([x - 0.0208, -0.25 - 0.0157, 0.5 + 0.0325 + _ROY_DZ]), np.asarray(ARM_BASE_QUAT, float))
+                 for p, x in (("left_", -0.23), ("right_", 0.23))}
+PROFILES["roy"] = dict(PROFILES["friction"], cloth_center=(-0.025, 0.0), arm_bases=ROY_ARM_BASES,
+                       view_shift=(-0.025, 0.0, 0.0),
+                       friction_grasp=dict(PROFILES["friction"]["friction_grasp"], gripper_mode="position",
+                                           pads="box", gripper_closed=-0.17))
+
+# Roy's flat fingertip pads (origin/ROY-vla-teacher, teacher/oracle/pads.py). LeHome's two capsule pads (r 10 mm) cross
+# when the gripper closes, so a fingertip pinch can't form; knob pads="box" turns their collision off and puts a thin
+# flat box on each jaw tip, faces parallel and touching at the closed limit (q_closed_deg). Gripper link frame.
+BOX_PAD = dict(x_face=-0.005, z_center=-0.089, thick=0.004, width=0.016, length=0.022, q_closed_deg=-10.0)
+
+
+def box_pad_poses(joint_T0, pad=BOX_PAD):
+    """(fixed pad pose in the gripper link frame, moving pad pose in the jaw link frame), 4x4 each, and the box size.
+    joint_T0: the gripper joint's frame in the gripper link frame (its localPos0 / localRot0); the jaw link frame is
+    that frame turned by the joint angle about z, as in Roy's pads.py."""
+    a = np.radians(pad["q_closed_deg"])
+    Rz = np.eye(4)
+    Rz[:2, :2] = [[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]]
+    fixed, moving = np.eye(4), np.eye(4)
+    fixed[:3, 3] = [pad["x_face"] - pad["thick"] / 2, 0.0, pad["z_center"]]
+    moving[:3, 3] = [pad["x_face"] + pad["thick"] / 2, 0.0, pad["z_center"]]
+    return fixed, np.linalg.inv(joint_T0 @ Rz) @ moving, (pad["thick"], pad["width"], pad["length"])
 
 
 QUARTER_MAX_STEPS = 700      # two half-fold-length folds (~230 steps each) plus releases and settles
