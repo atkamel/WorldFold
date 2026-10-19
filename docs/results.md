@@ -2926,3 +2926,26 @@ rule on the `sel_` sets. Wall 8 h 54 min (round-0 re-eval 2 h, rollouts 4 h 20 m
   cm off its lane) may be unreachable corrections for a 12-D delta policy; 15k steps on 295 mixed episodes vs 20k on
   167 clean ones; final-checkpoint selection (val loss climbs from 10k). The failure code stays G2 (stage-1 slips).
 - Q4's privileged best remains the v2 BC student (`runs/isaac_qf_v2_bc_grip/final.pt`, 44 / 44 in the finals).
+
+### Q4 finals — `final_` sets, R1 expert vs v2 BC student (paired, n = 100 per set; 2026-10-18 20:11, `q4/final_expert.json`, `q4/final_bc_grip.json`)
+
+User (2026-10-18): close Q4's privileged row as is after the DAgger round was not kept. Expert 2 h 40 min, student
+2 h 54 min, 2 × 8 envs, replan 4.
+
+| set | R1 expert | v2 BC student (Wilson) | paired diff [95%] | McNemar p | student failures |
+|---|---|---|---|---|---|
+| final_id_easy | 87 | **66** (56–75) | +21 [+9, +33] | 0.002 | G2@1 31, G2@0 3 |
+| final_id_hard | 90 | **59** (49–68) | +31 [+19, +42] | < 0.001 | G2@1 41 |
+| final_knock_arm | 76 | **38** (29–48) | +38 [+26, +50] | < 0.001 | G2@1 55, G2@0 6, M1@0 1 |
+
+- Expert failures: G2 11 + M1 2 / G2 10 / G2 20 + M1 4; fold scores 0.914 / 0.919 / 0.871.
+- The student's `final_` rates are above its `sel_` ones (59 vs 44 on id_hard, 38 vs 44 on knock): block-to-block
+  variation of the same size as the Q0 noise floor; both blocks say the same thing. Every student failure mode is the
+  second fold's grasp (G2@1).
+- **Q4 privileged row closed:** expert 87 / 90 / 76, BC student 66 / 59 / 38, DAgger not kept, no vision student or
+  detector (state-only data). The quarter-fold demo videos follow (`docs/reports/media/quarter_fold_privileged_*.mp4`).
+
+**Q4 demo videos** (v2 BC student, replan 4, 3 seeds per set, `docs/reports/media/quarter_fold_privileged_{id_easy,id_hard,knock_arm}.mp4`):
+id_easy 2/3 (100000 ✓ 401, 100001 ✓ 532, 100002 ✗ truncated 0.80), id_hard 2/3 (200000 ✓ 377, 200001 ✗ 0.76,
+200002 ✓ 516), knock_arm 1/3 (310000 ✓ 426, 310001 ✗ 0.81, 310002 ✗ 0.83). Every failure is a truncation with
+fold 1 done (0.76–0.83), i.e. a stalled or slipped second fold, as in the finals.

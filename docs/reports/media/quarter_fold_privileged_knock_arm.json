@@ -1,0 +1,27 @@
+{
+ "ckpt": "outputs\\imitation\\runs\\isaac_qf_v2_bc_grip\\final.pt",
+ "backend": "isaac_friction",
+ "episodes": [
+  {
+   "seed": 310000,
+   "steps": 426,
+   "success": true,
+   "fold_score": 0.9037899025697237,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 310001,
+   "steps": 800,
+   "success": false,
+   "fold_score": 0.8095485136061071,
+   "termination_reason": null
+  },
+  {
+   "seed": 310002,
+   "steps": 800,
+   "success": false,
+   "fold_score": 0.8340003251072952,
+   "termination_reason": null
+  }
+ ]
+}

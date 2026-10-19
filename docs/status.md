@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · Q · QD ✅ · QD-2 ✅ (gentle release, n = 100 confirmed) · R1 ✅ adopted (fold-1 friction + lay-down, n = 100 confirmed) · Q4 ◐: isaac_qf_v1 + v1 student (QD-2 expert), isaac_qf_v2 + v2 student (R1 expert; sel_ 44/44 vs expert 93/82); DAgger round 1 not kept (26/28) · R2–R3 (square) open
+**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · Q · QD ✅ · QD-2 ✅ (gentle release, n = 100 confirmed) · R1 ✅ adopted (fold-1 friction + lay-down, n = 100 confirmed) · Q4 ◐: isaac_qf_v1 + v1 student (QD-2 expert), isaac_qf_v2 + v2 student (R1 expert; sel_ 44/44 vs expert 93/82); DAgger round 1 not kept; final_ 87/90/76 vs 66/59/38; Q4 privileged row closed · R2–R3 (square) open
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -56,6 +56,10 @@ change), fold 1 100/100, every success a real second fold, ~50 steps slower.
   slips in half the episodes: the second-fold grasp does not transfer). v1 student finals running (comparison row); DAgger
   from the v2 student with the R1 teacher queued behind them (`-Only dagger -Tag isaac_qf_v2`, ~4 h).
 - **23:55 v1 finals:** v1 student 18 / 13 vs v2's 44 / 44 (paired p < 0.001): the R1 data trains the better student. DAgger (v2 student, R1 teacher, 1 round, 128 eps) running; ~4 h.
+- **2026-10-18 20:35 Q4 privileged row closed (user: run the final_ sets, close as is).** R1 expert 87 / 90 / 76, v2 BC
+  student 66 / 59 / 38 on final_id_easy / id_hard / knock_arm (n = 100, paired p ≤ 0.002); demo videos
+  `quarter_fold_privileged_{id_easy,id_hard,knock_arm}.mp4` 2/3, 2/3, 1/3. Nothing running. Open: Q3 gate bars (user),
+  vision student + detector (needs images), the DAgger loss, the square (R2–R3), Q5 report.
 - **08:50 DAgger not kept:** round 1 26 / 28 vs the v2 student's 49 / 39 (−3.8 SE). Privileged best = v2 BC student.
   Nothing running. **Decision for the user:** (a) run the `final_` sets for the R1 expert and the v2 student (~4 h) and
   close Q4's privileged row as is; (b) more BC data first (collect 200 more with the R1 expert → `isaac_qf_v3` 400 eps,
@@ -482,6 +486,7 @@ Newest first. One line per work pass: date · what changed · commit.
 - 2026-10-17 · **R1 adopted** (user): `QF_FOLD1_GRASP` / `QF_FOLD1_EXPERT` + `qf_preset()` in `half_fold.py` (`WORLDFOLD_QF_FOLD1=0` off), teacher reads the preset's `QF0_OVERSHOOT_SCALE`; full quarter fold 15/16 (was 16/16), 15 real second folds, 4/4 full traces; dataset note (isaac_qf_v1 is pre-R1 → v2 next). Tests: not-slow 267 passed / 5 skipped · see git log
 - 2026-10-17 · **R1 fold-1 friction probes** (linked session): knobs `table_friction` (inert: PhysX ignores the table's rigid material for the cloth) and `particle_friction_scale` (cloth-on-cloth; 2.0 holds the crease); with `particle_friction` 1.0 + the QF0 lay-down 13.6 / 13.0 cm on n = 8, a physics change, not adopted (user's OK); no path shape alone gets past 9 cm; 19 probes in results.md R1, roadmap R1 ◐. Tests: not-slow 265 passed / 5 skipped · see git log
 - 2026-10-17 · **Q4 first pass:** `isaac_qf_v1` frozen (175 + 25, `42bd9eb13451` / `e6c6023fd81d`), BC gripper-head student 20k steps, demo 4/6 (`quarter_fold_parallel_bc.mp4`); preset applied on the batch path (f48af9d). Tests: not-slow 264 passed / 5 skipped · see git log
+- 2026-10-18 · **Q4 privileged row closed:** final_ sets expert 87/90/76, v2 student 66/59/38 (n = 100, paired); 3 demo videos. Tests: not-slow 267 passed / 5 skipped · see git log
 - 2026-10-18 · **Q4 v2 finals + DAgger:** v2 student 44/44, v1 student 18/13 (sel_, n = 100, paired); DAgger round 1 from v2 with the R1 teacher 26/28, not kept (−3.8 SE). Nothing running; decision on the next step with the user · see git log
 - 2026-10-17 · **Q4 v2 (coordination + run):** four linked sessions managed to completion; `isaac_qf_v2` frozen (167 + 33, R1 expert); v2 BC student 20k steps, demo 4/6 with real quarter folds (`quarter_fold_parallel_bc_v2.mp4`); `q_retrain -Tag`; sel_ finals launched. Tests: not-slow 267 passed (linked sessions' runs) · see git log
 - 2026-10-16 · **QD-3: fold-1 width on the gentle release** (3 probes, none adopted; `-NoVision` on `q_retrain.ps1`; camera collect too slow, discarded; the gentle preset was missing on the batch path, fixed + test, first state-only collect discarded); Q4 state-only chain running. Tests: not-slow 264 passed / 5 skipped · see git log
