@@ -51,8 +51,14 @@ mkdir -p "$CACHE"
 # the image's copy (/Assets is gitignored)
 # only the GPU SLURM gave this job: with --gpus all, PhysX found "no suitable CUDA GPU" (2026-10-15, jobs 706910 /
 # 706912: the job's cgroup only opens its own device)
+# trpro shows a job only its own GPUs, numbered from 0 (device=$SLURM_JOB_GPUS was "unknown device", job 707315); thor
+# shows every GPU on the node, so there device=0 is someone else's and the job's own is its host index (job 711192)
 GPUS=all
-[[ -n ${CUDA_VISIBLE_DEVICES:-} ]] && GPUS="\"device=$CUDA_VISIBLE_DEVICES\""    # the job's own numbering (device=1 was unknown)
+if [[ -n ${SLURM_JOB_GPUS:-} ]]; then
+    n_job=$(tr ',' '\n' <<< "$SLURM_JOB_GPUS" | wc -l)
+    if [[ $(nvidia-smi -L | wc -l) -gt $n_job ]]; then GPUS="\"device=$SLURM_JOB_GPUS\""
+    else GPUS="\"device=$CUDA_VISIBLE_DEVICES\""; fi
+fi
 echo "SLURM_JOB_GPUS=${SLURM_JOB_GPUS:-} CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-} -> --gpus $GPUS; host: $(ls /dev/nvidia* | tr '\n' ' ')"
 docker run --rm --gpus "$GPUS" $IMAGE bash -c 'ls /dev/nvidia* | tr "\n" " "; echo; "$ISAAC_PY" -c "import torch; print(\"torch cuda\", torch.cuda.is_available(), torch.cuda.device_count())"' || true
 # graphics too: with docker's default (compute, utility) Kit has no Vulkan driver, and PhysX then finds "no suitable

@@ -137,6 +137,9 @@ class IsaacArmExpert:
     HOVER = 0.0725
     RELEASE_BACKOFF = 0.02
     RETREAT_STEP = 0.003
+    # jaw angle (rad) while a slide grasp approaches, presses and slides: Roy opens to 0.55 (GRIP_OPEN); at our 1.0 the
+    # open jaw met the table 0.7 cm up and held the pads off the cloth (2026-10-19 bench roy_s3: the jaws closed empty)
+    GRASP_OPEN = 0.55
     # IsaacQuarterFoldExpert's lift gate: an arm that has closed waits until every arm of its fold has (the two grasp
     # points of the quarter fold's second fold are on one 13 cm edge: lifting one drags the other away)
     lift_allowed = True
@@ -372,6 +375,9 @@ class IsaacArmExpert:
         action = np.zeros(6, dtype=np.float32)
         name = self.PHASES[self.phase]
         action[5] = 1.0 if name in self.OPEN_PHASES else self._close_command()
+        if self.GRASP == "slide" and name in ("approach", "descend", "slide") \
+                and self.base.grasp_knobs.get("gripper_mode") == "position":
+            action[5] = self.base.jaw_command(self.GRASP_OPEN)
         if name == "release" and self.RELEASE_RATE and self.base.grasp_knobs.get("gripper_mode") == "position":
             jaw = self.base._joint_targets[self.prefix][5]
             action[5] = self.base.jaw_command(min(GRIPPER_OPEN, jaw + self.RELEASE_RATE))

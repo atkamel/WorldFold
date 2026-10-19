@@ -2014,3 +2014,13 @@ The fold completes mechanically; the layers end ~7 cm apart because the bottom l
 is carried over it, and the corners land on where their partners started. Chasing the partner (strip5) made the
 retries re-grasp a corner that springs back after release and destabilised the cloth: dropped. n is tiny (Modal
 refused 64 of 64 starts on driver 610 at the end; WATcloud jobs carry a 10 min image build).
+
+## Roy's grasp port, grasp bench (plan 2026-10-19), WATcloud 3090s
+
+`isaac/grasp_bench.py`, half fold, retries off, tune seeds 600000–600019 (n = 20 per arm), 1 cm jitter.
+acquired / held / placed / released per arm (left | right).
+
+| step | profile + settings | left | right | notes |
+|---|---|---|---|---|
+| 2 | `roy` (Roy's bases and cloth placement, box pads, position gripper −0.17), corner pinch, `PINCH_ORIENTATION_WEIGHT=0.005` | 0/0/0/0 | 0/0/0/0 | jaws land within 0.6–1.2 cm of the corner, 0.7 cm up, close all the way to −0.17: nothing between the pads |
+| 3 | as 2, `GRASP=slide`, `RELEASE_RATE=0.3` | 0/0/0/0 | 1/0/0/0 | the slide runs (3.8 cm inward) and bunches the cloth (corner up 1.1–2.5 cm), but the jaw closes to −0.15…−0.17 and the cloth falls out; the open jaw (1.0 rad) met the table with the fingertip 0.7 cm up |
