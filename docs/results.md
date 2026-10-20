@@ -2154,3 +2154,10 @@ left the jaws (then a failure in the window env):
 - **Then it blew up.** The first noisy prior batch (OU σ 0.2): 6/8 `unstable`, 2/8 `cloth_dragged`. Every later episode
   (prior batch 2, training) ended `unstable` after one step in all 8 copies, at the snapshot's own alignment (16.3 cm),
   so the grid restored but something else did not. Cancelled; diagnosis in `check-recover` (job 711486).
+
+**Recovery diagnostic (WATcloud 711486, `check-recover`, seeds 820000–07):** clean window run 2.1–4.3 cm, all settled;
+jaws driven into the table with the floor off: fold wrecked (13–18 cm), truncated, **no instability**; two plain
+restores and a park + 30-step settle + restore after it: all settled (1.2–4.1 cm); the OU prior (σ 0.1) with the 5 mm
+table floor: no instability, 1.9–10.1 cm, 3/8 truncated. The p1 blow-up did not reproduce. Training now parks a
+blown-up copy at once, and a copy unstable within two steps of a restore exits the child process (saved learner,
+online buffer, state) for a supervisor restart. Run p2 (711487) carries all of it.

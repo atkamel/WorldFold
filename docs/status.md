@@ -48,9 +48,10 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
   (6.21 cm, same drift): base kept as R0's.
 - **R1 done:** restore works; the GPU sim is not deterministic (0.1-1.8 cm between two restores of one snapshot), so
   evaluation is statistical. 22 env steps/s at B = 8. A corner leaving the jaws no longer ends a window episode.
-- **R2 + R4 running:** WATcloud 711482 (trpro), `precision_rl.py train --run outputs/isaac/rl/p1 --copies 8 --hours
-  7.5`; version 0 (zero residual) on 16 fixed eval snapshots is R2's number. Watch `LOG` lines in
-  `outputs/watcloud/p1-711482.log`.
+- **R2:** version 0 (the base through the window env) 3.09 cm on the 16 eval snapshots (R0 3.61): parity close.
+- **R4 running:** p1 blew up after its noisy prior (every later episode unstable at step 1); not reproduced by
+  `check-recover`. p2 (WATcloud 711487, trpro) has a 5 mm table floor on the steered tip, OU σ 0.1, park-on-blow-up
+  and a restart supervisor. Watch `LOG` lines in `outputs/watcloud/p2-711487.log`.
 - **Roy port, parked:** its release fails (the cloth stays on the open fingers; s3e), which was also the "7 cm miss".
 
 **2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
@@ -247,6 +248,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-20 · **p1 blow-up handled:** table floor, check-recover (not reproduced), park + corrupt-scene restart; p2 launched (711487) · (this commit)
 
 - 2026-10-20 · **R1 + launch:** restore verified (sim nondeterministic), throughput 22 steps/s, drop no longer a failure, base A/B rejected, training run p1 launched (711482) · 1483199
 
