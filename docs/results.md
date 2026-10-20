@@ -2117,3 +2117,28 @@ seeds: align mean **6.21 cm** (sd 1.99, best 3.37), edge 10.23 cm, 0/20 passed; 
 Worse than R0's base (3.61 cm) and no less drift, so the drag is not the place-phase chase or the press: it builds
 up in the carry. Kept R0's base (PRESS_Z 0.003, no cap, ARC_FRAC 0.6); the drift is the residual policy's to reduce
 (its reward charges new drift). `outputs/isaac/rl/r0_servo_b/` (videos).
+
+### R1: snapshot / restore on Isaac (WATcloud 711481, trpro 3090, 2026-10-20)
+
+`precision_rl.py check-restore --copies 8 --seeds 810000:810008`: per seed, the base run straight through the window
+("direct") and twice from its restored carry-start snapshot, zero residual. Mean alignment (cm), `d` = the arm's corner
+left the jaws (then a failure in the window env):
+
+| seed | direct | restored 1 | restored 2 |
+|---|---|---|---|
+| 810000 | 5.19 | 4.99 | 5.76 |
+| 810001 | 4.65 | 3.92 | 3.24 d |
+| 810002 | 2.07 | 2.59 d | 4.34 |
+| 810003 | 2.67 | 2.89 | 3.19 |
+| 810004 | 3.79 | 3.24 d | 3.18 |
+| 810005 | 4.06 | 3.79 | 3.67 |
+| 810006 | 1.47 d | 1.69 d | 1.58 d |
+| 810007 | 3.42 d | 3.85 | 2.85 |
+
+- **Restore works; the sim isn't deterministic.** Two restores of the same snapshot differ by 0.1–1.8 cm, as much as
+  either differs from the direct run (GPU PhysX). The plan's "within 3 mm" bar can't be met by any restore; restored
+  and direct runs share one distribution (means 3.67 / 3.47 / 3.48 cm over the 8 seeds). Evaluation is statistical.
+- **Throughput: 22.1 env steps/s** at B = 8 (164 batch steps in 59.5 s, window only), ~6× the plan's estimate.
+- **"Dropped" was a bad failure label:** 6/24 runs flagged it, with some of the best alignments (1.5–3.4 cm): the
+  corner leaves the jaws at the end of the place. The window env no longer ends or penalises an episode for it
+  (recorded in the final info); the terminal alignment scores it.

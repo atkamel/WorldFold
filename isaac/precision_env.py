@@ -240,10 +240,10 @@ class PrecisionBatch:
             rew[i] = step_reward(st["phi"], phi, acts[i], st["drift"], d)
             st["phi"], st["drift"], st["prev_action"] = phi, max(st["drift"], d), acts[i]
             st["settle"] = st["settle"] + 1 if all(e.PHASES[e.phase] == "done" for e in ex.values()) else 0
+            # a corner leaving the jaws is not a failure in itself: in R1 (results.md) most did so at the end of the
+            # place and landed well, so the final alignment scores it
             reason = None
-            if any(e.dropped for e in ex.values()):
-                reason = "dropped"
-            elif sub._failed():
+            if sub._failed():
                 reason = "unstable"
             elif d > DRAG_LIMIT:
                 reason = "cloth_dragged"
@@ -255,8 +255,9 @@ class PrecisionBatch:
                 st["alive"], done[i] = False, True
                 term[i] = reason != "truncated"
                 r_end, s = terminal_reward(cloth)
-                rew[i] += -FAIL if reason in ("dropped", "unstable", "cloth_dragged") else (r_end if term[i] else 0.0)
+                rew[i] += -FAIL if reason in ("unstable", "cloth_dragged") else (r_end if term[i] else 0.0)
                 st["final"] = {"reason": reason, "steps": st["t"], "mean": round(s["mean"], 4),
+                               "dropped": [p for p in ARMS if ex[p].dropped],
                                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
                                "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS}}
                 infos[i] = st["final"]
