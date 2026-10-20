@@ -2137,7 +2137,7 @@ left the jaws (then a failure in the window env):
 
 - **Restore works; the sim isn't deterministic.** Two restores of the same snapshot differ by 0.1–1.8 cm, as much as
   either differs from the direct run (GPU PhysX). The plan's "within 3 mm" bar can't be met by any restore; restored
-  and direct runs share one distribution (means 3.67 / 3.47 / 3.48 cm over the 8 seeds). Evaluation is statistical.
+  and direct runs share one distribution (means 3.42 / 3.37 / 3.48 cm over the 8 seeds). Evaluation is statistical.
 - **Throughput: 22.1 env steps/s** at B = 8 (164 batch steps in 59.5 s, window only), ~6× the plan's estimate.
 - **"Dropped" was a bad failure label:** 6/24 runs flagged it, with some of the best alignments (1.5–3.4 cm): the
   corner leaves the jaws at the end of the place. The window env no longer ends or penalises an episode for it
