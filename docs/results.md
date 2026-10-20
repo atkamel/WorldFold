@@ -2040,3 +2040,20 @@ for antiparallel axes; on the roy layout `_home_seed`'s tie-break picked the rig
 |---|---|---|---|---|
 | 3d | slide, soft tilt 0.005, `RELEASE_RATE=0.3` | 0/0/1/0 | 0/0/1/0 | jaw axis now along the slide (+1.00, was −0.99); the open jaws straddle the cloth edge and close on it, the cloth rises as the gripper lifts, then slides out; jaw at −0.17 (limit); the slide stalls after ~1 cm of its 4 (fingertip 1.5 cm from the corner at close, planned 3.4) |
 | 2b | corner pinch, soft tilt 0.005 | 0/0/0/0 | 0/0/0/0 | the pinch can't reach: with the jaw forced along the corner diagonal and the gripper tilted, the 5-joint arm ends 4–6 cm from the corner (it leans its fingers only radially) |
+
+**Re-scored (c59b9bf: `acquired` read anywhere from carry to release; the slide grasp's corner only leaves the table in
+the carry, so the old lift-end reading gave it 0).** n = 10 per arm unless noted, Wilson 95% in brackets:
+
+| run | settings | left acquired / held / placed | right acquired / held / placed |
+|---|---|---|---|
+| 1 (n = 20) | `friction` + box pads, our pinch | 20 / 0 / 0 | 11 / 0 / 0 |
+| 2b | `roy`, tilted corner pinch | 0 / 0 / 0 | 0 / 0 / 0 |
+| **3d** | `roy`, slide, squeeze −0.17 | **10 / 9 [59.6, 98.2] / 1** | **10 / 7 [39.7, 89.2] / 1** |
+| v2 | 3d + pad friction 0.5 | 10 / 9 / 1 | 10 / 7 / 1 |
+| v1 | 3d + squeeze −0.05 | 10 / 4 / 2 | 10 / 5 / 2 |
+| v3 | 3d + squeeze 0.0 + pad friction 0.5 | 10 / 0 / 0 | 10 / 0 / 0 |
+
+The video-based reading above ("the cloth slides out") was wrong: corners rise 13–18 cm with the gripper and 16/20 stay
+in the jaws to release. A full squeeze holds; softer squeezes don't. Placement is now the gap: held corners land a mean
+(+7.4, +4.3) cm (left) and (−6.8, +3.1) cm (right) off their goals, sd ~2 cm (s3d + v2, n = 18 / 14): inward, the
+grasp's inset plus the slide's push. Next: the mean miss as the roy overshoot (bench s3e, seeds 600010–29).
