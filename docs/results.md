@@ -2142,3 +2142,15 @@ left the jaws (then a failure in the window env):
 - **"Dropped" was a bad failure label:** 6/24 runs flagged it, with some of the best alignments (1.5–3.4 cm): the
   corner leaves the jaws at the end of the place. The window env no longer ends or penalises an episode for it
   (recorded in the final info); the terminal alignment scores it.
+
+### R2 + first training run p1 (WATcloud 711482, 2026-10-20, cancelled)
+
+`precision_rl.py train --run outputs/isaac/rl/p1 --copies 8` (160 train snapshots from seeds 800000+, 16 eval from
+900000+, all reached the window).
+- **R2, version 0 (zero residual = the base) on the 16 eval snapshots: mean 3.09 cm (sd 0.50, best 2.39), edge 6.70
+  cm, 0/16 passed [0, 19.4], all settled.** R0's full-episode base: 3.61 (sd 0.89), n = 20, other seeds. 2.2 SE apart;
+  the window env scores 15 steps after both arms are done, the full run at the env's end. Parity is close enough
+  to train against; version 0 is the reference for this run.
+- **Then it blew up.** The first noisy prior batch (OU σ 0.2): 6/8 `unstable`, 2/8 `cloth_dragged`. Every later episode
+  (prior batch 2, training) ended `unstable` after one step in all 8 copies, at the snapshot's own alignment (16.3 cm),
+  so the grid restored but something else did not. Cancelled; diagnosis in `check-recover` (job 711486).
