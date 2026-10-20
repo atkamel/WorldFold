@@ -2088,7 +2088,7 @@ n = 20 per arm (`outputs/isaac/grasp/roy_s3e_place/`, side videos):
 - **Correction to the s3d reading above:** the "(+7.4, +4.3) / (−6.8, +3.1) cm inward" miss was read from corners
   still on the fingers, carried by the retreat. It was not a landing offset, so the s3e overshoot is not a fix for
   anything. The stack test's fold-1 failures (2/10 finished) are the same release failure under retries.
-- Held fell to 26/40 from s3d's 16/20 (different seeds; within noise of each other: s3d [56.0, 94.2] vs s3e [49.5,
+- Held fell to 26/40 from s3d's 16/20 (different seeds; within noise of each other: s3d [58.4, 91.9] vs s3e [49.5,
   77.9] pooled).
 - Next for the Roy port (parked behind the RL redesign): why the cloth stays on the fingers after the jaw opens
   (adhesion 0.1 on the box pads, the slide's bunching wrapping cloth round a finger).

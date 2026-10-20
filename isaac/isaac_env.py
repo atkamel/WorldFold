@@ -941,12 +941,16 @@ def make_quarter_fold_env(observation_mode="state", seed=None, headless=True, ma
     arm carries the stack (cloth_0 + cloth_10) onto cloth_110, the right arm, north of the cloth, cloth_5 onto
     cloth_115. fold2="stack" (any profile; the Roy-port step-3 stack test): each arm lifts the two-layer stack fold 1
     left at its near corner (cloth_10 on cloth_0, cloth_120 on cloth_110) and lays it on its crease end (cloth_5,
-    cloth_115), the strip fold's line from the other side. The returned env's alignment_folds is the fold sequence
+    cloth_115), the strip fold's line from the other side. fold2="none": the half fold alone (the residual-RL baseline,
+    plan 2026-10-20). The returned env's alignment_folds is the fold sequence
     cloth_fold_rl.fold_alignment scores."""
     from cloth_fold_rl.fold_alignment import QUARTER_FOLDS, STRIP_FOLDS
     from cloth_fold_rl.quarter_fold_env import (CLOTH_0, CLOTH_5, CLOTH_10, CLOTH_115, CLOTH_110, CLOTH_120,
                                                 GRASP_RADIUS, STAGES, Move, QuarterFoldEnv, Stage)
-    if fold2 == "stack":
+    if fold2 == "none":
+        stages, corners = (STAGES[0],), {"left_": (CLOTH_10,), "right_": (CLOTH_120,)}
+        jitter, folds = CLOTH_JITTER, STRIP_FOLDS[:1]
+    elif fold2 == "stack":
         stages = (STAGES[0], Stage(moves=(Move("left_", (CLOTH_10, CLOTH_0), CLOTH_5),
                                           Move("right_", (CLOTH_120, CLOTH_110), CLOTH_115)),
                                    anchors=((CLOTH_5, CLOTH_5), (CLOTH_115, CLOTH_115))))

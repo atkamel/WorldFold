@@ -4,7 +4,9 @@
 `cloth_fold_rl.fold_alignment`), first on the half fold, then on fold 2 of the quarter fold. It replaces the fold-level
 PPO of `isaac/fold_rl.py` (plan 2026-10-14 §5), which stays in the repo as a record.
 
-**Status:** draft for the user's sign-off. Nothing below is built.
+**Status:** signed off 2026-10-20 with two changes: no weld anywhere (the user: a gripper fold is possible because a
+person can do it in teleop, so the policy has a reachable goal; R0 is the gripper baseline only), and training starts
+with dynamics randomization off. Half fold on the GPU `friction` profile (old layout).
 
 ## Why fold_rl failed
 
@@ -43,10 +45,12 @@ Run strip_r2 (WATcloud, 10 h): 461 episodes, 19 PPO versions, mean alignment fla
 
 ## Design
 
-**Base controller.** `IsaacArmExpert` does the grasp, lift, carry, place and release. Two changes make it a closed-loop
-base: the place target is the partner vertex's **current** position (plus the layer thickness), re-read every step
-and low-pass filtered; and the release happens with the corner resting on the bottom layer. Retries are off inside the
-learning window (strip5's partner-chasing failed through retries re-grasping a springing corner).
+**Base controller.** The proven open-loop pinch of `IsaacArmExpert` (friction profile, 40/40 held) does the approach,
+close and lift. From the carry on, `IsaacServoExpert`'s corner steering takes over (F3b; its grasp servo was dropped
+untuned, its carry and place were never measured on their own): each step the gripper target moves the **corner**
+toward its next waypoint, so spring-back and lag need no overshoot table. The place target is the partner vertex's
+**current** position, re-read every step, with the corner pressed onto the bottom layer before release. Retries are
+off inside the learning window (strip5's partner-chasing failed through retries re-grasping a springing corner).
 
 **Learning window.** From the start of the carry (corner lifted and held) to 15 steps after both releases, about 120
 control steps per fold. The grasp is outside the window: it is already measured on its own (friction profile 40/40
@@ -60,10 +64,10 @@ held; roy slide 16/20).
 | | cloth: XY offset of 8 matched layer pairs (corners, carried-edge midpoint, side-edge quarter points), drift of 4 bottom-layer vertices since the window began | ~36 |
 | | previous action | 8 |
 | action | per arm: Cartesian residual on the base's gripper target, ≤ 4 mm per step, accumulated offset clipped to ±6 cm | 2 × 3 |
-| | per arm: jaw residual, active only from the place phase on (release height and timing) | 2 × 1 |
+| | per arm: release vote; the arm opens once its vote is positive and both arms are in hold, or after a hold cap (the friction profile's gripper is binary) | 2 × 1 |
 
-The residual goes into `IsaacArmExpert.act()` between `_target()` and the IK solve, so the phase machine and IK stay
-unchanged.
+The residual is added to the steered gripper target just before the servo's IK solve (`_toward`), so the phase
+machine and IK stay unchanged.
 
 **Reward.** Potential-based shaping on the alignment, so the optimum is unchanged
 (Φ = −mean over matched pairs of log(d_xy + 0.5 cm)), with r_t = Φ(s_t+1) − Φ(s_t). The log scale makes 3 → 1 cm pay
@@ -95,24 +99,21 @@ with video (grasp included).
 
 | # | what | test | pass bar |
 |---|---|---|---|
-| R0 | **Ceiling and baseline.** Half fold on `friction` with the closed-loop base, once with the corner welded (perfect grip) and once with the friction grasp, DR off, n = 20 each | alignment per episode, split into bias and scatter | the weld run has ≥ 1 episode at the bar. If even a perfect grip can't, the limit is cloth sag and slide: stop and discuss |
+| R0 | **Gripper baseline.** Half fold on `friction` with the closed-loop base, DR off, n = 20 (and the open-loop expert on the same seeds for comparison) | alignment per episode, split into bias and scatter | none: it is R4's reference |
 | R1 | **Snapshot and restore** on the GPU pipeline | sim-free: the snapshot round-trips. Isaac: replaying the scripted actions from a snapshot ends within 3 mm mean alignment of the original run | ≥ 9/10 seeds |
 | R2 | **Window env**: the learning window as an env over B copies, observation, action and reward as above | sim-free: observation layout, residual bounds, shaping sums to Φ_T − Φ_0. Isaac: zero residual reproduces R0's friction numbers (n = 20); throughput logged | within R0's Wilson interval |
 | R3 | **Learner** (SAC + RLPD settings) and the prior-data collector | sim-free: solves a toy 1-D placement task through the same interfaces | toy solved |
 | R4 | **Half-fold RL run**, WATcloud overnight | learning curve on the fixed eval seeds | mean alignment below R0's friction base by > 2 SE; ≥ 1 eval episode at the bar, recorded with video |
 | R5 | **Fold 2 of the quarter fold**: the same window on fold 2, starting from fold-1 snapshots, on the layout the Roy-port work settles (roy on the GPU pipeline, or the friction layout re-searched with the slide grasp) | as R4 | one recorded quarter-fold episode at the bar |
 
-**Stop rules.** R0's weld run never reaching the bar ends the plan as written. R2's parity failing means the window env
-changed the physics; fix that before any learning. If R4 is flat after 5·10⁴ steps, look at the critic's value
+**Stop rules.** R2's parity failing means the window env changed the physics; fix that before any learning. If R4 is flat after 5·10⁴ steps, look at the critic's value
 error and the eval curve before changing anything else.
 
 **Effort.** R0 to R3: about 2.5 days of code and checks. R4: one overnight run, then iterations. R5 depends on the
 layout work.
 
-## Open decisions for the user
+## Decisions (user, 2026-10-20)
 
-1. Run R0 to R4 on the half fold on the old layout (GPU `friction` profile), separate from the Roy port? Recommended:
-   its placement already works, and the GPU pipeline is what allows snapshots and copies.
-2. Train with dynamics randomization off first and turn it on after the first passing episode. The demo itself could
-   then be recorded with randomization off or on.
-3. The Roy-port step-3 jobs keep running (cheap, and fold 2's layout needs their answer).
+1. Half fold on the old layout, GPU `friction` profile: yes.
+2. Dynamics randomization off for training first: yes.
+3. No weld ceiling: R0 is the gripper baseline.

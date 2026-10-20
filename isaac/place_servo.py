@@ -1,0 +1,97 @@
+"""Closed-loop placement base for the residual RL (docs/superpowers/plans/2026-10-20-closed-loop-rl.md).
+
+IsaacArmExpert's open-loop pinch does the approach, descend, close and lift (friction profile: 40/40 held). From the
+carry on, IsaacServoExpert's corner steering takes over: each step the gripper target moves the CORNER toward its next
+waypoint, so spring-back and lag need no overshoot table. The place target is the partner vertex's current position
+(`live_goal`), not where it started: the bottom layer slides 6-14 cm during a carry (strip runs, results.md).
+
+Two hooks for a learned policy, both neutral by default (the scripted base):
+  residual      (3,) m, added to the steered gripper target in carry, place and hold
+  release_vote  the arm releases once its gate is open (every arm of the fold in hold) and its vote is True, or after
+                HOLD_CAP steps in hold
+No retries: a corner that leaves the jaw in the carry sets `dropped` and the arm goes on to release.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from isaac.fold_expert import IsaacArmExpert
+from isaac.servo_expert import IsaacServoExpert
+
+
+class IsaacPlaceServoExpert(IsaacServoExpert):
+    PLACE_TOL = 0.005        # the servo's 1.2 cm is as large as the bar
+    PLACE_PATIENCE = 40
+    PRESS_Z = 0.003          # place target this far above the partner vertex: the corner rests on the bottom layer
+    HOLD_CAP = 20            # steps in hold before the arm releases without its vote
+
+    PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped")
+
+    def __init__(self, *args, live_goal=None, **kwargs):
+        self.live_goal = live_goal       # callable -> the partner vertex's current position; None: self.goal
+        super().__init__(*args, **kwargs)
+
+    def reset(self):
+        super().reset()
+        self.residual = np.zeros(3)
+        self.release_vote = True
+        self.hold_site = None
+        self.dropped = False
+
+    def _goal_now(self):
+        return np.asarray((self.live_goal or self.goal)(), dtype=float)
+
+    def _start_carry(self):
+        self.sv.update(path=self._corner_path(self._corner(), self._goal_now()), k=0, k_steps=0, slip=0)
+        self._go("carry")
+
+    def _start_hold(self):
+        super()._start_hold()
+        self.hold_site = self._site() - self.residual      # hold where the arm is now
+
+    def act(self):
+        name = self.PHASES[self.phase]
+        if name in ("approach", "descend", "close", "lift"):
+            action = IsaacArmExpert.act(self)
+            if self.PHASES[self.phase] == "carry":        # the parent's lift just ended: steer from here
+                self._start_carry()
+            return action
+        if name not in ("carry", "place", "hold"):
+            return IsaacArmExpert.act(self)               # release, retreat, done
+        action = np.zeros(6, dtype=np.float32)
+        action[5] = self._close_command()
+        corner, site = self._corner(), self._site()
+        jaw = self.plan["jaw"]
+        self.phase_steps += 1
+        if name in ("carry", "place") and np.linalg.norm(corner - site) > self.HOLD_DIST:
+            self.sv["slip"] += 1
+            if self.sv["slip"] >= self.SLIP_STEPS:
+                self.dropped = True
+                self._start_hold()
+                return action
+        else:
+            self.sv["slip"] = 0
+        if name == "carry":
+            path, k = self.sv["path"], self.sv["k"]
+            target = path[min(k, len(path) - 1)]
+            action[0:5], _ = self._toward(self._steer(target) + self.residual, jaw, weight=0.05)
+            self.sv["k_steps"] += 1
+            if np.linalg.norm(corner - target) < self.CORNER_WP_TOL or self.sv["k_steps"] > self.WP_PATIENCE:
+                self.sv["k"], self.sv["k_steps"] = k + 1, 0
+            if self.sv["k"] >= len(path):
+                self._go("place")
+            action[0:5] *= self.CARRY_SPEED
+        elif name == "place":
+            goal = self._goal_now()
+            action[0:5], _ = self._toward(self._steer(goal + [0.0, 0.0, self.PRESS_Z]) + self.residual, jaw,
+                                          weight=0.05)
+            if (np.linalg.norm(corner[:2] - goal[:2]) < self.PLACE_TOL and corner[2] - goal[2] < 0.015) \
+                    or self.phase_steps >= self.PLACE_PATIENCE:
+                self._start_hold()
+        else:   # hold: stay, plus the residual, until the gate and the vote let go
+            action[0:5], _ = self._toward(self.hold_site + self.residual, jaw, weight=0.05)
+            if self.release_allowed and (self.release_vote or self.phase_steps >= self.HOLD_CAP):
+                self.plan["arc"], self.wp = [self._q()], 0      # release where the arm is, not at the hold start
+                self._go("release")
+        return action

@@ -123,9 +123,15 @@ def main():
     ap.add_argument("--profile", default="quarter")
     ap.add_argument("--fold2", default=None, help="stack: fold 2 lifts each fold-1 stack (make_quarter_fold_env)")
     ap.add_argument("--overshoot", default=None, help="fold-1 'lx,ly,rx,ry' (m) placement offsets, as grasp_bench's")
+    ap.add_argument("--no-retries", action="store_true", help="the expert's placement retries off (one attempt)")
+    ap.add_argument("--max-steps", type=int, default=None, help="episode cap (default QUARTER_MAX_STEPS)")
     args = ap.parse_args()
-    from isaac.isaac_env import make_quarter_fold_env
-    env = make_quarter_fold_env(profile=args.profile, cameras={"top": 400} if args.video else None, fold2=args.fold2)
+    from isaac.isaac_env import QUARTER_MAX_STEPS, make_quarter_fold_env
+    env = make_quarter_fold_env(profile=args.profile, cameras={"top": 400} if args.video else None, fold2=args.fold2,
+                                max_episode_steps=args.max_steps or QUARTER_MAX_STEPS)
+    if args.no_retries:
+        import cloth_fold_rl.quarter_fold_expert as qfe
+        qfe.MAX_RETRIES = 0
     from isaac.fold_expert import OVERSHOOTS, IsaacQuarterFoldExpert, _apply_env_params
     _apply_env_params()
     if args.overshoot:

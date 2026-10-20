@@ -85,6 +85,9 @@ class IsaacArmExpert:
     ALIGN_TRIES = 2
     OVERSHOOT_SCALE = 1.0    # scales the profile's placement overshoot table (0: none, Adam's as-built expert)
     SERVO = 0                # 1: ScriptedTeacher uses isaac.servo_expert.IsaacServoExpert (closed-loop, Phase F3b)
+    # 1: IsaacQuarterFoldExpert uses isaac.place_servo.IsaacPlaceServoExpert (this pinch, then corner steering onto the
+    # partner vertex's current position; the residual-RL base, plan 2026-10-20)
+    PLACE_SERVO = 0
     # F3b drop traces: descends parked 1-2 cm from the corner (the fingertip meets the table / cloth there) for 30-60
     # steps because the joint-space arrival test (TRACK_TOL) never fires with the arm folded near its base; then the
     # retry knobs sent it back up. 1: a descend has arrived when the gripper site is within CART_XY of the pinch point,
@@ -617,8 +620,14 @@ class IsaacQuarterFoldExpert(QuarterFoldExpert):
 
     def __init__(self, env, seed=0, profile="quarter"):
         self.base_overshoot = {k: v.copy() for k, v in OVERSHOOTS[profile].items()}
-        super().__init__(env, seed=seed, expert_cls=IsaacArmExpert,
+        expert_cls = IsaacArmExpert
+        if IsaacArmExpert.PLACE_SERVO:
+            from isaac.place_servo import IsaacPlaceServoExpert as expert_cls
+        super().__init__(env, seed=seed, expert_cls=expert_cls,
                          overshoot={k: v.copy() for k, v in self.base_overshoot.items()})
+        if IsaacArmExpert.PLACE_SERVO:      # aim at the partner vertex where it is now, not where it started
+            for key, e in self.experts.items():
+                e.live_goal = lambda m=self.moves[key]: self.base.cloth_positions()[m.goal]
 
     def act(self):
         arms = self._arms()
