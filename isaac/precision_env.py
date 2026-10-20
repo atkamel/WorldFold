@@ -137,7 +137,7 @@ class PrecisionBatch:
             if actions is not None and actions[i] is not None:
                 apply_action(self.experts[i], actions[i])
             coordinate(self.experts[i])
-            sub.step_submit(np.concatenate([self.experts[i][p].act() for p in ARMS]))
+            sub.step_submit(self.tasks[i]._expand(np.concatenate([self.experts[i][p].act() for p in ARMS])))
         self.batch.advance()
         for sub in self.subs:
             sub.step_collect()
