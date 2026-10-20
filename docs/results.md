@@ -2070,3 +2070,25 @@ seeds 0–9, retries on, 1 cm jitter, no dynamics DR (CPU). Output `outputs/isaa
     Fold-1 alignment 5.9 / 10.7 cm (mean / edge).
   - Seed 2 (stack gaps 13 cm, not a stack): each gripper caught one layer.
 - Not a test of the grasp at n = 4. The step-3 bar (≥ 15/20 stacks) is undecided; fold 1 placement blocks it.
+
+**Step 3 placement bench s3e (WATcloud 711407, 2026-10-20)** `grasp_bench --profile roy --expert
+GRASP=slide,PINCH_ORIENTATION_WEIGHT=0.005,RELEASE_RATE=0.3 --overshoot=-0.074,-0.043,0.068,-0.031`, seeds 600010–29,
+n = 20 per arm (`outputs/isaac/grasp/roy_s3e_place/`, side videos):
+
+| arm | acquired | held | placed | released |
+|---|---|---|---|---|
+| left | 20/20 [83.9, 100] | 15/20 [53.1, 88.8] | 1/20 [0.9, 23.6] | 5/20 [11.2, 46.9] |
+| right | 20/20 [83.9, 100] | 11/20 [34.2, 74.2] | 2/20 [2.8, 30.1] | 1/20 [0.9, 23.6] |
+
+- **The release fails, and that was the "miss".** In the traces (seeds 600010–17) the jaw opens fully (−0.17 →
+  0.98 rad in 5 steps → 1.0), yet the held corner stays 4–5 cm up at the release and rises to 7–8 cm with the
+  retreat, 6–7 cm from the site: the cloth hangs on the fingers. "placed" fails on height, not on x/y: the held
+  corners' final x/y sit a median 1.5 cm (left) and 0.5 cm (right) from their goals (mean (−1.9, +0.7) / (0.1,
+  −0.4) cm, sd (2.7, 1.9) / (1.3, 0.8)).
+- **Correction to the s3d reading above:** the "(+7.4, +4.3) / (−6.8, +3.1) cm inward" miss was read from corners
+  still on the fingers, carried by the retreat. It was not a landing offset, so the s3e overshoot is not a fix for
+  anything. The stack test's fold-1 failures (2/10 finished) are the same release failure under retries.
+- Held fell to 26/40 from s3d's 16/20 (different seeds; within noise of each other: s3d [56.0, 94.2] vs s3e [49.5,
+  77.9] pooled).
+- Next for the Roy port (parked behind the RL redesign): why the cloth stays on the fingers after the jaw opens
+  (adhesion 0.1 on the box pads, the slide's bunching wrapping cloth round a finger).
