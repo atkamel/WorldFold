@@ -2092,3 +2092,21 @@ n = 20 per arm (`outputs/isaac/grasp/roy_s3e_place/`, side videos):
   77.9] pooled).
 - Next for the Roy port (parked behind the RL redesign): why the cloth stays on the fingers after the jaw opens
   (adhesion 0.1 on the box pads, the slide's bunching wrapping cloth round a finger).
+
+## Closed-loop residual RL (plan 2026-10-20-closed-loop-rl.md)
+
+### R0: gripper baselines, half fold, GPU `friction` profile (WATcloud 711464 / 711465, 2026-10-20)
+
+`quarter_fold_run.py --profile friction --fold2 none --no-retries --max-steps 400 --seeds 0..19`, dynamics DR off,
+1 cm cloth jitter, n = 20 each, the same seeds. Alignment = `fold_alignment.score(folds=(("y", 5),))` at the episode's
+end (`outputs/isaac/rl/r0_servo/`, with top videos; `outputs/isaac/rl/r0_open/`).
+
+| base | align mean (sd) | best | median | edge mean (best) | passed | env success | anchor drift |
+|---|---|---|---|---|---|---|---|
+| open loop (`IsaacArmExpert`, the profile's overshoot) | 6.10 (1.59) cm | 3.76 cm | 5.75 cm | 11.40 (4.88) cm | 0/20 [0, 16.1] | 19/20 | 2.9–4.5 cm on 16, 7–16 cm on 4 |
+| **closed loop** (`PLACE_SERVO=1`: corner steered onto the partner's current position) | **3.61 (0.89) cm** | **2.01 cm** | 3.36 cm | **6.90 (2.96) cm** | 0/20 [0, 16.1] | 12/20 | 7–12 cm, 23 cm on 1 (`cloth_dragged`) |
+
+- Steering the corner onto where the bottom layer is cut the mean misalignment by 41% and the edge by 39%.
+- It drags the bottom layer 2–3× further. The env's own success test reads goals at their start positions, so the
+  7 truncations are corners on a moved bottom layer, not misses. Alignment is what counts here.
+- Nothing passes (1.0 / 1.5 cm). The closed-loop base is R4's reference: mean 3.61 cm, edge 6.90 cm.
