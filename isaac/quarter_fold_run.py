@@ -4,6 +4,11 @@ the layer alignment after fold 1 and at the end (cloth_fold_rl.fold_alignment); 
 
     python isaac/quarter_fold_run.py --seeds 0,1 --out outputs/isaac/quarter/run --video
     WORLDFOLD_EXPERT_PARAMS="SQUEEZE=-0.05" python isaac/quarter_fold_run.py ...   # IsaacArmExpert overrides
+    python isaac/quarter_fold_run.py --profile roy --fold2 stack ...   # the Roy-port step-3 stack test
+
+Each fold-2 move that carries a stack (two corners) is scored "lifted" when, at some step, both corners are at least
+LIFT_MIN above where they lay when fold 2 began, both within HOLD_DIST of the gripper site, and less than STACK_GAP
+apart in height: both layers up in the jaws (isaac/grasp_metrics.py has the constants).
 """
 
 import argparse
@@ -16,7 +21,19 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 STACK_SPLIT = 0.03      # the stack's two corners further apart than this at the end: one layer was carried
+STACK_GAP = 0.01        # m in height between a lifted stack's corners: both layers in the jaws (plan step 3)
 FOLD2_CAUSES = ("no_grasp", "slip", "layers_split", "misplaced", "cloth_dragged", "unstable", "timeout")
+
+
+def stack_step(a, corners, rest_z, site):
+    """Update a stack move's score a = {"lifted", "rise"} with one step: corners (2, 3), their fold-2 start heights
+    rest_z (2,), the gripper site (3,)."""
+    from isaac.grasp_metrics import HOLD_DIST, LIFT_MIN
+    rise = corners[:, 2] - rest_z
+    near = np.linalg.norm(corners - site, axis=1) < HOLD_DIST
+    a["rise"] = [round(max(r0, float(r)), 4) for r0, r in zip(a["rise"], rise)]
+    a["lifted"] |= bool((rise >= LIFT_MIN).all() and near.all() and abs(corners[0, 2] - corners[1, 2]) < STACK_GAP)
+    return a
 
 
 def fold2_cause(rec):
@@ -45,7 +62,7 @@ def run(env, expert, seed, frames=None, trace=None):
     base = env.unwrapped
     _, info = env.reset(seed=seed)
     expert.reset()
-    moves, fold1 = {}, None
+    moves, fold1, rest, stack = {}, None, None, {}
     for t in range(base.max_episode_steps):
         stage = env.stage
         _, _, terminated, truncated, info = env.step(expert.act())
@@ -73,6 +90,17 @@ def run(env, expert, seed, frames=None, trace=None):
                           "q_target": None if expert.experts[(env.stage, p)].q_target is None else
                           np.round(expert.experts[(env.stage, p)].q_target, 3).tolist()}
             trace.append(row)
+        if env.stage == 1:
+            pos = base.cloth_positions()
+            rest = pos[:, 2].copy() if rest is None else rest
+            for mv in env.stages[1].moves:
+                if len(mv.corners) != 2:
+                    continue
+                c = pos[list(mv.corners)]
+                if mv.prefix not in stack:     # start_gap: how far apart fold 1 left the two corners
+                    stack[mv.prefix] = {"lifted": False, "rise": [0.0, 0.0],
+                                        "start_gap": round(float(np.linalg.norm(c[0, :2] - c[1, :2])), 4)}
+                stack_step(stack[mv.prefix], c, rest[list(mv.corners)], base.gripper_position(mv.prefix))
         if env.stage == 1 and fold1 is None:
             s = score(base.cloth_positions(), folds=(("y", 5),))
             fold1 = {"mean": round(s["mean"], 4), "edge_max": round(s["edge_max"], 4)}
@@ -84,7 +112,7 @@ def run(env, expert, seed, frames=None, trace=None):
             "reason": info["termination_reason"] or "truncated", "retries": sum(expert.retries.values()),
             "anchor_drift": round(info["anchor_drift"], 4), "moves": moves, "fold1_align": fold1,
             "align": {"mean": round(s["mean"], 4), "edge_max": round(s["edge_max"], 4), "passed": s["passed"]},
-            "stack_gap": round(float(np.linalg.norm(pos[CLOTH_0, :2] - pos[CLOTH_10, :2])), 4)}
+            "stack_gap": round(float(np.linalg.norm(pos[CLOTH_0, :2] - pos[CLOTH_10, :2])), 4), "stack": stack}
 
 
 def main():
@@ -93,11 +121,17 @@ def main():
     ap.add_argument("--out", default="outputs/isaac/quarter/run")
     ap.add_argument("--video", action="store_true")
     ap.add_argument("--profile", default="quarter")
+    ap.add_argument("--fold2", default=None, help="stack: fold 2 lifts each fold-1 stack (make_quarter_fold_env)")
+    ap.add_argument("--overshoot", default=None, help="fold-1 'lx,ly,rx,ry' (m) placement offsets, as grasp_bench's")
     args = ap.parse_args()
     from isaac.isaac_env import make_quarter_fold_env
-    env = make_quarter_fold_env(profile=args.profile, cameras={"top": 400} if args.video else None)
-    from isaac.fold_expert import IsaacQuarterFoldExpert, _apply_env_params
+    env = make_quarter_fold_env(profile=args.profile, cameras={"top": 400} if args.video else None, fold2=args.fold2)
+    from isaac.fold_expert import OVERSHOOTS, IsaacQuarterFoldExpert, _apply_env_params
     _apply_env_params()
+    if args.overshoot:
+        lx, ly, rx, ry = (float(v) for v in args.overshoot.split(","))
+        OVERSHOOTS[args.profile][(0, "left_")][:] = (lx, ly, 0.0)
+        OVERSHOOTS[args.profile][(0, "right_")][:] = (rx, ry, 0.0)
     expert = IsaacQuarterFoldExpert(env, profile=args.profile)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

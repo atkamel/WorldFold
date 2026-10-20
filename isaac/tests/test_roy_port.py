@@ -45,3 +45,25 @@ def test_bench_knobs_take_bare_words():
     from isaac.grasp_bench import parse_kv
     assert parse_kv("pads=box,gripper_closed=-0.17,gripper_drive.stiffness=50") == \
         {"pads": "box", "gripper_closed": -0.17, "gripper_drive": {"stiffness": 50}}
+
+
+def _stack(top, bottom, site=(0.0, 0.0, 0.05)):
+    from isaac.quarter_fold_run import stack_step
+    a = {"lifted": False, "rise": [0.0, 0.0]}
+    return stack_step(a, np.array([top, bottom]), np.array([0.528, 0.52]) - 0.5, np.array(site))
+
+
+def test_a_stack_counts_as_lifted_only_with_both_layers_up_in_the_jaws():
+    assert _stack((0.0, 0.0, 0.06), (0.0, 0.0, 0.055))["lifted"]
+    assert not _stack((0.0, 0.0, 0.06), (0.0, 0.0, 0.02))["lifted"]                 # the bottom layer stayed down
+    assert not _stack((0.0, 0.0, 0.06), (0.08, 0.0, 0.055))["lifted"]               # the bottom one is out of the jaws
+    assert _stack((0.0, 0.0, 0.06), (0.0, 0.0, 0.02))["rise"] == [0.032, 0.0]
+
+
+def test_expert_params_from_the_environment_accept_bare_words(monkeypatch):
+    from isaac.fold_expert import IsaacArmExpert, _apply_env_params
+    monkeypatch.setattr(IsaacArmExpert, "GRASP", IsaacArmExpert.GRASP)
+    monkeypatch.setattr(IsaacArmExpert, "PRESS", IsaacArmExpert.PRESS)
+    monkeypatch.setenv("WORLDFOLD_EXPERT_PARAMS", "GRASP=slide,PRESS=0.01")
+    _apply_env_params()
+    assert IsaacArmExpert.GRASP == "slide" and IsaacArmExpert.PRESS == 0.01

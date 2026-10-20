@@ -600,7 +600,11 @@ def _apply_env_params():
         key, val = item.split("=", 1)
         if not hasattr(IsaacArmExpert, key):
             raise ValueError(f"WORLDFOLD_EXPERT_PARAMS: IsaacArmExpert has no {key}")
-        setattr(IsaacArmExpert, key, json.loads(val))
+        try:
+            val = json.loads(val)
+        except json.JSONDecodeError:      # a bare word: GRASP=slide
+            pass
+        setattr(IsaacArmExpert, key, val)
 
 
 _apply_env_params()

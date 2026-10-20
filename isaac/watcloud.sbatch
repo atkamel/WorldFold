@@ -63,7 +63,7 @@ docker run --rm --gpus "$GPUS" $IMAGE bash -c 'ls /dev/nvidia* | tr "\n" " "; ec
 # job 707324: "Creating scene acceleration structures" -> "Hang detected"), so it is off on WATcloud
 KIT_ARGS=${WORLDFOLD_KIT_ARGS:---/app/hangDetector/enabled=false}
 docker run --rm --gpus "$GPUS" -e NVIDIA_DRIVER_CAPABILITIES=all -e JOB=${SLURM_JOB_ID:-local} \
-    -e WORLDFOLD_KIT_ARGS="$KIT_ARGS" --network=host \
+    -e WORLDFOLD_KIT_ARGS="$KIT_ARGS" -e WORLDFOLD_EXPERT_PARAMS --network=host \
     -v "$REPO":/workspace/WorldFold -v "$CACHE":/root/.cache -w /workspace/WorldFold $IMAGE \
     bash -c 'ln -sfn /opt/lehome-challenge/Assets Assets && "$ISAAC_PY" -u "$@"; rc=$?
              mkdir -p outputs/watcloud/kitlogs-$JOB && cp -r /opt/lehome-challenge/.venv/lib/python3.11/site-packages/isaacsim/kit/logs/. outputs/watcloud/kitlogs-$JOB/ 2>/dev/null
