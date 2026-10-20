@@ -41,17 +41,17 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
 
-**2026-10-20, RL redesign (user: the fold-level RL was poorly designed; dig deeper and redesign):** plan
-[superpowers/plans/2026-10-20-closed-loop-rl.md](superpowers/plans/2026-10-20-closed-loop-rl.md), **awaiting the
-user's sign-off**. `isaac/fold_rl.py` chose 18 move parameters once per fold and then ran blind, aimed at the partner
-vertex's start position, and got 922 learning signals in 10 h (strip_r2: 19 versions, flat at 9-10 cm). The new design:
-a per-step residual on the scripted gripper target from carry to settle, aimed at the partner's current position, SAC
-with RLPD settings and noisy prior data, snapshots at carry start, GPU scene copies. Gate R0 first: can a welded
-(perfect) grip reach the bar at all.
-
-**Roy port step 3 (running):** WATcloud 711407 (s3e, 7 cm placement correction, seeds 600010-29) and 711408
-(`quarter_fold_run.py --profile roy --fold2 stack`, the two-layer stack test, seeds 0-9). Interim: the correction
-doesn't place (fold 1 unfinished in 5 of 7 stack episodes, corners 6-25 cm off).
+**2026-10-20, closed-loop residual RL (plan [superpowers/plans/2026-10-20-closed-loop-rl.md](superpowers/plans/2026-10-20-closed-loop-rl.md), signed off):**
+half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
+- **R0 done:** closed-loop base (`PLACE_SERVO=1`, `isaac/place_servo.py`) aligns 3.61 cm mean (open loop 6.10), 0/20
+  at the bar, but drags the bottom layer 7-12 cm. A/B running (WATcloud 711480): release 1.2 cm above the partner,
+  live goal capped at 3 cm from the start, full arc height.
+- **R1-R3 built and tested without Isaac:** snapshots (`snapshot`/`restore`), the window env
+  (`isaac/precision_env.py`), the learner (`isaac/rlpd.py`, subagent, lead-reviewed), the driver
+  (`isaac/precision_rl.py`). R1 on Isaac running (711474, `check-restore`, also the first multi-copy smoke test).
+- **Next:** R1 verdict -> pick the base from the A/B -> `precision_rl.py train` overnight on WATcloud (R2 parity is its
+  version-0 evaluation).
+- **Roy port, parked:** its release fails (the cloth stays on the open fingers; s3e), which was also the "7 cm miss".
 
 **2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
 [superpowers/plans/2026-10-14-quarter-fold-rl.md](superpowers/plans/2026-10-14-quarter-fold-rl.md), signed off.
@@ -186,7 +186,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 233 fast on macOS 2026-10-20, 1 failing there (#15) (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 253 fast on macOS 2026-10-20, 1 failing there (#15) (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -247,6 +247,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-20 · **Closed-loop RL R0-R3:** R0 baselines (closed loop 3.61 cm vs open 6.10), s3e release failure found, snapshot/restore, window env, RLPD learner (subagent), driver; isaac/tests 52 passed, fast suite 253 passed + #15 · 99da9a4
 
 - 2026-10-20 · **RL redesign + stack test:** plan `superpowers/plans/2026-10-20-closed-loop-rl.md` (3 research agents); `make_quarter_fold_env(fold2="stack")`, `quarter_fold_run.py --fold2/--overshoot` + per-arm stack score, `WORLDFOLD_EXPERT_PARAMS` bare words and passed into the container. Fast suite 233 passed, 1 failing (#15) · (this commit)
 
