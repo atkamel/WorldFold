@@ -24,6 +24,7 @@ import numpy as np
 
 from isaac.fold_expert import IsaacArmExpert
 from isaac.servo_expert import IsaacServoExpert
+from mujuco.cloth_params import TABLE_TOP_Z
 
 
 class IsaacPlaceServoExpert(IsaacServoExpert):
@@ -34,6 +35,9 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     # m: the live goal may stray at most this far (per axis) from the partner's start position; None: unbounded.
     # R0 (results.md): unbounded chasing dragged the bottom layer 7-12 cm
     LIVE_MAX = None
+    # m above the table: the steered tip (residual included) never goes lower, so a residual can't drive the jaws
+    # into the table (p1, 2026-10-20: the noisy prior's episodes blew the cloth up); None: no floor
+    Z_FLOOR = 0.005
 
     PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped")
 
@@ -54,6 +58,11 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             start = np.asarray(self.goal(), dtype=float)
             goal = start + np.clip(goal - start, -self.LIVE_MAX, self.LIVE_MAX)
         return goal
+
+    def _tip(self, tip):
+        if self.Z_FLOOR is not None:
+            tip = np.r_[tip[:2], max(float(tip[2]), TABLE_TOP_Z + self.Z_FLOOR)]
+        return tip
 
     def _start_carry(self):
         self.sv.update(path=self._corner_path(self._corner(), self._goal_now()), k=0, k_steps=0, slip=0)
@@ -88,7 +97,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         if name == "carry":
             path, k = self.sv["path"], self.sv["k"]
             target = path[min(k, len(path) - 1)]
-            action[0:5], _ = self._toward(self._steer(target) + self.residual, jaw, weight=0.05)
+            action[0:5], _ = self._toward(self._tip(self._steer(target) + self.residual), jaw, weight=0.05)
             self.sv["k_steps"] += 1
             if np.linalg.norm(corner - target) < self.CORNER_WP_TOL or self.sv["k_steps"] > self.WP_PATIENCE:
                 self.sv["k"], self.sv["k_steps"] = k + 1, 0
@@ -97,13 +106,13 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             action[0:5] *= self.CARRY_SPEED
         elif name == "place":
             goal = self._goal_now()
-            action[0:5], _ = self._toward(self._steer(goal + [0.0, 0.0, self.PRESS_Z]) + self.residual, jaw,
-                                          weight=0.05)
+            action[0:5], _ = self._toward(self._tip(self._steer(goal + [0.0, 0.0, self.PRESS_Z]) + self.residual),
+                                          jaw, weight=0.05)
             if (np.linalg.norm(corner[:2] - goal[:2]) < self.PLACE_TOL and corner[2] - goal[2] < 0.015) \
                     or self.phase_steps >= self.PLACE_PATIENCE:
                 self._start_hold()
         else:   # hold: stay, plus the residual, until the gate and the vote let go
-            action[0:5], _ = self._toward(self.hold_site + self.residual, jaw, weight=0.05)
+            action[0:5], _ = self._toward(self._tip(self.hold_site + self.residual), jaw, weight=0.05)
             if self.release_allowed and (self.release_vote or self.phase_steps >= self.HOLD_CAP):
                 self.plan["arc"], self.wp = [self._q()], 0      # release where the arm is, not at the hold start
                 self._go("release")

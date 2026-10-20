@@ -83,6 +83,17 @@ def terminal_reward(cloth):
     return r + (PASS_BONUS if s["passed"] else 0.0), s
 
 
+def instability(sub):
+    """Which of IsaacClothFoldEnv._failed's checks fire, and by how much (particles in the copy's frame)."""
+    from isaac.isaac_env import CLOTH_SPEED_LIMIT, WORKSPACE_XY
+    pos, vel = sub._particle_positions(), sub._particle_vel
+    finite = np.all(np.isfinite(pos), axis=1)
+    speed = np.linalg.norm(np.nan_to_num(vel), axis=1)
+    return {"nan": int((~finite).sum()), "out": int((np.abs(np.nan_to_num(pos[:, :2])) > WORKSPACE_XY).any(axis=1).sum()),
+            "fast": int((speed > CLOTH_SPEED_LIMIT).sum()), "vmax": round(float(speed.max()), 2),
+            "zmin": round(float(np.nanmin(pos[:, 2])), 3), "zmax": round(float(np.nanmax(pos[:, 2])), 3)}
+
+
 def apply_action(experts, action):
     """Move each arm's residual by its action and set its release vote."""
     a = np.clip(np.asarray(action, float).reshape(len(ARMS), 4), -1.0, 1.0)
@@ -258,6 +269,7 @@ class PrecisionBatch:
                 rew[i] += -FAIL if reason in ("unstable", "cloth_dragged") else (r_end if term[i] else 0.0)
                 st["final"] = {"reason": reason, "steps": st["t"], "mean": round(s["mean"], 4),
                                "dropped": [p for p in ARMS if ex[p].dropped],
+                               "instability": instability(sub) if reason == "unstable" else None,
                                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
                                "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS}}
                 infos[i] = st["final"]

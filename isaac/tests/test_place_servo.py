@@ -106,3 +106,11 @@ def test_live_goal_is_capped_around_the_start(monkeypatch):
     e.goal = lambda: start
     e.base.cloth[0] += [0.08, -0.01, 0.0]
     assert np.allclose(e._goal_now(), start + [0.03, -0.01, 0.0])
+
+
+def test_the_floor_keeps_a_downward_residual_off_the_table():
+    e = _expert()
+    e._go("place")
+    e.residual = np.array([0.0, 0.0, -0.06])
+    e.act()
+    assert e._ik.tips[-1][2] >= TABLE_TOP_Z + e.Z_FLOOR - 1e-12

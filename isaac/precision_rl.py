@@ -29,7 +29,7 @@ TRAIN_SEED, EVAL_SEED = 800000, 900000
 N_TRAIN_SNAPS, N_EVAL_SNAPS = 160, 16
 PRIOR_EPISODES = 16
 EVAL_EVERY = 10_000              # env steps
-OU_THETA, OU_SIGMA = 0.15, 0.2   # prior-data noise, action units (DELTA m each)
+OU_THETA, OU_SIGMA = 0.15, 0.1   # prior-data noise, action units (DELTA m each)
 
 
 def _wilson(k, n, z=1.96):
@@ -125,6 +125,47 @@ def check_restore(args):
             print("RESTORE", json.dumps({"seed": seeds[i], "no_window": True}), flush=True)
 
 
+def check_recover(args):
+    """Can a copy come back after its cloth blows up? Clean run, a forced blow-up (the jaws driven into the table with
+    the floor off), plain restores, then park + settle + restore; and the noisy prior with the floor on."""
+    from isaac.place_servo import IsaacPlaceServoExpert
+    from isaac.precision_env import ACT_DIM, PrecisionBatch, instability
+    pb = PrecisionBatch(args.copies)
+    seeds = list(range(820000, 820000 + pb.n))
+    snaps, _ = pb.scripted_to_window(seeds)
+    ok = [i for i in range(pb.n) if snaps[i] is not None]
+    fill = [snaps[i] if snaps[i] is not None else snaps[ok[0]] for i in range(pb.n)]
+    zero = lambda obs: np.zeros((pb.n, ACT_DIM))
+    down = np.zeros((pb.n, ACT_DIM))
+    down[:, 2] = down[:, 6] = -1.0
+
+    def report(tag, finals):
+        for i in range(pb.n):
+            print("RECOVER", tag, i, json.dumps({k: finals[i][k] for k in ("reason", "steps", "mean", "instability")}),
+                  json.dumps(instability(pb.subs[i])), flush=True)
+
+    report("clean", run_episodes(pb, fill, zero))
+    floor, IsaacPlaceServoExpert.Z_FLOOR = IsaacPlaceServoExpert.Z_FLOOR, None
+    report("forced", run_episodes(pb, fill, lambda obs: down))
+    IsaacPlaceServoExpert.Z_FLOOR = floor
+    report("restore_1", run_episodes(pb, fill, zero))
+    report("restore_2", run_episodes(pb, fill, zero))
+    for sub in pb.subs:
+        sub.park()
+    for e in (e for ex in pb.experts for e in ex.values()):
+        e.phase = e.PHASES.index("done")
+    for _ in range(30):
+        pb._scripted_step()
+    report("after_park", run_episodes(pb, fill, zero))
+    rng = np.random.default_rng(0)
+    ou = np.zeros((pb.n, ACT_DIM))
+
+    def noisy(obs):
+        ou[:] += -OU_THETA * ou + OU_SIGMA * rng.standard_normal(ou.shape)
+        return ou.copy()
+    report("ou_floor", run_episodes(pb, fill, noisy))
+
+
 def train(args):
     import torch
     from isaac.precision_env import ACT_DIM, OBS_DIM, PrecisionBatch
@@ -212,6 +253,8 @@ def train(args):
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("check-recover")
+    r.add_argument("--copies", type=int, default=8)
     c = sub.add_parser("check-restore")
     c.add_argument("--copies", type=int, default=8)
     c.add_argument("--seeds", default="810000:810008")
@@ -225,7 +268,7 @@ def main():
     t.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     sys.argv = sys.argv[:1]              # AppLauncher reads sys.argv
-    {"check-restore": check_restore, "train": train}[args.cmd](args)
+    {"check-restore": check_restore, "check-recover": check_recover, "train": train}[args.cmd](args)
 
 
 if __name__ == "__main__":
