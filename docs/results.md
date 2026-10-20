@@ -2033,3 +2033,10 @@ the fixed finger led and pushed the cloth ahead of both pads. `PinchIK.solve`'s 
 for antiparallel axes; on the roy layout `_home_seed`'s tie-break picked the right-arm wrist-roll family. Fixed with a
 `jaw_weight` term (commit e0f8d79); offline the best seed then aligns at +0.99 (was −0.99). Not yet re-run on Isaac
 (WATcloud unreachable, Modal hosts on driver 610).
+
+**After the jaw fix (e0f8d79), `roy` on lehome, n = 10:**
+
+| run | settings | left a/h/p/r | right a/h/p/r | what the trace and side video show |
+|---|---|---|---|---|
+| 3d | slide, soft tilt 0.005, `RELEASE_RATE=0.3` | 0/0/1/0 | 0/0/1/0 | jaw axis now along the slide (+1.00, was −0.99); the open jaws straddle the cloth edge and close on it, the cloth rises as the gripper lifts, then slides out; jaw at −0.17 (limit); the slide stalls after ~1 cm of its 4 (fingertip 1.5 cm from the corner at close, planned 3.4) |
+| 2b | corner pinch, soft tilt 0.005 | 0/0/0/0 | 0/0/0/0 | the pinch can't reach: with the jaw forced along the corner diagonal and the gripper tilted, the 5-joint arm ends 4–6 cm from the corner (it leans its fingers only radially) |
