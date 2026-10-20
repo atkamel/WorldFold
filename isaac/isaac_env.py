@@ -695,6 +695,26 @@ class IsaacClothFoldEnv(gym.Env):
         self.lab.sim.set_setting("/app/player/playSimulations", True)
         self._kit_ticked = time.time()
 
+    # ---- residual-RL snapshots (plan 2026-10-20 R1; GPU pipeline) ----
+    SNAPSHOT_FIELDS = ("_joint_targets", "_gripper_closed", "_particles", "_particle_vel", "_step_count",
+                       "_success_steps")
+
+    def snapshot(self):
+        """This env's copy of the scene plus the per-env state that step() reads, for restore()."""
+        import copy
+        return {"scene": self._scene_call(self.lab.snapshot_copy, self._copy),
+                "env": {f: copy.deepcopy(getattr(self, f)) for f in self.SNAPSHOT_FIELDS}}
+
+    def restore(self, snap):
+        """Put the copy back where snapshot() found it (no physics step); friction grasp only (no pins to restore)."""
+        import copy
+        if self.grasp_mode != "friction":
+            raise ValueError("restore() covers the friction grasp only")
+        self._scene_call(self.lab.restore_copy, self._copy, snap["scene"])
+        for f, v in snap["env"].items():
+            setattr(self, f, copy.deepcopy(v))
+        self._submit_targets()
+
     # ---- gym API ----
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)

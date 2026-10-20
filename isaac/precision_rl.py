@@ -1,0 +1,232 @@
+"""Residual RL on the half fold's placement window (docs/superpowers/plans/2026-10-20-closed-loop-rl.md, R1-R4).
+
+One Isaac process holds B scene copies (isaac.precision_env.PrecisionBatch, GPU `friction` profile, dynamics DR off)
+and the learner (isaac.rlpd.RLPDAgent, SAC with RLPD settings) on the same GPU. Episodes start from snapshots taken at
+the start of the carry, so only the window (carry, place, hold, release, settle) is simulated per episode.
+
+    python isaac/precision_rl.py check-restore --copies 8 --seeds 810000:810008       # R1
+    python isaac/precision_rl.py train --run outputs/isaac/rl/p1 --copies 8 --hours 8   # R2 (version 0) + R4
+
+`train` builds (or reloads) two snapshot libraries in the run directory, train (seeds 800000+) and eval (900000+);
+evaluates version 0, the zero residual, which is the scripted base (R2's parity number); collects PRIOR_EPISODES
+episodes of the base with Ornstein-Uhlenbeck noise on the action; then trains online, UTD gradient updates per new
+transition, evaluating the deterministic policy on the eval library every EVAL_EVERY env steps. learner.jsonl gets
+one row per batch of episodes and one per evaluation; agent.pt is the latest learner, best.pt the best evaluation.
+"""
+
+import argparse
+import json
+import pickle
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+TRAIN_SEED, EVAL_SEED = 800000, 900000
+N_TRAIN_SNAPS, N_EVAL_SNAPS = 160, 16
+PRIOR_EPISODES = 16
+EVAL_EVERY = 10_000              # env steps
+OU_THETA, OU_SIGMA = 0.15, 0.2   # prior-data noise, action units (DELTA m each)
+
+
+def _wilson(k, n, z=1.96):
+    if n == 0:
+        return [0.0, 0.0]
+    p = k / n
+    c = (p + z * z / (2 * n)) / (1 + z * z / n)
+    h = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return [round(100 * (c - h), 1), round(100 * (c + h), 1)]
+
+
+def summarize(finals):
+    f = [x for x in finals if x is not None]
+    if not f:
+        return {"n": 0}
+    m = np.array([x["mean"] for x in f]) * 100
+    e = np.array([x["edge_max"] for x in f]) * 100
+    k = sum(x["passed"] for x in f)
+    reasons = {}
+    for x in f:
+        reasons[x["reason"]] = reasons.get(x["reason"], 0) + 1
+    return {"n": len(f), "mean_cm": round(float(m.mean()), 2), "mean_sd": round(float(m.std()), 2),
+            "best_mean_cm": round(float(m.min()), 2), "edge_cm": round(float(e.mean()), 2), "passed": k,
+            "pass_wilson": _wilson(k, len(f)), "reasons": reasons}
+
+
+def snapshot_library(pb, path, seed0, count):
+    """count snapshots from seeds seed0, seed0+1, ... (seeds whose copy never reaches the window are skipped)."""
+    path = Path(path)
+    if path.exists():
+        return pickle.loads(path.read_bytes())
+    snaps, seed = [], seed0
+    while len(snaps) < count:
+        got, _ = pb.scripted_to_window(list(range(seed, seed + pb.n)))
+        snaps += [s for s in got if s is not None]
+        seed += pb.n
+        print(f"SNAPS {path.name} {len(snaps)}/{count} (seeds to {seed})", flush=True)
+    snaps = snaps[:count]
+    path.write_bytes(pickle.dumps(snaps))
+    return snaps
+
+
+def run_episodes(pb, snaps, policy, on_step=None):
+    """One window episode per copy from snaps (len n); policy(obs (n, D)) -> actions (n, A). on_step(transitions)
+    gets [(obs, act, rew, next_obs, terminal)] for the live copies after every step. Returns the n finals."""
+    from isaac.precision_env import ACT_DIM
+    obs = pb.reset_window(snaps)
+    finals = [None] * pb.n
+    while any(pb.state[i]["alive"] for i in range(pb.n)):
+        act = np.clip(np.asarray(policy(obs), dtype=np.float32).reshape(pb.n, ACT_DIM), -1.0, 1.0)
+        nobs, rew, term, done, alive, infos = pb.step(act)
+        if on_step is not None:
+            on_step([(obs[i], act[i], rew[i], nobs[i], term[i]) for i in range(pb.n) if alive[i]])
+        for i in range(pb.n):
+            if infos[i] is not None:
+                finals[i] = infos[i]
+        obs = nobs
+    return finals
+
+
+def evaluate(pb, snaps, policy):
+    finals = []
+    for k in range(0, len(snaps), pb.n):
+        chunk = snaps[k:k + pb.n]
+        finals += run_episodes(pb, chunk + [chunk[0]] * (pb.n - len(chunk)), policy)[:len(chunk)]
+    return finals
+
+
+def check_restore(args):
+    """R1: per copy, the base run straight through the window vs twice from the restored snapshot."""
+    from isaac.precision_env import ACT_DIM, PrecisionBatch
+    pb = PrecisionBatch(args.copies)
+    a, b = (int(v) for v in args.seeds.split(":"))
+    zero = lambda obs: np.zeros((pb.n, ACT_DIM))
+    for start in range(a, b, pb.n):
+        seeds = list(range(start, start + pb.n))
+        snaps, direct = pb.scripted_to_window(seeds, finish=True)
+        ok = [i for i in range(pb.n) if snaps[i] is not None]
+        if not ok:
+            continue
+        fill = [snaps[i] if snaps[i] is not None else snaps[ok[0]] for i in range(pb.n)]
+        t0, s0 = time.time(), pb.batch.steps
+        r1 = run_episodes(pb, fill, zero)
+        print("THROUGHPUT", json.dumps({"copies": pb.n, "batch_steps": pb.batch.steps - s0,
+                                        "wall_s": round(time.time() - t0, 1),
+                                        "env_steps_per_s": round(pb.n * (pb.batch.steps - s0) / (time.time() - t0), 2)}),
+              flush=True)
+        r2 = run_episodes(pb, fill, zero)
+        for i in ok:
+            row = {"seed": seeds[i], "direct": direct[i], "restored_1": r1[i], "restored_2": r2[i]}
+            print("RESTORE", json.dumps(row), flush=True)
+        for i in set(range(pb.n)) - set(ok):
+            print("RESTORE", json.dumps({"seed": seeds[i], "no_window": True}), flush=True)
+
+
+def train(args):
+    import torch
+    from isaac.precision_env import ACT_DIM, OBS_DIM, PrecisionBatch
+    from isaac.rlpd import ReplayBuffer, RLPDAgent
+    run = Path(args.run)
+    run.mkdir(parents=True, exist_ok=True)
+    log = open(run / "learner.jsonl", "a")
+
+    def write(row):
+        row["time"] = time.strftime("%H:%M:%S")
+        log.write(json.dumps(row) + "\n")
+        log.flush()
+        print("LOG", json.dumps(row), flush=True)
+
+    t_end = time.time() + 3600 * args.hours
+    pb = PrecisionBatch(args.copies)
+    train_snaps = snapshot_library(pb, run / "snaps_train.pkl", TRAIN_SEED, N_TRAIN_SNAPS)
+    eval_snaps = snapshot_library(pb, run / "snaps_eval.pkl", EVAL_SEED, N_EVAL_SNAPS)
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    agent = RLPDAgent(OBS_DIM, ACT_DIM, device=device, init_std=args.init_std, seed=args.seed)
+    if (run / "agent.pt").exists():
+        agent.load(run / "agent.pt")
+    online = ReplayBuffer(OBS_DIM, ACT_DIM, 1_000_000, seed=args.seed)
+    prior = ReplayBuffer(OBS_DIM, ACT_DIM, 200_000, seed=args.seed + 1)
+    rng = np.random.default_rng(args.seed)
+    state = json.loads((run / "state.json").read_text()) if (run / "state.json").exists() else \
+        {"env_steps": 0, "episodes": 0, "version": 0, "best": None, "next_eval": 0}
+
+    def det(obs):
+        return agent.act(obs, deterministic=True)
+
+    def do_eval():
+        t0 = time.time()
+        s = summarize(evaluate(pb, eval_snaps, det))
+        write({"eval": s, "version": state["version"], "env_steps": state["env_steps"],
+               "wall_s": round(time.time() - t0, 1)})
+        agent.save(run / f"v{state['version']}.pt")
+        if s["n"] and (state["best"] is None or s["mean_cm"] < state["best"]):
+            state["best"] = s["mean_cm"]
+            agent.save(run / "best.pt")
+        state["version"] += 1
+        state["next_eval"] = state["env_steps"] + EVAL_EVERY
+
+    if state["env_steps"] == 0:
+        do_eval()                       # version 0: the zero residual = the scripted base (R2 parity)
+        ou = np.zeros((pb.n, ACT_DIM))
+        def noisy(obs):
+            ou[:] += -OU_THETA * ou + OU_SIGMA * rng.standard_normal(ou.shape)
+            return ou.copy()
+        for k in range(0, PRIOR_EPISODES, pb.n):
+            ou[:] = 0.0
+            batch = [train_snaps[j] for j in rng.integers(len(train_snaps), size=pb.n)]
+            finals = run_episodes(pb, batch, noisy, on_step=lambda tr: [prior.add(*t) for t in tr])
+            write({"prior": summarize(finals), "transitions": len(prior)})
+        prior.save(run / "prior.npz")
+    elif (run / "prior.npz").exists():
+        prior.load(run / "prior.npz")
+
+    while time.time() < t_end:
+        stats = {}
+
+        def learn(tr):
+            for t in tr:
+                online.add(*t)
+            state["env_steps"] += len(tr)
+            if len(online) >= args.batch_size // 2:
+                for _ in tr:                # RLPD's rate: one actor update and UTD critic updates per transition
+                    stats.update(agent.update(online, prior if len(prior) else None, batch_size=args.batch_size,
+                                              utd=args.utd))
+        t0 = time.time()
+        batch = [train_snaps[j] for j in rng.integers(len(train_snaps), size=pb.n)]
+        finals = run_episodes(pb, batch, lambda obs: agent.act(obs), on_step=learn)
+        state["episodes"] += pb.n
+        write({"train": summarize(finals), "env_steps": state["env_steps"], "episodes": state["episodes"],
+               "wall_s": round(time.time() - t0, 1), **{k: round(float(v), 4) for k, v in stats.items()}})
+        agent.save(run / "agent.pt")
+        (run / "state.json").write_text(json.dumps(state))
+        if state["env_steps"] >= state["next_eval"]:
+            do_eval()
+            (run / "state.json").write_text(json.dumps(state))
+    do_eval()
+    (run / "state.json").write_text(json.dumps(state))
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    c = sub.add_parser("check-restore")
+    c.add_argument("--copies", type=int, default=8)
+    c.add_argument("--seeds", default="810000:810008")
+    t = sub.add_parser("train")
+    t.add_argument("--run", required=True)
+    t.add_argument("--copies", type=int, default=8)
+    t.add_argument("--hours", type=float, default=8.0)
+    t.add_argument("--utd", type=int, default=10)
+    t.add_argument("--batch-size", type=int, default=256)
+    t.add_argument("--init-std", type=float, default=0.1)
+    t.add_argument("--seed", type=int, default=0)
+    args = ap.parse_args()
+    sys.argv = sys.argv[:1]              # AppLauncher reads sys.argv
+    {"check-restore": check_restore, "train": train}[args.cmd](args)
+
+
+if __name__ == "__main__":
+    main()

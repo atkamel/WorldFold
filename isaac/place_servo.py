@@ -10,9 +10,15 @@ Two hooks for a learned policy, both neutral by default (the scripted base):
   release_vote  the arm releases once its gate is open (every arm of the fold in hold) and its vote is True, or after
                 HOLD_CAP steps in hold
 No retries: a corner that leaves the jaw in the carry sets `dropped` and the arm goes on to release.
+
+WORLDFOLD_PLACE_PARAMS="PRESS_Z=0.012,LIVE_MAX=0.03" overrides this class's attributes for a run (as
+WORLDFOLD_EXPERT_PARAMS does IsaacArmExpert's).
 """
 
 from __future__ import annotations
+
+import json
+import os
 
 import numpy as np
 
@@ -25,6 +31,9 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     PLACE_PATIENCE = 40
     PRESS_Z = 0.003          # place target this far above the partner vertex: the corner rests on the bottom layer
     HOLD_CAP = 20            # steps in hold before the arm releases without its vote
+    # m: the live goal may stray at most this far (per axis) from the partner's start position; None: unbounded.
+    # R0 (results.md): unbounded chasing dragged the bottom layer 7-12 cm
+    LIVE_MAX = None
 
     PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped")
 
@@ -40,7 +49,11 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         self.dropped = False
 
     def _goal_now(self):
-        return np.asarray((self.live_goal or self.goal)(), dtype=float)
+        goal = np.asarray((self.live_goal or self.goal)(), dtype=float)
+        if self.LIVE_MAX is not None and self.live_goal is not None:
+            start = np.asarray(self.goal(), dtype=float)
+            goal = start + np.clip(goal - start, -self.LIVE_MAX, self.LIVE_MAX)
+        return goal
 
     def _start_carry(self):
         self.sv.update(path=self._corner_path(self._corner(), self._goal_now()), k=0, k_steps=0, slip=0)
@@ -95,3 +108,14 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
                 self.plan["arc"], self.wp = [self._q()], 0      # release where the arm is, not at the hold start
                 self._go("release")
         return action
+
+
+def _apply_env_params():
+    for item in filter(None, (s.strip() for s in os.environ.get("WORLDFOLD_PLACE_PARAMS", "").split(","))):
+        key, val = item.split("=", 1)
+        if not hasattr(IsaacPlaceServoExpert, key):
+            raise ValueError(f"WORLDFOLD_PLACE_PARAMS: IsaacPlaceServoExpert has no {key}")
+        setattr(IsaacPlaceServoExpert, key, json.loads(val))
+
+
+_apply_env_params()

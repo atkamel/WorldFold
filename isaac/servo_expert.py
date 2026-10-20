@@ -48,6 +48,7 @@ class IsaacServoExpert(IsaacArmExpert):
     PINCH_CHECK = 6          # lift steps before judging "did the corner rise with the jaw"
     MAX_REGRASPS = 3
     CORNER_STEP = 0.02       # corner waypoint spacing along the carry arc (m)
+    ARC_FRAC = 0.6           # the corner's arc rises ARC_HEIGHT * ARC_FRAC
     CORNER_WP_TOL = 0.015
     WP_PATIENCE = 15         # steps per corner waypoint before moving on anyway
     STEER_CLIP = 0.03        # max gripper-target offset per step (m)
@@ -96,7 +97,7 @@ class IsaacServoExpert(IsaacArmExpert):
         path = []
         for s in np.linspace(0.0, 1.0, n + 1)[1:]:
             p = start + (end - start) * (1.0 - math.cos(math.pi * s)) / 2.0
-            p[2] = start[2] + (end[2] - start[2]) * s + ARC_HEIGHT * 0.6 * math.sin(math.pi * s)
+            p[2] = start[2] + (end[2] - start[2]) * s + ARC_HEIGHT * self.ARC_FRAC * math.sin(math.pi * s)
             path.append(p)
         return path
 

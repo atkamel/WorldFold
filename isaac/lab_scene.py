@@ -459,6 +459,35 @@ class SceneEnv(DirectRLEnv):
             cam.reset()
         self.sim.forward()
 
+    def snapshot_copy(self, c):
+        """Copy c's physical state for restore_copy (GPU pipeline; residual-RL snapshots, plan 2026-10-20 R1):
+        particle positions and velocities (the cloth view's frame), each arm's joint positions and velocities, and
+        the copy's 12 joint targets."""
+        cp = self.copies[c]
+        view = cp.cloth._cloth_prim_view
+        return {"pos": view.get_world_positions().detach().cpu().numpy(),
+                "vel": view.get_velocities().detach().cpu().numpy(),
+                "joints": {p: (arm.data.joint_pos.detach().cpu().numpy().copy(),
+                               arm.data.joint_vel.detach().cpu().numpy().copy()) for p, arm in cp.arms.items()},
+                "targets": self.targets[:, 12 * c:12 * c + 12].detach().cpu().numpy().copy()}
+
+    def restore_copy(self, c, snap):
+        """Write a snapshot_copy state back into copy c without a physics step."""
+        if self.device == "cpu":
+            raise ValueError("restore_copy needs the GPU pipeline (the particle-cloth tensor view)")
+        cp = self.copies[c]
+        view = cp.cloth._cloth_prim_view
+        dev = view.get_world_positions(clone=False).device
+        idx = torch.arange(snap["pos"].shape[0], device=dev)
+        view._physics_view.set_positions(torch.as_tensor(snap["pos"], device=dev), idx)
+        view._physics_view.set_velocities(torch.as_tensor(snap["vel"], device=dev), idx)
+        for p, arm in cp.arms.items():
+            q, v = snap["joints"][p]
+            arm.write_joint_state_to_sim(torch.as_tensor(q, device=self.device), torch.as_tensor(v, device=self.device))
+            arm.write_data_to_sim()
+        self.targets[:, 12 * c:12 * c + 12] = torch.as_tensor(snap["targets"], device=self.device)
+        self.sim.forward()
+
     def set_copy_targets(self, c, targets):
         """Copy c's 12 joint targets (left 6, right 6) for the next lab.step."""
         self.targets[:, 12 * c:12 * c + 12] = targets

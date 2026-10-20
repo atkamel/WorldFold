@@ -97,3 +97,12 @@ def test_slip_in_the_carry_marks_a_drop_and_holds():
     for _ in range(e.SLIP_STEPS):
         e.act()
     assert e.dropped and e.PHASES[e.phase] == "hold"
+
+
+def test_live_goal_is_capped_around_the_start(monkeypatch):
+    e = _expert()
+    monkeypatch.setattr(IsaacPlaceServoExpert, "LIVE_MAX", 0.03)
+    start = e.base.cloth[0].copy()
+    e.goal = lambda: start
+    e.base.cloth[0] += [0.08, -0.01, 0.0]
+    assert np.allclose(e._goal_now(), start + [0.03, -0.01, 0.0])
