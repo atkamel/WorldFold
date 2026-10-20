@@ -2024,3 +2024,12 @@ acquired / held / placed / released per arm (left | right).
 |---|---|---|---|---|
 | 2 | `roy` (Roy's bases and cloth placement, box pads, position gripper −0.17), corner pinch, `PINCH_ORIENTATION_WEIGHT=0.005` | 0/0/0/0 | 0/0/0/0 | jaws land within 0.6–1.2 cm of the corner, 0.7 cm up, close all the way to −0.17: nothing between the pads |
 | 3 | as 2, `GRASP=slide`, `RELEASE_RATE=0.3` | 0/0/0/0 | 1/0/0/0 | the slide runs (3.8 cm inward) and bunches the cloth (corner up 1.1–2.5 cm), but the jaw closes to −0.15…−0.17 and the cloth falls out; the open jaw (1.0 rad) met the table with the fingertip 0.7 cm up |
+| 3b | as 3, slide opens to Roy's 0.55 rad (`GRASP_OPEN`) | 0/0/0/0 | 0/0/0/0 | |
+| 3c | `roy` rebuilt on `lehome` (LeHome drives, CPU, adhesion 0.1), slide | 0/0/0/0 | 0/0/0/0 | n = 10 |
+| 1 | `friction` + `pads=box`, position gripper −0.17, our near-vertical pinch | lifts 7/7 | lifts 5/7 | n = 7 when read; held 0: the jaw sits at −0.170 (its limit), the corner rides up ~9.6 cm and slips once the carry moves sideways |
+
+**Root cause of steps 2–3c (side video + trace, 2026-10-20):** the jaw faced half a turn round (176–179° to the slide), so
+the fixed finger led and pushed the cloth ahead of both pads. `PinchIK.solve`'s cross-product orientation error is zero
+for antiparallel axes; on the roy layout `_home_seed`'s tie-break picked the right-arm wrist-roll family. Fixed with a
+`jaw_weight` term (commit e0f8d79); offline the best seed then aligns at +0.99 (was −0.99). Not yet re-run on Isaac
+(WATcloud unreachable, Modal hosts on driver 610).

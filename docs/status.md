@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-15 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (strip quarter fold, RL on WATcloud)
+**Updated:** 2026-10-15 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (Roy grasp port, plan 2026-10-19: steps 1–3 benched, jaw-orientation fix awaiting a re-run)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -235,6 +235,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-19/20 · **Roy grasp port, steps 1–3 (paused by the user):** box pads, roy profile (on lehome), soft pinch IK, slide grasp, side camera + bench video, WATcloud GPU-by-UUID. Benches: pads + our pinch lift but don't hold (0/20); roy pinch 0/40; slide 1/40, 0/40, 0/20 — jaw faced half a turn round (IK blind to antiparallel axes), fixed with `jaw_weight`, re-run pending WATcloud. 30 isaac tests pass · (this commit)
 
 - 2026-10-19 · **Plan:** port Roy's grasp into our env instead of merging his branch (user): `superpowers/plans/2026-10-19-roy-grasp-port.md`, 5 steps with tests and pass bars. No code · (this commit)
 
