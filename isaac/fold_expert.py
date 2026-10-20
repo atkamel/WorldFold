@@ -122,6 +122,9 @@ class IsaacArmExpert:
     # IK orientation weight at the pinch and the pose above it (m per rad). 0.1 keeps the jaw near vertical, which caps
     # reach at ~32 cm; Roy's grasp runs at 0.005 and tilts 30-46 deg (docs/superpowers/plans/2026-10-19-roy-grasp-port.md)
     PINCH_ORIENTATION_WEIGHT = ORIENTATION_WEIGHT
+    # firm weight on which way the jaw opens (isaac.pinch.PinchIK.solve jaw_weight) for the slide grasp's poses: with
+    # only the soft PINCH_ORIENTATION_WEIGHT the jaw came out turned half a round (bench roy_s3b, side video)
+    JAW_WEIGHT = 0.1
     # GRASP "slide", Roy's grasp (origin/ROY-vla-teacher, teacher/oracle/fold_plans.py pick_place): the open jaws land
     # on the table SLIDE_LEN outside the grasp point, press PRESS below the height at which they rest on it
     # (CONTACT_HEIGHT), and slide into the cloth along the jaw axis, moving finger leading, so the cloth bunches
@@ -217,9 +220,9 @@ class IsaacArmExpert:
         plan = {"jaw": jaw, "corner": corner.copy()}
         w = self.PINCH_ORIENTATION_WEIGHT
         q0 = q
-        q, e_above = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q, orientation_weight=w)
+        q, e_above = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q, orientation_weight=w, jaw_weight=self._jw)
         q_above = q
-        q, e_pinch = ik.solve(p, pinch, jaw, q, orientation_weight=w)
+        q, e_pinch = ik.solve(p, pinch, jaw, q, orientation_weight=w, jaw_weight=self._jw)
         if self.REGRASP_TILT and self.resynced and max(e_above, e_pinch) > self.REACH_TOL:
             w = TILT_WEIGHT                         # out of reach upright: let the jaw tilt
             q, _ = ik.solve(p, pinch + [0, 0, ABOVE], jaw, q0, orientation_weight=w)
@@ -227,19 +230,19 @@ class IsaacArmExpert:
             q, _ = ik.solve(p, pinch, jaw, q, orientation_weight=w)
         plan["above"] = q_above
         plan["pinch"] = q
-        q = self._add_arc(plan, pinch, place, jaw, q)
+        q = self._add_arc(plan, pinch, place, jaw, q, jaw_weight=self._jw)
         q, _ = ik.solve(p, place + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
         plan["retreat"] = q
         return plan
 
-    def _add_arc(self, plan, start, place, jaw, q):
+    def _add_arc(self, plan, start, place, jaw, q, jaw_weight=None):
         """The carry: a half ellipse from start to place rising ARC_HEIGHT, IK-solved into plan["arc"]; returns the last q."""
         ik, p = self._ik, self.prefix
         plan["arc"], plan["arc_tips"] = [], []
         for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
             tip = start + (place - start) * (1.0 - math.cos(math.pi * s)) / 2.0
             tip[2] = start[2] + (place[2] - start[2]) * s + self.ARC_HEIGHT * math.sin(math.pi * s)
-            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05)
+            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05, jaw_weight=jaw_weight)
             plan["arc"].append(q)
             plan["arc_tips"].append(tip)
         return q
@@ -260,18 +263,18 @@ class IsaacArmExpert:
         w = self.PINCH_ORIENTATION_WEIGHT
         q = self._home_seed(above, jaw) if from_q is None else list(from_q)
         plan = {"jaw": jaw, "corner": corner.copy(), "slide_dir": d}
-        plan["above"], _ = ik.solve(p, above, jaw, q, orientation_weight=w)
-        plan["pinch"], _ = ik.solve(p, start, jaw, plan["above"], orientation_weight=w)
+        plan["above"], _ = ik.solve(p, above, jaw, q, orientation_weight=w, jaw_weight=self._jw)
+        plan["pinch"], _ = ik.solve(p, start, jaw, plan["above"], orientation_weight=w, jaw_weight=self._jw)
         q, plan["slide"] = plan["pinch"], []
         for s in np.linspace(0.0, 1.0, max(2, int(np.ceil(self.SLIDE_LEN / 0.006))) + 1)[1:]:
-            q, _ = ik.solve(p, start + (grasp - start) * s, jaw, q, orientation_weight=w)
+            q, _ = ik.solve(p, start + (grasp - start) * s, jaw, q, orientation_weight=w, jaw_weight=self._jw)
             plan["slide"].append(q)
         place = self._place(np.asarray(self.goal(), dtype=float), g - corner[:2], corner)
-        q = self._add_arc(plan, grasp, place, jaw, q)
+        q = self._add_arc(plan, grasp, place, jaw, q, jaw_weight=self._jw)
         back = np.r_[place[:2] - self.RELEASE_BACKOFF * d, place[2]]
         plan["retreat_path"] = []
         for tip in [back] + [back + [0, 0, h] for h in np.arange(self.RETREAT_STEP, RETREAT + 1e-9, self.RETREAT_STEP)]:
-            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.02)
+            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.02, jaw_weight=self._jw)
             plan["retreat_path"].append(q)
         plan["retreat"] = q
         return plan
@@ -284,6 +287,12 @@ class IsaacArmExpert:
         place[k] = goal[k] - offset[k]
         return place
 
+    @property
+    def _jw(self):
+        """JAW_WEIGHT on a custom layout (pan-sweep seeds can land the jaw half a turn round) or a slide grasp; None on
+        the MJCF layout, whose SEED_Q seeds face the jaw the right way (the half fold keeps its old solves)."""
+        return self.JAW_WEIGHT if (self.GRASP == "slide" or self.base._prof.get("arm_bases") is not None) else None
+
     def _home_seed(self, tip, jaw):
         """SEED_Q on the MJCF layout; on another layout (quarter profile) the best of a pan sweep for the first pose,
         upright first (isaac/layout_search.py: one seed can land the chain on a flipped branch)."""
@@ -293,7 +302,8 @@ class IsaacArmExpert:
         best = None
         for pan in np.linspace(-1.8, 1.8, 7):
             for rest in (SEED_Q["left_"][1:], SEED_Q["right_"][1:]):
-                q, e = self._ik.solve(p, tip, jaw, [pan] + list(rest), iters=150)
+                q, e = self._ik.solve(p, tip, jaw, [pan] + list(rest), iters=150,
+                                      orientation_weight=self.PINCH_ORIENTATION_WEIGHT, jaw_weight=self._jw)
                 # moderate fold first (isaac/layout_search.py PINCH_FOLD: the jaw meets the upper arm past it), then
                 # closest, then fingers most nearly down
                 key = (max(q[2], q[3]) > 1.3, round(e, 4), self._ik.site_pose(p, q)[1][2, 2])
