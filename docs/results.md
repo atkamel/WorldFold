@@ -2057,3 +2057,16 @@ The video-based reading above ("the cloth slides out") was wrong: corners rise 1
 in the jaws to release. A full squeeze holds; softer squeezes don't. Placement is now the gap: held corners land a mean
 (+7.4, +4.3) cm (left) and (−6.8, +3.1) cm (right) off their goals, sd ~2 cm (s3d + v2, n = 18 / 14): inward, the
 grasp's inset plus the slide's push. Next: the mean miss as the roy overshoot (bench s3e, seeds 600010–29).
+
+**Step 3 stack test (WATcloud 711408, 2026-10-20).** `quarter_fold_run.py --profile roy --fold2 stack
+--overshoot=-0.074,-0.043,0.068,-0.031`, `WORLDFOLD_EXPERT_PARAMS=GRASP=slide,PINCH_ORIENTATION_WEIGHT=0.005,RELEASE_RATE=0.3`,
+seeds 0–9, retries on, 1 cm jitter, no dynamics DR (CPU). Output `outputs/isaac/quarter/roy_stack1/` (videos, traces).
+
+- Fold 1 with the 7 cm correction finished in **2/10** [5.7, 51.0]. The other 8 timed out after 2–4 retries with
+  corners 4–25 cm from their goals, anchor drift up to 18 cm. The correction moved the miss; it didn't remove it.
+- Stacks reaching fold 2: 4 (2 episodes × 2 arms). **Lifted with both layers: 0/4.**
+  - Seed 1 (stack gaps 0.6 and 0.4 cm): both corners of both stacks rose 11–15 cm, but never within 1 cm of each
+    other in height while within 5 cm of the site; the episode ended `cloth_dragged` (crease ends moved 20 cm).
+    Fold-1 alignment 5.9 / 10.7 cm (mean / edge).
+  - Seed 2 (stack gaps 13 cm, not a stack): each gripper caught one layer.
+- Not a test of the grasp at n = 4. The step-3 bar (≥ 15/20 stacks) is undecided; fold 1 placement blocks it.
