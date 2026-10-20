@@ -44,13 +44,13 @@ rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 **2026-10-20, closed-loop residual RL (plan [superpowers/plans/2026-10-20-closed-loop-rl.md](superpowers/plans/2026-10-20-closed-loop-rl.md), signed off):**
 half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
 - **R0 done:** closed-loop base (`PLACE_SERVO=1`, `isaac/place_servo.py`) aligns 3.61 cm mean (open loop 6.10), 0/20
-  at the bar, but drags the bottom layer 7-12 cm. A/B running (WATcloud 711480): release 1.2 cm above the partner,
-  live goal capped at 3 cm from the start, full arc height.
-- **R1-R3 built and tested without Isaac:** snapshots (`snapshot`/`restore`), the window env
-  (`isaac/precision_env.py`), the learner (`isaac/rlpd.py`, subagent, lead-reviewed), the driver
-  (`isaac/precision_rl.py`). R1 on Isaac running (711474, `check-restore`, also the first multi-copy smoke test).
-- **Next:** R1 verdict -> pick the base from the A/B -> `precision_rl.py train` overnight on WATcloud (R2 parity is its
-  version-0 evaluation).
+  at the bar, and drags the bottom layer 7-12 cm. The A/B (higher release, capped live goal, full arc) was worse
+  (6.21 cm, same drift): base kept as R0's.
+- **R1 done:** restore works; the GPU sim is not deterministic (0.1-1.8 cm between two restores of one snapshot), so
+  evaluation is statistical. 22 env steps/s at B = 8. A corner leaving the jaws no longer ends a window episode.
+- **R2 + R4 running:** WATcloud 711482 (trpro), `precision_rl.py train --run outputs/isaac/rl/p1 --copies 8 --hours
+  7.5`; version 0 (zero residual) on 16 fixed eval snapshots is R2's number. Watch `LOG` lines in
+  `outputs/watcloud/p1-711482.log`.
 - **Roy port, parked:** its release fails (the cloth stays on the open fingers; s3e), which was also the "7 cm miss".
 
 **2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
@@ -247,6 +247,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-20 · **R1 + launch:** restore verified (sim nondeterministic), throughput 22 steps/s, drop no longer a failure, base A/B rejected, training run p1 launched (711482) · 1483199
 
 - 2026-10-20 · **Closed-loop RL R0-R3:** R0 baselines (closed loop 3.61 cm vs open 6.10), s3e release failure found, snapshot/restore, window env, RLPD learner (subagent), driver; isaac/tests 52 passed, fast suite 253 passed + #15 · 99da9a4
 

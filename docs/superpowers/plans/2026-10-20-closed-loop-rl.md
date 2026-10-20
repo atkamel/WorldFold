@@ -106,6 +106,10 @@ with video (grasp included).
 | R4 | **Half-fold RL run**, WATcloud overnight | learning curve on the fixed eval seeds | mean alignment below R0's friction base by > 2 SE; ≥ 1 eval episode at the bar, recorded with video |
 | R5 | **Fold 2 of the quarter fold**: the same window on fold 2, starting from fold-1 snapshots, on the layout the Roy-port work settles (roy on the GPU pipeline, or the friction layout re-searched with the slide grasp) | as R4 | one recorded quarter-fold episode at the bar |
 
+**R1 outcome (2026-10-20):** restore works, but two restores of one snapshot differ by 0.1-1.8 cm (GPU PhysX is not
+deterministic), so the 3 mm bar is unreachable by construction; restored and direct runs share one distribution
+(results.md). Evaluation uses the fixed snapshots for paired comparisons and reads means over n.
+
 **Stop rules.** R2's parity failing means the window env changed the physics; fix that before any learning. If R4 is flat after 5·10⁴ steps, look at the critic's value
 error and the eval curve before changing anything else.
 
