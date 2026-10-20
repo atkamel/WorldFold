@@ -245,8 +245,19 @@ class PrecisionBatch:
             if not alive[i]:
                 continue
             sub, ex = self.subs[i], self.experts[i]
-            cloth = sub.cloth_positions()
             st["t"] += 1
+            if sub._failed():
+                # a blown-up cloth: park it at once so it can't drift into the other copies, its arms idle
+                st["final"] = {"reason": "unstable", "steps": st["t"], "mean": None, "edge_max": None, "passed": False,
+                               "dropped": [p for p in ARMS if ex[p].dropped], "instability": instability(sub),
+                               "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS}}
+                sub.park()
+                for e in ex.values():
+                    e.phase = e.PHASES.index("done")
+                st["alive"], done[i], term[i], rew[i], infos[i] = False, True, True, -FAIL, st["final"]
+                obs[i] = self._obs(i)
+                continue
+            cloth = sub.cloth_positions()
             phi, d = potential(cloth), drift(cloth, st["start"])
             rew[i] = step_reward(st["phi"], phi, acts[i], st["drift"], d)
             st["phi"], st["drift"], st["prev_action"] = phi, max(st["drift"], d), acts[i]
@@ -254,9 +265,7 @@ class PrecisionBatch:
             # a corner leaving the jaws is not a failure in itself: in R1 (results.md) most did so at the end of the
             # place and landed well, so the final alignment scores it
             reason = None
-            if sub._failed():
-                reason = "unstable"
-            elif d > DRAG_LIMIT:
+            if d > DRAG_LIMIT:
                 reason = "cloth_dragged"
             elif st["settle"] >= SETTLE_STEPS:
                 reason = "settled"
@@ -266,12 +275,11 @@ class PrecisionBatch:
                 st["alive"], done[i] = False, True
                 term[i] = reason != "truncated"
                 r_end, s = terminal_reward(cloth)
-                rew[i] += -FAIL if reason in ("unstable", "cloth_dragged") else (r_end if term[i] else 0.0)
+                rew[i] += -FAIL if reason == "cloth_dragged" else (r_end if term[i] else 0.0)
                 st["final"] = {"reason": reason, "steps": st["t"], "mean": round(s["mean"], 4),
-                               "dropped": [p for p in ARMS if ex[p].dropped],
-                               "instability": instability(sub) if reason == "unstable" else None,
+                               "dropped": [p for p in ARMS if ex[p].dropped], "instability": None,
                                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
                                "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS}}
                 infos[i] = st["final"]
             obs[i] = self._obs(i)
-        return obs, rew, term, done, alive, infos
+        return np.nan_to_num(obs), np.nan_to_num(rew), term, done, alive, infos

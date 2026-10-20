@@ -12,11 +12,15 @@ evaluates version 0, the zero residual, which is the scripted base (R2's parity 
 episodes of the base with Ornstein-Uhlenbeck noise on the action; then trains online, UTD gradient updates per new
 transition, evaluating the deterministic policy on the eval library every EVAL_EVERY env steps. learner.jsonl gets
 one row per batch of episodes and one per evaluation; agent.pt is the latest learner, best.pt the best evaluation.
+A child process does the work: if a copy goes unstable within two steps of a restore (a corrupt scene; p1), it saves
+the learner, the online buffer and its state and exits CORRUPT, and the parent restarts it with the hours left.
 """
 
 import argparse
 import json
+import os
 import pickle
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -30,6 +34,13 @@ N_TRAIN_SNAPS, N_EVAL_SNAPS = 160, 16
 PRIOR_EPISODES = 16
 EVAL_EVERY = 10_000              # env steps
 OU_THETA, OU_SIGMA = 0.15, 0.1   # prior-data noise, action units (DELTA m each)
+ONLINE_CAPACITY = 300_000
+CORRUPT = 3                      # exit code: the scene is corrupt, the supervisor restarts the process
+MAX_RESTARTS = 20
+
+
+class SceneCorrupted(RuntimeError):
+    """A copy went unstable within two steps of a restore: the scene, not the policy, is broken (p1, results.md)."""
 
 
 def _wilson(k, n, z=1.96):
@@ -45,12 +56,15 @@ def summarize(finals):
     f = [x for x in finals if x is not None]
     if not f:
         return {"n": 0}
-    m = np.array([x["mean"] for x in f]) * 100
-    e = np.array([x["edge_max"] for x in f]) * 100
-    k = sum(x["passed"] for x in f)
     reasons = {}
     for x in f:
         reasons[x["reason"]] = reasons.get(x["reason"], 0) + 1
+    k = sum(x["passed"] for x in f)
+    f = [x for x in f if x["mean"] is not None]          # unstable episodes have no alignment
+    if not f:
+        return {"n": 0, "reasons": reasons}
+    m = np.array([x["mean"] for x in f]) * 100
+    e = np.array([x["edge_max"] for x in f]) * 100
     return {"n": len(f), "mean_cm": round(float(m.mean()), 2), "mean_sd": round(float(m.std()), 2),
             "best_mean_cm": round(float(m.min()), 2), "edge_cm": round(float(e.mean()), 2), "passed": k,
             "pass_wilson": _wilson(k, len(f)), "reasons": reasons}
@@ -86,6 +100,8 @@ def run_episodes(pb, snaps, policy, on_step=None):
         for i in range(pb.n):
             if infos[i] is not None:
                 finals[i] = infos[i]
+                if infos[i]["reason"] == "unstable" and infos[i]["steps"] <= 2:
+                    raise SceneCorrupted(json.dumps(infos[i]))
         obs = nobs
     return finals
 
@@ -188,11 +204,29 @@ def train(args):
     agent = RLPDAgent(OBS_DIM, ACT_DIM, device=device, init_std=args.init_std, seed=args.seed)
     if (run / "agent.pt").exists():
         agent.load(run / "agent.pt")
-    online = ReplayBuffer(OBS_DIM, ACT_DIM, 1_000_000, seed=args.seed)
+    online = ReplayBuffer(OBS_DIM, ACT_DIM, ONLINE_CAPACITY, seed=args.seed)
+    if (run / "online.npz").exists():
+        online.load(run / "online.npz")
     prior = ReplayBuffer(OBS_DIM, ACT_DIM, 200_000, seed=args.seed + 1)
     rng = np.random.default_rng(args.seed)
     state = json.loads((run / "state.json").read_text()) if (run / "state.json").exists() else \
         {"env_steps": 0, "episodes": 0, "version": 0, "best": None, "next_eval": 0}
+
+    def save():
+        agent.save(run / "agent.pt")
+        online.save(run / "online.npz")
+        (run / "state.json").write_text(json.dumps(state))
+
+    try:
+        loop(args, pb, agent, online, prior, rng, state, train_snaps, eval_snaps, run, write, save, t_end)
+    except SceneCorrupted as err:
+        write({"corrupted": str(err), "env_steps": state["env_steps"]})
+        save()
+        sys.exit(CORRUPT)
+
+
+def loop(args, pb, agent, online, prior, rng, state, train_snaps, eval_snaps, run, write, save, t_end):
+    from isaac.precision_env import ACT_DIM
 
     def det(obs):
         return agent.act(obs, deterministic=True)
@@ -245,9 +279,26 @@ def train(args):
         (run / "state.json").write_text(json.dumps(state))
         if state["env_steps"] >= state["next_eval"]:
             do_eval()
-            (run / "state.json").write_text(json.dumps(state))
+            save()
     do_eval()
-    (run / "state.json").write_text(json.dumps(state))
+    save()
+
+
+def supervise(argv, hours):
+    """Run `train` in child processes, restarting one that exits CORRUPT (it saved its learner, buffers and state)
+    with the hours left."""
+    t_end = time.time() + 3600 * hours
+    for k in range(MAX_RESTARTS + 1):
+        left = (t_end - time.time()) / 3600
+        if left < 0.25:
+            return
+        args = list(argv)
+        args[args.index("--hours") + 1] = f"{left:.3f}"
+        rc = subprocess.run([sys.executable, "-u", __file__] + args,
+                            env=dict(os.environ, PRECISION_CHILD="1")).returncode
+        print(f"SUPERVISOR child {k} exit {rc}", flush=True)
+        if rc != CORRUPT:
+            sys.exit(rc)
 
 
 def main():
@@ -267,6 +318,10 @@ def main():
     t.add_argument("--init-std", type=float, default=0.1)
     t.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    if args.cmd == "train" and not os.environ.get("PRECISION_CHILD"):
+        argv = sys.argv[1:] if "--hours" in sys.argv else sys.argv[1:] + ["--hours", str(args.hours)]
+        supervise(argv, args.hours)
+        return
     sys.argv = sys.argv[:1]              # AppLauncher reads sys.argv
     {"check-restore": check_restore, "check-recover": check_recover, "train": train}[args.cmd](args)
 
