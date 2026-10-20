@@ -2110,3 +2110,10 @@ end (`outputs/isaac/rl/r0_servo/`, with top videos; `outputs/isaac/rl/r0_open/`)
 - It drags the bottom layer 2–3× further. The env's own success test reads goals at their start positions, so the
   7 truncations are corners on a moved bottom layer, not misses. Alignment is what counts here.
 - Nothing passes (1.0 / 1.5 cm). The closed-loop base is R4's reference: mean 3.61 cm, edge 6.90 cm.
+
+**R0 A/B on the closed-loop base (WATcloud 711480):** `WORLDFOLD_PLACE_PARAMS=PRESS_Z=0.012,LIVE_MAX=0.03,ARC_FRAC=1.0`
+(release 1.2 cm above the partner, live goal capped 3 cm from its start, the open-loop expert's full arc), same 20
+seeds: align mean **6.21 cm** (sd 1.99, best 3.37), edge 10.23 cm, 0/20 passed; anchor drift median 9.1 cm (max 22.3).
+Worse than R0's base (3.61 cm) and no less drift, so the drag is not the place-phase chase or the press: it builds
+up in the carry. Kept R0's base (PRESS_Z 0.003, no cap, ARC_FRAC 0.6); the drift is the residual policy's to reduce
+(its reward charges new drift). `outputs/isaac/rl/r0_servo_b/` (videos).
