@@ -45,7 +45,7 @@ PASS_BONUS = 10.0
 SETTLE_STEPS = 15            # window ends this long after both arms are done
 T_MAX = int(os.environ.get("WORLDFOLD_WINDOW_STEPS", 200))   # window cap (a failure); slower bases need more
 PRE_MAX = 220                # scripted steps allowed to reach the window
-DRAG_LIMIT = 0.20            # = cloth_fold_rl.quarter_fold_env.DRAG_LIMIT
+DRAG_LIMIT = float(os.environ.get("WORLDFOLD_DRAG_LIMIT", 0.20))   # = quarter_fold_env.DRAG_LIMIT by default
 HOLD_DIST = 0.05             # = isaac.isaac_env.HOLD_DIST
 
 

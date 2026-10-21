@@ -334,13 +334,14 @@ def demo(args):
 
 def sweep(args):
     """Several base configurations in one job (one image build, one GPU): each config is a `demo --base` child process
-    with its own WORLDFOLD_* overrides, `--parallel` at a time. Config: name|EXPERT_PARAMS|PLACE_PARAMS|WINDOW_STEPS."""
+    with its own WORLDFOLD_* overrides, `--parallel` at a time.
+    Config: name|EXPERT_PARAMS|PLACE_PARAMS|WINDOW_STEPS|DRAG_LIMIT."""
     procs, queue = [], list(args.configs)
     while queue or procs:
         while queue and len(procs) < args.parallel:
-            name, expert, place, steps = (queue.pop(0).split("|") + ["", "", ""])[:4]
+            name, expert, place, steps, drag = (queue.pop(0).split("|") + ["", "", "", ""])[:5]
             env = dict(os.environ, WORLDFOLD_EXPERT_PARAMS=expert, WORLDFOLD_PLACE_PARAMS=place,
-                       WORLDFOLD_WINDOW_STEPS=steps or "200")
+                       WORLDFOLD_WINDOW_STEPS=steps or "200", WORLDFOLD_DRAG_LIMIT=drag or "0.20")
             Path(args.out).mkdir(parents=True, exist_ok=True)
             log = open(Path(args.out) / f"{name}.log", "w")
             cmd = [sys.executable, "-u", __file__, "demo", "--run", str(Path(args.out) / name), "--base",
@@ -386,7 +387,7 @@ def main():
     w.add_argument("--seeds", default="910000:910032")
     w.add_argument("--copies", type=int, default=8)
     w.add_argument("--parallel", type=int, default=2)
-    w.add_argument("configs", nargs="+", help="name|EXPERT_PARAMS|PLACE_PARAMS|WINDOW_STEPS")
+    w.add_argument("configs", nargs="+", help="name|EXPERT_PARAMS|PLACE_PARAMS|WINDOW_STEPS|DRAG_LIMIT")
     r = sub.add_parser("check-recover")
     r.add_argument("--copies", type=int, default=8)
     c = sub.add_parser("check-restore")

@@ -145,4 +145,4 @@ def test_backoff_retreat_slides_out_before_lifting(monkeypatch):
     tips = [q[:3] for q in e.plan["retreat_path"]]
     jaw = e.plan["jaw"]
     assert np.allclose(tips[0], e.base.site - 0.02 * np.r_[jaw[:2], 0.0])
-    assert all(np.allclose(t[:2], tips[0][:2]) for t in tips) and np.all(np.diff([t[2] for t in tips]) > 0)
+    assert len(tips) == 2 and np.allclose(tips[1], tips[0] + [0.0, 0.0, 0.05])

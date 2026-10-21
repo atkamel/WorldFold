@@ -95,8 +95,8 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             jaw = self.plan["jaw"]
             back = self._site() - self.BACKOFF * np.r_[jaw[:2], 0.0]
             q, self.plan["retreat_path"] = self._q(), []
-            for tip in [back] + [back + [0.0, 0.0, h] for h in np.arange(self.RETREAT_STEP, RETREAT + 1e-9,
-                                                                       self.RETREAT_STEP)]:
+            # two moves: out, then up (the slide grasp's 3 mm lift steps made 17 waypoints and timed out: sweep 1)
+            for tip in (back, back + [0.0, 0.0, RETREAT]):
                 q, _ = self._ik.solve(self.prefix, tip, jaw, q, orientation_weight=0.02)
                 self.plan["retreat_path"].append(q)
 
