@@ -2170,3 +2170,19 @@ i's arms and frame stayed put. The same-copy checks (check-restore, check-recove
 evaluation (3.09 cm) restored each snapshot into its own copy and stands. p2's version-0 scores (10.5–11.0 cm, sd 7)
 were partly cross-copy and are void. Fix: snapshots keep particles in the copy's frame and restore adds the
 destination's offset; a restart no longer re-scores version 0 or re-collects the prior. Run p3 (711562).
+
+### p3 (WATcloud 711562, 2026-10-21, cancelled at 11.5k env steps)
+
+Frame fix confirmed: no corrupt restores in 80 training episodes and 2 evaluations.
+- Version 0 (zero residual) on the 16 eval snapshots: **3.22 cm** (sd 0.74, best 1.91), edge 6.11 cm, 0/16 passed
+  [0, 19.4], all settled (p1: 3.09).
+- Prior (16 episodes, OU σ 0.1 on the integrated residual): 5.1 and 7.6 cm per batch of 8.
+- Training batches drifted worse: 6.4–10.5 cm mean, `cloth_dragged` rising from 2/8 to 8/8, truncations 0–5/8.
+  Version 1 (10.2k steps, deterministic) on the eval snapshots: **12.47 cm** (sd 2.33), 7/16 dragged, 4/16
+  truncated. Critic q_mean started at +15.3 against returns near −1; entropy fell from +5.0 to −4.9.
+- Read as three design faults: (1) the action integrated into the residual, so any bias reached ±6 cm in ~30 steps
+  and dragged the cloth; (2) a T_MAX truncation took no terminal score and bootstrapped on the critic while the
+  terminal score is negative short of the bar, so not finishing paid; (3) 16 prior episodes left the critic
+  over-optimistic as the actor started. p4 (711576): the action sets a bounded residual (±3 cm xy, ±2 cm z,
+  smoothed 0.3), T_MAX is a scored ending, the terminal charges 0.3 per cm of mean bottom-half displacement, 48 prior
+  episodes (OU σ 0.3), 3000 critic-only transitions before the actor moves, UTD 5, target entropy −4.

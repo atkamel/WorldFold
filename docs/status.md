@@ -49,8 +49,9 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
 - **R1 done:** restore works; the GPU sim is not deterministic (0.1-1.8 cm between two restores of one snapshot), so
   evaluation is statistical. 22 env steps/s at B = 8. A corner leaving the jaws no longer ends a window episode.
 - **R2:** version 0 (the base through the window env) 3.09 cm on the 16 eval snapshots (R0 3.61): parity close.
-- **R4 running:** p1/p2 failed on a snapshot frame bug (a snapshot restored into another copy put the cloth on the
-  wrong table; results.md), fixed. p3 (WATcloud 711562, trpro). Watch `LOG` lines in `outputs/watcloud/p3-711562.log`.
+- **R4 running:** p3 confirmed the frame fix (version 0: 3.22 cm) but its policy got worse (12.47 cm at 10k steps):
+  integrated actions, unscored truncation, an over-optimistic critic (results.md). p4 (WATcloud 711576, trpro) has
+  the fixes. Watch `LOG` lines in `outputs/watcloud/p4-711576.log`.
 - **Roy port, parked:** its release fails (the cloth stays on the open fingers; s3e), which was also the "7 cm miss".
 
 **2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
@@ -247,6 +248,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-21 · **p3 read, p4 launched:** bounded residual, scored step cap, bottom-shift charge, critic warm-up · (this commit)
 
 - 2026-10-21 · **Snapshot frame bug:** p2's corruption detail (all particles 2.5 m off) pinned p1/p2 on cross-copy restores of world-frame snapshots; fixed, p3 launched (711562) · (this commit)
 
