@@ -22,7 +22,7 @@ import os
 
 import numpy as np
 
-from isaac.fold_expert import IsaacArmExpert
+from isaac.fold_expert import RETREAT, IsaacArmExpert
 from isaac.servo_expert import IsaacServoExpert
 from mujuco.cloth_params import TABLE_TOP_Z
 
@@ -38,8 +38,18 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     # m above the table: the steered tip (residual included) never goes lower, so a residual can't drive the jaws
     # into the table (p1, 2026-10-20: the noisy prior's episodes blew the cloth up); None: no floor
     Z_FLOOR = 0.005
+    # Base fixes from the 2026-10-21 brainstorm (results.md), all off by default:
+    # LATCH_GOAL 1: the place target is the partner where it was when the place began (the fingers push the partner,
+    # and an unlatched goal chases it). BACKOFF m: the release slides the open jaws this far out along -jaw at hold
+    # height before lifting, so a corner on the pads isn't carried up. GFOLD_SLOPE: the carried corner's path height is
+    # capped at goal z + GFOLD_Z0 + GFOLD_SLOPE * (xy distance to the goal), so the top half lays down from the crease
+    # out instead of swinging down taut (the fold line formed ~1.4 cm short)
+    LATCH_GOAL = 0
+    BACKOFF = 0.0
+    GFOLD_SLOPE = None
+    GFOLD_Z0 = 0.01
 
-    PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped")
+    PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped", "latched")
 
     def __init__(self, *args, live_goal=None, **kwargs):
         self.live_goal = live_goal       # callable -> the partner vertex's current position; None: self.goal
@@ -51,8 +61,11 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         self.release_vote = True
         self.hold_site = None
         self.dropped = False
+        self.latched = None
 
     def _goal_now(self):
+        if self.latched is not None:
+            return self.latched
         goal = np.asarray((self.live_goal or self.goal)(), dtype=float)
         if self.LIVE_MAX is not None and self.live_goal is not None:
             start = np.asarray(self.goal(), dtype=float)
@@ -64,6 +77,13 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             tip = np.r_[tip[:2], max(float(tip[2]), TABLE_TOP_Z + self.Z_FLOOR)]
         return tip
 
+    def _corner_path(self, corner, goal):
+        path = super()._corner_path(corner, goal)
+        if self.GFOLD_SLOPE is None:
+            return path
+        return [np.r_[p[:2], min(float(p[2]), float(goal[2]) + self.GFOLD_Z0
+                                  + self.GFOLD_SLOPE * float(np.linalg.norm(goal[:2] - p[:2])))] for p in path]
+
     def _start_carry(self):
         self.sv.update(path=self._corner_path(self._corner(), self._goal_now()), k=0, k_steps=0, slip=0)
         self._go("carry")
@@ -71,6 +91,14 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     def _start_hold(self):
         super()._start_hold()
         self.hold_site = self._site() - self.residual      # hold where the arm is now
+        if self.BACKOFF:
+            jaw = self.plan["jaw"]
+            back = self._site() - self.BACKOFF * np.r_[jaw[:2], 0.0]
+            q, self.plan["retreat_path"] = self._q(), []
+            for tip in [back] + [back + [0.0, 0.0, h] for h in np.arange(self.RETREAT_STEP, RETREAT + 1e-9,
+                                                                       self.RETREAT_STEP)]:
+                q, _ = self._ik.solve(self.prefix, tip, jaw, q, orientation_weight=0.02)
+                self.plan["retreat_path"].append(q)
 
     def act(self):
         name = self.PHASES[self.phase]
@@ -102,6 +130,8 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             if np.linalg.norm(corner - target) < self.CORNER_WP_TOL or self.sv["k_steps"] > self.WP_PATIENCE:
                 self.sv["k"], self.sv["k_steps"] = k + 1, 0
             if self.sv["k"] >= len(path):
+                if self.LATCH_GOAL:
+                    self.latched = self._goal_now()
                 self._go("place")
             action[0:5] *= self.CARRY_SPEED
         elif name == "place":

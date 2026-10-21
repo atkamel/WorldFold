@@ -114,3 +114,35 @@ def test_the_floor_keeps_a_downward_residual_off_the_table():
     e.residual = np.array([0.0, 0.0, -0.06])
     e.act()
     assert e._ik.tips[-1][2] >= TABLE_TOP_Z + e.Z_FLOOR - 1e-12
+
+
+def test_latched_goal_stops_following_the_partner(monkeypatch):
+    e = _expert()
+    monkeypatch.setattr(IsaacPlaceServoExpert, "LATCH_GOAL", 1)
+    e._start_carry()
+    e.sv["k"] = len(e.sv["path"]) - 1
+    e.base.site = e.sv["path"][-1] + [0.0, 0.0, 0.03]
+    e.base.cloth[10] = e.sv["path"][-1]                      # the corner reached the last waypoint
+    e.act()
+    assert e.PHASES[e.phase] == "place"
+    before = e._goal_now().copy()
+    e.base.cloth[0] += [0.05, 0.0, 0.0]                      # the partner is pushed away
+    assert np.allclose(e._goal_now(), before)
+
+
+def test_gfold_caps_the_path_height_by_distance(monkeypatch):
+    e = _expert()
+    monkeypatch.setattr(IsaacPlaceServoExpert, "GFOLD_SLOPE", 0.5)
+    corner, goal = e.base.cloth[10], e.base.cloth[0]
+    for p in e._corner_path(corner, goal):
+        assert p[2] <= goal[2] + e.GFOLD_Z0 + 0.5 * np.linalg.norm(goal[:2] - p[:2]) + 1e-12
+
+
+def test_backoff_retreat_slides_out_before_lifting(monkeypatch):
+    e = _expert()
+    monkeypatch.setattr(IsaacPlaceServoExpert, "BACKOFF", 0.02)
+    e._start_hold()
+    tips = [q[:3] for q in e.plan["retreat_path"]]
+    jaw = e.plan["jaw"]
+    assert np.allclose(tips[0], e.base.site - 0.02 * np.r_[jaw[:2], 0.0])
+    assert all(np.allclose(t[:2], tips[0][:2]) for t in tips) and np.all(np.diff([t[2] for t in tips]) > 0)
