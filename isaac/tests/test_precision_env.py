@@ -58,10 +58,18 @@ def test_drift_and_action_cost_lower_the_step_reward():
 
 
 def test_terminal_reward_pays_the_pass_bonus_for_a_clean_fold():
-    r, s = pe.terminal_reward(_folded())
+    r, s = pe.terminal_reward(_folded(), _flat())
     assert s["passed"] and r > pe.PASS_BONUS
-    r_bad, s_bad = pe.terminal_reward(_flat())
+    r_bad, s_bad = pe.terminal_reward(_flat(), _flat())
     assert not s_bad["passed"] and r_bad < 0.0
+
+
+def test_terminal_reward_charges_a_moved_bottom_half():
+    moved = _folded()
+    moved[:, 0] += 0.02                                  # the whole fold slid 2 cm: same stacking
+    r, _ = pe.terminal_reward(moved, _flat())
+    r0, _ = pe.terminal_reward(_folded(), _flat())
+    assert np.isclose(r0 - r, pe.W_BOTTOM * 2.0)
 
 
 class _E:
@@ -76,12 +84,17 @@ class _E:
         self.lift_allowed = True
 
 
-def test_actions_move_the_residual_within_bounds_and_set_the_vote():
+def test_actions_set_a_bounded_smoothed_residual_and_the_vote():
     ex = {"left_": _E("carry"), "right_": _E("carry")}
+    pe.apply_action(ex, [1.0, -1.0, 0.0, -0.9, 0.0, 0.0, 0.0, 0.0])
+    assert np.allclose(ex["left_"].residual, pe.RES_SMOOTH * pe.RES_SCALE * [1, -1, 0])
     for _ in range(100):
-        pe.apply_action(ex, [1.0, -1.0, 0.0, -0.9, 0.0, 0.0, 0.0, 0.0])
-    assert np.allclose(ex["left_"].residual, [pe.RES_MAX, -pe.RES_MAX, 0.0])
-    assert not ex["left_"].release_vote and ex["right_"].release_vote      # the zero action votes to release
+        pe.apply_action(ex, [3.0, -1.0, 0.0, -0.9, 0.0, 0.0, 0.0, 0.0])         # clipped to 1
+    assert np.allclose(ex["left_"].residual, pe.RES_SCALE * [1, -1, 0])
+    for _ in range(100):
+        pe.apply_action(ex, np.zeros(pe.ACT_DIM))
+    assert np.allclose(ex["left_"].residual, 0.0, atol=1e-9)                    # zero action: back to the base
+    assert ex["left_"].release_vote and ex["right_"].release_vote
 
 
 def test_gates_hold_the_lift_and_the_release():

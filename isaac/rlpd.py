@@ -252,7 +252,7 @@ class RLPDAgent:
             "entropy": float((-log_prob).mean().item()),
         }
 
-    def update(self, online, prior=None, batch_size=256, utd=10):
+    def update(self, online, prior=None, batch_size=256, utd=10, update_actor=True):
         """`utd` critic updates per call, half the batch from `online` and half from `prior` (when `prior` is
         given and non-empty), else all from `online`. Actor and temperature are updated once, after the critic
         updates (RLPD/DroQ), on the last critic batch."""
@@ -265,7 +265,7 @@ class RLPDAgent:
             else:
                 batch = online.sample(batch_size, self.device)
             critic_losses.append(self._critic_step(batch))
-        stats = self._actor_alpha_step(batch)
+        stats = self._actor_alpha_step(batch) if update_actor else {}
         stats["critic_loss"] = float(np.mean(critic_losses))
         return stats
 

@@ -31,9 +31,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 TRAIN_SEED, EVAL_SEED = 800000, 900000
 N_TRAIN_SNAPS, N_EVAL_SNAPS = 160, 16
-PRIOR_EPISODES = 16
+PRIOR_EPISODES = 48
+ACTOR_WARMUP = 3000              # online transitions of critic-only updates before the actor moves (p3: the critic
+                                 # started at Q ~ +15 against returns ~ -1 and the actor chased it)
 EVAL_EVERY = 10_000              # env steps
-OU_THETA, OU_SIGMA = 0.15, 0.1   # prior-data noise, action units (DELTA m each)
+OU_THETA, OU_SIGMA = 0.15, 0.3   # prior-data noise, action units (RES_SCALE m each)
 ONLINE_CAPACITY = 300_000
 CORRUPT = 3                      # exit code: the scene is corrupt, the supervisor restarts the process
 MAX_RESTARTS = 20
@@ -201,7 +203,8 @@ def train(args):
     train_snaps = snapshot_library(pb, run / "snaps_train.pkl", TRAIN_SEED, N_TRAIN_SNAPS)
     eval_snaps = snapshot_library(pb, run / "snaps_eval.pkl", EVAL_SEED, N_EVAL_SNAPS)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    agent = RLPDAgent(OBS_DIM, ACT_DIM, device=device, init_std=args.init_std, seed=args.seed)
+    agent = RLPDAgent(OBS_DIM, ACT_DIM, device=device, init_std=args.init_std, seed=args.seed,
+                      target_entropy_scale=args.entropy_scale)
     if (run / "agent.pt").exists():
         agent.load(run / "agent.pt")
     online = ReplayBuffer(OBS_DIM, ACT_DIM, ONLINE_CAPACITY, seed=args.seed)
@@ -270,7 +273,7 @@ def loop(args, pb, agent, online, prior, rng, state, train_snaps, eval_snaps, ru
             if len(online) >= args.batch_size // 2:
                 for _ in tr:                # RLPD's rate: one actor update and UTD critic updates per transition
                     stats.update(agent.update(online, prior if len(prior) else None, batch_size=args.batch_size,
-                                              utd=args.utd))
+                                              utd=args.utd, update_actor=state["env_steps"] >= ACTOR_WARMUP))
         t0 = time.time()
         batch = [train_snaps[j] for j in rng.integers(len(train_snaps), size=pb.n)]
         finals = run_episodes(pb, batch, lambda obs: agent.act(obs), on_step=learn)
@@ -315,9 +318,10 @@ def main():
     t.add_argument("--run", required=True)
     t.add_argument("--copies", type=int, default=8)
     t.add_argument("--hours", type=float, default=8.0)
-    t.add_argument("--utd", type=int, default=10)
+    t.add_argument("--utd", type=int, default=5)
     t.add_argument("--batch-size", type=int, default=256)
     t.add_argument("--init-std", type=float, default=0.1)
+    t.add_argument("--entropy-scale", type=float, default=0.5)
     t.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if args.cmd == "train" and not os.environ.get("PRECISION_CHILD"):

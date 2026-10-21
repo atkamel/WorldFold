@@ -3,8 +3,10 @@
 B copies of the half fold on the GPU `friction` profile (isaac_env.IsaacClothFoldBatch), each driven by two
 isaac.place_servo.IsaacPlaceServoExpert arms. `scripted_to_window` runs the scripted fold from a seed to the start
 of the carry (both arms steering, both corners in the jaws) and snapshots the copy; `reset_window` restores
-snapshots and `step` runs the window: every control step the policy's action moves each arm's residual (DELTA m per
-unit, clipped to RES_MAX) and sets its release vote, the base does the rest. All copies step together (one
+snapshots and `step` runs the window: every control step the policy's action sets each arm's residual target
+(RES_SCALE m per unit, so bounded; the residual follows it with RES_SMOOTH) and its release vote, the base does the
+rest. (p3, results.md: a residual that integrated the action let any bias in the policy build up to the bound and
+drag the cloth.) All copies step together (one
 `batch.advance()` per step, no scheduler threads); a copy whose episode has ended keeps stepping with a zero action
 and its transitions are flagged dead.
 
@@ -27,14 +29,16 @@ FOLDS = (("y", 5),)
 WINDOW_PHASES = ("carry", "place", "hold", "release", "retreat", "done")
 ARMS = ("left_", "right_")
 SCALE = 10.0                 # m -> dm in the observation
-DELTA = 0.004                # m of residual per unit action per step
-RES_MAX = 0.06
+RES_SCALE = np.array([0.03, 0.03, 0.02])    # m of residual per unit action (x, y, z): the residual's bound
+RES_SMOOTH = 0.3             # the residual moves this fraction of the way to its target each step
 VOTE_BELOW = -0.5            # vote = action > VOTE_BELOW, so the zero action releases as the base does
 OBS_DIM = 3 * len(PAIRS) + 2 * len(DRIFT_IDX) + len(ARMS) * (3 + 3 + 3 + 1 + 3 + len(WINDOW_PHASES) + 1) + 2 * 4
 ACT_DIM = 2 * 4              # per arm: dx, dy, dz, release vote
 EPS = 0.005                  # m inside the potential's log
 W_ACT = 0.01
 W_DRIFT = 5.0                # per m of new bottom-layer drift
+W_BOTTOM = 0.3               # terminal: per cm of mean bottom-layer displacement (an ideal half fold moves it none)
+BOTTOM_IDX = np.array([ix * N + iy for ix in range(N) for iy in range(N // 2)])   # the half that stays (iy < 5)
 FAIL = 10.0
 PASS_BONUS = 10.0
 SETTLE_STEPS = 15            # window ends this long after both arms are done
@@ -74,12 +78,19 @@ def step_reward(phi_prev, phi, action, drift_prev, drift_now):
     return phi - phi_prev - W_ACT * float(np.sum(a ** 2)) - W_DRIFT * max(0.0, drift_now - drift_prev)
 
 
-def terminal_reward(cloth):
-    """The fold's score at the end of the window: log-scaled against the bar, plus PASS_BONUS when it passes."""
+def bottom_shift(cloth, start):
+    """m: mean xy displacement of the bottom half since the window began."""
+    return float(np.mean(np.linalg.norm(cloth[BOTTOM_IDX, :2] - start[BOTTOM_IDX, :2], axis=1)))
+
+
+def terminal_reward(cloth, start):
+    """The fold's score at the end of the window: log-scaled against the bar, plus PASS_BONUS when it passes, minus
+    W_BOTTOM per cm the bottom half moved (scrunching the cloth also brings pairs together; this charges for it)."""
     from cloth_fold_rl.fold_alignment import EDGE_BAR, MEAN_BAR, score
     s = score(cloth, folds=FOLDS)
     r = -float(np.clip(math.log(max(s["mean"], 1e-4) / MEAN_BAR), -2.0, 5.0))
     r -= float(np.clip(math.log(max(s["edge_max"], 1e-4) / EDGE_BAR), -2.0, 5.0))
+    r -= W_BOTTOM * 100.0 * bottom_shift(cloth, start)
     return r + (PASS_BONUS if s["passed"] else 0.0), s
 
 
@@ -95,11 +106,11 @@ def instability(sub):
 
 
 def apply_action(experts, action):
-    """Move each arm's residual by its action and set its release vote."""
+    """Each arm's residual moves RES_SMOOTH of the way to its target (action * RES_SCALE); the 4th entry votes."""
     a = np.clip(np.asarray(action, float).reshape(len(ARMS), 4), -1.0, 1.0)
     for k, p in enumerate(ARMS):
         e = experts[p]
-        e.residual = np.clip(e.residual + DELTA * a[k, :3], -RES_MAX, RES_MAX)
+        e.residual = e.residual + RES_SMOOTH * (a[k, :3] * RES_SCALE - e.residual)
         e.release_vote = bool(a[k, 3] > VOTE_BELOW)
 
 
@@ -272,11 +283,13 @@ class PrecisionBatch:
             elif st["t"] >= T_MAX:
                 reason = "truncated"
             if reason is not None:
-                st["alive"], done[i] = False, True
-                term[i] = reason != "truncated"
-                r_end, s = terminal_reward(cloth)
-                rew[i] += -FAIL if reason == "cloth_dragged" else (r_end if term[i] else 0.0)
+                # the window is the whole task: T_MAX ends it like any other ending (p3: an unscored truncation
+                # bootstrapped on the critic made running out the clock pay)
+                st["alive"], done[i], term[i] = False, True, True
+                r_end, s = terminal_reward(cloth, st["start"])
+                rew[i] += -FAIL if reason == "cloth_dragged" else r_end
                 st["final"] = {"reason": reason, "steps": st["t"], "mean": round(s["mean"], 4),
+                               "bottom_shift": round(bottom_shift(cloth, st["start"]), 4),
                                "dropped": [p for p in ARMS if ex[p].dropped], "instability": None,
                                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
                                "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS}}
