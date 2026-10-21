@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-20 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (RL redesign drafted for sign-off: closed-loop residual RL, plan 2026-10-20; Roy-port step 3 benches running)
+**Updated:** 2026-10-21 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (RL redesign drafted for sign-off: closed-loop residual RL, plan 2026-10-20; Roy-port step 3 benches running)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -49,9 +49,8 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
 - **R1 done:** restore works; the GPU sim is not deterministic (0.1-1.8 cm between two restores of one snapshot), so
   evaluation is statistical. 22 env steps/s at B = 8. A corner leaving the jaws no longer ends a window episode.
 - **R2:** version 0 (the base through the window env) 3.09 cm on the 16 eval snapshots (R0 3.61): parity close.
-- **R4 running:** p1 blew up after its noisy prior (every later episode unstable at step 1); not reproduced by
-  `check-recover`. p2 (WATcloud 711487, trpro) has a 5 mm table floor on the steered tip, OU σ 0.1, park-on-blow-up
-  and a restart supervisor. Watch `LOG` lines in `outputs/watcloud/p2-711487.log`.
+- **R4 running:** p1/p2 failed on a snapshot frame bug (a snapshot restored into another copy put the cloth on the
+  wrong table; results.md), fixed. p3 (WATcloud 711562, trpro). Watch `LOG` lines in `outputs/watcloud/p3-711562.log`.
 - **Roy port, parked:** its release fails (the cloth stays on the open fingers; s3e), which was also the "7 cm miss".
 
 **2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
@@ -248,6 +247,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-21 · **Snapshot frame bug:** p2's corruption detail (all particles 2.5 m off) pinned p1/p2 on cross-copy restores of world-frame snapshots; fixed, p3 launched (711562) · (this commit)
 
 - 2026-10-20 · **p1 blow-up handled:** table floor, check-recover (not reproduced), park + corrupt-scene restart; p2 launched (711487) · (this commit)
 

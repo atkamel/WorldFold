@@ -2161,3 +2161,12 @@ restores and a park + 30-step settle + restore after it: all settled (1.2–4.1 
 table floor: no instability, 1.9–10.1 cm, 3/8 truncated. The p1 blow-up did not reproduce. Training now parks a
 blown-up copy at once, and a copy unstable within two steps of a restore exits the child process (saved learner,
 online buffer, state) for a supervisor restart. Run p2 (711487) carries all of it.
+
+**Root cause of p1's blow-up (p2, WATcloud 711487):** p2 restarted 20 times on "corrupt scene", each corruption the
+same: at step 1 after a restore, **all 10201 particles out of the workspace and moving 50.5 m/s, at table height**.
+50.5 m/s × 0.05 s = 2.5 m, the copy spacing (`COPY_OFFSETS`). Snapshots stored world-frame particle positions, and
+training restores a random snapshot into any copy, so a cloth captured in copy j landed on copy j's table while copy
+i's arms and frame stayed put. The same-copy checks (check-restore, check-recover) could not see it; p1's version-0
+evaluation (3.09 cm) restored each snapshot into its own copy and stands. p2's version-0 scores (10.5–11.0 cm, sd 7)
+were partly cross-copy and are void. Fix: snapshots keep particles in the copy's frame and restore adds the
+destination's offset; a restart no longer re-scores version 0 or re-collects the prior. Run p3 (711562).
