@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import math
+import os
 
 import numpy as np
 
@@ -42,7 +43,7 @@ BOTTOM_IDX = np.array([ix * N + iy for ix in range(N) for iy in range(N // 2)]) 
 FAIL = 10.0
 PASS_BONUS = 10.0
 SETTLE_STEPS = 15            # window ends this long after both arms are done
-T_MAX = 200                  # window cap (a truncation, not a terminal)
+T_MAX = int(os.environ.get("WORLDFOLD_WINDOW_STEPS", 200))   # window cap (a failure); slower bases need more
 PRE_MAX = 220                # scripted steps allowed to reach the window
 DRAG_LIMIT = 0.20            # = cloth_fold_rl.quarter_fold_env.DRAG_LIMIT
 HOLD_DIST = 0.05             # = isaac.isaac_env.HOLD_DIST
