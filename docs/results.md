@@ -2288,3 +2288,6 @@ Implemented as `IsaacPlaceServoExpert` knobs, off by default: `GFOLD_SLOPE`/`GFO
 
 **p6 (from p4's version 1, T_MAX a failure):** version 1 2.96 cm (2 dragged), version 2 at 12.3k steps 2.94 (7
 dragged), **version 3 at 22.7k: 2.77 cm, best episode 0.99 cm mean** (edge above 1.5, so not passing), 16/16 settled.
+p6 version 4 (33.3k steps): **3.77 cm** (sd 1.19, best 2.04), 2 truncated, 2 dragged: lost version 3's gain, as p4
+did after ~20k steps. q_mean +3 to +4 while no episode has passed (true returns ≈ −2), so the critic is still
+optimistic and the actor follows its errors. best.pt = version 3 (2.77 cm).
