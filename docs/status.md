@@ -49,9 +49,10 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
 - **R1 done:** restore works; the GPU sim is not deterministic (0.1-1.8 cm between two restores of one snapshot), so
   evaluation is statistical. 22 env steps/s at B = 8. A corner leaving the jaws no longer ends a window episode.
 - **R2:** version 0 (the base through the window env) 3.09 cm on the 16 eval snapshots (R0 3.61): parity close.
-- **R4 running:** p3 confirmed the frame fix (version 0: 3.22 cm) but its policy got worse (12.47 cm at 10k steps):
-  integrated actions, unscored truncation, an over-optimistic critic (results.md). p4 (WATcloud 711576, trpro) has
-  the fixes. Watch `LOG` lines in `outputs/watcloud/p4-711576.log`.
+- **R4 running:** p4 (WATcloud 711576, trpro, 8 h): version 1 at 10k steps **2.81 cm** on the eval snapshots vs the
+  base's 3.22 (1.5 SE), best episode 1.34 cm; no drags. Watch `LOG` lines in `outputs/watcloud/p4-711576.log`.
+  Next: read the curve; `precision_rl.py demo --run outputs/isaac/rl/p4 --video` on the best version for full folds
+  with video.
 - **Roy port, parked:** its release fails (the cloth stays on the open fingers; s3e), which was also the "7 cm miss".
 
 **2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
@@ -248,6 +249,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-21 · **p4 learning:** 2.81 vs 3.22 cm at 10k steps; cold-scene restore found (warm-up added); demo command · 3959c8e
 
 - 2026-10-21 · **p3 read, p4 launched:** bounded residual, scored step cap, bottom-shift charge, critic warm-up · (this commit)
 
