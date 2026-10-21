@@ -2201,3 +2201,18 @@ Frame fix confirmed: no corrupt restores in 80 training episodes and 2 evaluatio
 - **p4's own version 0 read 10.41 cm (sd 7.58, best 2.18): void.** It was the first restore in a scene that had never
   stepped (libraries loaded from disk), the bimodal pattern p2 showed; p1 and p3, which built their libraries
   in-process first, read 3.09 and 3.22. `PrecisionBatch` now resets and steps every copy once before any restore.
+
+**p4 curve (cancelled at 43k env steps, 2 h 18 min):** eval mean on the 16 eval snapshots, n = 16 each:
+
+| version | env steps | mean (sd) | best | edge | endings |
+|---|---|---|---|---|---|
+| 1 | 10.2k | 2.81 (0.84) | 1.34 | 5.76 | 16 settled |
+| 2 | 20.9k | 3.60 (0.78) | 1.80 | 8.37 | 13 settled, 2 truncated, 1 dragged |
+| 3 | 31.9k | 3.01 (0.82) | 1.68 | 7.15 | 16 settled |
+| 4 | 43.1k | 4.19 (0.91) | 2.82 | 7.95 | 5 settled, 9 truncated, 2 dragged |
+
+No trend below the base (3.22); version 1's gain reads as noise. The critic diverged: critic loss 4.8 → 17 and
+q_mean +3 → +20.7 between 36k and 43k steps (returns that size need passing folds; none happened), entropy −4.7.
+Truncations came back as the residual kept the carried corner off its waypoints (each waits WP_PATIENCE). Before
+another learner change: where the base's error sits (demos of the base and of version 1 on seeds 910000–15 with the
+final cloth grids, jobs 711581/711582).
