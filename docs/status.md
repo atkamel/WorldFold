@@ -49,10 +49,11 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
 - **R1 done:** restore works; the GPU sim is not deterministic (0.1-1.8 cm between two restores of one snapshot), so
   evaluation is statistical. 22 env steps/s at B = 8. A corner leaving the jaws no longer ends a window episode.
 - **R2:** version 0 (the base through the window env) 3.09 cm on the 16 eval snapshots (R0 3.61): parity close.
-- **R4 running:** p4 (WATcloud 711576, trpro, 8 h): version 1 at 10k steps **2.81 cm** on the eval snapshots vs the
-  base's 3.22 (1.5 SE), best episode 1.34 cm; no drags. Watch `LOG` lines in `outputs/watcloud/p4-711576.log`.
-  Next: read the curve; `precision_rl.py demo --run outputs/isaac/rl/p4 --video` on the best version for full folds
-  with video.
+- **R4:** p4's version 1 (10k steps) beats the base on 16 fresh seeds: 2.84 vs 3.36 cm (paired −0.52, SE 0.23),
+  best episode 1.17 / 2.13 cm; then its critic diverged. The base's error is a fold line forming ~1.4 cm short (the
+  carry drags the bottom half 2.6 cm), spread over the whole cloth, not the corners (results.md).
+- **R4 running:** p5 (WATcloud 711593, trpro, 8 h) continues from version 1 with UTD 2 and clipped critic gradients.
+  Watch `LOG` lines in `outputs/watcloud/p5-711593.log`.
 - **Roy port, parked:** its release fails (the cloth stays on the open fingers; s3e), which was also the "7 cm miss".
 
 **2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
@@ -249,6 +250,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-21 · **Error structure + p5:** base vs v1 demos (v1 −0.52 cm paired), error = fold line forming short, p5 launched from v1 · 050b9f1
 
 - 2026-10-21 · **p4 learning:** 2.81 vs 3.22 cm at 10k steps; cold-scene restore found (warm-up added); demo command · 3959c8e
 

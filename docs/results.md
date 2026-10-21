@@ -2216,3 +2216,32 @@ q_mean +3 → +20.7 between 36k and 43k steps (returns that size need passing fo
 Truncations came back as the residual kept the carried corner off its waypoints (each waits WP_PATIENCE). Before
 another learner change: where the base's error sits (demos of the base and of version 1 on seeds 910000–15 with the
 final cloth grids, jobs 711581/711582).
+
+### Where the base's error sits, and p4 version 1 on fresh seeds (demo jobs 711581/711582, 2026-10-21)
+
+`precision_rl.py demo --run outputs/isaac/rl/p4 [--base | --ckpt v1.pt] --seeds 910000:910016 --video`: full half
+folds (scripted grasp and lift, restore at the carry start, then the base or version 1 through the window), the final
+and window-start grids per episode in `outputs/isaac/rl/p4/demo*/demo.jsonl`, top videos per seed. Both jobs hung
+for 7.5 h in Kit's shutdown after finishing (cancelled; the driver now ends with `os._exit`).
+
+| | mean | edge | bottom-half shift | best episode (mean / edge) | endings |
+|---|---|---|---|---|---|
+| base | 3.36 cm | 6.71 cm | 2.60 cm | 2.30 / 5.78 cm | 16 settled |
+| p4 version 1 (10.2k steps) | **2.84 cm** | 6.51 cm | 3.41 cm | **1.17 / 2.13 cm** | 14 settled, 2 dragged |
+
+Paired over the 16 seeds: mean −0.52 cm (SE 0.23), version 1 better on 11/16; edge −0.20 (SE 0.79); bottom shift
++0.82 (SE 0.65). Version 1's gain is real; p4's later versions lost it as the critic diverged.
+
+**Error structure of the base** (`scratchpad/error_structure.py` logic, spreads per stacked pair):
+- Spread is ~3 cm everywhere: 2.8–5.0 cm across the 55 pairs; the open-edge row (the corners' row) carries 21% of
+  the mean for 20% of the pairs. The right-arm side is worst (ix 8–10: 3.3–5.0 cm).
+- Top minus bottom, xy bias (sd): left corner pair (0.0, −1.7) (2.0, 3.0) cm; right corner pair (+1.4, −0.4)
+  (4.2, 3.9); open-edge middle (+0.6, −1.1) (2.0, 1.7); centre (+0.4, −2.6) (1.8, 1.5); **next to the crease
+  (0.0, −2.8) (1.1, 1.5)**.
+- So the fold line forms ~1.4 cm short of the cloth's middle (the top layer next to the crease sits 2.8 cm toward the
+  open edge) while the corners are nearly on target: the carry drags the bottom half (mean 2.6 cm) and the hinge with
+  it. Corner placement alone can't remove that. Version 1 cut the scatter next to the crease (sd (1.11, 1.51) →
+  (0.57, 1.13) cm) by changing the carry; its left corner got worse (x bias −4.1 cm).
+
+**p5 (WATcloud 711593):** continues from p4's version 1 with p4's prior and 43k online transitions, UTD 2, critic
+gradient norm clipped at 10, 3000 critic-only transitions first; first evaluation after one batch (= version 1).
