@@ -145,6 +145,16 @@ class PrecisionBatch:
                                                           live_goal=lambda m=m, s=sub: s.cloth_positions()[m.goal])
                                  for p, m in self.moves.items()})
         self.state = [None] * n
+        self.warm_up()
+
+    def warm_up(self, steps=5):
+        """Reset and step every copy once before any restore: in a scene that has never stepped, the first restores
+        lost their cloth to the spawn pose on some copies (p4's version 0: 10.4 cm, sd 7.6, against 3.22 warm)."""
+        for i, task in enumerate(self.tasks):
+            task.reset(seed=i)
+            self._reset_experts(i, i)
+        for _ in range(steps):
+            self._scripted_step()
 
     # ---- scripted phase ----
     def _reset_experts(self, i, seed):

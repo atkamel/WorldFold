@@ -2186,3 +2186,18 @@ Frame fix confirmed: no corrupt restores in 80 training episodes and 2 evaluatio
   over-optimistic as the actor started. p4 (711576): the action sets a bounded residual (±3 cm xy, ±2 cm z,
   smoothed 0.3), T_MAX is a scored ending, the terminal charges 0.3 per cm of mean bottom-half displacement, 48 prior
   episodes (OU σ 0.3), 3000 critic-only transitions before the actor moves, UTD 5, target entropy −4.
+
+### p4 (WATcloud 711576, 2026-10-21, running): first evaluation
+
+| | eval mean (sd), n = 16 | best | edge | passed |
+|---|---|---|---|---|
+| base, version 0 (p3, same eval snapshots, warm scene) | 3.22 (0.74) cm | 1.91 cm | 6.11 cm | 0 |
+| **p4 version 1, 10.2k env steps** | **2.81 (0.84) cm** | **1.34 cm** | 5.76 cm | 0 [0, 19.4] |
+
+- 0.41 cm better than the base, 1.5 SE: right direction, not yet conclusive. All 16 settled.
+- Prior (48 episodes, OU σ 0.3 on the bounded residual): 3.38–3.94 cm per batch, 0–3 dragged per 8. Training
+  batches: 3.56, 3.16, 3.15, 3.14, 3.40, 3.29, 3.55, **2.76** cm; 2 drags in 64 episodes. The critic starts negative
+  (q_mean −19 at the first actor update, then −3.8 to +3.6), entropy 4.9 → 4.1. 7.4 env steps/s with UTD 5.
+- **p4's own version 0 read 10.41 cm (sd 7.58, best 2.18): void.** It was the first restore in a scene that had never
+  stepped (libraries loaded from disk), the bimodal pattern p2 showed; p1 and p3, which built their libraries
+  in-process first, read 3.09 and 3.22. `PrecisionBatch` now resets and steps every copy once before any restore.
