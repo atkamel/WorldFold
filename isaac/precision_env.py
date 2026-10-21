@@ -299,11 +299,12 @@ class PrecisionBatch:
             elif st["t"] >= T_MAX:
                 reason = "truncated"
             if reason is not None:
-                # the window is the whole task: T_MAX ends it like any other ending (p3: an unscored truncation
-                # bootstrapped on the critic made running out the clock pay)
+                # the window is the whole task, and only a released, settled fold completes it: T_MAX is a failure
+                # like a drag (p3: an unscored truncation bootstrapped on the critic; p5: a scored one paid the
+                # policy to stall the carry and never release)
                 st["alive"], done[i], term[i] = False, True, True
                 r_end, s = terminal_reward(cloth, st["start"])
-                rew[i] += -FAIL if reason == "cloth_dragged" else r_end
+                rew[i] += r_end if reason == "settled" else -FAIL
                 st["final"] = {"reason": reason, "steps": st["t"], "mean": round(s["mean"], 4),
                                "bottom_shift": round(bottom_shift(cloth, st["start"]), 4),
                                "dropped": [p for p in ARMS if ex[p].dropped], "instability": None,
