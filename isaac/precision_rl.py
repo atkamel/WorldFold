@@ -243,8 +243,12 @@ def loop(args, pb, agent, online, prior, rng, state, train_snaps, eval_snaps, ru
         state["version"] += 1
         state["next_eval"] = state["env_steps"] + EVAL_EVERY
 
-    if state["env_steps"] == 0:
+    if state["version"] == 0:
         do_eval()                       # version 0: the zero residual = the scripted base (R2 parity)
+        (run / "state.json").write_text(json.dumps(state))
+    if (run / "prior.npz").exists():
+        prior.load(run / "prior.npz")
+    else:
         ou = np.zeros((pb.n, ACT_DIM))
         def noisy(obs):
             ou[:] += -OU_THETA * ou + OU_SIGMA * rng.standard_normal(ou.shape)
@@ -255,8 +259,6 @@ def loop(args, pb, agent, online, prior, rng, state, train_snaps, eval_snaps, ru
             finals = run_episodes(pb, batch, noisy, on_step=lambda tr: [prior.add(*t) for t in tr])
             write({"prior": summarize(finals), "transitions": len(prior)})
         prior.save(run / "prior.npz")
-    elif (run / "prior.npz").exists():
-        prior.load(run / "prior.npz")
 
     while time.time() < t_end:
         stats = {}

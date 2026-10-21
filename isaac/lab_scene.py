@@ -461,25 +461,27 @@ class SceneEnv(DirectRLEnv):
 
     def snapshot_copy(self, c):
         """Copy c's physical state for restore_copy (GPU pipeline; residual-RL snapshots, plan 2026-10-20 R1):
-        particle positions and velocities (the cloth view's frame), each arm's joint positions and velocities, and
-        the copy's 12 joint targets."""
+        particle positions in the copy's own frame (world minus its offset, so the snapshot restores into any copy)
+        and velocities, each arm's joint positions and velocities, and the copy's 12 joint targets."""
         cp = self.copies[c]
         view = cp.cloth._cloth_prim_view
-        return {"pos": view.get_world_positions().detach().cpu().numpy(),
+        offset = np.asarray(cp.offset if c else np.zeros(3), dtype=np.float32)
+        return {"pos": view.get_world_positions().detach().cpu().numpy() - offset,
                 "vel": view.get_velocities().detach().cpu().numpy(),
                 "joints": {p: (arm.data.joint_pos.detach().cpu().numpy().copy(),
                                arm.data.joint_vel.detach().cpu().numpy().copy()) for p, arm in cp.arms.items()},
                 "targets": self.targets[:, 12 * c:12 * c + 12].detach().cpu().numpy().copy()}
 
     def restore_copy(self, c, snap):
-        """Write a snapshot_copy state back into copy c without a physics step."""
+        """Write a snapshot_copy state (taken in any copy) into copy c without a physics step."""
         if self.device == "cpu":
             raise ValueError("restore_copy needs the GPU pipeline (the particle-cloth tensor view)")
         cp = self.copies[c]
         view = cp.cloth._cloth_prim_view
         dev = view.get_world_positions(clone=False).device
         idx = torch.arange(snap["pos"].shape[0], device=dev)
-        view._physics_view.set_positions(torch.as_tensor(snap["pos"], device=dev), idx)
+        offset = np.asarray(cp.offset if c else np.zeros(3), dtype=np.float32)
+        view._physics_view.set_positions(torch.as_tensor(snap["pos"] + offset, device=dev), idx)
         view._physics_view.set_velocities(torch.as_tensor(snap["vel"], device=dev), idx)
         for p, arm in cp.arms.items():
             q, v = snap["joints"][p]
