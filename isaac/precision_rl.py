@@ -289,6 +289,48 @@ def loop(args, pb, agent, online, prior, rng, state, train_snaps, eval_snaps, ru
     save()
 
 
+def demo(args):
+    """Full half folds from cloth seeds: the base to the carry, then the policy (or the base, --base) through the
+    window, restored from the carry-start snapshot so the video runs on without a cut. One row per seed in
+    <run>/demo/demo.jsonl, a top-camera video per seed with --video."""
+    from isaac.precision_env import ACT_DIM, OBS_DIM, PrecisionBatch
+    from isaac.rlpd import RLPDAgent
+    run = Path(args.run)
+    out = run / ("demo_base" if args.base else "demo")
+    out.mkdir(parents=True, exist_ok=True)
+    pb = PrecisionBatch(args.copies, cameras={"top": 400} if args.video else None)
+    if args.base:
+        policy = lambda obs: np.zeros((pb.n, ACT_DIM))
+    else:
+        agent = RLPDAgent(OBS_DIM, ACT_DIM, device="cuda:0")
+        agent.load(run / args.ckpt)
+        policy = lambda obs: agent.act(obs, deterministic=True)
+    a, b = (int(v) for v in args.seeds.split(":"))
+    for start in range(a, b, pb.n):
+        seeds = list(range(start, start + pb.n))
+        pb.frames = [[] for _ in range(pb.n)] if args.video else None
+        pb.cut = [None] * pb.n
+        snaps, _ = pb.scripted_to_window(seeds)
+        ok = [i for i in range(pb.n) if snaps[i] is not None]
+        if not ok:
+            continue
+        pre = [f[:c] for f, c in zip(pb.frames, pb.cut)] if args.video else None
+        if args.video:
+            pb.frames = [[] for _ in range(pb.n)]
+        finals = run_episodes(pb, [snaps[i] if snaps[i] is not None else snaps[ok[0]] for i in range(pb.n)], policy)
+        for i in ok:
+            row = {"seed": seeds[i], "ckpt": None if args.base else args.ckpt, **finals[i]}
+            print("DEMO", json.dumps(row), flush=True)
+            with open(out / "demo.jsonl", "a") as f:
+                f.write(json.dumps(row) + "\n")
+            if args.video:
+                import imageio
+                clip = pre[i] + pb.frames[i][:finals[i]["steps"]]
+                imageio.mimwrite(str(out / f"seed{seeds[i]}.mp4"), clip + clip[-1:] * 20, fps=20, macro_block_size=1)
+        for i in set(range(pb.n)) - set(ok):
+            print("DEMO", json.dumps({"seed": seeds[i], "no_window": True}), flush=True)
+
+
 def supervise(argv, hours):
     """Run `train` in child processes, restarting one that exits CORRUPT (it saved its learner, buffers and state)
     with the hours left."""
@@ -309,6 +351,13 @@ def supervise(argv, hours):
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
+    d = sub.add_parser("demo")
+    d.add_argument("--run", required=True)
+    d.add_argument("--ckpt", default="best.pt")
+    d.add_argument("--seeds", default="910000:910008")
+    d.add_argument("--copies", type=int, default=8)
+    d.add_argument("--video", action="store_true")
+    d.add_argument("--base", action="store_true", help="the zero residual (the scripted base) instead of a policy")
     r = sub.add_parser("check-recover")
     r.add_argument("--copies", type=int, default=8)
     c = sub.add_parser("check-restore")
@@ -329,7 +378,7 @@ def main():
         supervise(argv, args.hours)
         return
     sys.argv = sys.argv[:1]              # AppLauncher reads sys.argv
-    {"check-restore": check_restore, "check-recover": check_recover, "train": train}[args.cmd](args)
+    {"check-restore": check_restore, "check-recover": check_recover, "train": train, "demo": demo}[args.cmd](args)
 
 
 if __name__ == "__main__":

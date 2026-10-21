@@ -145,6 +145,7 @@ class PrecisionBatch:
                                                           live_goal=lambda m=m, s=sub: s.cloth_positions()[m.goal])
                                  for p, m in self.moves.items()})
         self.state = [None] * n
+        self.frames, self.cut = None, [None] * n     # demo video: per copy, the "top" frame after every step
         self.warm_up()
 
     def warm_up(self, steps=5):
@@ -173,6 +174,9 @@ class PrecisionBatch:
         self.batch.advance()
         for sub in self.subs:
             sub.step_collect()
+        if self.frames is not None:
+            for i, sub in enumerate(self.subs):
+                self.frames[i].append(sub.render_rig()["top"].transpose(1, 2, 0))
 
     def _held(self, i):
         sub = self.subs[i]
@@ -201,6 +205,8 @@ class PrecisionBatch:
                     pending.discard(i)
                     if self._held(i):
                         snaps[i] = self.snapshot(i, int(seeds[i]))
+                        if self.frames is not None:
+                            self.cut[i] = len(self.frames[i])
             if not pending:
                 break
         if finish:
