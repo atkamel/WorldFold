@@ -2255,3 +2255,26 @@ base advances a waypoint once the corner is within 1.5 cm of it or after 15 step
 just off each waypoint stretches the carry past T_MAX with the cloth still held, and a scored T_MAX rated the held
 cloth above a released one. Fix: only a settled fold scores; T_MAX costs −FAIL like a drag. p6 (711598) restarts from
 p4's version 1 with fresh prior and online buffers (the stored rewards used the old rule).
+
+### Brainstorm (opus agent, read-only, 2026-10-21), lead-verified numbers
+
+From the 32 final grids of the base / version-1 demos (seeds 910000–15):
+- **Half the base's error is one rigid shift of the top layer:** removing each episode's mean top-minus-bottom xy
+  offset takes the base from 3.36 to **1.66 cm** (version 1: 2.84 → 1.87). The shift averages (+0.4, −2.1) cm and is
+  below −1.5 cm in y on 13/16 episodes. (Recomputed by the lead.)
+- **Corners ride up on the fingers at release on this profile too:** a top corner ends > 2 cm above its partner in
+  7/16 base and 7/16 version-1 episodes (recomputed), carried by the 5 cm straight-up retreat, as on the roy profile.
+- The cloth is 30 cm (`CLOTH_SPACING` 0.03 × 10), not 27 cm; the measured layer gap is ~5 mm.
+- Mechanism proposed: the late carry swings a near-taut top half about the crease (circular-type path), pulling the
+  bend toward the open edge; the place then grinds the bottom layer (PRESS_Z 0.003 + the 5 mm floor) while the live
+  goal chases the partner the fingers push. Thickness and the grasp inset ruled out (≤ 0.2 cm on the mean).
+- Ranked fixes: a g-fold-like height cap on the carried corner's path; release at stack height with a sideways
+  back-off before lifting; a goal latched at place start; RL observations of the crease rows; carry waypoints
+  driven by time (no stall loophole); a post-release press-and-slide. One passing demo plausible after the first
+  three; reliable passing unlikely without a post-lay-down correction.
+- Literature: Petrík & Kyrki 2019 (arXiv 1904.01298): on 0.6 m strips, triangular paths land −36.8 mm, circular
+  +62.7 mm, feedback RL < 20 mm, a known-material model < 10 mm.
+
+Implemented as `IsaacPlaceServoExpert` knobs, off by default: `GFOLD_SLOPE`/`GFOLD_Z0`, `BACKOFF`, `LATCH_GOAL`
+(10 sim-free tests). Sweep 1 (job 711602, `precision_rl.py sweep`, n = 32 paired seeds 910000–31): base, release
+(PRESS_Z 0.007, Z_FLOOR 0.009, BACKOFF 0.02), latch, g-fold slope 0.6 / 1.0 / 1.5, slow carry + 1.5× arc.
