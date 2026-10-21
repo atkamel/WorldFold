@@ -332,6 +332,28 @@ def demo(args):
             print("DEMO", json.dumps({"seed": seeds[i], "no_window": True}), flush=True)
 
 
+def sweep(args):
+    """Several base configurations in one job (one image build, one GPU): each config is a `demo --base` child process
+    with its own WORLDFOLD_* overrides, `--parallel` at a time. Config: name|EXPERT_PARAMS|PLACE_PARAMS|WINDOW_STEPS."""
+    procs, queue = [], list(args.configs)
+    while queue or procs:
+        while queue and len(procs) < args.parallel:
+            name, expert, place, steps = (queue.pop(0).split("|") + ["", "", ""])[:4]
+            env = dict(os.environ, WORLDFOLD_EXPERT_PARAMS=expert, WORLDFOLD_PLACE_PARAMS=place,
+                       WORLDFOLD_WINDOW_STEPS=steps or "200")
+            Path(args.out).mkdir(parents=True, exist_ok=True)
+            log = open(Path(args.out) / f"{name}.log", "w")
+            cmd = [sys.executable, "-u", __file__, "demo", "--run", str(Path(args.out) / name), "--base",
+                   "--seeds", args.seeds, "--copies", str(args.copies)]
+            procs.append((name, subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT)))
+            print("SWEEP start", name, expert, place, steps, flush=True)
+        time.sleep(10)
+        for name, pr in list(procs):
+            if pr.poll() is not None:
+                print("SWEEP done", name, pr.returncode, flush=True)
+                procs.remove((name, pr))
+
+
 def supervise(argv, hours):
     """Run `train` in child processes, restarting one that exits CORRUPT (it saved its learner, buffers and state)
     with the hours left."""
@@ -359,6 +381,12 @@ def main():
     d.add_argument("--copies", type=int, default=8)
     d.add_argument("--video", action="store_true")
     d.add_argument("--base", action="store_true", help="the zero residual (the scripted base) instead of a policy")
+    w = sub.add_parser("sweep")
+    w.add_argument("--out", required=True)
+    w.add_argument("--seeds", default="910000:910032")
+    w.add_argument("--copies", type=int, default=8)
+    w.add_argument("--parallel", type=int, default=2)
+    w.add_argument("configs", nargs="+", help="name|EXPERT_PARAMS|PLACE_PARAMS|WINDOW_STEPS")
     r = sub.add_parser("check-recover")
     r.add_argument("--copies", type=int, default=8)
     c = sub.add_parser("check-restore")
@@ -375,6 +403,9 @@ def main():
     t.add_argument("--critic-clip", type=float, default=10.0)
     t.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    if args.cmd == "sweep":             # the parent only launches demo children: no Isaac here
+        sweep(args)
+        return
     if args.cmd == "train" and not os.environ.get("PRECISION_CHILD"):
         argv = sys.argv[1:] if "--hours" in sys.argv else sys.argv[1:] + ["--hours", str(args.hours)]
         supervise(argv, args.hours)
