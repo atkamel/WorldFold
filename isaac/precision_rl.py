@@ -204,7 +204,7 @@ def train(args):
     eval_snaps = snapshot_library(pb, run / "snaps_eval.pkl", EVAL_SEED, N_EVAL_SNAPS)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     agent = RLPDAgent(OBS_DIM, ACT_DIM, device=device, init_std=args.init_std, seed=args.seed,
-                      target_entropy_scale=args.entropy_scale)
+                      target_entropy_scale=args.entropy_scale, critic_clip=args.critic_clip)
     if (run / "agent.pt").exists():
         agent.load(run / "agent.pt")
     online = ReplayBuffer(OBS_DIM, ACT_DIM, ONLINE_CAPACITY, seed=args.seed)
@@ -368,10 +368,11 @@ def main():
     t.add_argument("--run", required=True)
     t.add_argument("--copies", type=int, default=8)
     t.add_argument("--hours", type=float, default=8.0)
-    t.add_argument("--utd", type=int, default=5)
+    t.add_argument("--utd", type=int, default=2)
     t.add_argument("--batch-size", type=int, default=256)
     t.add_argument("--init-std", type=float, default=0.1)
     t.add_argument("--entropy-scale", type=float, default=0.5)
+    t.add_argument("--critic-clip", type=float, default=10.0)
     t.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if args.cmd == "train" and not os.environ.get("PRECISION_CHILD"):

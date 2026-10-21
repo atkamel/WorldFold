@@ -145,7 +145,7 @@ class RLPDAgent:
     chosen critics), trained with RLPD's symmetric online/prior sampling and a high update-to-data ratio."""
 
     def __init__(self, obs_dim, act_dim, device="cpu", hidden=256, n_critics=10, n_target=2, gamma=0.99,
-                 tau=0.005, lr=3e-4, init_std=0.1, target_entropy_scale=1.0, seed=0):
+                 tau=0.005, lr=3e-4, init_std=0.1, target_entropy_scale=1.0, seed=0, critic_clip=None):
         torch.manual_seed(seed)
         self.rng = np.random.default_rng(seed)
         self.obs_dim = obs_dim
@@ -156,6 +156,7 @@ class RLPDAgent:
         self.gamma = gamma
         self.tau = tau
         self.target_entropy = -target_entropy_scale * act_dim
+        self.critic_clip = critic_clip      # max grad norm for the critics (None: off); p4's critics diverged at UTD 5
 
         self.actor = _Actor(obs_dim, act_dim, hidden, init_std).to(device)
         self.critics = nn.ModuleList([_QNet(obs_dim, act_dim, hidden) for _ in range(n_critics)]).to(device)
@@ -223,6 +224,8 @@ class RLPDAgent:
         loss = sum(((q_preds[i] - y) ** 2).mean() for i in range(self.n_critics))
         self.critic_optim.zero_grad()
         loss.backward()
+        if self.critic_clip is not None:
+            torch.nn.utils.clip_grad_norm_(self.critics.parameters(), self.critic_clip)
         self.critic_optim.step()
         with torch.no_grad():
             for critic, target in zip(self.critics, self.target_critics):
