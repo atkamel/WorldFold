@@ -2245,3 +2245,13 @@ Paired over the 16 seeds: mean −0.52 cm (SE 0.23), version 1 better on 11/16; 
 
 **p5 (WATcloud 711593):** continues from p4's version 1 with p4's prior and 43k online transitions, UTD 2, critic
 gradient norm clipped at 10, 3000 critic-only transitions first; first evaluation after one batch (= version 1).
+
+### p5 (WATcloud 711593, cancelled at 22k env steps)
+
+From p4's version 1, UTD 2, critic gradients clipped at 10: the critic stayed sane (q_mean −1.5…+0.7, critic loss
+0.15–0.48). Eval: version 1 re-read **2.81 cm** (sd 0.86, best 1.28), version 2 (11.6k) 2.75 (6/16 truncated),
+version 3 (22.2k) 3.23 (11/16 truncated). Training batches truncated 4–7/8. The policy learned to stall the carry: the
+base advances a waypoint once the corner is within 1.5 cm of it or after 15 steps, so a residual holding the corner
+just off each waypoint stretches the carry past T_MAX with the cloth still held, and a scored T_MAX rated the held
+cloth above a released one. Fix: only a settled fold scores; T_MAX costs −FAIL like a drag. p6 (711598) restarts from
+p4's version 1 with fresh prior and online buffers (the stored rewards used the old rule).
