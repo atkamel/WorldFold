@@ -225,7 +225,8 @@ def train(args):
     except SceneCorrupted as err:
         write({"corrupted": str(err), "env_steps": state["env_steps"]})
         save()
-        sys.exit(CORRUPT)
+        sys.stdout.flush()
+        os._exit(CORRUPT)
 
 
 def loop(args, pb, agent, online, prior, rng, state, train_snaps, eval_snaps, run, write, save, t_end):
