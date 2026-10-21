@@ -379,6 +379,8 @@ def main():
         return
     sys.argv = sys.argv[:1]              # AppLauncher reads sys.argv
     {"check-restore": check_restore, "check-recover": check_recover, "train": train, "demo": demo}[args.cmd](args)
+    sys.stdout.flush()
+    os._exit(0)                          # Kit can hang on shutdown with cameras (demo jobs 711581/2 sat 7.5 h)
 
 
 if __name__ == "__main__":
