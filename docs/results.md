@@ -2278,3 +2278,13 @@ From the 32 final grids of the base / version-1 demos (seeds 910000–15):
 Implemented as `IsaacPlaceServoExpert` knobs, off by default: `GFOLD_SLOPE`/`GFOLD_Z0`, `BACKOFF`, `LATCH_GOAL`
 (10 sim-free tests). Sweep 1 (job 711602, `precision_rl.py sweep`, n = 32 paired seeds 910000–31): base, release
 (PRESS_Z 0.007, Z_FLOOR 0.009, BACKOFF 0.02), latch, g-fold slope 0.6 / 1.0 / 1.5, slow carry + 1.5× arc.
+
+**Carry A/Bs (n = 16, seeds 910000–15, paired against the base demo):**
+- **Arc 1.5× higher** (`ARC_FRAC=1.5`, job 711600): mean **6.10** vs 3.36 cm (paired +2.73, SE 0.64; better on 2/16),
+  edge 12.50 vs 6.71, bottom shift **14.98** vs 2.60 cm, 10/16 `cloth_dragged`. A higher arc asks for more cloth than
+  the fold has (the brainstorm's path-length check): rejected.
+- **Carry at half speed** (`CARRY_SPEED=0.5`, job 711599): hung after scene construction (no output for 42 min);
+  cancelled, no result. Same code ran fine with the arc override; cause not found.
+
+**p6 (from p4's version 1, T_MAX a failure):** version 1 2.96 cm (2 dragged), version 2 at 12.3k steps 2.94 (7
+dragged), **version 3 at 22.7k: 2.77 cm, best episode 0.99 cm mean** (edge above 1.5, so not passing), 16/16 settled.
