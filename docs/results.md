@@ -2291,3 +2291,24 @@ dragged), **version 3 at 22.7k: 2.77 cm, best episode 0.99 cm mean** (edge above
 p6 version 4 (33.3k steps): **3.77 cm** (sd 1.19, best 2.04), 2 truncated, 2 dragged: lost version 3's gain, as p4
 did after ~20k steps. q_mean +3 to +4 while no episode has passed (true returns ≈ −2), so the critic is still
 optimistic and the actor follows its errors. best.pt = version 3 (2.77 cm).
+
+### Sweep 1: base fixes, n = 32 paired (job 711602, seeds 910000–31, `outputs/isaac/rl/sweep1/`)
+
+Base: mean 3.29 cm, edge 6.32 cm, bottom-half shift 2.28 cm, 32/32 settled. Paired differences (SE in brackets):
+
+| config | mean | edge | bottom shift | endings | best (mean / edge) |
+|---|---|---|---|---|---|
+| g-fold cap, slope 0.6 | **2.02 (−1.26 [0.24])**, better 26/32 | 5.57 (−0.74 [0.55]) | 8.55 (+6.26) | 27 dragged, 5 settled | 0.90 / 2.41 |
+| g-fold cap, slope 1.0 | 2.58 (−0.71 [0.23]), 26/32 | 5.63 (−0.69 [0.51]) | 5.94 (+3.65) | 15 dragged | 1.26 / 3.58 |
+| g-fold cap, slope 1.5 | 2.87 (−0.42 [0.21]), 21/32 | 5.90 (−0.41 [0.46]) | 3.52 (+1.23) | 29 settled, 3 dragged | 1.52 / 3.60 |
+| latched goal | 3.11 (−0.18 [0.26]), 17/32 | 5.59 (−0.73 [0.53]) | 1.81 (−0.48 [0.27]) | 32 settled | **1.42 / 1.62** |
+| release (PRESS_Z 0.007, Z_FLOOR 0.009, back-off 2 cm) | 3.60 (+0.32 [0.27]) | 5.75 (−0.56 [0.56]) | 2.02 (−0.26) | **22 truncated** | **0.95 / 1.75** |
+| slow carry + 1.5× arc | 9.74 (+6.46 [0.54]) | 20.09 | 14.14 | 12 dragged | 2.47 / 7.34 |
+
+- The g-fold cap attacks the fold-line error: a lower path aligns better (−1.26 cm at slope 0.6, 5 SE), but the
+  corner reaches the table early and slides the whole cloth (`cloth_dragged` ends those episodes at a 20 cm anchor
+  drift, before release, so slope 0.6's numbers are not finished folds). Slope 1.5 is the clean middle.
+- The release's truncations were a bug: the back-off reused the slide grasp's 3 mm lift steps (17 waypoints); now
+  two moves (out, then up 5 cm).
+- Sweep 2 (job 711606): latch + slope 1.5 / 1.2, the release with the fixed retreat, all three at slope 1.5, and slope
+  0.6 alone / with latch + release at a 0.5 m drag limit (so they finish and are scored as folds).
