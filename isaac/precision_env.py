@@ -308,7 +308,8 @@ class PrecisionBatch:
                                "bottom_shift": round(bottom_shift(cloth, st["start"]), 4),
                                "dropped": [p for p in ARMS if ex[p].dropped], "instability": None,
                                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
-                               "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS}}
+                               "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS},
+                               "cloth": np.round(cloth, 4).tolist(), "start": np.round(st["start"], 4).tolist()}
                 infos[i] = st["final"]
             obs[i] = self._obs(i)
         return np.nan_to_num(obs), np.nan_to_num(rew), term, done, alive, infos
