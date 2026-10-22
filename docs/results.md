@@ -2338,3 +2338,12 @@ on arrival or after WP_PATIENCE) and the critic can't anticipate the deadline (n
 p7 (job 711637) avoids it by bounding: the base's phases are bounded (≤ ~300 steps), so T_MAX = 400 can't be hit;
 p7 also runs on the improved base (`WORLDFOLD_PLACE_PARAMS=LATCH_GOAL=1,GFOLD_SLOPE=1.2`), fresh snapshots and
 learner. Demo hunt (job 711638): p6 best.pt on 64 fresh seeds (920000–63) with top videos.
+
+### Demo hunt: p6 best (version 3) on 64 fresh seeds (job 711638, seeds 920000–63, top videos)
+
+**0/64 passed** [0, 5.7]. Closest: seed 920034 mean **0.75** / edge 2.32 cm; 920001 1.62 / 1.97; 920053 1.24 / 2.84;
+920029 1.27 / 3.39. In 920034 three of 19 edge pairs exceed 1.5 cm, all at the left corner (corner pair 2.33,
+(ix 1, iy 0) 2.04, (ix 0, iy 2) 1.71 cm); the final frame shows the folded half skewed on the table and wrinkled.
+In 920001, 14/19 edge pairs sit at ~1.9–2.0 cm: a uniform offset. The edge bar is the binding one; a fold that
+passes needs the last corner's 1–2 cm removed after lay-down (a touch-up), not only a better carry.
+Videos: `outputs/isaac/rl/p6/demo/seed920034.mp4`, `seed920001.mp4`.
