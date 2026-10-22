@@ -2387,3 +2387,12 @@ early and lost it, or only lost: the per-step carry residual is not paying, the 
 close to a coin flip, so sweep 4 (job 711724, n = 32, seeds 940000–31, video) repeats it: up to 3 and 5 rounds, each
 re-aimed at the corner's offset after the fold resettles. If rounds raise the pass rate, the RL target becomes the
 corrector: a policy choosing each push from the settled cloth.
+
+### Scripted video hunt (job 711718): first recorded fold at the bar
+
+Base latch + g-fold 1.2, one touch-up (press −2 mm, tolerance 8 mm), 500-step window, seeds 930000–63, top videos.
+**1/64 passed** [0.3, 8.3]: **seed 930005, 0.95 cm mean / 1.45 cm edge** (before its touch-up 1.03 / 1.69),
+`outputs/isaac/rl/hunt_base/demo_base/seed930005.mp4`. Endings: 57 settled, 6 truncated, 1 dragged. Near misses:
+930056 0.94 / 1.66 (from 2.03 / 2.61), 930043 1.29 / 2.05. **Seed 930019 passed before its touch-up (0.59 / 1.40) and
+the touch-up broke it (0.60 / 1.70)**: a corrector needs a "stop" choice (the state is fully observed: it can score
+the fold before it pushes). Scripted, not an RL policy.
