@@ -2428,3 +2428,16 @@ on the 32 eval folds (3 decisions each):
 c1's stop fired when its action exceeded 0, so the untrained policy's noise stopped about half its decisions (7–8 of
 8 training episodes ended early). c2 (job 711732) stops above 0.5, reuses c1's libraries, skips the baselines and
 saves its prior.
+
+### Overnight 2026-10-22: c2 and p8 so far
+
+- **c2 (RL corrector, job 711732):** eval on the 32 settled folds: version 0 (no-op) 2.75 cm, version 1 (424 decisions)
+  2.93, version 2 (833) 2.82; 0/32 passed each. One training batch had a passing fold (stochastic policy). ~400
+  decisions per hour; no gain over the scripted push (2.56, 1/32) yet.
+- **p8 (RL residual on the carry + one touch-up, job 711717):** 15 evaluations to 170k env steps: version 0 2.75 cm,
+  then 2.52–4.59 cm with no trend; best version 12 (136k steps) **2.52 cm** (best fold 1.06), 0/16 passed throughout;
+  truncations back (2–13/16 per evaluation) as the residual slows the carry and the touch-up adds steps.
+- The per-fold noise of the sim (0.5–1 cm in the mean between restores of one state) is as large as the effects
+  these learners chase; neither run shows learning above it.
+- **RL-policy video hunt (job 711740):** p8 best.pt (version 12) on 64 fresh seeds (980000–63) with videos. A pass
+  here is a fold made by an RL policy (residual on the carry) with the scripted touch-up.
