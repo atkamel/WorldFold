@@ -50,6 +50,9 @@ DRAG_LIMIT = float(os.environ.get("WORLDFOLD_DRAG_LIMIT", 0.20))   # = quarter_f
 # (IsaacPlaceServoExpert.start_touchup) and the window settles again; unset: no touch-up
 TOUCH_TOL = float(os.environ.get("WORLDFOLD_TOUCHUP") or 0.0)
 TOUCH_ROUNDS = int(os.environ.get("WORLDFOLD_TOUCH_ROUNDS") or 1)   # touch-up rounds, each after the fold resettles
+# "k=v,..." friction-grasp knobs on top of the profile's (isaac_env.FRICTION_GRASP), e.g. particle_friction=0.6: the
+# cloth's friction against every rigid body, table and jaws alike (PhysX PBD has no table-only coefficient)
+GRASP_KNOBS = os.environ.get("WORLDFOLD_GRASP_KNOBS", "")
 HOLD_DIST = 0.05             # = isaac.isaac_env.HOLD_DIST
 
 
@@ -134,12 +137,14 @@ class PrecisionBatch:
 
     def __init__(self, n, profile="friction", cameras=None):
         from cloth_fold_rl.quarter_fold_env import CLOTH_10, CLOTH_120, GRASP_RADIUS, STAGES, QuarterFoldEnv
+        from isaac.grasp_bench import parse_kv
         from isaac.isaac_env import CLOTH_JITTER, IsaacClothFoldBatch
         from isaac.place_servo import IsaacPlaceServoExpert
         self.n = n
         self.batch = IsaacClothFoldBatch(n, profile=profile, observation_mode="state", max_episode_steps=10 ** 6,
                                          grasp_corners={"left_": (CLOTH_10,), "right_": (CLOTH_120,)},
-                                         grasp_radius=GRASP_RADIUS, cameras=cameras)
+                                         grasp_radius=GRASP_RADIUS, cameras=cameras,
+                                         grasp_knobs=parse_kv(GRASP_KNOBS) or None)
         self.subs = self.batch.envs
         self.tasks = [QuarterFoldEnv(base_env=s, cloth_jitter=CLOTH_JITTER, stages=(STAGES[0],)) for s in self.subs]
         self.moves = {m.prefix: m for m in STAGES[0].moves}

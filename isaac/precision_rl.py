@@ -335,15 +335,15 @@ def demo(args):
 def sweep(args):
     """Several base configurations in one job (one image build, one GPU): each config is a `demo --base` child process
     with its own WORLDFOLD_* overrides, `--parallel` at a time.
-    Config: name|EXPERT_PARAMS|PLACE_PARAMS|WINDOW_STEPS|DRAG_LIMIT|TOUCHUP|TOUCH_ROUNDS. A child running longer than
+    Config: name|EXPERT_PARAMS|PLACE_PARAMS|WINDOW_STEPS|DRAG_LIMIT|TOUCHUP|TOUCH_ROUNDS|GRASP_KNOBS. A child longer than
     --child-minutes is killed (two demo children hung silently for hours: slow-carry job, sweep 2)."""
     procs, queue = [], list(args.configs)
     while queue or procs:
         while queue and len(procs) < args.parallel:
-            name, expert, place, steps, drag, touch, rounds = (queue.pop(0).split("|") + [""] * 6)[:7]
+            name, expert, place, steps, drag, touch, rounds, knobs = (queue.pop(0).split("|") + [""] * 7)[:8]
             env = dict(os.environ, WORLDFOLD_EXPERT_PARAMS=expert, WORLDFOLD_PLACE_PARAMS=place,
                        WORLDFOLD_WINDOW_STEPS=steps or "200", WORLDFOLD_DRAG_LIMIT=drag or "0.20",
-                       WORLDFOLD_TOUCHUP=touch, WORLDFOLD_TOUCH_ROUNDS=rounds or "1")
+                       WORLDFOLD_TOUCHUP=touch, WORLDFOLD_TOUCH_ROUNDS=rounds or "1", WORLDFOLD_GRASP_KNOBS=knobs)
             Path(args.out).mkdir(parents=True, exist_ok=True)
             log = open(Path(args.out) / f"{name}.log", "w")
             cmd = [sys.executable, "-u", __file__, "demo", "--run", str(Path(args.out) / name), "--base",
