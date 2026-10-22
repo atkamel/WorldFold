@@ -2577,3 +2577,16 @@ See `docs/reviews/2026-10-22-quarter-fold-reevaluation.md`. Corrections to entri
 - **Roy's environment** has no Isaac quarter fold (teleop rig for the LeHome shirt; his quarter task is our MuJoCo weld env).
 - **Fold-1 bound on the quarter bar** (688 stored settled half folds): fold 1 alone allows 1.0/1.5: 0.4%, 1.5/2.5: 3.5%,
   2.0/3.0: 6.8%, 2.0/4.0: 12.2%, 2.5/5.0: 25.4%.
+
+### Validity gate (revised plan step 1, 2026-10-22)
+
+`precision_env.gate`: every grid vertex within 5 cm of the table top and on the table, both jaws open (> 0.5 rad) and
+both gripper sites ≥ 3 cm from the cloth, the cloth moving < 1 mm in the last step. Now in every final record (window
+env, corrector, quarter_batch), `passed_valid` = passed and gated and completed; summaries report gated counts and
+means over settled gated episodes; in RL an ungated ending scores −FAIL. Height threshold calibrated on the stored folds
+(`isaac/rescore_gate.py`, final grids only, so height and on-table checks): settled half folds peak at a median 2.2–2.8 cm
+with a tail to ~5 cm (ridges, bunching); carried-off sheets sat ~30 cm up; at 3 cm the gate rejected 25–44% of real
+folds and the 980008 pass (a 3.1 cm ridge at (7, 10)), so it is 5 cm.
+Static re-score at 5 cm: the three half-fold passes (910009, 930005, 980008) stay valid; the carried-off quarter-fold
+"near misses" are rejected (drag1 4.79 / 6.30, drag_crease 5.71, drag_mid 4.54 / 6.12 / 13.11 cm); 9/32 of sweep 2's
+latch + g-fold 1.2 folds peak 5–10 cm (a corner left up, as in the brainstorm's 7/16), now invalid.
