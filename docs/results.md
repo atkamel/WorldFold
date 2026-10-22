@@ -2396,3 +2396,21 @@ Base latch + g-fold 1.2, one touch-up (press −2 mm, tolerance 8 mm), 500-step 
 930056 0.94 / 1.66 (from 2.03 / 2.61), 930043 1.29 / 2.05. **Seed 930019 passed before its touch-up (0.59 / 1.40) and
 the touch-up broke it (0.60 / 1.70)**: a corrector needs a "stop" choice (the state is fully observed: it can score
 the fold before it pushes). Scripted, not an RL policy.
+
+### Sweep 4: touch-up rounds (job 711724, n = 32 each, seeds 940000–31, videos)
+
+| rounds | mean before → after (paired) | edge | passed | endings |
+|---|---|---|---|---|
+| up to 3 (used 2.8) | 2.88 → **2.49** (−0.39, SE 0.17) | 6.43 → 6.03 | 0/32 | 20 settled, 9 truncated, 3 dragged |
+| up to 5 (used 4.5) | 3.08 → **2.66** (−0.42, SE 0.21) | 6.74 → 6.54 | 0/32 | 14 settled, 16 truncated, 2 dragged |
+
+Repeating the push lowers the mean ~0.4 cm (2 SE) but hardly the edge (the worst outline pair), and 0/64 pass. The
+passes so far (2/95 with one touch-up) are folds already close to the bar that one push tipped over, and one fold
+that passed before its push was broken by it. **p8** (RL residual on the carry + one touch-up): version 0 2.75 cm (best
+0.71), training slowly (episodes ~400 steps).
+
+**Next: an RL corrector.** Episodes start from settled scripted folds (snapshots after lay-down); the policy sees the
+settled cloth (pair offsets, corner gaps, the 19 outline spreads, the current mean and edge) and makes up to 3
+decisions, each a push per arm (direction, distance, press depth) or stop; reward = the change in the alignment score
+per decision plus a bonus for stopping on a passing fold. Closed loop, ~3 decisions per episode, each scored directly
+against the bar.
