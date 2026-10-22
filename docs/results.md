@@ -2494,3 +2494,7 @@ particle friction 0.5:** 0.6: mean 2.51 vs 2.56 (−0.05, SE 0.11), edge +0.90 (
 coefficient PhysX PBD has: table, jaws and cloth-on-cloth alike) does not reduce the bottom layer's drag (the top layer
 also grips it harder) and 0.7 hurts. No passes in 72. The one-arm fold-2 run crashed on a runner bug (a one-arm stage
 has no left-arm phase), fixed; rerun job 711748.
+Layout search, final report: in the best one-armed layouts the fold-2 near miss (7.4–8.6 mm) is the idle arm's wrist
+against the mover's wrist, so the idle arm's parking pose sets it; orientation weight 0.1 is the robust one under the
+±1 cm jitter (0.005 fails B0 at the same bases). No new profile built: the friction layout already reaches the
+one-armed M with the right arm.
