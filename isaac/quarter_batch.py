@@ -26,6 +26,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from isaac.precision_env import ARMS, SETTLE_STEPS, PrecisionBatch, coordinate  # noqa: E402
 
 WEST, EAST = (2, 8), (112, 118)          # the short edges' middles after fold 1 (bottom vertex, top vertex)
+# fold 2's grasp -> its target: "mid" the west edge's middle (two free layers; dropped 5/8 in run drag1) onto the
+# east one; "crease" the west crease end cloth_5 (the layers joined) onto the east crease end cloth_115
+FOLD2 = {"mid": (WEST, EAST), "crease": ((5,), (115,))}
 DRAG = (0.12, 0.04)
 FLAT_ARC = 0.01                          # the drag's lift (IsaacArmExpert.ARC_HEIGHT for its plan) and no corner arc
 CAPS = {"fold1": 650, "drag": 300, "fold2": 400}
@@ -43,9 +46,10 @@ def park_action(q, home, scale):
 
 class QuarterBatch(PrecisionBatch):
 
-    def __init__(self, n, drag=DRAG, cameras=None):
+    def __init__(self, n, drag=DRAG, cameras=None, fold2="mid"):
         self.parked = [set() for _ in range(n)]          # before super(): its warm-up steps through _scripted_step
         self.drag = np.r_[np.asarray(drag, float), 0.0]
+        self.fold2 = FOLD2[fold2]
         super().__init__(n, cameras=cameras)
 
     def _configure(self, i, p, corners, goal, live_goal, flat):
@@ -114,19 +118,21 @@ class QuarterBatch(PrecisionBatch):
             w0, e0 = (np.array(recs[i]["drag_from"][k]) for k in ("west", "east"))
             recs[i]["drag"] = {"settled": okd[i], "west_moved": np.round(w1 - w0, 4).tolist(),
                                "east_moved": np.round(e1 - e0, 4).tolist(),
+                               "dropped": [p for p in ARMS if self.experts[i][p].dropped],
                                "fold1_after": round(score(cloth, folds=FOLDS)["mean"], 4)}
             self.parked[i] = {"left_"}
         for _ in range(PARK_STEPS):           # the right arm is done (idle) while the left one goes home
             self._scripted_step()
+        grasp, target = self.fold2
         for i, sub in enumerate(self.subs):
-            self._configure(i, "right_", WEST, lambda s=sub: s.cloth_positions()[list(EAST)].mean(axis=0),
-                            lambda s=sub: s.cloth_positions()[list(EAST)].mean(axis=0), flat=False)
+            self._configure(i, "right_", grasp, lambda s=sub: s.cloth_positions()[list(target)].mean(axis=0),
+                            lambda s=sub: s.cloth_positions()[list(target)].mean(axis=0), flat=False)
         ok2 = self._run_stage(CAPS["fold2"])
         for i, sub in enumerate(self.subs):
             cloth = sub.cloth_positions()
             s = score(cloth, folds=QUARTER_FOLDS)
-            off = cloth[list(WEST)].mean(axis=0) - cloth[list(EAST)].mean(axis=0)
-            recs[i]["fold2"] = {"settled": ok2[i], "west_on_east_xy": np.round(off[:2], 4).tolist(),
+            off = cloth[list(grasp)].mean(axis=0) - cloth[list(target)].mean(axis=0)
+            recs[i]["fold2"] = {"settled": ok2[i], "grasp_on_target_xy": np.round(off[:2], 4).tolist(),
                                 "dropped": self.experts[i]["right_"].dropped}
             recs[i]["final"] = {"mean": round(s["mean"], 4), "edge_max": round(s["edge_max"], 4),
                                 "passed": bool(s["passed"]), "unstable": bool(sub._failed())}
@@ -140,13 +146,14 @@ def main():
     ap.add_argument("--seeds", default="0:8")
     ap.add_argument("--drag", default="0.12,0.04")
     ap.add_argument("--video", action="store_true")
+    ap.add_argument("--fold2", choices=sorted(FOLD2), default="mid")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     sys.argv = sys.argv[:1]
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     qb = QuarterBatch(args.copies, drag=[float(v) for v in args.drag.split(",")],
-                      cameras={"top": 400} if args.video else None)
+                      cameras={"top": 400} if args.video else None, fold2=args.fold2)
     a, b = (int(v) for v in args.seeds.split(":"))
     for start in range(a, b, qb.n):
         seeds = list(range(start, start + qb.n))
