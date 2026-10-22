@@ -108,12 +108,13 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
                 q, _ = self._ik.solve(self.prefix, tip, jaw, q, orientation_weight=0.02)
                 self.plan["retreat_path"].append(q)
 
-    def start_touchup(self, offset):
-        """Slide the settled top corner by offset (xy, m) with the closed jaw pressed on the top layer."""
+    def start_touchup(self, offset, press=None):
+        """Slide the settled top corner by offset (xy, m) with the closed jaw pressed on the top layer, press m above the
+        corner (default TOUCH_PRESS)."""
         corner = self._corner()
         off = np.r_[np.asarray(offset, float)[:2], 0.0]
         d = off / max(np.linalg.norm(off), 1e-9)
-        z = float(corner[2]) + self.TOUCH_PRESS
+        z = float(corner[2]) + (self.TOUCH_PRESS if press is None else float(press))
         start = np.r_[corner[:2], z] - self.TOUCH_BEHIND * d
         n = max(2, int(np.ceil(np.linalg.norm(off) / self.TOUCH_STEP)))
         path = [start + [0.0, 0.0, ABOVE], start] + [start + off * s for s in np.linspace(0.0, 1.0, n + 1)[1:]]
