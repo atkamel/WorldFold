@@ -2347,3 +2347,9 @@ learner. Demo hunt (job 711638): p6 best.pt on 64 fresh seeds (920000–63) with
 In 920001, 14/19 edge pairs sit at ~1.9–2.0 cm: a uniform offset. The edge bar is the binding one; a fold that
 passes needs the last corner's 1–2 cm removed after lay-down (a touch-up), not only a better carry.
 Videos: `outputs/isaac/rl/p6/demo/seed920034.mp4`, `seed920001.mp4`.
+**Touch-up (sweep 3, job 711713):** `IsaacPlaceServoExpert.start_touchup`: once the fold has settled, each arm whose
+top corner is > 8 mm from its partner comes down 1.5 cm behind it with the jaw closed, presses `TOUCH_PRESS` above
+the top layer and slides it by the measured offset, then lifts. Open question it tests: the fingertips grip at the
+cloth's 0.5 (the 2.0 lining is on the inner faces), about what cloth grips cloth, so the top layer may not slide
+over the bottom one. Base latch + g-fold 1.2, n = 32 (seeds 910000–31), press +2 / 0 / −2 mm; each episode records
+its alignment before the touch-up, so the effect is read within the fold.
