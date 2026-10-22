@@ -58,3 +58,9 @@ friction-gripped two-fold (SoftGym uses 1.25 cm mean vertex error with welded pi
 4. **Then RL** (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled, gated episodes against the
    scripted base on paired seeds; demo hunts with video and the gates.
 5. **Bar:** the user picks from the table above.
+
+## Decisions (user, 2026-10-22)
+
+- The revised plan is approved as written.
+- **Quarter-fold bar: mean ≤ 2.0 cm, edge ≤ 3.0 cm**, on gated (on the table, released, still) settled episodes.
+- One arm may move to the far side of the cloth (a new two-arm layout for fold 2).
