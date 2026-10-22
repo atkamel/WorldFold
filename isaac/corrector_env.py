@@ -29,6 +29,7 @@ FAIL = 5.0
 PASS_BONUS = 10.0
 CORNER = {"left_": (10, 0), "right_": (120, 110)}      # (top corner, its partner)
 ACT_DIM = 7                    # per arm dx, dy, press; stop
+STOP_ABOVE = 0.5               # stop = action[6] > STOP_ABOVE (c1: at 0 the untrained policy's noise stopped half the time)
 
 
 def _edge_groups():
@@ -66,7 +67,7 @@ def decode(action):
     lo, hi = PRESS_RANGE
     pushes = {p: (a[3 * k:3 * k + 2] * PUSH_SCALE, lo + (a[3 * k + 2] + 1.0) / 2.0 * (hi - lo))
               for k, p in enumerate(ARMS)}
-    return pushes, bool(a[6] > 0.0)
+    return pushes, bool(a[6] > STOP_ABOVE)
 
 
 def scripted_action(cloth, tol=0.008, press=-0.002):

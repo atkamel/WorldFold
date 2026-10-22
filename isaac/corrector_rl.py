@@ -97,15 +97,20 @@ def train(args):
     prior = ReplayBuffer(OBS_DIM, ACT_DIM, 50_000, seed=args.seed + 1)
     rng = np.random.default_rng(args.seed)
     zero = lambda obs: np.zeros((cb.n, ACT_DIM))
-    write({"baseline": "no-op", "eval": summarize(evaluate(cb, eval_snaps, zero))})
-    write({"baseline": "scripted push", "eval": summarize(evaluate(cb, eval_snaps, scripted_policy(cb)))})
+    if not args.skip_baselines:
+        write({"baseline": "no-op", "eval": summarize(evaluate(cb, eval_snaps, zero))})
+        write({"baseline": "scripted push", "eval": summarize(evaluate(cb, eval_snaps, scripted_policy(cb)))})
     script = scripted_policy(cb)
-    for k in range(0, PRIOR_EPISODES, cb.n):
+    for k in range(0, PRIOR_EPISODES if not (run_dir / "prior.npz").exists() else 0, cb.n):
         noisy = (lambda obs: script(obs) + 0.2 * rng.standard_normal((cb.n, ACT_DIM))) if (k // cb.n) % 2 == 0 \
             else (lambda obs: rng.uniform(-0.6, 0.6, (cb.n, ACT_DIM)))
         batch = [train_snaps[j] for j in rng.integers(len(train_snaps), size=cb.n)]
         finals = run(cb, batch, noisy, on_step=lambda tr: [prior.add(*t) for t in tr])
         write({"prior": summarize(finals), "transitions": len(prior)})
+    if (run_dir / "prior.npz").exists():
+        prior.load(run_dir / "prior.npz")
+    else:
+        prior.save(run_dir / "prior.npz")
     state = {"transitions": 0, "episodes": 0, "version": 0, "best": None, "next_eval": 0}
 
     def det(obs):
@@ -202,6 +207,7 @@ def main():
     t.add_argument("--batch-size", type=int, default=128)
     t.add_argument("--init-std", type=float, default=0.3)
     t.add_argument("--seed", type=int, default=0)
+    t.add_argument("--skip-baselines", action="store_true")
     d = sub.add_parser("demo")
     d.add_argument("--run", required=True)
     d.add_argument("--ckpt", default="best.pt")

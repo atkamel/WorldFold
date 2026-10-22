@@ -44,3 +44,9 @@ def test_scripted_action_stops_on_a_clean_fold_and_pushes_a_shifted_one():
     assert not stop
     for d, press in pushes.values():
         assert np.allclose(d, [0.0, 0.02]) and np.isclose(press, -0.002)       # back onto the partner, 2 mm in
+
+
+def test_noise_around_zero_rarely_stops():
+    rng = np.random.default_rng(0)
+    stops = sum(ce.decode(0.3 * rng.standard_normal(ce.ACT_DIM))[1] for _ in range(2000))
+    assert stops / 2000 < 0.1
