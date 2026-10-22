@@ -140,6 +140,12 @@ for _name, (_cloth, _left, _right) in {"quarter": (0.24, (-0.225, -0.05), (0.0, 
     PROFILES[_name] = dict(PROFILES["friction"], cloth_spacing=_cloth / (CLOTH_COUNT - 1),
                            arm_bases=_quarter_bases(_left, _right), arm_home=QUARTER_HOME,
                            friction_grasp=dict(PROFILES["friction"]["friction_grasp"], gripper_mode="position"))
+# "quarter2" (re-evaluation 2026-10-22, the audit's corrected search + scratchpad/layout2): a two-armed fold 2 with
+# the left arm north of the cloth (fold 1's west corner A0, fold 2's crease end C) and the right arm south-east (B0,
+# the corner stack S); 30 cm cloth at CLOTH_CENTER; fold 2's approach sequenced (left first). Offline: >= 38.7 mm
+# arm-arm in fold 2, reach within 5 mm under +-1 cm jitter; pinch tilt 39 deg on A0 and 34.5 deg on S
+PROFILES["quarter2"] = dict(PROFILES["friction"], arm_bases=_quarter_bases((-0.10, 0.235), (0.25, -0.14)),
+                            arm_home=QUARTER_HOME)
 # friction grasp_active (Phase F): a closed jaw within this of its target counts as settled (track G traces: 0.14-0.21
 # rad mid-close, exactly the target once shut); the held corner rides 1-4 cm from the gripper frame during the carry
 JAW_SETTLED_TOL         = 0.05

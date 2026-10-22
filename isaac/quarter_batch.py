@@ -28,7 +28,11 @@ from isaac.precision_env import ARMS, SETTLE_STEPS, PrecisionBatch, coordinate, 
 WEST, EAST = (2, 8), (112, 118)          # the short edges' middles after fold 1 (bottom vertex, top vertex)
 # fold 2's grasp -> its target: "mid" the west edge's middle (two free layers; dropped 5/8 in run drag1) onto the
 # east one; "crease" the west crease end cloth_5 (the layers joined) onto the east crease end cloth_115
-FOLD2 = {"mid": (WEST, EAST), "crease": ((5,), (115,))}
+FOLD2 = {"mid": (WEST, EAST), "crease": ((5,), (115,)), "two": None}
+# fold2 "two" (profile quarter2): both arms, the left one the crease end cloth_5 onto cloth_115, the right one the
+# corner stack (cloth_0 + cloth_10) onto the east stack (cloth_110 + cloth_120); the right arm waits at its start until
+# the left one has reached its pose above the crease end (sequenced approach), and neither lifts before both closed
+TWO = {"left_": ((5,), (115,)), "right_": ((0, 10), (110, 120))}
 DRAG = (0.12, 0.04)
 FLAT_ARC = 0.01                          # the drag's lift (IsaacArmExpert.ARC_HEIGHT for its plan) and no corner arc
 CAPS = {"fold1": 650, "drag": 300, "fold2": 400}
@@ -49,12 +53,14 @@ def park_action(q, home, scale):
 
 class QuarterBatch(PrecisionBatch):
 
-    def __init__(self, n, drag=DRAG, cameras=None, fold2="mid"):
+    def __init__(self, n, drag=DRAG, cameras=None, fold2="mid", profile="friction"):
         self.parked = [set() for _ in range(n)]          # before super(): its warm-up steps through _scripted_step
         self.park_steps, self.park_lift = [0] * n, [None] * n
         self.drag = None if drag is None else np.r_[np.asarray(drag, float), 0.0]      # None: no drag stage
+        self.two = fold2 == "two"
         self.fold2 = FOLD2[fold2]
-        super().__init__(n, cameras=cameras)
+        self.sequenced = [False] * n
+        super().__init__(n, profile=profile, cameras=cameras)
 
     def _configure(self, i, p, corners, goal, live_goal, flat):
         e = self.experts[i][p]
@@ -84,7 +90,11 @@ class QuarterBatch(PrecisionBatch):
         for i, sub in enumerate(self.subs):
             moving = {p: e for p, e in self.experts[i].items() if p not in self.parked[i]}
             coordinate(moving)
-            acts = [moving[p].act() if p in moving else self._park(i, p) for p in ARMS]
+            left, right = self.experts[i]["left_"], self.experts[i]["right_"]
+            wait = self.sequenced[i] and right.phase == 0 and left.phase < left.PHASES.index("descend")
+            hold = np.r_[np.zeros(5), 1.0].astype(np.float32)          # the right arm waits where it is, jaw open
+            acts = [hold if (p == "right_" and wait) else moving[p].act() if p in moving else self._park(i, p)
+                    for p in ARMS]
             sub.step_submit(self.tasks[i]._expand(np.concatenate(acts)))
         self.batch.advance()
         for sub in self.subs:
@@ -111,6 +121,31 @@ class QuarterBatch(PrecisionBatch):
         return gate(sub.cloth_positions(), self.prev_cloth[i], [sub.gripper_position(p) for p in ARMS],
                     [sub.joint_positions(p)[5] for p in ARMS])
 
+    def _fold2_two(self, recs):
+        """Fold 2 with both arms (profile quarter2), sequenced approach; then score as run() does."""
+        from cloth_fold_rl.fold_alignment import QUARTER_FOLDS, score
+        for i, sub in enumerate(self.subs):
+            for p, (grasp, target) in TWO.items():
+                self._configure(i, p, grasp, lambda s=sub, t=target: s.cloth_positions()[list(t)].mean(axis=0),
+                                lambda s=sub, t=target: s.cloth_positions()[list(t)].mean(axis=0), flat=False)
+            self.sequenced[i] = True
+        ok2 = self._run_stage(CAPS["fold2"])
+        for i, sub in enumerate(self.subs):
+            cloth = sub.cloth_positions()
+            s = score(cloth, folds=QUARTER_FOLDS)
+            recs[i]["fold2"] = {"settled": ok2[i], "dropped": [p for p in ARMS if self.experts[i][p].dropped],
+                                "landed_xy": {p: np.round((cloth[list(g)].mean(axis=0) - cloth[list(t)].mean(axis=0))[:2],
+                                                          4).tolist() for p, (g, t) in TWO.items()}}
+            g = self._gate(i)
+            recs[i]["final"] = {"mean": round(s["mean"], 4), "edge_max": round(s["edge_max"], 4),
+                                "passed": bool(s["passed"]), "unstable": bool(sub._failed()), "gate": g,
+                                "passed_valid": bool(s["passed"] and g["valid"] and ok2[i]),
+                                "passed_relaxed": bool(s["mean"] <= 0.02 and s["edge_max"] <= 0.03 and g["valid"]
+                                                       and ok2[i])}
+            recs[i]["cloth"] = np.round(cloth, 4).tolist()
+            self.sequenced[i] = False
+        return recs
+
     def run(self, seeds):
         """Fold 1, drag, fold 2 for copy i from seeds[i]; returns one record per copy."""
         from cloth_fold_rl.fold_alignment import QUARTER_FOLDS, score
@@ -120,6 +155,7 @@ class QuarterBatch(PrecisionBatch):
             self.tasks[i].reset(seed=int(seed))
             self.parked[i] = set()
             self.park_steps[i], self.park_lift[i] = 0, None
+            self.sequenced[i] = False
             task, sub = self.tasks[i], self.subs[i]
             for p, m in self.moves.items():
                 self._configure(i, p, m.corners, lambda m=m, t=task: t.goal(m),
@@ -135,6 +171,8 @@ class QuarterBatch(PrecisionBatch):
             if self.drag is not None:
                 self._configure(i, "left_", WEST, lambda g=w0 + self.drag: g, lambda g=w0 + self.drag: g, flat=True)
                 self._configure(i, "right_", EAST, lambda g=e0 + self.drag: g, lambda g=e0 + self.drag: g, flat=True)
+        if self.two:
+            return self._fold2_two(recs)
         okd = self._run_stage(CAPS["drag"]) if self.drag is not None else [True] * self.n
         for i, sub in enumerate(self.subs):
             cloth = sub.cloth_positions()
@@ -181,13 +219,14 @@ def main():
     ap.add_argument("--drag", default="0.12,0.04", help="dx,dy (m), or 'none' to skip the drag")
     ap.add_argument("--video", action="store_true")
     ap.add_argument("--fold2", choices=sorted(FOLD2), default="mid")
+    ap.add_argument("--profile", default="friction", help="quarter2 for --fold2 two")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     sys.argv = sys.argv[:1]
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     qb = QuarterBatch(args.copies, drag=None if args.drag == "none" else [float(v) for v in args.drag.split(",")],
-                      cameras={"top": 400} if args.video else None, fold2=args.fold2)
+                      cameras={"top": 400} if args.video else None, fold2=args.fold2, profile=args.profile)
     a, b = (int(v) for v in args.seeds.split(":"))
     for start in range(a, b, qb.n):
         seeds = list(range(start, start + qb.n))
