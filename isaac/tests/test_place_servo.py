@@ -146,3 +146,19 @@ def test_backoff_retreat_slides_out_before_lifting(monkeypatch):
     jaw = e.plan["jaw"]
     assert np.allclose(tips[0], e.base.site - 0.02 * np.r_[jaw[:2], 0.0])
     assert len(tips) == 2 and np.allclose(tips[1], tips[0] + [0.0, 0.0, 0.05])
+
+
+def test_touchup_comes_down_behind_presses_slides_and_lifts():
+    e = _expert()
+    e.PHASES = e.PHASES + ("touch",)
+    corner = e.base.cloth[10].copy()
+    e.start_touchup([0.0, -0.02])
+    path = e.touch["path"]
+    d = np.array([0.0, -1.0, 0.0])
+    start = np.r_[corner[:2], corner[2] + e.TOUCH_PRESS] - e.TOUCH_BEHIND * d
+    assert np.allclose(path[1], start) and path[0][2] > path[1][2]
+    assert np.allclose(path[-2], start + [0.0, -0.02, 0.0]) and path[-1][2] > path[-2][2]
+    assert e.PHASES[e.phase] == "touch"
+    for _ in range(13 * len(path)):         # the fake site never arrives: each waypoint waits out 13 steps
+        e.act()
+    assert e.PHASES[e.phase] == "done"

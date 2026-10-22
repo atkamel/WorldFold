@@ -46,6 +46,9 @@ SETTLE_STEPS = 15            # window ends this long after both arms are done
 T_MAX = int(os.environ.get("WORLDFOLD_WINDOW_STEPS", 200))   # window cap (a failure); slower bases need more
 PRE_MAX = 220                # scripted steps allowed to reach the window
 DRAG_LIMIT = float(os.environ.get("WORLDFOLD_DRAG_LIMIT", 0.20))   # = quarter_fold_env.DRAG_LIMIT by default
+# m: once settled, each arm whose top corner is further than this from its partner touches it up once
+# (IsaacPlaceServoExpert.start_touchup) and the window settles again; unset: no touch-up
+TOUCH_TOL = float(os.environ.get("WORLDFOLD_TOUCHUP") or 0.0)
 HOLD_DIST = 0.05             # = isaac.isaac_env.HOLD_DIST
 
 
@@ -290,6 +293,17 @@ class PrecisionBatch:
             rew[i] = step_reward(st["phi"], phi, acts[i], st["drift"], d)
             st["phi"], st["drift"], st["prev_action"] = phi, max(st["drift"], d), acts[i]
             st["settle"] = st["settle"] + 1 if all(e.PHASES[e.phase] == "done" for e in ex.values()) else 0
+            if TOUCH_TOL and st["settle"] >= SETTLE_STEPS and "touch" not in st:
+                from cloth_fold_rl.fold_alignment import score
+                pre = score(cloth, folds=FOLDS)
+                st["touch"] = {"pre_mean": round(pre["mean"], 4), "pre_edge": round(pre["edge_max"], 4), "arms": {}}
+                for p, e in ex.items():
+                    off = (np.asarray(e.live_goal(), float) - e._corner())[:2]
+                    if np.linalg.norm(off) > TOUCH_TOL:
+                        st["touch"]["arms"][p] = np.round(off, 4).tolist()
+                        e.start_touchup(off)
+                if st["touch"]["arms"]:
+                    st["settle"] = 0
             # a corner leaving the jaws is not a failure in itself: in R1 (results.md) most did so at the end of the
             # place and landed well, so the final alignment scores it
             reason = None
@@ -309,6 +323,7 @@ class PrecisionBatch:
                 st["final"] = {"reason": reason, "steps": st["t"], "mean": round(s["mean"], 4),
                                "bottom_shift": round(bottom_shift(cloth, st["start"]), 4),
                                "dropped": [p for p in ARMS if ex[p].dropped], "instability": None,
+                               "touch": st.get("touch"),
                                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
                                "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS},
                                "cloth": np.round(cloth, 4).tolist(), "start": np.round(st["start"], 4).tolist()}

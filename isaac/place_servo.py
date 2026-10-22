@@ -22,7 +22,7 @@ import os
 
 import numpy as np
 
-from isaac.fold_expert import RETREAT, IsaacArmExpert
+from isaac.fold_expert import ABOVE, RETREAT, IsaacArmExpert
 from isaac.servo_expert import IsaacServoExpert
 from mujuco.cloth_params import TABLE_TOP_Z
 
@@ -48,12 +48,19 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     BACKOFF = 0.0
     GFOLD_SLOPE = None
     GFOLD_Z0 = 0.01
+    # Touch-up after lay-down (demo hunt 2026-10-22: the closest fold had a 0.75 cm mean but one corner 2.3 cm off):
+    # start_touchup(offset) comes down TOUCH_BEHIND behind the top corner with the jaw closed, presses TOUCH_PRESS above
+    # it and slides by offset, then lifts. Whether the top layer slides over the bottom one is what it tests
+    TOUCH_BEHIND = 0.015
+    TOUCH_PRESS = 0.002
+    TOUCH_STEP = 0.004       # m per slide waypoint
 
-    PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped", "latched")
+    PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped", "latched", "touch")
 
     def __init__(self, *args, live_goal=None, **kwargs):
         self.live_goal = live_goal       # callable -> the partner vertex's current position; None: self.goal
         super().__init__(*args, **kwargs)
+        self.PHASES = self.PHASES + ("touch",)
 
     def reset(self):
         super().reset()
@@ -62,6 +69,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         self.hold_site = None
         self.dropped = False
         self.latched = None
+        self.touch = None
 
     def _goal_now(self):
         if self.latched is not None:
@@ -100,8 +108,33 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
                 q, _ = self._ik.solve(self.prefix, tip, jaw, q, orientation_weight=0.02)
                 self.plan["retreat_path"].append(q)
 
+    def start_touchup(self, offset):
+        """Slide the settled top corner by offset (xy, m) with the closed jaw pressed on the top layer."""
+        corner = self._corner()
+        off = np.r_[np.asarray(offset, float)[:2], 0.0]
+        d = off / max(np.linalg.norm(off), 1e-9)
+        z = float(corner[2]) + self.TOUCH_PRESS
+        start = np.r_[corner[:2], z] - self.TOUCH_BEHIND * d
+        n = max(2, int(np.ceil(np.linalg.norm(off) / self.TOUCH_STEP)))
+        path = [start + [0.0, 0.0, ABOVE], start] + [start + off * s for s in np.linspace(0.0, 1.0, n + 1)[1:]]
+        path.append(path[-1] + [0.0, 0.0, RETREAT])
+        self.touch = {"path": path, "k": 0, "k_steps": 0, "offset": off[:2].tolist()}
+        self._go("touch")
+
     def act(self):
         name = self.PHASES[self.phase]
+        if name == "touch":
+            action = np.zeros(6, dtype=np.float32)
+            action[5] = self._close_command()
+            t = self.touch
+            tip = t["path"][t["k"]]
+            action[0:5], _ = self._toward(self._tip(tip), self.plan["jaw"], weight=0.05)
+            t["k_steps"] += 1
+            if np.linalg.norm(self._site() - tip) < 0.006 or t["k_steps"] > 12:
+                t["k"], t["k_steps"] = t["k"] + 1, 0
+                if t["k"] >= len(t["path"]):
+                    self._go("done")
+            return action
         if name in ("approach", "descend", "close", "lift"):
             action = IsaacArmExpert.act(self)
             if self.PHASES[self.phase] == "carry":        # the parent's lift just ended: steer from here
