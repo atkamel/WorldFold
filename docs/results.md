@@ -2465,3 +2465,12 @@ Other endings: 41 settled, 23 truncated (500-step window). Near misses: 980039 0
   farthest ~0.46 m). Offline reach / clearance check (subagent) and a scripted quarter fold on Isaac
   (`quarter_fold_run.py --profile friction --fold2 cross`, PLACE_SERVO + latch + g-fold 1.2, 8 seeds, videos, job
   711746) running.
+
+**Fold-2 reach on the friction layout (offline, subagent, `scratchpad/fold2_reach.py`):** the friction profile's cloth
+is centred at (0, −0.135), so fold 1 reaches ~0.32 m at most. For fold 2 (5 mm IK tolerance, pinch weight 0.1 / 0.005):
+right arm + stack S reachable (both weights, 0.37 m); right arm one-armed from the west edge's middle M reachable at
+weight 0.1 only (pinch tilt ~38°); every move that needs the LEFT arm to place on the east side fails (45–525 mm),
+and the right arm can't reach the crease end C. The crossed STAGES[1] assignment also comes within ~1.2 mm arm-arm at
+the pinch. No two-armed fold 2 on this layout. The crossed Isaac run (711746) was cancelled; the one-arm fold 2
+(`--fold2 one_right`, job 711747, 8 seeds, videos) runs instead, and a layout search for a two-armed quarter-fold
+layout with the tilt unbounded (subagent) runs offline.
