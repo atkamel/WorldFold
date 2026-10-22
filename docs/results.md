@@ -2498,3 +2498,6 @@ Layout search, final report: in the best one-armed layouts the fold-2 near miss 
 against the mover's wrist, so the idle arm's parking pose sets it; orientation weight 0.1 is the robust one under the
 ±1 cm jitter (0.005 fails B0 at the same bases). No new profile built: the friction layout already reaches the
 one-armed M with the right arm.
+Sweep 5 final (n = 32 each, paired against particle friction 0.5 at 2.57 cm / 4.73 cm edge / 2.58 cm bottom shift):
+0.6 mean −0.15 (SE 0.13), edge +0.72 (SE 0.48), bottom shift **+0.50** (SE 0.32); 0.7 mean +0.66 (SE 0.29), edge +1.06,
+bottom shift +0.18; 0/96 passed. Friction stays at 0.5.
