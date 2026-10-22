@@ -74,7 +74,7 @@ def run(env, expert, seed, frames=None, trace=None):
                                                                          "final_dist": None})
             held = bool(info["grasped"][mv.prefix]) if env.stage == stage else a["held"]
             a["held"] |= held
-            if held and phases[mv.prefix] in ("place", "hold", "release"):
+            if held and phases.get(mv.prefix) in ("place", "hold", "release"):     # a one-arm fold 2 has one arm
                 a["held_to_place"] = True
             if env.stage == stage:
                 a["final_dist"] = round(float(info["move_distance"][k]), 4)
@@ -82,7 +82,7 @@ def run(env, expert, seed, frames=None, trace=None):
             row = {"t": t, "stage": env.stage}
             for k, mv in enumerate(env.stages[env.stage].moves):
                 p = mv.prefix
-                row[p] = {"phase": phases[p], "grip": np.round(base.gripper_position(p), 3).tolist(),
+                row[p] = {"phase": phases.get(p), "grip": np.round(base.gripper_position(p), 3).tolist(),
                           "jaw": round(float(base.joint_positions(p)[5]), 3), "held": bool(info["grasped"][p]),
                           "carried": np.round(base.cloth_positions()[list(mv.corners)].mean(axis=0), 3).tolist(),
                           "goal": np.round(env.goal(mv), 3).tolist(),
@@ -158,3 +158,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+    sys.stdout.flush()
+    import os
+    os._exit(0)                  # Kit can hang on shutdown (q_one 711747 sat after a traceback)
