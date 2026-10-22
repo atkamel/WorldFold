@@ -2546,3 +2546,16 @@ carried sheet. **No quarter fold has worked yet.** Fixes in `quarter_batch.py`: 
 jaws out 2 cm before lifting (`BACKOFF`), the parked arm rises 12 cm before going home, and each episode logs whether
 the drag let go (edge heights, distance to the site) and where the sheet is after parking. Reruns: jobs 711761
 (fold 2 at the crease end) / 711762 (at the edge's middle), seeds 100–107, videos.
+
+**Fold-2 grasp A/B with the fixed drag release and parking (jobs 711761 crease end / 711762 edge middle, seeds 100–107,
+videos `outputs/isaac/quarter/drag_crease/`, `drag_mid/`):**
+
+| | fold 1 settled | drag moved the sheet ~as planned | sheet carried off while parking | fold 2 dropped | fold 2 landed (no drop) | quarter-fold alignment of those |
+|---|---|---|---|---|---|---|
+| crease end (cloth_5 → cloth_115) | 8/8 | 6/8 | 1/8 | 5/8 | 2/8: offsets (8.1, −1.2), (1.4, 3.7) cm | 9.4 / 8.6 cm mean (edge 12.2 / 15.8) |
+| edge middle (cloth_2+8 → 112+118) | 8/8 | 3/8 | 2/8 | 6/8 | 0/8 | — |
+
+- **No quarter fold has worked.** The edge-middle run's two lowest scores (4.5 / 6.1 cm) are again the sheet carried off on
+  the parked arm (centre at (−0.21, 0.08), 30 cm up), not folds.
+- Fold 2 with one arm from one point drops the half sheet in the carry 5–6/8 at either grasp; when it doesn't, the edge's
+  other end trails and the fold lands 8–9 cm out. The drag release still fails ~1–2/8 (cloth on the fingers).
