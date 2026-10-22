@@ -128,7 +128,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             action[5] = self._close_command()
             t = self.touch
             tip = t["path"][t["k"]]
-            action[0:5], _ = self._toward(self._tip(tip), self.plan["jaw"], weight=0.05)
+            action[0:5], _ = self._toward(self._tip(tip + self.residual), self.plan["jaw"], weight=0.05)
             t["k_steps"] += 1
             if np.linalg.norm(self._site() - tip) < 0.006 or t["k_steps"] > 12:
                 t["k"], t["k_steps"] = t["k"] + 1, 0

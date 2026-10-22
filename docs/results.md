@@ -2353,3 +2353,20 @@ the top layer and slides it by the measured offset, then lifts. Open question it
 cloth's 0.5 (the 2.0 lining is on the inner faces), about what cloth grips cloth, so the top layer may not slide
 over the bottom one. Base latch + g-fold 1.2, n = 32 (seeds 910000–31), press +2 / 0 / −2 mm; each episode records
 its alignment before the touch-up, so the effect is read within the fold.
+
+**Sweep 3, touch-up (partial: press +2 / 0 mm at 23/32, press −2 mm 31/32):** within-episode, before → after:
+
+| press | mean | edge | touched corners' gap | passed |
+|---|---|---|---|---|
+| +2 mm | 2.66 → 2.66 (+0.00, SE 0.10) | 5.83 → 5.53 | 4.08 → 3.70 cm (n 43) | 0/23 |
+| 0 mm | 2.80 → 2.63 (−0.17, SE 0.14) | 6.18 → 5.52 | 4.11 → 3.76 (n 46) | 0/23 |
+| −2 mm | 2.65 → 2.55 (−0.11, SE 0.11) | 5.43 → 5.27 | 3.55 → 3.48 (n 61) | **1/31** [0.6, 16.2] |
+
+- On average the push barely moves the top corner (gap −10%): the fingertips grip the cloth no harder than cloth
+  grips cloth, so both layers move.
+- **First fold at the bar: seed 910009 (press −2 mm), 0.85 cm mean / 1.17 cm edge, settled, bottom shift 1.3 cm.**
+  Before its touch-up: 1.77 / 2.28 cm; both arms touched up (offsets (0.97, 1.19) and (0.29, 2.12) cm). The same seed
+  scored 2.69 / 4.75 (sweep 2) and 4.04 / 9.31 (sweep 1 base): not an easy seed. Scripted base, no video (sweeps
+  run without it); not reproducible on demand (GPU nondeterminism).
+- Next: p8 = RL with the touch-up in the base (press −2 mm, tol 8 mm), the residual also steering the touch-up, and
+  the touch phase in the observation (OBS_DIM 85); a scripted hunt with video (64 seeds) for a recorded pass.
