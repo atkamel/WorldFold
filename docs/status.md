@@ -54,10 +54,13 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
   carry drags the bottom half 2.6 cm), spread over the whole cloth, not the corners (results.md).
 - **R4:** best policy so far p6 version 3 (2.77 cm eval; later versions no better over 234k steps). Base sweeps:
   best clean base = latched goal + g-fold slope 1.2 (2.69 cm vs 3.29, n = 32 paired); release fix dropped.
-- **First fold at the bar (scripted):** base + touch-up, seed 910009: 0.85 / 1.17 cm (1/31 in sweep 3); the touch-up
-  halved that fold's error but does little on average. No video of it.
-- **Running:** p7 (711637: RL on latch + g-fold 1.2, no touch-up), p8 (711717: RL with the touch-up, residual steers
-  it, 500-step window), scripted video hunt with the touch-up (711718, 64 seeds) for a recorded pass.
+- **First folds at the bar (scripted base + one touch-up):** seed 910009 0.85 / 1.17 cm (no video) and seed 930005
+  0.95 / 1.45 cm with video (`outputs/isaac/rl/hunt_base/demo_base/seed930005.mp4`): 2/95 folds. Not an RL policy.
+- **RL residual on the carry (p4-p8):** never beat its base (p7 degraded 2.68 -> 4.03 cm). p8 (711717, + one
+  touch-up) still running.
+- **RL corrector (new, `isaac/corrector_env.py`, `isaac/corrector_rl.py`):** episodes from settled folds, up to 3
+  push-or-stop decisions scored against the bar. c1 (WATcloud 711726, 8 h) running; baselines (no-op, scripted push)
+  on 32 eval folds come first. Next: `corrector_rl.py demo --video` on the best version for an RL-made pass.
 - **Roy port, parked:** its release fails (the cloth stays on the open fingers; s3e), which was also the "7 cm miss".
 
 **2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
@@ -254,6 +257,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-22 · **Recorded pass + RL corrector:** scripted hunt 1/64 at the bar with video (930005); rounds don't help the edge; p7 cancelled (degraded); corrector built (62 isaac tests), c1 launched · b663cf2
 
 - 2026-10-22 · **Touch-up + first pass:** sweep 3 (touch-up, 1/31 at the bar: 0.85/1.17 cm), p8 and video hunt launched · (this commit)
 
