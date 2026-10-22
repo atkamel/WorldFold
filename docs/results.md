@@ -2414,3 +2414,17 @@ settled cloth (pair offsets, corner gaps, the 19 outline spreads, the current me
 decisions, each a push per arm (direction, distance, press depth) or stop; reward = the change in the alignment score
 per decision plus a bonus for stopping on a passing fold. Closed loop, ~3 decisions per episode, each scored directly
 against the bar.
+
+### RL corrector c1 (job 711726, restarted as c2)
+
+Settled-fold libraries from the latch + g-fold 1.2 base (train 160 from seed 960000, eval 32 from 970000). Baselines
+on the 32 eval folds (3 decisions each):
+
+| policy | mean | edge | passed |
+|---|---|---|---|
+| no-op | 2.74 cm (sd 0.86, best 0.70) | 6.73 cm | 0/32 [0, 10.7] |
+| scripted push (onto the partner at −2 mm, stop within 8 mm or on a pass) | 2.56 cm (best 0.88) | 6.40 cm | 1/32 [0.6, 15.7] |
+
+c1's stop fired when its action exceeded 0, so the untrained policy's noise stopped about half its decisions (7–8 of
+8 training episodes ended early). c2 (job 711732) stops above 0.5, reuses c1's libraries, skips the baselines and
+saves its prior.
