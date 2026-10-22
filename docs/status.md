@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-22 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (RL redesign drafted for sign-off: closed-loop residual RL, plan 2026-10-20; Roy-port step 3 benches running)
+**Updated:** 2026-10-22 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (revised plan, signed off 2026-10-22: gates done; adhesion and no-drag checks queued; two-arm fold 2 on `quarter2` queued)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -56,8 +56,12 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
   best clean base = latched goal + g-fold slope 1.2 (2.69 cm vs 3.29, n = 32 paired); release fix dropped.
 - **Re-evaluation 2026-10-22** (`reviews/2026-10-22-quarter-fold-reevaluation.md`, independent audit): the half-fold passes
   are real but RL shows no gain over the base; two-arm fold 2 is NOT ruled out (the search's collision was the approach);
-  scores need validity gates; the strict quarter bar needs fold 1 at the half bar (0.4% of folds). Awaiting the user's
-  bar choice and sign-off on the revised plan (gates, adhesion A/B, two-arm fold 2 on a new layout, then RL).
+  scores need validity gates; the strict quarter bar needs fold 1 at the half bar (0.4% of folds). **User signed off:
+  quarter bar mean ≤ 2.0 / edge ≤ 3.0 cm on gated settled episodes; an arm may sit on the far side.** Step 1 (gates,
+  stored-data re-score) done. Step 2 queued (WATcloud down): adhesion 0 vs 0.1 half-fold sweep (sweep6); one-arm
+  fold 2 with no drag and the idle arm parked. Step 3 built: profile `quarter2` (left arm north of the cloth) and
+  `quarter_batch.py --fold2 two` (sequenced two-arm fold 2, gated, relaxed bar); first run queued: 8 seeds with video.
+  Watch whether the pinch holds at the 35-50° tilts on A0 and S; fallback is Roy's slide grasp for those two.
 - **First half fold at the bar by an RL policy:** p8 version 12, seed 980008, **0.43 / 1.13 cm**, no touch-up used,
   video `outputs/isaac/rl/p8/demo/seed980008.mp4` (1/64 in its hunt). Quarter fold still to do.
 - **First folds at the bar (scripted base + one touch-up):** seed 910009 0.85 / 1.17 cm (no video) and seed 930005
@@ -202,7 +206,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 263 fast on macOS 2026-10-22, 1 failing there (#15) (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 268 fast on macOS 2026-10-22, 1 failing there (#15) (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -264,6 +268,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-22 · **Revised plan, steps 1-3 started:** gates + re-score (fa4c1ce); `quarter2` layout + two-arm fold 2 (28752bb); WATcloud jobs queued; fast suite 268 passed + #15 · (this commit)
 - 2026-10-22 · **Re-evaluation:** independent audit + Roy + research; corrections in results.md; revised plan in reviews/ · (this commit)
 
 - 2026-10-22 · **RL half fold at the bar:** p8 v12 hunt 1/64, seed 980008 0.43/1.13 cm with video, no touch-up · (this commit)

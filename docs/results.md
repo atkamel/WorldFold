@@ -2590,3 +2590,24 @@ folds and the 980008 pass (a 3.1 cm ridge at (7, 10)), so it is 5 cm.
 Static re-score at 5 cm: the three half-fold passes (910009, 930005, 980008) stay valid; the carried-off quarter-fold
 "near misses" are rejected (drag1 4.79 / 6.30, drag_crease 5.71, drag_mid 4.54 / 6.12 / 13.11 cm); 9/32 of sweep 2's
 latch + g-fold 1.2 folds peak 5–10 cm (a corner left up, as in the brainstorm's 7/16), now invalid.
+
+### Two-arm quarter layout `quarter2` (revised plan step 3, 2026-10-22, offline kinematics only)
+
+Layout search (sonnet subagent, scratchpad `layout2/04_deep_v2.py`; lead re-read `deep_report_v2.json`). Bases in
+cloth-local coordinates: left arm (−0.10, 0.235), north of the cloth; right arm (0.25, −0.14), south-east; both facing
+the cloth centre, home `QUARTER_HOME`. Fold 1: left grasps A0, right grasps B0. Fold 2: left grasps the crease end C,
+right grasps the corner stack S. No sim run yet; these are IK and clearance numbers.
+
+| move | pinch error | place error | pinch tilt | place tilt | arm-to-arm clearance |
+|---|---|---|---|---|---|
+| fold 1, left A0 | 0.0 mm | 0.0 mm | 39.0° (jitter max 50.1°) | 36.4° | 154 mm in the fold, 69 mm sequenced approach |
+| fold 1, right B0 | 0.0 mm | 0.0 mm | 0° | 0° | (same) |
+| fold 2, left C | 0.0 mm | 2.9 mm | 0° | 10.6° | 38.7 mm in the fold (jitter 30.2), 59 mm sequenced approach |
+| fold 2, right S | 0.0 mm | 0.0 mm | 34.5° (jitter 39.2°) | 41.1° | (same) |
+
+- A lockstep approach from home to above the fold-2 grasps brings the arms within 0.3 mm, hence the sequenced approach
+  (left first, the right arm holds until the left reaches `descend`).
+- All-zero home puts the two grippers 0.1 mm apart on this layout; `QUARTER_HOME` keeps them 321 mm apart.
+- S sits at 0.396 m from the right base, near the reach limit. The pinch tilts on A0 and S (35-50°) are inside the
+  range where Roy's slide grasp held (30-46°) but beyond the 16.5° our pinch was validated at: the open question for
+  the first run.
