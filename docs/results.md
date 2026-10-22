@@ -2441,3 +2441,15 @@ saves its prior.
   these learners chase; neither run shows learning above it.
 - **RL-policy video hunt (job 711740):** p8 best.pt (version 12) on 64 fresh seeds (980000–63) with videos. A pass
   here is a fold made by an RL policy (residual on the carry) with the scripted touch-up.
+
+### First fold at the bar by an RL policy (job 711740, 2026-10-22)
+
+p8 best.pt (version 12, 136k env steps: the residual on the carry, place and hold of the latch + g-fold 1.2 base,
+with the scripted touch-up available) on 64 fresh seeds (980000–63), top videos.
+**1/64 passed** [0.3, 8.3]: **seed 980008, 0.43 cm mean / 1.13 cm edge**, settled at window step 178, bottom-half shift
+0.95 cm. Its touch-up round found both corners within 8 mm and **did not push**, so the fold is the policy's (final
+residuals left (1.9, 0.7, −1.8) cm, right (0.2, 1.0, 1.3) cm). Video: `outputs/isaac/rl/p8/demo/seed980008.mp4`.
+Other endings: 41 settled, 23 truncated (500-step window). Near misses: 980039 0.72 / 2.12, 980026 1.07 / 2.71.
+- This meets the bar (mean ≤ 1.0, edges ≤ 1.5) **for the half fold**, once in 64. The pass rate is not shown to be
+  above the scripted base's (1/64 in its hunt); GPU nondeterminism means the episode can't be replayed exactly.
+- The quarter fold (fold 2 on top of this) is not done.

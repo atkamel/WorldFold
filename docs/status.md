@@ -54,6 +54,8 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
   carry drags the bottom half 2.6 cm), spread over the whole cloth, not the corners (results.md).
 - **R4:** best policy so far p6 version 3 (2.77 cm eval; later versions no better over 234k steps). Base sweeps:
   best clean base = latched goal + g-fold slope 1.2 (2.69 cm vs 3.29, n = 32 paired); release fix dropped.
+- **First half fold at the bar by an RL policy:** p8 version 12, seed 980008, **0.43 / 1.13 cm**, no touch-up used,
+  video `outputs/isaac/rl/p8/demo/seed980008.mp4` (1/64 in its hunt). Quarter fold still to do.
 - **First folds at the bar (scripted base + one touch-up):** seed 910009 0.85 / 1.17 cm (no video) and seed 930005
   0.95 / 1.45 cm with video (`outputs/isaac/rl/hunt_base/demo_base/seed930005.mp4`): 2/95 folds. Not an RL policy.
 - **RL residual on the carry (p4-p8):** never beat its base (p7 degraded 2.68 -> 4.03 cm). p8 (711717, + one
@@ -257,6 +259,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-22 · **RL half fold at the bar:** p8 v12 hunt 1/64, seed 980008 0.43/1.13 cm with video, no touch-up · (this commit)
 
 - 2026-10-22 · **Recorded pass + RL corrector:** scripted hunt 1/64 at the bar with video (930005); rounds don't help the edge; p7 cancelled (degraded); corrector built (62 isaac tests), c1 launched · b663cf2
 
