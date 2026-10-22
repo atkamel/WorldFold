@@ -2528,3 +2528,14 @@ grasp 0.29 m / place 0.15 m from the right base, robust to ±1 cm (0.01 mm worst
 (−0.03, −0.17) is 0.28 m from the right base, the east target (0.27, −0.17) 0.14 m. Caveat: the parked left arm sits
 where fold 2 grasps, so it goes home first. Built: `isaac/quarter_batch.py` (fold 1 → flat two-arm drag → left arm
 home → one-arm fold 2; quarter-fold alignment; videos). First run: job 711753, 8 seeds.
+
+**Quarter fold with the drag, first run (job 711753, `isaac/quarter_batch.py`, 8 seeds, videos `outputs/isaac/quarter/drag1/`):**
+- Fold 1 settled 8/8, alignment 1.4–4.5 cm mean.
+- Drag: the west middle moved +5 to +17 cm in x (target +12), the east middle −0.4 to +12 (often 4–6): the sheet
+  partly bunched instead of sliding whole; fold 1's alignment after the drag 2.5–6.6 cm.
+- Fold 2 (right arm, the west edge's middle, cloth_2 under cloth_8): **dropped in the carry 5/8**, timed out 3/8; the west
+  middle ended on the east one in 2 (seeds 1 and 5: offsets (−2.4, −3.4) and (+0.5, +2.4) cm; quarter-fold alignment
+  6.3 / 4.8 cm mean, edge 11.2 / 9.6 cm); 0/8 passed.
+- Video (seed 0): the pinch from above takes the two free layers of the open short edge unevenly; one slips and the
+  held point's mean jumps (`dropped`). Next candidates: grasp fold 2 at the crease end (cloth_5, the layers joined),
+  and/or make the drag pull through both corners of each short edge so the sheet slides whole.
