@@ -2375,3 +2375,15 @@ Sweep 3 final (n = 31 each): +2 mm 2.67 → 2.67 (SE 0.08), 0/31, 5 truncated; 0
 overran the 400-step window on 16–32% of folds, so p8 (job 711717) and the video hunt (711718) run with a 500-step
 window: `WORLDFOLD_PLACE_PARAMS=LATCH_GOAL=1,GFOLD_SLOPE=1.2,TOUCH_PRESS=-0.002 WORLDFOLD_TOUCHUP=0.008
 WORLDFOLD_WINDOW_STEPS=500`.
+
+### p7 (job 711637, cancelled at 32k steps): RL on the latch + g-fold 1.2 base, no touch-up
+
+Version 0 (the base) **2.68 cm** (best 1.18), then 3.02 (10.8k), 3.89 (21.7k), 4.03 (31.9k): steadily worse, with no
+timeouts, a sane critic (q_mean −0.9 … +0.25) and entropy collapsed to about −5. Every run so far either gained a little
+early and lost it, or only lost: the per-step carry residual is not paying, the actor exploits the critic's errors.
+
+**Touch-up push transfer (sweep 3, 182 touched corners):** along the commanded push, the corner moved a median 0.12 /
+0.25 / 0.16 of it (press +2 / 0 / −2 mm); quartiles about −0.3 to +0.6; > 0.5 in 60, wrong way in 69. A single push is
+close to a coin flip, so sweep 4 (job 711724, n = 32, seeds 940000–31, video) repeats it: up to 3 and 5 rounds, each
+re-aimed at the corner's offset after the fold resettles. If rounds raise the pass rate, the RL target becomes the
+corrector: a policy choosing each push from the settled cloth.
