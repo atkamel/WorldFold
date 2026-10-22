@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-17 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · Q · QD ✅ · QD-2 ✅ (gentle release, n = 100 confirmed) · R1 ✅ adopted (fold-1 friction + lay-down, n = 100 confirmed) · Q4 ◐: isaac_qf_v1 + v1 student (QD-2 expert), isaac_qf_v2 + v2 student (R1 expert; sel_ 44/44 vs expert 93/82); DAgger round 1 not kept; final_ 87/90/76 vs 66/59/38; Q4 privileged row closed · R2–R3 (square) open
+**Updated:** 2026-10-21 · **Branch:** `feature/isaac-imitation` · **Phase:** Q · Q · QD ✅ · QD-2 ✅ (gentle release, n = 100 confirmed) · R1 ✅ adopted (fold-1 friction + lay-down, n = 100 confirmed) · Q4 ◐: isaac_qf_v1 + v1 student (QD-2 expert), isaac_qf_v2 + v2 student (R1 expert; sel_ 44/44 vs expert 93/82); DAgger round 1 not kept; final_ 87/90/76 vs 66/59/38; Q4 privileged row closed · R2–R3 (square) open
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -480,6 +480,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-21 · **Portfolio hero renders** (linked session): `docs/reports/media/hero/` `hero.png` (1600×1000, step 100) + `hero_loop.mp4` (7 s, steps 50–189) from one R1-preset expert episode, seed 660000, success (349 steps, 0.937), 3/4 look-at camera, no text; opt-in `imitation.demo --hero-cam/--hero-size/--no-overlay/--frames-dir/--stop-after`, `lab_scene._hero_camera`, `scripts/hero_render.ps1`; no defaults changed. Tests: **not run** — `.venv` torch (`shm.dll`) is blocked by a Windows Application Control policy (WinError 4551) at collection; py_compile + a unit check of `_image_shape` only · see git log
 - 2026-10-17 · **R1 preset at n = 100** (linked session): the adopted quarter-fold preset vs the QD-2 gentle run, paired n = 100 on `sel_id_hard` / `sel_knock_arm`: 93 vs 92, 82 vs 78 (McNemar p = 1.0 / 0.56, pooled +2.5 pp [−4, +8.5]), no cost, no measurable gain, preset stays and is safe for the Q3 gate / `isaac_qf_v2`; `scripts/qd2_scale.ps1` gained `-Job q_r1` and `-Workers`. Tests: not-slow 267 passed / 5 skipped · see git log
 - 2026-10-17 · **R1 preset demo + hard sets** (linked session): expert demo on the adopted preset 3/3 with full-width strips and real second folds (`quarter_fold_parallel_expert_r1.mp4`); `sel_id_hard` 16/16, `sel_knock_arm` 15/16 at n = 16 vs 14 / 13 for the QD-2 preset on the same seeds; `qd_demo.ps1 -Sets`. Tests: not-slow 267 passed / 5 skipped · see git log
 - 2026-10-17 · **QD-2 at scale** (linked session): quarter fold old vs gentle release paired n = 100 on `sel_id_hard` / `sel_knock_arm`: 41 → 92, 31 → 78 (p < 10⁻¹⁰); half fold old vs gentle knobs 97/97, 73/79 (p = 0.29, defaults kept); half-fold settled miss probe (`isaac/place_miss.py`, new): gentle lands ~1 cm past the goal, no `OVERSHOOT_SCALE` change; runner `scripts/qd2_scale.ps1`, `qd_compare.py --set`. Tests: not-slow 267 passed / 5 skipped · see git log

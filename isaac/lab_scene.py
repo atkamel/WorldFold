@@ -155,6 +155,22 @@ def _wrist_camera(robot_path, size):
         data_types=["rgb"], spawn=_pinhole(size, size, WRIST_CAM_FOVY_DEG), width=size, height=size)
 
 
+def _hero_camera(spec, prim_path):
+    """A look-at camera for stills and portfolio loops (not a policy input): spec = {"size": (W, H), "pos": xyz,
+    "target": xyz, "fovy": deg}, world frame. Image-up is the world's +Z projected into the view."""
+    W, H = spec["size"]
+    pos, target = np.asarray(spec["pos"], dtype=float), np.asarray(spec["target"], dtype=float)
+    forward = (target - pos) / np.linalg.norm(target - pos)
+    left = np.cross([0.0, 0.0, 1.0], forward)
+    left /= np.linalg.norm(left)
+    rot = _quat_from_matrix(np.column_stack([forward, left, np.cross(forward, left)]))   # "world": +X fwd, +Z up
+    return TiledCameraCfg(
+        prim_path=prim_path,
+        offset=TiledCameraCfg.OffsetCfg(pos=tuple(float(v) for v in pos), rot=tuple(float(v) for v in rot),
+                                        convention="world"),
+        data_types=["rgb"], spawn=_pinhole(H, W, float(spec.get("fovy", CAMERA_FOVY_DEG))), width=W, height=H)
+
+
 def rig_camera_cfg(name, size, c=0, view_shift=(0.0, 0.0, 0.0)):
     """The imitation pipeline's camera rig (imitation.vision.render.CAMERAS): main + one camera per wrist, of copy c.
     view_shift slides the main / demo view (same angle) with the cloth: the friction profile's cloth sits 13.5 cm
@@ -167,6 +183,8 @@ def rig_camera_cfg(name, size, c=0, view_shift=(0.0, 0.0, 0.0)):
             pos = np.asarray(CAMERA_POS) + (COPY_OFFSETS[c] if c else 0.0) + shift
             cfg.offset = cfg.offset.replace(pos=tuple(float(v) for v in pos))
         return cfg
+    if name.startswith("hero"):   # size is a _hero_camera spec dict (imitation.demo --hero-cam), copy 0's frame
+        return _hero_camera(size, f"{root}/rig_{name}")
     if name in ("left_wrist_cam", "right_wrist_cam"):
         return _wrist_camera(f"{root}/Robot/Left_Robot" if name.startswith("left") else f"{root}/Robot/Right_Robot",
                              size)

@@ -19,6 +19,13 @@ from cloth_fold_rl.quarter_fold_env import HALF_FOLD_MAX_STEPS, MAX_STEPS, STAGE
 from imitation.spec import ACTION_DIM, OBS_DIM  # noqa: F401 (re-exported)
 
 
+def _image_shape(n):
+    """[3, H, W] of a rig camera: a square size, or an Isaac hero-camera spec {"size": (W, H), ...} (isaac/lab_scene)."""
+    if isinstance(n, dict):
+        return (3, int(n["size"][1]), int(n["size"][0]))
+    return (3, n, n)
+
+
 class HalfFoldEnv(QuarterFoldEnv):
     stages = STAGES[:1]
 
@@ -42,7 +49,7 @@ class HalfFoldEnv(QuarterFoldEnv):
                 self.rig = CameraRig(self, cameras or CAMERAS)
             self.observation_space = gym.spaces.Dict(
                 {"state": self.observation_space,
-                 **{c: gym.spaces.Box(0, 255, (3, n, n), np.uint8) for c, n in self.rig.cameras.items()}})
+                 **{c: gym.spaces.Box(0, 255, _image_shape(n), np.uint8) for c, n in self.rig.cameras.items()}})
         elif obs_mode != "state":
             raise ValueError(obs_mode)
 

@@ -1,0 +1,49 @@
+{
+ "ckpt": "expert",
+ "backend": "isaac_friction",
+ "cameras": {
+  "hero0": {
+   "size": [
+    1600,
+    1000
+   ],
+   "pos": [
+    -0.3,
+    0.62,
+    1.12
+   ],
+   "target": [
+    0.0,
+    -0.2,
+    0.55
+   ],
+   "fovy": 31.0
+  },
+  "hero1": {
+   "size": [
+    1600,
+    1000
+   ],
+   "pos": [
+    -0.3,
+    0.66,
+    1.2
+   ],
+   "target": [
+    0.0,
+    -0.2,
+    0.56
+   ],
+   "fovy": 30.0
+  }
+ },
+ "episodes": [
+  {
+   "seed": 660000,
+   "steps": 349,
+   "success": true,
+   "fold_score": 0.9369814934868487,
+   "termination_reason": "success"
+  }
+ ]
+}

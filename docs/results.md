@@ -2949,3 +2949,10 @@ User (2026-10-18): close Q4's privileged row as is after the DAgger round was no
 id_easy 2/3 (100000 ✓ 401, 100001 ✓ 532, 100002 ✗ truncated 0.80), id_hard 2/3 (200000 ✓ 377, 200001 ✗ 0.76,
 200002 ✓ 516), knock_arm 1/3 (310000 ✓ 426, 310001 ✗ 0.81, 310002 ✗ 0.83). Every failure is a truncation with
 fold 1 done (0.76–0.83), i.e. a stalled or slipped second fold, as in the finals.
+
+## Portfolio hero render episode (2026-10-21, linked session; `docs/reports/media/hero/hero_episode.json`)
+
+R1-preset scripted expert, `isaac_friction`, parallel second fold, real fold 1, 1 env, seed 660000, rendered through a
+3/4 look-at camera (`docs/reports/media/hero/hero.md`). n = 1 (a demo, not a measurement): success, 349 steps, fold
+score 0.937. Earlier runs of the same seed in this session (camera probes, same preset): 331 / 340 steps, both
+successes (0.945 / 0.965); the R1 demo video had 341 / 0.989. The Isaac cloth episode is not bit-for-bit repeatable.

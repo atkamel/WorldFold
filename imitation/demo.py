@@ -130,6 +130,17 @@ def main():
                     help="isaac: play episodes of this eval set (its seeds unless --seeds is given, its shifted "
                          "poses and its knock), labelled in the video")
     ap.add_argument("--n", type=int, default=3, help="with --set and no --seeds: the set's first n seeds")
+    # portfolio renders (isaac only, opt-in): a look-at camera instead of the top-down demo view, no text
+    ap.add_argument("--hero-cam", type=float, nargs=7, action="append", default=None,
+                    metavar=("PX", "PY", "PZ", "TX", "TY", "TZ", "FOVY"),
+                    help="isaac: world-frame camera position, aim point and vertical fov (deg); repeat for several "
+                         "views of the same episode (the video uses the first, --frames-dir keeps all)")
+    ap.add_argument("--hero-size", default="1600x1000", help="WxH of each --hero-cam")
+    ap.add_argument("--no-overlay", action="store_true", help="no text on the frames (seed, step, score, verdict)")
+    ap.add_argument("--frames-dir", default=None, help="isaac: also write every step's frame of every hero / demo "
+                                                       "camera as <dir>/<camera>/<seed>_<step>.png")
+    ap.add_argument("--stop-after", type=int, default=0, help="isaac: end each episode after this many steps "
+                                                              "(camera probes; the episode is then not scored)")
     args = ap.parse_args()
     args.seeds_given = args.seeds is not None
     if args.out is None:
@@ -174,6 +185,12 @@ def isaac_main(args):
     from imitation.teachers.scripted import ScriptedTeacher
     policy = None
     cams = {"demo": args.demo_size}
+    if args.hero_cam:
+        W, H = (int(v) for v in args.hero_size.lower().split("x"))
+        cams = {f"hero{i}": {"size": (W, H), "pos": tuple(c[:3]), "target": tuple(c[3:6]), "fovy": c[6]}
+                for i, c in enumerate(args.hero_cam)}
+    views = [c for c in cams]          # the cameras that are video / still output (not policy inputs)
+    overlay = (lambda img, lines: img) if args.no_overlay else _overlay
     if args.ckpt != "expert":
         from imitation.policies.common import load_policy
         policy = load_policy(args.ckpt)
@@ -184,8 +201,8 @@ def isaac_main(args):
     label = ("scripted expert" if policy is None else
              f"{'vision' if policy.needs_images else 'state'} policy {Path(args.ckpt).parent.name}") + "  [Isaac Sim]"
 
-    def frame(obs):
-        return np.ascontiguousarray(np.transpose(obs["demo"], (1, 2, 0)))
+    def frame(obs, cam=None):
+        return np.ascontiguousarray(np.transpose(obs[cam or views[0]], (1, 2, 0)))
 
     from imitation.seeds import eval_set
     reset_options = perturb_fn = None
@@ -234,23 +251,28 @@ def isaac_main(args):
             prev = dict(info.get("grasped", {})) if t else {}
             obs, _, term, trunc, info = env.step(action)
             hist.append(obs["state"])
-            frames.append(_overlay(frame(obs), [
+            if args.frames_dir:
+                for cam in views:
+                    d = Path(args.frames_dir) / cam
+                    d.mkdir(parents=True, exist_ok=True)
+                    imageio.imwrite(d / f"{seed}_{t + 1:04d}.png", frame(obs, cam))
+            frames.append(overlay(frame(obs), [
                 label, f"seed {seed}  step {t + 1}", f"fold score {info['fold_score']:.2f}",
                 f"grasped L {int(info['grasped']['left_'])} R {int(info['grasped']['right_'])}"]
                 + grasp_lines(env.unwrapped, prev, info)
                 + (["KNOCK (random actions)"] if knocked else [])))
-            if term or trunc:
+            if term or trunc or (args.stop_after and t + 1 >= args.stop_after):
                 break
         verdict = "SUCCESS" if info["success"] else f"FAIL ({info['termination_reason'] or 'truncated'})"
-        frames.extend([_overlay(frames[-1], [verdict])] * 20)
+        frames.extend([overlay(frames[-1], [verdict])] * 20)
         rows.append({"seed": seed, "steps": t + 1, "success": bool(info["success"]),
                      "fold_score": float(info["fold_score"]), "termination_reason": info["termination_reason"]})
         print(rows[-1], flush=True)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     imageio.mimwrite(out, frames, fps=args.fps, quality=8, macro_block_size=16)
-    out.with_suffix(".json").write_text(json.dumps({"ckpt": args.ckpt, "backend": args.backend, "episodes": rows},
-                                                   indent=1))
+    out.with_suffix(".json").write_text(json.dumps({"ckpt": args.ckpt, "backend": args.backend, "cameras": cams,
+                                                    "episodes": rows}, indent=1))
     print(f"wrote {out} ({len(frames)} frames), success {sum(r['success'] for r in rows)}/{len(rows)}", flush=True)
     os._exit(0)
 
