@@ -2508,3 +2508,8 @@ g-fold 1.2, 8 seeds, videos `outputs/isaac/quarter/friction_one_right/`):** fold
 place, missed it in 3/8; the edge ended 28–33 cm from its goal. Video: the arm lies at full stretch across the folded
 sheet and the ~38° tilted pinch drags the cloth instead of holding it. Next: an offline search of the cloth's start
 position (shifted toward the right arm) for a lower-tilt, closer fold 2 that keeps fold 1 reachable (subagent).
+
+**c2 final (job 711732, 8 h, 2565 decisions, 920 episodes):** eval on the 32 settled folds: version 0 (no-op) 2.75 cm,
+then 2.93, 2.82, 2.84, **2.78 with 1/32 passed** (version 4, best.pt), 2.65, 2.62, 2.66 (versions 5–7), edges 6.3–6.8 cm.
+The corrector ends about where the scripted push sits (2.56 cm, 1/32): it learned to roughly match it, not to beat it,
+within ~2.5k decisions and the sim's per-fold noise.
