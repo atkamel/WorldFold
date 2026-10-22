@@ -2370,3 +2370,8 @@ its alignment before the touch-up, so the effect is read within the fold.
   run without it); not reproducible on demand (GPU nondeterminism).
 - Next: p8 = RL with the touch-up in the base (press −2 mm, tol 8 mm), the residual also steering the touch-up, and
   the touch phase in the observation (OBS_DIM 85); a scripted hunt with video (64 seeds) for a recorded pass.
+Sweep 3 final (n = 31 each): +2 mm 2.67 → 2.67 (SE 0.08), 0/31, 5 truncated; 0 mm 2.85 → 2.76 (−0.08, SE 0.13),
+0/31, 10 truncated; −2 mm 2.65 → 2.55 (−0.11, SE 0.11), **1/31**, 6 truncated. The touch-up adds ~100 steps and
+overran the 400-step window on 16–32% of folds, so p8 (job 711717) and the video hunt (711718) run with a 500-step
+window: `WORLDFOLD_PLACE_PARAMS=LATCH_GOAL=1,GFOLD_SLOPE=1.2,TOUCH_PRESS=-0.002 WORLDFOLD_TOUCHUP=0.008
+WORLDFOLD_WINDOW_STEPS=500`.

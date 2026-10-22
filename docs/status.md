@@ -54,8 +54,10 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
   carry drags the bottom half 2.6 cm), spread over the whole cloth, not the corners (results.md).
 - **R4:** best policy so far p6 version 3 (2.77 cm eval; later versions no better over 234k steps). Base sweeps:
   best clean base = latched goal + g-fold slope 1.2 (2.69 cm vs 3.29, n = 32 paired); release fix dropped.
-- **Running:** p7 (711637: RL on the improved base, T_MAX 400 so timeouts can't occur) and a demo hunt (711638: p6
-  best on 64 fresh seeds with video, looking for one fold at the bar).
+- **First fold at the bar (scripted):** base + touch-up, seed 910009: 0.85 / 1.17 cm (1/31 in sweep 3); the touch-up
+  halved that fold's error but does little on average. No video of it.
+- **Running:** p7 (711637: RL on latch + g-fold 1.2, no touch-up), p8 (711717: RL with the touch-up, residual steers
+  it, 500-step window), scripted video hunt with the touch-up (711718, 64 seeds) for a recorded pass.
 - **Roy port, parked:** its release fails (the cloth stays on the open fingers; s3e), which was also the "7 cm miss".
 
 **2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
@@ -252,6 +254,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-22 · **Touch-up + first pass:** sweep 3 (touch-up, 1/31 at the bar: 0.85/1.17 cm), p8 and video hunt launched · (this commit)
 
 - 2026-10-22 · **Sweeps 1-2, p6 done:** best base latch + g-fold 1.2 (2.69 cm); p6 plateaued at 2.77; p7 + demo hunt launched · (this commit)
 
