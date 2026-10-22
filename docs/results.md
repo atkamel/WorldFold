@@ -2453,3 +2453,15 @@ Other endings: 41 settled, 23 truncated (500-step window). Near misses: 980039 0
 - This meets the bar (mean ≤ 1.0, edges ≤ 1.5) **for the half fold**, once in 64. The pass rate is not shown to be
   above the scripted base's (1/64 in its hunt); GPU nondeterminism means the episode can't be replayed exactly.
 - The quarter fold (fold 2 on top of this) is not done.
+
+## Quarter fold, second fold (user, 2026-10-22: start it reusing the half-fold machinery; a small cloth-table friction change is allowed)
+
+- **Friction:** PhysX's particle cloth has one friction against every rigid body (table and jaws alike); there is no
+  table-only coefficient. Sweep 5 (job 711745, n = 32 paired, seeds 910000–31): particle friction 0.5 / 0.6 / 0.7 on
+  the latch + g-fold 1.2 base with one touch-up. Reported with its effect on the grasp.
+- **Fold 2 geometry (friction layout):** bases at (±0.22, −0.30), cloth centred, half sheet x ∈ [−0.15, 0.15],
+  y ∈ [−0.15, 0]. Fold 2 (west onto east) needs a 30 cm carry across; quarter_fold_env STAGES[1] has the arms cross
+  (right arm: the west stack to (+h, −h); left arm: the west crease end to (+h, 0), ~0.48 m from its base vs fold 1's
+  farthest ~0.46 m). Offline reach / clearance check (subagent) and a scripted quarter fold on Isaac
+  (`quarter_fold_run.py --profile friction --fold2 cross`, PLACE_SERVO + latch + g-fold 1.2, 8 seeds, videos, job
+  711746) running.
