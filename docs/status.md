@@ -54,6 +54,10 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
   carry drags the bottom half 2.6 cm), spread over the whole cloth, not the corners (results.md).
 - **R4:** best policy so far p6 version 3 (2.77 cm eval; later versions no better over 234k steps). Base sweeps:
   best clean base = latched goal + g-fold slope 1.2 (2.69 cm vs 3.29, n = 32 paired); release fix dropped.
+- **Re-evaluation 2026-10-22** (`reviews/2026-10-22-quarter-fold-reevaluation.md`, independent audit): the half-fold passes
+  are real but RL shows no gain over the base; two-arm fold 2 is NOT ruled out (the search's collision was the approach);
+  scores need validity gates; the strict quarter bar needs fold 1 at the half bar (0.4% of folds). Awaiting the user's
+  bar choice and sign-off on the revised plan (gates, adhesion A/B, two-arm fold 2 on a new layout, then RL).
 - **First half fold at the bar by an RL policy:** p8 version 12, seed 980008, **0.43 / 1.13 cm**, no touch-up used,
   video `outputs/isaac/rl/p8/demo/seed980008.mp4` (1/64 in its hunt). Quarter fold still to do.
 - **First folds at the bar (scripted base + one touch-up):** seed 910009 0.85 / 1.17 cm (no video) and seed 930005
@@ -259,6 +263,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-22 · **Re-evaluation:** independent audit + Roy + research; corrections in results.md; revised plan in reviews/ · (this commit)
 
 - 2026-10-22 · **RL half fold at the bar:** p8 v12 hunt 1/64, seed 980008 0.43/1.13 cm with video, no touch-up · (this commit)
 

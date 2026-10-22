@@ -2559,3 +2559,21 @@ videos `outputs/isaac/quarter/drag_crease/`, `drag_mid/`):**
   the parked arm (centre at (−0.21, 0.08), 30 cm up), not folds.
 - Fold 2 with one arm from one point drops the half sheet in the carry 5–6/8 at either grasp; when it doesn't, the edge's
   other end trails and the fold lands 8–9 cm out. The drag release still fails ~1–2/8 (cloth on the fingers).
+
+## Re-evaluation (2026-10-22): independent audit and corrections
+
+See `docs/reviews/2026-10-22-quarter-fold-reevaluation.md`. Corrections to entries above (lead-verified re-runs):
+- **Two-armed fold 2:** the "no collision-free layout" conclusion is refuted; the search counted the arms' simultaneous
+  approach from home. Best C/S layout (crease-end arm at cloth-local (0.025, 0.21), stack arm at (0.225, −0.215)):
+  0.8 mm only in the lockstep home→above approach; fold paths vs the other arm parked 33.6 / 67.9 mm, vs home 95 / 170 mm.
+- **One-arm fold 2 (job 711748):** confounded by the idle left arm left ~6 cm from the grasp point and pushed by the
+  right gripper; nothing was lifted (stack rise ≤ 2 cm); the 38° explanation is unproven.
+- **`dropped` in quarter_batch** counts one-layer holds and missed grasps, not only slips.
+- **The RL-policy half-fold pass (980008)** is a real fold but not evidence of an RL gain: p8 hunt mean 2.65 cm (1/64,
+  23 truncated) vs the base hunt 2.62 cm (1/64, 6 truncated).
+- **Sweep 4 (touch-up rounds)**, settled episodes only: 3 rounds −0.20 cm (SE 0.19), 5 rounds −0.79 (SE 0.20) on 14/32
+  settled, not −0.39 / −0.42 over all endings.
+- **Scores have had no validity gate** (on the table, released, still); a hanging cloth scores 0.0 cm.
+- **Roy's environment** has no Isaac quarter fold (teleop rig for the LeHome shirt; his quarter task is our MuJoCo weld env).
+- **Fold-1 bound on the quarter bar** (688 stored settled half folds): fold 1 alone allows 1.0/1.5: 0.4%, 1.5/2.5: 3.5%,
+  2.0/3.0: 6.8%, 2.0/4.0: 12.2%, 2.5/5.0: 25.4%.
