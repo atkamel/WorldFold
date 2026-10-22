@@ -33,6 +33,9 @@ DRAG = (0.12, 0.04)
 FLAT_ARC = 0.01                          # the drag's lift (IsaacArmExpert.ARC_HEIGHT for its plan) and no corner arc
 CAPS = {"fold1": 650, "drag": 300, "fold2": 400}
 PARK_STEPS = 40                          # the left arm goes home before fold 2 starts (it sits where fold 2 grasps)
+PARK_LIFT = 0.12                         # m: it first rises this far straight up (run drag1: going straight home with
+LIFT_STEPS = 25                          # the cloth on its fingers carried the sheet off the table)
+DRAG_BACKOFF = 0.02                      # the drag's release slides the open jaws out this far before lifting
 
 
 def park_action(q, home, scale):
@@ -48,6 +51,7 @@ class QuarterBatch(PrecisionBatch):
 
     def __init__(self, n, drag=DRAG, cameras=None, fold2="mid"):
         self.parked = [set() for _ in range(n)]          # before super(): its warm-up steps through _scripted_step
+        self.park_steps, self.park_lift = [0] * n, [None] * n
         self.drag = np.r_[np.asarray(drag, float), 0.0]
         self.fold2 = FOLD2[fold2]
         super().__init__(n, cameras=cameras)
@@ -56,20 +60,31 @@ class QuarterBatch(PrecisionBatch):
         e = self.experts[i][p]
         e.corners = tuple(corners)
         e.goal, e.live_goal = goal, live_goal
-        for k in ("ARC_HEIGHT", "ARC_FRAC"):
+        for k in ("ARC_HEIGHT", "ARC_FRAC", "BACKOFF"):
             e.__dict__.pop(k, None)
         if flat:
-            e.ARC_HEIGHT, e.ARC_FRAC = FLAT_ARC, 0.0
+            e.ARC_HEIGHT, e.ARC_FRAC, e.BACKOFF = FLAT_ARC, 0.0, DRAG_BACKOFF
         e.reset()
         e.release_allowed = False
 
-    def _scripted_step(self, actions=None):
+    def _park(self, i, p):
+        """The parked arm: straight up PARK_LIFT for LIFT_STEPS steps (IK from where it parked), then home."""
         from mujuco.cloth_params import JOINT_DELTA_SCALE
+        sub, e = self.subs[i], self.experts[i][p]
+        q = sub.joint_positions(p)[:5]
+        self.park_steps[i] += 1
+        if self.park_steps[i] <= LIFT_STEPS:
+            if self.park_lift[i] is None:
+                tip = np.asarray(sub.gripper_position(p), float) + [0.0, 0.0, PARK_LIFT]
+                self.park_lift[i], _ = e._ik.solve(p, tip, e.plan["jaw"], q, orientation_weight=0.05)
+            return park_action(q, self.park_lift[i], JOINT_DELTA_SCALE)
+        return park_action(q, sub._home()[:5], JOINT_DELTA_SCALE)
+
+    def _scripted_step(self, actions=None):
         for i, sub in enumerate(self.subs):
             moving = {p: e for p, e in self.experts[i].items() if p not in self.parked[i]}
             coordinate(moving)
-            acts = [moving[p].act() if p in moving else
-                    park_action(sub.joint_positions(p)[:5], sub._home()[:5], JOINT_DELTA_SCALE) for p in ARMS]
+            acts = [moving[p].act() if p in moving else self._park(i, p) for p in ARMS]
             sub.step_submit(self.tasks[i]._expand(np.concatenate(acts)))
         self.batch.advance()
         for sub in self.subs:
@@ -98,6 +113,7 @@ class QuarterBatch(PrecisionBatch):
         for i, seed in enumerate(seeds):
             self.tasks[i].reset(seed=int(seed))
             self.parked[i] = set()
+            self.park_steps[i], self.park_lift[i] = 0, None
             task, sub = self.tasks[i], self.subs[i]
             for p, m in self.moves.items():
                 self._configure(i, p, m.corners, lambda m=m, t=task: t.goal(m),
@@ -120,11 +136,19 @@ class QuarterBatch(PrecisionBatch):
                                "east_moved": np.round(e1 - e0, 4).tolist(),
                                "dropped": [p for p in ARMS if self.experts[i][p].dropped],
                                "fold1_after": round(score(cloth, folds=FOLDS)["mean"], 4)}
+            # did the drag let go? each arm's top / bottom vertex height above where it lay, and its distance to the site
+            for p, idx in (("left_", WEST), ("right_", EAST)):
+                site = np.asarray(sub.gripper_position(p), float)
+                recs[i]["drag"][f"{p}after"] = {"z_cm": np.round((cloth[list(idx), 2] - cloth[list(idx), 2].min()) * 100, 2).tolist(),
+                                                "site_cm": round(float(np.linalg.norm(cloth[list(idx)].mean(axis=0) - site)) * 100, 1)}
             self.parked[i] = {"left_"}
-        for _ in range(PARK_STEPS):           # the right arm is done (idle) while the left one goes home
+            self.park_steps[i], self.park_lift[i] = 0, None
+        for _ in range(LIFT_STEPS + PARK_STEPS):           # the right arm is done (idle) while the left one goes home
             self._scripted_step()
         grasp, target = self.fold2
         for i, sub in enumerate(self.subs):
+            recs[i]["cloth_after_park"] = {"center_xy": np.round(sub.cloth_positions()[:, :2].mean(axis=0), 4).tolist(),
+                                           "z_max_cm": round(float(sub.cloth_positions()[:, 2].max() - sub.cloth_positions()[:, 2].min()) * 100, 1)}
             self._configure(i, "right_", grasp, lambda s=sub: s.cloth_positions()[list(target)].mean(axis=0),
                             lambda s=sub: s.cloth_positions()[list(target)].mean(axis=0), flat=False)
         ok2 = self._run_stage(CAPS["fold2"])
