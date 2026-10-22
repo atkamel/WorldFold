@@ -2501,3 +2501,10 @@ one-armed M with the right arm.
 Sweep 5 final (n = 32 each, paired against particle friction 0.5 at 2.57 cm / 4.73 cm edge / 2.58 cm bottom shift):
 0.6 mean −0.15 (SE 0.13), edge +0.72 (SE 0.48), bottom shift **+0.50** (SE 0.32); 0.7 mean +0.66 (SE 0.29), edge +1.06,
 bottom shift +0.18; 0/96 passed. Friction stays at 0.5.
+
+**One-arm fold 2 on Isaac (job 711748, `quarter_fold_run.py --profile friction --fold2 one_right`, PLACE_SERVO + latch +
+g-fold 1.2, 8 seeds, videos `outputs/isaac/quarter/friction_one_right/`):** fold 1 finished 7/8 (alignment after it
+2.6–5.4 cm mean); **fold 2 0/8**: the right arm gripped the west edge's middle in 4/8 and slipped every time before the
+place, missed it in 3/8; the edge ended 28–33 cm from its goal. Video: the arm lies at full stretch across the folded
+sheet and the ~38° tilted pinch drags the cloth instead of holding it. Next: an offline search of the cloth's start
+position (shifted toward the right arm) for a lower-tilt, closer fold 2 that keeps fold 1 reachable (subagent).
