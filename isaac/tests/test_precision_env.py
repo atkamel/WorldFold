@@ -107,3 +107,25 @@ def test_gates_hold_the_lift_and_the_release():
     ex["right_"].phase = _E.PHASES.index("hold")
     pe.coordinate(ex)
     assert ex["left_"].release_allowed and ex["right_"].release_allowed
+
+
+def _gate(cloth, prev=None, sites=((0.0, 0.0, 0.6), (0.1, 0.0, 0.6)), jaws=(1.0, 1.0)):
+    return pe.gate(cloth, cloth if prev is None else prev, [np.array(s) for s in sites], jaws)
+
+
+def test_gate_passes_a_flat_released_still_fold():
+    g = _gate(_folded())
+    assert g["valid"] and g["on_table"] and g["jaws_open"]
+
+
+def test_gate_rejects_a_lifted_held_moving_or_off_table_cloth():
+    hung = _folded()
+    hung[:, 2] += np.linspace(0.0, 0.2, 121)                       # hanging from a gripper
+    assert not _gate(hung)["valid"]
+    assert not _gate(_folded(), sites=((0.0, 0.0, TABLE_TOP_Z + 0.01), (0.1, 0.0, 0.6)))["valid"]   # jaw on the cloth
+    assert not _gate(_folded(), jaws=(1.0, 0.05))["valid"]         # a jaw still closed
+    moving = _folded()
+    assert not _gate(moving, prev=moving - [0.0, 0.002, 0.0])["valid"]
+    off = _folded()
+    off[:, 0] += 0.4
+    assert not _gate(off)["valid"]

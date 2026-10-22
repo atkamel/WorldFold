@@ -23,7 +23,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from isaac.precision_env import ARMS, SETTLE_STEPS, PrecisionBatch, coordinate  # noqa: E402
+from isaac.precision_env import ARMS, SETTLE_STEPS, PrecisionBatch, coordinate, gate  # noqa: E402
 
 WEST, EAST = (2, 8), (112, 118)          # the short edges' middles after fold 1 (bottom vertex, top vertex)
 # fold 2's grasp -> its target: "mid" the west edge's middle (two free layers; dropped 5/8 in run drag1) onto the
@@ -52,7 +52,7 @@ class QuarterBatch(PrecisionBatch):
     def __init__(self, n, drag=DRAG, cameras=None, fold2="mid"):
         self.parked = [set() for _ in range(n)]          # before super(): its warm-up steps through _scripted_step
         self.park_steps, self.park_lift = [0] * n, [None] * n
-        self.drag = np.r_[np.asarray(drag, float), 0.0]
+        self.drag = None if drag is None else np.r_[np.asarray(drag, float), 0.0]      # None: no drag stage
         self.fold2 = FOLD2[fold2]
         super().__init__(n, cameras=cameras)
 
@@ -97,6 +97,7 @@ class QuarterBatch(PrecisionBatch):
         """Step until every copy's moving arms have been done SETTLE_STEPS steps (or cap); per-copy settled flags."""
         settle = [0] * self.n
         for _ in range(cap):
+            self.prev_cloth = [sub.cloth_positions().copy() for sub in self.subs]
             self._scripted_step()
             for i in range(self.n):
                 moving = [e for p, e in self.experts[i].items() if p not in self.parked[i]]
@@ -104,6 +105,11 @@ class QuarterBatch(PrecisionBatch):
             if min(settle) >= SETTLE_STEPS:
                 break
         return [s >= SETTLE_STEPS for s in settle]
+
+    def _gate(self, i):
+        sub = self.subs[i]
+        return gate(sub.cloth_positions(), self.prev_cloth[i], [sub.gripper_position(p) for p in ARMS],
+                    [sub.joint_positions(p)[5] for p in ARMS])
 
     def run(self, seeds):
         """Fold 1, drag, fold 2 for copy i from seeds[i]; returns one record per copy."""
@@ -121,13 +127,15 @@ class QuarterBatch(PrecisionBatch):
         ok1 = self._run_stage(CAPS["fold1"])
         for i, sub in enumerate(self.subs):
             s = score(sub.cloth_positions(), folds=FOLDS)
-            recs[i]["fold1"] = {"settled": ok1[i], "mean": round(s["mean"], 4), "edge_max": round(s["edge_max"], 4)}
+            recs[i]["fold1"] = {"settled": ok1[i], "mean": round(s["mean"], 4), "edge_max": round(s["edge_max"], 4),
+                                "gate": self._gate(i)}
             cloth = sub.cloth_positions()
             w0, e0 = cloth[list(WEST)].mean(axis=0), cloth[list(EAST)].mean(axis=0)
             recs[i]["drag_from"] = {"west": np.round(w0, 4).tolist(), "east": np.round(e0, 4).tolist()}
-            self._configure(i, "left_", WEST, lambda g=w0 + self.drag: g, lambda g=w0 + self.drag: g, flat=True)
-            self._configure(i, "right_", EAST, lambda g=e0 + self.drag: g, lambda g=e0 + self.drag: g, flat=True)
-        okd = self._run_stage(CAPS["drag"])
+            if self.drag is not None:
+                self._configure(i, "left_", WEST, lambda g=w0 + self.drag: g, lambda g=w0 + self.drag: g, flat=True)
+                self._configure(i, "right_", EAST, lambda g=e0 + self.drag: g, lambda g=e0 + self.drag: g, flat=True)
+        okd = self._run_stage(CAPS["drag"]) if self.drag is not None else [True] * self.n
         for i, sub in enumerate(self.subs):
             cloth = sub.cloth_positions()
             w1, e1 = cloth[list(WEST)].mean(axis=0), cloth[list(EAST)].mean(axis=0)
@@ -158,8 +166,10 @@ class QuarterBatch(PrecisionBatch):
             off = cloth[list(grasp)].mean(axis=0) - cloth[list(target)].mean(axis=0)
             recs[i]["fold2"] = {"settled": ok2[i], "grasp_on_target_xy": np.round(off[:2], 4).tolist(),
                                 "dropped": self.experts[i]["right_"].dropped}
+            g = self._gate(i)
             recs[i]["final"] = {"mean": round(s["mean"], 4), "edge_max": round(s["edge_max"], 4),
-                                "passed": bool(s["passed"]), "unstable": bool(sub._failed())}
+                                "passed": bool(s["passed"]), "unstable": bool(sub._failed()), "gate": g,
+                                "passed_valid": bool(s["passed"] and g["valid"] and ok2[i])}
             recs[i]["cloth"] = np.round(cloth, 4).tolist()
         return recs
 
@@ -168,7 +178,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--copies", type=int, default=8)
     ap.add_argument("--seeds", default="0:8")
-    ap.add_argument("--drag", default="0.12,0.04")
+    ap.add_argument("--drag", default="0.12,0.04", help="dx,dy (m), or 'none' to skip the drag")
     ap.add_argument("--video", action="store_true")
     ap.add_argument("--fold2", choices=sorted(FOLD2), default="mid")
     ap.add_argument("--out", required=True)
@@ -176,7 +186,7 @@ def main():
     sys.argv = sys.argv[:1]
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    qb = QuarterBatch(args.copies, drag=[float(v) for v in args.drag.split(",")],
+    qb = QuarterBatch(args.copies, drag=None if args.drag == "none" else [float(v) for v in args.drag.split(",")],
                       cameras={"top": 400} if args.video else None, fold2=args.fold2)
     a, b = (int(v) for v in args.seeds.split(":"))
     for start in range(a, b, qb.n):

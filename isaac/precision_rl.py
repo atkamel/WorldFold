@@ -67,7 +67,12 @@ def summarize(finals):
         return {"n": 0, "reasons": reasons}
     m = np.array([x["mean"] for x in f]) * 100
     e = np.array([x["edge_max"] for x in f]) * 100
-    return {"n": len(f), "mean_cm": round(float(m.mean()), 2), "mean_sd": round(float(m.std()), 2),
+    # gated: a completed ending (settled / corrector's stop or last decision) whose state passes precision_env.gate
+    v = [x for x in f if x["reason"] in ("settled", "stopped", "decisions") and (x.get("gate") or {}).get("valid")]
+    gated = {"valid": len(v), "passed_valid": sum(bool(x.get("passed_valid")) for x in f),
+             "mean_cm_valid": round(float(np.mean([x["mean"] for x in v]) * 100), 2) if v else None,
+             "edge_cm_valid": round(float(np.mean([x["edge_max"] for x in v]) * 100), 2) if v else None}
+    return {**gated, "n": len(f), "mean_cm": round(float(m.mean()), 2), "mean_sd": round(float(m.std()), 2),
             "best_mean_cm": round(float(m.min()), 2), "edge_cm": round(float(e.mean()), 2), "passed": k,
             "pass_wilson": _wilson(k, len(f)), "reasons": reasons}
 

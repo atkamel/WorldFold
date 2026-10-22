@@ -17,7 +17,7 @@ import math
 
 import numpy as np
 
-from isaac.precision_env import ARMS, FOLDS, PAIRS, SETTLE_STEPS
+from isaac.precision_env import ARMS, FOLDS, PAIRS, SETTLE_STEPS, gate
 
 K = 3                          # decisions per episode
 PUSH_SCALE = 0.03              # m of push per unit action (x, y)
@@ -128,13 +128,19 @@ class CorrectorBatch:
         self.alive = np.ones(self.n, bool)
         self.start = [self._cloth(i).copy() for i in range(self.n)]
         self.s_prev = [score_s(self._cloth(i))[0] for i in range(self.n)]
+        self.prev_cloth = [self._cloth(i).copy() for i in range(self.n)]
         return np.stack([features(self._cloth(i), 0) for i in range(self.n)])
 
     def _final(self, i, reason):
-        _, s = score_s(self._cloth(i))
+        cloth = self._cloth(i)
+        _, s = score_s(cloth)
+        sub = self.pb.subs[i]
+        g = gate(cloth, self.prev_cloth[i], [sub.gripper_position(p) for p in ARMS],
+                 [sub.joint_positions(p)[5] for p in ARMS])
         self.alive[i] = False
         return {"reason": reason, "decisions": int(self.k[i]), "mean": round(s["mean"], 4),
-                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
+                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]), "gate": g,
+                "passed_valid": bool(s["passed"] and g["valid"]),
                 "cloth": np.round(self._cloth(i), 4).tolist()}
 
     def step(self, actions):
@@ -145,8 +151,9 @@ class CorrectorBatch:
         for i in np.flatnonzero(alive):
             pushes, stop = decode(actions[i])
             if stop:
+                self.prev_cloth[i] = self._cloth(i).copy()          # nothing moved since the last resettle
                 infos[i] = self._final(i, "stopped")
-                rew[i], term[i] = (PASS_BONUS if infos[i]["passed"] else 0.0), True
+                rew[i], term[i] = (PASS_BONUS if infos[i]["passed_valid"] else 0.0), True
                 continue
             for p, (d, press) in pushes.items():
                 if np.linalg.norm(d) > MIN_PUSH:
@@ -155,6 +162,8 @@ class CorrectorBatch:
             pushing.append(i)
         settle = {i: 0 for i in pushing}
         for _ in range(PUSH_STEPS_MAX if pushing else 0):
+            for i in pushing:
+                self.prev_cloth[i] = self._cloth(i).copy()
             pb._scripted_step()
             for i in pushing:
                 done = all(e.PHASES[e.phase] == "done" for e in pb.experts[i].values())
@@ -171,7 +180,7 @@ class CorrectorBatch:
             rew[i], self.s_prev[i] = s_new - self.s_prev[i], s_new
             if self.k[i] >= K:
                 infos[i] = self._final(i, "decisions")
-                rew[i] += PASS_BONUS if infos[i]["passed"] else 0.0
+                rew[i] += PASS_BONUS if infos[i]["passed_valid"] else 0.0
                 term[i] = True
         obs = np.stack([features(np.nan_to_num(self._cloth(i)), self.k[i]) for i in range(self.n)])
         return obs, np.nan_to_num(rew), term, ~self.alive & alive, alive, infos

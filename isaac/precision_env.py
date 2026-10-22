@@ -54,6 +54,18 @@ TOUCH_ROUNDS = int(os.environ.get("WORLDFOLD_TOUCH_ROUNDS") or 1)   # touch-up r
 # cloth's friction against every rigid body, table and jaws alike (PhysX PBD has no table-only coefficient)
 GRASP_KNOBS = os.environ.get("WORLDFOLD_GRASP_KNOBS", "")
 HOLD_DIST = 0.05             # = isaac.isaac_env.HOLD_DIST
+# Validity gate on every score (re-evaluation 2026-10-22: a cloth hanging from a gripper scores 0.0 cm on
+# fold_alignment, which is how carried-off sheets looked like near-successes): every grid vertex within GATE_Z of the
+# table and on it, both jaws open and both gripper sites at least GATE_CLEAR from the cloth, the cloth moving less
+# than GATE_STILL per step
+# m above the table top: catches a lifted or hanging cloth (carried-off sheets sat ~30 cm up) but not ridges: stored
+# settled half folds peak at a median 2.2-2.8 cm with a tail to ~5 cm (isaac/rescore_gate.py, 2026-10-22); a cloth
+# still on a finger is the clearance / jaw checks' job
+GATE_Z = 0.05
+GATE_CLEAR = 0.03
+GATE_STILL = 0.001
+GATE_JAW_OPEN = 0.5          # rad: a jaw above this counts as open (closed ~0.05, open ~1.0)
+TABLE_HALF = 0.35            # = isaac_env.TABLE_SIZE / 2, the table centred on the copy's origin
 
 
 def features(cloth, start, arms, prev_action):
@@ -111,6 +123,20 @@ def instability(sub):
     return {"nan": int((~finite).sum()), "out": int((np.abs(np.nan_to_num(pos[:, :2])) > WORKSPACE_XY).any(axis=1).sum()),
             "fast": int((speed > CLOTH_SPEED_LIMIT).sum()), "vmax": round(float(speed.max()), 2),
             "zmin": round(float(np.nanmin(pos[:, 2])), 3), "zmax": round(float(np.nanmax(pos[:, 2])), 3)}
+
+
+def gate(cloth, prev_cloth, sites, jaws):
+    """Is this final cloth state scoreable? dict(valid, z_max_cm, on_table, clear_cm, jaws_open, still_mm)."""
+    from mujuco.cloth_params import TABLE_TOP_Z
+    cloth, prev = np.asarray(cloth, float), np.asarray(prev_cloth, float)
+    z_max = float(cloth[:, 2].max() - TABLE_TOP_Z)
+    on_table = bool(np.all(np.abs(cloth[:, :2]) <= TABLE_HALF))
+    clear = min(float(np.min(np.linalg.norm(cloth - np.asarray(s, float), axis=1))) for s in sites)
+    jaws_open = bool(all(float(j) > GATE_JAW_OPEN for j in jaws))
+    still = float(np.max(np.linalg.norm(cloth - prev, axis=1)))
+    valid = z_max <= GATE_Z and on_table and clear >= GATE_CLEAR and jaws_open and still <= GATE_STILL
+    return {"valid": bool(valid), "z_max_cm": round(z_max * 100, 2), "on_table": on_table,
+            "clear_cm": round(clear * 100, 2), "jaws_open": jaws_open, "still_mm": round(still * 1000, 2)}
 
 
 def apply_action(experts, action):
@@ -250,7 +276,8 @@ class PrecisionBatch:
     def _begin(self, idx):
         for i in idx:
             cloth = self.subs[i].cloth_positions()
-            self.state[i] = {"alive": True, "t": 0, "settle": 0, "start": cloth.copy(), "phi": potential(cloth),
+            self.state[i] = {"alive": True, "t": 0, "settle": 0, "start": cloth.copy(), "prev_cloth": cloth.copy(),
+                             "phi": potential(cloth),
                              "drift": 0.0, "prev_action": np.zeros(ACT_DIM),
                              "prev_site": {p: np.asarray(self.subs[i].gripper_position(p), float) for p in ARMS},
                              "final": None}
@@ -298,6 +325,7 @@ class PrecisionBatch:
             phi, d = potential(cloth), drift(cloth, st["start"])
             rew[i] = step_reward(st["phi"], phi, acts[i], st["drift"], d)
             st["phi"], st["drift"], st["prev_action"] = phi, max(st["drift"], d), acts[i]
+            prev_cloth, st["prev_cloth"] = st["prev_cloth"], cloth.copy()
             st["settle"] = st["settle"] + 1 if all(e.PHASES[e.phase] == "done" for e in ex.values()) else 0
             rounds = st.setdefault("touch", [])
             if TOUCH_TOL and st["settle"] >= SETTLE_STEPS and len(rounds) < TOUCH_ROUNDS \
@@ -327,12 +355,17 @@ class PrecisionBatch:
                 # policy to stall the carry and never release)
                 st["alive"], done[i], term[i] = False, True, True
                 r_end, s = terminal_reward(cloth, st["start"])
-                rew[i] += r_end if reason == "settled" else -FAIL
+                g = gate(cloth, prev_cloth, [sub.gripper_position(p) for p in ARMS],
+                         [sub.joint_positions(p)[5] for p in ARMS])
+                # only a settled fold that passes the gate scores; an invalid one is a failure, so the score can't
+                # be gamed by a lifted or still-held cloth
+                rew[i] += r_end if (reason == "settled" and g["valid"]) else -FAIL
                 st["final"] = {"reason": reason, "steps": st["t"], "mean": round(s["mean"], 4),
                                "bottom_shift": round(bottom_shift(cloth, st["start"]), 4),
                                "dropped": [p for p in ARMS if ex[p].dropped], "instability": None,
                                "touch": st.get("touch") or None,
                                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
+                               "gate": g, "passed_valid": bool(s["passed"] and g["valid"] and reason == "settled"),
                                "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS},
                                "cloth": np.round(cloth, 4).tolist(), "start": np.round(st["start"], 4).tolist()}
                 infos[i] = st["final"]
