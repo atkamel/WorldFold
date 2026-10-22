@@ -2487,3 +2487,10 @@ M 75 / 60, so reach is not the limit once tilt isn't capped. **No layout passes 
   tilt ~36°, robust to the jitter.
 So the quarter fold here is a two-armed fold 1 and a one-armed fold 2, and the current friction layout already reaches
 the one-armed M with the right arm (reach check above). Isaac run of that (job 711747) pending.
+
+**Friction sweep 5 (partial, 24/32 per setting; job 711745), latch + g-fold 1.2 + one touch-up, paired against
+particle friction 0.5:** 0.6: mean 2.51 vs 2.56 (−0.05, SE 0.11), edge +0.90 (SE 0.53), bottom shift +0.24 (SE 0.28);
+0.7: mean 3.65 (+1.09, SE 0.32), edge +1.65, bottom shift +0.09. Raising the particle friction (the only cloth-friction
+coefficient PhysX PBD has: table, jaws and cloth-on-cloth alike) does not reduce the bottom layer's drag (the top layer
+also grips it harder) and 0.7 hurts. No passes in 72. The one-arm fold-2 run crashed on a runner bug (a one-arm stage
+has no left-arm phase), fixed; rerun job 711748.
