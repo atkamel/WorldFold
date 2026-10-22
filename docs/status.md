@@ -196,7 +196,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 253 fast on macOS 2026-10-20, 1 failing there (#15) (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 263 fast on macOS 2026-10-22, 1 failing there (#15) (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
