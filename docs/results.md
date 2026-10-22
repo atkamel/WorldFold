@@ -2513,3 +2513,10 @@ position (shifted toward the right arm) for a lower-tilt, closer fold 2 that kee
 then 2.93, 2.82, 2.84, **2.78 with 1/32 passed** (version 4, best.pt), 2.65, 2.62, 2.66 (versions 5–7), edges 6.3–6.8 cm.
 The corrector ends about where the scripted push sits (2.56 cm, 1/32): it learned to roughly match it, not to beat it,
 within ~2.5k decisions and the sim's per-fold noise.
+
+**Cloth-start search for the one-arm fold 2 (offline, subagent, `scratchpad/grid_search.py`):** cloth centre over
+x ∈ [−0.06, 0.14], y ∈ [−0.20, −0.08] (273 positions), fold 1 (A0, B0) + the right arm's M, weight 0.1 / 0.005. Only 10
+positions keep all three moves within 5 mm (weight 0.1), all within 2 cm of today's (0, −0.135); the best, (+0.01,
+−0.13), lowers M's pinch tilt 37.7° → 33.5°; none is robust to ±1 cm jitter; M is unreachable at weight 0.005 everywhere.
+The start position can't fix fold 2 (fold 1's reach pins it). Next: a drag of the half sheet between the folds (both
+arms pull the short edges' middles), which doesn't constrain fold 1 (offline check, subagent).
