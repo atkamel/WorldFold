@@ -2520,3 +2520,11 @@ positions keep all three moves within 5 mm (weight 0.1), all within 2 cm of toda
 −0.13), lowers M's pinch tilt 37.7° → 33.5°; none is robust to ±1 cm jitter; M is unreachable at weight 0.005 everywhere.
 The start position can't fix fold 2 (fold 1's reach pins it). Next: a drag of the half sheet between the folds (both
 arms pull the short edges' middles), which doesn't constrain fold 1 (offline check, subagent).
+
+**Drag between the folds (offline, subagent, `scratchpad/drag_search.py`, 195 drags):** both arms pulling the short
+edges' middles by (dx, dy), then the right arm's one-armed fold 2. 108/195 feasible. Best: **(0.12, 0.04) m**: drag IK
+error < 0.01 mm, arms ≥ 177 mm apart during the drag, fold-2 pinch tilt **~0°** (vs 40° without a drag), place tilt 16°,
+grasp 0.29 m / place 0.15 m from the right base, robust to ±1 cm (0.01 mm worst). Lead check: post-drag west middle at
+(−0.03, −0.17) is 0.28 m from the right base, the east target (0.27, −0.17) 0.14 m. Caveat: the parked left arm sits
+where fold 2 grasps, so it goes home first. Built: `isaac/quarter_batch.py` (fold 1 → flat two-arm drag → left arm
+home → one-arm fold 2; quarter-fold alignment; videos). First run: job 711753, 8 seeds.
