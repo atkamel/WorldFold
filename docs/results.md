@@ -2312,3 +2312,29 @@ Base: mean 3.29 cm, edge 6.32 cm, bottom-half shift 2.28 cm, 32/32 settled. Pair
   two moves (out, then up 5 cm).
 - Sweep 2 (job 711606): latch + slope 1.5 / 1.2, the release with the fixed retreat, all three at slope 1.5, and slope
   0.6 alone / with latch + release at a 0.5 m drag limit (so they finish and are scored as folds).
+
+### Sweep 2 (job 711606, n = 32 paired against sweep 1's base, 6 h limit hit)
+
+| config | mean | edge | bottom shift | endings | best (mean / edge) |
+|---|---|---|---|---|---|
+| **latch + g-fold slope 1.2** | **2.69 (−0.60 [0.23]), better 22/32** | 6.22 (−0.10 [0.61]) | 3.03 (+0.75) | 32 settled | 1.31 / 1.93 |
+| release, two-move retreat | 3.91 (+0.62 [0.26]) | 7.03 | 2.52 | 30 settled, 2 dragged | 1.84 / 3.14 |
+| latch + slope 1.5 + release | 3.66 (+0.37 [0.22]) | 6.59 | 2.50 | 32 settled | 2.13 / 3.93 |
+| slope 0.6, drag limit 0.5 m | 3.09 (−0.20 [0.25]) | 7.67 (+1.36) | 9.61 (+7.32) | 32 settled | 1.52 / 3.43 |
+| latch + slope 0.6 + release, drag limit 0.5 m | 3.39 (+0.11 [0.18]) | 7.61 (+1.29) | 5.13 | 32 settled | 1.70 / 3.92 |
+| latch + slope 1.5 | hung (no output for ~5 h); the sweep hit its 6 h limit | | | | |
+
+- Best clean base: **latched goal + g-fold slope 1.2** (2.69 cm, −0.60, 2.6 SE; no drags, no timeouts).
+- The release at stack height with a back-off hurts in every combination: dropped.
+- Slope 0.6's sweep-1 gain was an artifact of drag-terminated episodes scored mid-place: allowed to finish, the
+  cloth slides ~10 cm and the mean gain mostly goes.
+- Second silent hang of a demo child (after the slow-carry job); cause unknown. Sweeps need a per-child timeout.
+
+### p6 final (job 711598, 8 h, 234k env steps)
+
+24 evaluations; none beat version 3 (2.77 cm). Versions 4–24: 2.90–4.83 cm, mostly 3.4–4.4, with 1–14/16 truncated
+per evaluation even though T_MAX now costs −FAIL. The policy keeps slowing the carry (the base advances a waypoint
+on arrival or after WP_PATIENCE) and the critic can't anticipate the deadline (no window clock in the observation).
+p7 (job 711637) avoids it by bounding: the base's phases are bounded (≤ ~300 steps), so T_MAX = 400 can't be hit;
+p7 also runs on the improved base (`WORLDFOLD_PLACE_PARAMS=LATCH_GOAL=1,GFOLD_SLOPE=1.2`), fresh snapshots and
+learner. Demo hunt (job 711638): p6 best.pt on 64 fresh seeds (920000–63) with top videos.

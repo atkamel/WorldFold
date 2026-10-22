@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-21 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (RL redesign drafted for sign-off: closed-loop residual RL, plan 2026-10-20; Roy-port step 3 benches running)
+**Updated:** 2026-10-22 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (RL redesign drafted for sign-off: closed-loop residual RL, plan 2026-10-20; Roy-port step 3 benches running)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -52,10 +52,10 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
 - **R4:** p4's version 1 (10k steps) beats the base on 16 fresh seeds: 2.84 vs 3.36 cm (paired −0.52, SE 0.23),
   best episode 1.17 / 2.13 cm; then its critic diverged. The base's error is a fold line forming ~1.4 cm short (the
   carry drags the bottom half 2.6 cm), spread over the whole cloth, not the corners (results.md).
-- **R4 running:** p6 (WATcloud 711598) from p4's version 1; T_MAX now a failure (p5 stalled the carry).
-- **Base fixes (brainstorm, results.md):** half the base's error is a rigid shift of the top layer; corners ride up on
-  the fingers in 7/16. A/Bs: slow carry and 1.5× arc (711599/711600, n = 16), sweep 1 (711602, n = 32: release fix,
-  latched goal, g-fold path cap at 3 slopes). WATcloud caps this account at 3 GPUs; sweeps run configs inside one job.
+- **R4:** best policy so far p6 version 3 (2.77 cm eval; later versions no better over 234k steps). Base sweeps:
+  best clean base = latched goal + g-fold slope 1.2 (2.69 cm vs 3.29, n = 32 paired); release fix dropped.
+- **Running:** p7 (711637: RL on the improved base, T_MAX 400 so timeouts can't occur) and a demo hunt (711638: p6
+  best on 64 fresh seeds with video, looking for one fold at the bar).
 - **Roy port, parked:** its release fails (the cloth stays on the open fingers; s3e), which was also the "7 cm miss".
 
 **2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
@@ -252,6 +252,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-22 · **Sweeps 1-2, p6 done:** best base latch + g-fold 1.2 (2.69 cm); p6 plateaued at 2.77; p7 + demo hunt launched · (this commit)
 
 - 2026-10-21 · **Brainstorm + base fixes:** rigid top-layer shift (3.36 → 1.66 cm when removed), lifted corners, 3 base knobs, sweep command; p6, A/Bs and sweep 1 running · 22e82ae
 
