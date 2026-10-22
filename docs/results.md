@@ -2474,3 +2474,16 @@ and the right arm can't reach the crease end C. The crossed STAGES[1] assignment
 the pinch. No two-armed fold 2 on this layout. The crossed Isaac run (711746) was cancelled; the one-arm fold 2
 (`--fold2 one_right`, job 711747, 8 seeds, videos) runs instead, and a layout search for a two-armed quarter-fold
 layout with the tilt unbounded (subagent) runs offline.
+
+**Two-armed quarter-fold layout search, tilt unbounded (offline, subagent; `outputs/isaac/layout_search_quarter_untilted.json`,
+script `scratchpad/quarter_layout_search.py` reusing `isaac/layout_search.py`):** bases on a 2.5 cm grid over the real
+table (table centred at world (0, 0), cloth at (0, −0.135)), yaw facing the cloth, 5 mm IK tolerance, ±1 cm jitter,
+arm-arm clearance ≥ 20 mm. Bases reaching each move (weight 0.1 / 0.005): A0 102 / 95, B0 99 / 92, S 37 / 32, C 107 / 87,
+M 75 / 60, so reach is not the limit once tilt isn't capped. **No layout passes all checks at either weight:**
+- every two-armed fold 2 (S + C, either assignment) brings the arms within 0.1–5 mm (both arms work the same short
+  edge at once);
+- the best one-armed fold 2 (M) layout, bases (−0.35, −0.065) and (0.225, −0.19) in the cloth frame: fold-1
+  clearance 30.8 mm, fold-2 8.4 mm (against the idle arm, which could park further away), pinch tilt ~30°, place
+  tilt ~36°, robust to the jitter.
+So the quarter fold here is a two-armed fold 1 and a one-armed fold 2, and the current friction layout already reaches
+the one-armed M with the right arm (reach check above). Isaac run of that (job 711747) pending.
