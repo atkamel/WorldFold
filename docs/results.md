@@ -2539,3 +2539,10 @@ home → one-arm fold 2; quarter-fold alignment; videos). First run: job 711753,
 - Video (seed 0): the pinch from above takes the two free layers of the open short edge unevenly; one slips and the
   held point's mean jumps (`dropped`). Next candidates: grasp fold 2 at the crease end (cloth_5, the layers joined),
   and/or make the drag pull through both corners of each short edge so the sheet slides whole.
+**Correction (video, seeds 1 and 5 of drag1):** the two "closest" quarter folds were not folds. After the drag the
+left arm went straight to its home pose (joints 0: the arm reaches out across the table) with the cloth still on its
+fingers and carried the sheet off; the right arm then reached for it. Their 4.8 / 6.3 cm scores are of a crumpled,
+carried sheet. **No quarter fold has worked yet.** Fixes in `quarter_batch.py`: the drag's release slides the open
+jaws out 2 cm before lifting (`BACKOFF`), the parked arm rises 12 cm before going home, and each episode logs whether
+the drag let go (edge heights, distance to the site) and where the sheet is after parking. Reruns: jobs 711761
+(fold 2 at the crease end) / 711762 (at the edge's middle), seeds 100–107, videos.
