@@ -70,7 +70,7 @@ def shifted_pose_isaac(seed):
 # Backends that run LeHome's task distribution (1 cm jitter, the Isaac id_hard ring, the longer fold's knock window):
 # the friction pinch reaches only ~1.5 cm of cloth offset at LeHome's cloth position (F2 reach sweep: 39/100 starts
 # reachable at MuJoCo's +-2.5 cm jitter, 0/200 of MuJoCo's id_hard), so isaac_friction cannot use
-# MuJoCo's sets. isaac_weld keeps MuJoCo's.
+# MuJoCo's sets.
 LEHOME_TASK_BACKENDS = ("isaac", "isaac_friction")
 
 
@@ -103,7 +103,7 @@ def eval_set(name, n, backend="mujoco"):
         _, opts, fn = eval_set(base_name, n, backend)
         return seeds, opts, fn
     seeds = list(range(EVAL_SEED_BASE[name], EVAL_SEED_BASE[name] + n))
-    isaac = backend in LEHOME_TASK_BACKENDS   # isaac_weld uses the MuJoCo sets
+    isaac = backend in LEHOME_TASK_BACKENDS
     if name == "id_easy":
         return seeds, None, None
     if name == "id_hard":

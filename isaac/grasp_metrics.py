@@ -98,7 +98,7 @@ def arm_metrics(trace: dict, goal, rest_z: float) -> dict:
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
-    """Wilson score interval, in percent (= imitation.verify.wilson)."""
+    """Wilson score interval, in percent."""
     if n <= 0:
         return (0.0, 100.0)
     p = k / n

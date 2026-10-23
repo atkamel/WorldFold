@@ -16,9 +16,8 @@ import math
 
 import numpy as np
 
-from isaac.half_fold_demo import (ARC_HEIGHT, ARC_WAYPOINTS, PINCH_HEIGHT, PLACE_HEIGHT, POSE_SETTLE_STEPS, SEED_Q,
-                                  TRACK_TOL, WAYPOINT_TOL)
-from cloth_fold_rl.quarter_fold_expert import QuarterFoldExpert
+from isaac.half_fold_demo import (ARC_HEIGHT, ARC_WAYPOINTS, PLACE_HEIGHT, POSE_SETTLE_STEPS, SEED_Q, TRACK_TOL,
+                                  WAYPOINT_TOL)
 from mujuco.cloth_params import GRIPPER_OPEN, JOINT_DELTA_SCALE, TABLE_TOP_Z
 
 SUCCESS_DIST = 0.05          # = cloth_fold_rl.fold_env.SUCCESS_DIST (placed)
@@ -28,7 +27,7 @@ LIFT_WAYPOINTS = 3           # the first arc waypoints count as "lift" (phase gr
 ABOVE = 0.04                 # pre-pinch height above the pinch point
 RETREAT = 0.05
 # per (stage, arm): metres past the goal to place at, the friction grasp's measured spring-back (cf.
-# cloth_fold_rl.quarter_fold_expert.OVERSHOOT on MuJoCo, isaac.weld_expert.OVERSHOOT_ISAAC on the weld profile).
+# cloth_fold_rl.quarter_fold_expert.OVERSHOOT on MuJoCo).
 # Stage 0 is calibrated (track G, IG.2 attempt 8: minus the settled miss of attempt 3); stage 1 stays zero.
 OVERSHOOT_FRICTION = {key: np.zeros(3) for key in ((0, "left_"), (0, "right_"), (1, "left_"), (1, "right_"))}
 OVERSHOOT_FRICTION[(0, "left_")][:] = (-0.001, 0.052, 0.0)
@@ -37,15 +36,7 @@ OVERSHOOT_FRICTION[(0, "right_")][:] = (0.013, 0.050, 0.0)
 # right (-1.3, +1.5) cm) made it worse: F2 attempts F and G, which both carried it, held 11/20 and placed 10/20 on the
 # right arm against A's 16 / 15 (results.md). The landing point is not independent of the target.
 OVERSHOOT_FRICTION_PROFILE = {key: v.copy() for key, v in OVERSHOOT_FRICTION.items()}
-# quarter profile: none. On its layout a corner stays where it is let go (2026-10-14 run q2, seed 3: the left corner
-# ended 4.6-5.5 cm from its goal under the friction profile's 5.2 cm overshoot); fold_rl tunes placement from here
-OVERSHOOT_QUARTER = {key: np.zeros(3) for key in OVERSHOOT_FRICTION}
-# strip profile (the friction layout): both folds place on the near corners, 7 cm from the bases, so fold 2 takes fold
-# 1's tuned overshoot too (with none, the arms stopped short there and the retries dragged the strip: run strip1)
-OVERSHOOT_STRIP = {(s, p): OVERSHOOT_FRICTION_PROFILE[(0, p)].copy() for s, p in OVERSHOOT_FRICTION}
-OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE, "quarter": OVERSHOOT_QUARTER,
-              "quarter_s": OVERSHOOT_QUARTER, "strip": OVERSHOOT_STRIP,
-              "roy": {key: np.zeros(3) for key in OVERSHOOT_FRICTION}}   # roy: not measured yet
+OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE}
 
 
 ORIENTATION_WEIGHT = 0.1     # = isaac.pinch.ORIENTATION_WEIGHT (not imported: isaac.pinch needs LeHome)
@@ -85,9 +76,6 @@ class IsaacArmExpert:
     ALIGN_TRIES = 2
     OVERSHOOT_SCALE = 1.0    # scales the profile's placement overshoot table (0: none, Adam's as-built expert)
     SERVO = 0                # 1: ScriptedTeacher uses isaac.servo_expert.IsaacServoExpert (closed-loop, Phase F3b)
-    # 1: IsaacQuarterFoldExpert uses isaac.place_servo.IsaacPlaceServoExpert (this pinch, then corner steering onto the
-    # partner vertex's current position; the residual-RL base, plan 2026-10-20)
-    PLACE_SERVO = 0
     # F3b drop traces: descends parked 1-2 cm from the corner (the fingertip meets the table / cloth there) for 30-60
     # steps because the joint-space arrival test (TRACK_TOL) never fires with the arm folded near its base; then the
     # retry knobs sent it back up. 1: a descend has arrived when the gripper site is within CART_XY of the pinch point,
@@ -146,8 +134,8 @@ class IsaacArmExpert:
     # jaw angle (rad) while a slide grasp approaches, presses and slides: Roy opens to 0.55 (GRIP_OPEN); at our 1.0 the
     # open jaw met the table 0.7 cm up and held the pads off the cloth (2026-10-19 bench roy_s3: the jaws closed empty)
     GRASP_OPEN = 0.55
-    # IsaacQuarterFoldExpert's lift gate: an arm that has closed waits until every arm of its fold has (the two grasp
-    # points of the quarter fold's second fold are on one 13 cm edge: lifting one drags the other away)
+    # lift gate (isaac.precision_env.coordinate): an arm that has closed waits until every arm of its fold has (lifting
+    # one grasp point drags the other away)
     lift_allowed = True
     # a position-mode gripper opens this many rad per control step at release (None: at once); release lasts until open
     RELEASE_RATE = None
@@ -297,8 +285,8 @@ class IsaacArmExpert:
         return self.JAW_WEIGHT if (self.GRASP == "slide" or self.base._prof.get("arm_bases") is not None) else None
 
     def _home_seed(self, tip, jaw):
-        """SEED_Q on the MJCF layout; on another layout (quarter profile) the best of a pan sweep for the first pose,
-        upright first (isaac/layout_search.py: one seed can land the chain on a flipped branch)."""
+        """SEED_Q on the MJCF layout; on another layout (quarter2) the best of a pan sweep for the first pose,
+        upright first (the layout search found one seed can land the chain on a flipped branch)."""
         p = self.prefix
         if self.base._prof.get("arm_bases") is None:
             return list(SEED_Q[p])
@@ -307,7 +295,7 @@ class IsaacArmExpert:
             for rest in (SEED_Q["left_"][1:], SEED_Q["right_"][1:]):
                 q, e = self._ik.solve(p, tip, jaw, [pan] + list(rest), iters=150,
                                       orientation_weight=self.PINCH_ORIENTATION_WEIGHT, jaw_weight=self._jw)
-                # moderate fold first (isaac/layout_search.py PINCH_FOLD: the jaw meets the upper arm past it), then
+                # moderate fold first (past it the jaw meets the upper arm: the layout search), then
                 # closest, then fingers most nearly down
                 key = (max(q[2], q[3]) > 1.3, round(e, 4), self._ik.site_pose(p, q)[1][2, 2])
                 if best is None or key < best[0]:
@@ -611,35 +599,3 @@ def _apply_env_params():
 
 
 _apply_env_params()
-
-
-
-class IsaacQuarterFoldExpert(QuarterFoldExpert):
-    """QuarterFoldExpert with IsaacArmExperts, the profile's overshoot table (a copy: fold_rl edits it, around
-    base_overshoot) and a lift gate: no arm of the current fold lifts until every arm of it has started closing."""
-
-    def __init__(self, env, seed=0, profile="quarter"):
-        self.base_overshoot = {k: v.copy() for k, v in OVERSHOOTS[profile].items()}
-        expert_cls = IsaacArmExpert
-        if IsaacArmExpert.PLACE_SERVO:
-            from isaac.place_servo import IsaacPlaceServoExpert as expert_cls
-        super().__init__(env, seed=seed, expert_cls=expert_cls,
-                         overshoot={k: v.copy() for k, v in self.base_overshoot.items()})
-        if IsaacArmExpert.PLACE_SERVO:      # aim at the partner vertex where it is now, not where it started
-            for key, e in self.experts.items():
-                e.live_goal = lambda m=self.moves[key]: self.base.cloth_positions()[m.goal]
-
-    def act(self):
-        arms = self._arms()
-        ready = all(e.phase >= e.PHASES.index("close") for e in arms.values())
-        for e in arms.values():
-            e.lift_allowed = ready
-        if len(arms) == 2:
-            return super().act()
-        # a one-arm fold: the other arm holds where it is, jaw open
-        self._update_release_gate()
-        for (s, p), e in self.experts.items():
-            if s == self.env.stage:
-                self._maybe_retry((s, p), e)
-        idle = np.r_[np.zeros(5), 1.0].astype(np.float32)
-        return np.concatenate([arms[p].act() if p in arms else idle for p in ("left_", "right_")])

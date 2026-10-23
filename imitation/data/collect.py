@@ -52,7 +52,7 @@ def recovery_perturbation_for(backend, fraction, kinds=None):
             kind = kinds[int(np.random.default_rng([seed, 999]).integers(len(kinds)))]
             return fns[kind](seed, rng)
         return mix
-    if backend not in LEHOME_TASK_BACKENDS:      # mujoco and isaac_weld share MuJoCo's episode timing
+    if backend not in LEHOME_TASK_BACKENDS:      # mujoco's episode timing
         return recovery_perturbation(fraction)
     return recovery_perturbation(fraction, t_range=(24, 166), k_range=(5, 15))
 
@@ -92,7 +92,7 @@ def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--episodes", type=int, default=400)
     ap.add_argument("--workers", type=int, default=None, help="default 14 (mujoco) / N_ISAAC (isaac)")
-    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_weld", "isaac_friction"), default="mujoco")
+    ap.add_argument("--backend", choices=("mujoco", "isaac", "isaac_friction"), default="mujoco")
     ap.add_argument("--render", action="store_true", help="record camera images at collection")
     ap.add_argument("--cameras", default=None, help="e.g. main=128,left_wrist_cam=64,right_wrist_cam=64")
     ap.add_argument("--version", default="v1")

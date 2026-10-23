@@ -1,9 +1,6 @@
 """IsaacArmExpert's GRASP "slide" without Isaac: phases, the planned slide and the backed-off release."""
 
-from pathlib import Path
-
 import numpy as np
-import pytest
 
 from isaac.fold_expert import IsaacArmExpert
 from mujuco.cloth_params import TABLE_TOP_Z
@@ -62,27 +59,3 @@ def test_release_backs_off_then_lifts():
     assert np.allclose(r[0][:2], place[:2] - e.RELEASE_BACKOFF * plan["slide_dir"])   # back off along the slide
     assert np.isclose(r[0][2], place[2])
     assert np.allclose(np.diff(r[:, 2]), e.RETREAT_STEP) and np.allclose(r[:, :2], r[0][:2])
-
-
-ASSETS = Path(__file__).resolve().parents[2] / "outputs" / "isaac" / "assets"
-
-
-@pytest.mark.skipif(not (ASSETS / "robots" / "so101_new_calib.urdf").exists(), reason="needs a local LeHome URDF copy")
-def test_jaw_weight_fixes_the_half_turn():
-    import isaac.layout_search as L                          # stubs lehome and builds PinchIK on the local URDF
-    from isaac.isaac_env import PROFILES
-    L._configure(0.0, 0.15)
-    L._init(str(ASSETS))
-    ik = L._IK
-    ik.root = PROFILES["roy"]["arm_bases"]
-    jaw = np.array([1.0, 0.0, 0.0])                          # the left arm's slide: inward along +x
-    tip = np.array([-0.17, 0.13, TABLE_TOP_Z - 0.002])
-    reached = 0
-    for pan in np.linspace(-1.8, 1.8, 7):                   # IsaacArmExpert._home_seed's sweep
-        q, err = ik.solve("left_", tip, jaw, [pan, 1.07, -1.19, 1.66, -2.05], orientation_weight=0.005, jaw_weight=0.1)
-        if err > 0.005:
-            continue                                         # a seed pointing away; the sweep keeps the closest
-        reached += 1
-        opens_along = -ik.site_pose("left_", q)[1][:, 0]     # the site's -x: fixed finger -> moving jaw
-        assert opens_along @ jaw > 0.9, (pan, opens_along)
-    assert reached >= 1

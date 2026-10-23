@@ -41,7 +41,7 @@ from isaac.isaac_env import (
     CAMERA_CLIP, CLOTH_ADHESION, CLOTH_GRAVITY_SCALE, CLOTH_SUBDIV, FLOOR_COLOR, FLOOR_SIZE, GRIPPER_JOINT,
     GRIPPERFRAME_POS, GRIPPERFRAME_QUAT,
     HEADLIGHT_AMBIENT, HEADLIGHT_DIFFUSE, LIGHT_INTENSITY, LIGHTS, TABLE_SIZE, PAD_LINING_FRICTION,
-    PAD_LINING_THICKNESS, box_pad_poses, cloth_grid_mesh, usd_root_pose, _matrix_from_quat, _quat_facing,
+    PAD_LINING_THICKNESS, cloth_grid_mesh, usd_root_pose, _matrix_from_quat, _quat_facing,
     _quat_from_matrix,
 )
 
@@ -75,9 +75,7 @@ class _Copy:
         self.cloth = None
         self.cloth_pose = None
         self.cloth_rest = None
-        self.pin_floor = None
-        self.pins = {}           # weld grasp, see SceneEnv._drive_pins
-        self.mass_scale = 1.0    # dynamics DR (set_dynamics); folded into set_pinned_masses
+        self.mass_scale = 1.0    # dynamics DR (set_dynamics)
         self.rest_masses = None
         self.rest_material = None
         self.rig_cameras = {}
@@ -92,7 +90,7 @@ LININGS = {"gripper": ((-0.017042, 0.000205, -0.073359), (0.997564, 0.0, -0.0697
 
 
 def _robot(prim_path, base_pos, drive=None, gripper_drive=None, base_quat=ARM_BASE_QUAT, home=None):
-    """drive: {ImplicitActuatorCfg field: value} applied to every actuator group (the weld profile's
+    """drive: {ImplicitActuatorCfg field: value} applied to every actuator group (the friction profile's
     MUJOCO_ARM_DRIVE); None keeps LeHome's SO101 drives. gripper_drive: the same for the gripper actuator only,
     applied after drive (a friction-grasp knob, isaac_env.FRICTION_GRASP)."""
     pos, rot = usd_root_pose(base_pos, base_quat)
@@ -254,8 +252,6 @@ class SceneEnv(DirectRLEnv):
         # friction-grasp knobs (isaac_env.FRICTION_GRASP); a missing or None value keeps the scene as ported
         self.grasp = {k: v for k, v in (grasp or {}).items() if v is not None}
         self.copies = [_Copy(c) for c in range(cfg.n_copies)]
-        self.weld_tau = None    # None: rigid weld (zero-mass pins); seconds: soft weld, see _drive_pins
-        self.weld_mass = 1.0    # soft weld: pinned particles' mass multiple (the solver moves heavier ones less)
         super().__init__(cfg)
         for cp in self.copies:
             cp.joint_ids = {p: arm.find_joints(JOINTS, preserve_order=True)[0] for p, arm in cp.arms.items()}
@@ -271,18 +267,9 @@ class SceneEnv(DirectRLEnv):
     cloth = property(lambda self: self.copies[0].cloth)
     cloth_rest = property(lambda self: self.copies[0].cloth_rest)
     cloth_pose = property(lambda self: self.copies[0].cloth_pose)
-    pin_floor = property(lambda self: self.copies[0].pin_floor)
     rig_cameras = property(lambda self: self.copies[0].rig_cameras)
     _rest_masses = property(lambda self: self.copies[0].rest_masses)
     _rest_material = property(lambda self: self.copies[0].rest_material)
-
-    @property
-    def pins(self):
-        return self.copies[0].pins
-
-    @pins.setter
-    def pins(self, value):
-        self.copies[0].pins = value
 
     @property
     def mass_scale(self):
@@ -314,10 +301,7 @@ class SceneEnv(DirectRLEnv):
             if c == 0:
                 lining.func("/World/Looks/pad_lining", lining)
             for r in robots.values():
-                if self.grasp.get("pads") == "box":
-                    self._add_box_pads(r.prim_path)
-                else:
-                    self._add_linings(r.prim_path)
+                self._add_linings(r.prim_path)
             if c == 0:
                 floor.func("/World/floor", floor)
             table.func(f"{root}/table", table, translation=(float(dx[0]), float(dx[1]), TABLE_TOP_Z / 2.0))
@@ -345,29 +329,6 @@ class SceneEnv(DirectRLEnv):
             box.AddTranslateOp().Set(Gf.Vec3d(*(np.asarray(center) + R @ local)))
             box.AddOrientOp().Set(Gf.Quatf(float(quat[0]), Gf.Vec3f(*(float(v) for v in quat[1:]))))
             box.AddScaleOp().Set(Gf.Vec3f(t + 0.001, 0.016, 0.043))
-            box.GetDisplayColorAttr().Set([Gf.Vec3f(0.1, 0.1, 0.1)])
-            UsdPhysics.CollisionAPI.Apply(box.GetPrim())
-            sim_utils.bind_physics_material(box.GetPath().pathString, "/World/Looks/pad_lining")
-
-    def _add_box_pads(self, robot_path):
-        # pads="box": LeHome's capsule pads stop colliding; a flat box sits on each jaw tip (isaac_env.box_pad_poses)
-        stage = self.sim.stage
-        for link in ("gripper", "jaw"):
-            stage.GetPrimAtPath(f"{robot_path}/{link}/Capsule").GetAttribute("physics:collisionEnabled").Set(False)
-        joint = next(p for p in Usd.PrimRange(stage.GetPrimAtPath(robot_path))
-                     if p.GetName() == "gripper" and p.IsA(UsdPhysics.RevoluteJoint))
-        q = joint.GetAttribute("physics:localRot0").Get()
-        T0 = np.eye(4)
-        T0[:3, :3] = _matrix_from_quat([q.GetReal(), *q.GetImaginary()])
-        T0[:3, 3] = np.array(joint.GetAttribute("physics:localPos0").Get())
-        fixed, moving, size = box_pad_poses(T0)
-        for link, T in (("gripper", fixed), ("jaw", moving)):
-            quat = _quat_from_matrix(T[:3, :3])
-            box = UsdGeom.Cube.Define(stage, f"{robot_path}/{link}/flat_pad")
-            box.CreateSizeAttr(1.0)
-            box.AddTranslateOp().Set(Gf.Vec3d(*(float(v) for v in T[:3, 3])))
-            box.AddOrientOp().Set(Gf.Quatf(float(quat[0]), Gf.Vec3f(*(float(v) for v in quat[1:]))))
-            box.AddScaleOp().Set(Gf.Vec3f(*(float(v) for v in size)))
             box.GetDisplayColorAttr().Set([Gf.Vec3f(0.1, 0.1, 0.1)])
             UsdPhysics.CollisionAPI.Apply(box.GetPrim())
             sim_utils.bind_physics_material(box.GetPath().pathString, "/World/Looks/pad_lining")
@@ -408,7 +369,6 @@ class SceneEnv(DirectRLEnv):
         cp.cloth_pose = np.array([self.cloth_center[0], self.cloth_center[1], z])
         if cp.index:
             cp.cloth_pose = cp.cloth_pose + cp.offset
-        cp.pin_floor = z - 0.001            # a particle resting on the table top (weld pins never go lower)
         pose = [float(v) for v in cp.cloth_pose]
         garment_cfg = OmegaConf.create({
             # GarmentObject joins a leading-slash asset_path onto the working directory
@@ -445,11 +405,10 @@ class SceneEnv(DirectRLEnv):
         cp.cloth.set_world_pose(position=pose, orientation=euler_angles_to_quat(np.asarray(rpy_deg), degrees=True))
 
     def reset_copy(self, c):
-        """Copy c's arms back to their spawn pose and HOME joints at rest, its pins cleared and its rig cameras
+        """Copy c's arms back to their spawn pose and HOME joints at rest and its rig cameras
         reset, without touching the other copies and without a physics step (milestone V's per-env reset; the
         cloth is reset_cloth's). lab.reset() still resets every copy at once."""
         cp = self.copies[c]
-        cp.pins = {}
         for arm in cp.arms.values():
             arm.reset()
             arm.write_root_pose_to_sim(arm.data.default_root_state[:, :7])
@@ -511,15 +470,7 @@ class SceneEnv(DirectRLEnv):
             cp.arms["left_"].set_joint_position_target(self.targets[:, k:k + 6], joint_ids=cp.joint_ids["left_"])
             cp.arms["right_"].set_joint_position_target(self.targets[:, k + 6:k + 12],
                                                         joint_ids=cp.joint_ids["right_"])
-            if cp.pins:
-                self._drive_pins(cp.index)
 
-    # ---- weld grasp (IsaacClothFoldEnv grasp_mode="weld", Phase W) ----
-    # pins: {prefix: (particle indices, offsets (k, 3) from the gripperframe site, world axes)}. GPU pipeline only: a
-    # welded particle gets zero mass and, before every physics substep, its position (site + offset, never below
-    # pin_floor) and velocity (the site's) are written through the particle-cloth tensor view. On the
-    # CPU device the only write path is the mesh's USD points, which PhysX ignores mid-simulation (W1: 14-36 mm drift
-    # per substep), so IsaacClothFoldEnv refuses grasp_mode="weld" there.
     def site_pose(self, prefix, c=0):
         """World pose (pos, R) of the gripperframe site: the gripper link composed with the MJCF site offset."""
         arm = self.copies[c].arms[prefix]
@@ -528,20 +479,14 @@ class SceneEnv(DirectRLEnv):
         link_R = _matrix_from_quat(arm.data.body_link_quat_w[0, b].cpu().numpy().astype(np.float64))
         return link_pos + link_R @ GRIPPERFRAME_POS, link_R @ _matrix_from_quat(GRIPPERFRAME_QUAT), link_pos, link_R
 
-    def set_pinned_masses(self, c=0):
-        """GPU pipeline: pinned particles get zero mass (held exactly where written); everything else its rest mass.
-        ClothPrim.set_particle_masses calls a get_masses it doesn't have, so this uses the physics view directly."""
-        if self.device == "cpu":
-            return
+    def _set_masses(self, c=0):
+        """GPU pipeline: every particle its rest mass times the copy's mass_scale. ClothPrim.set_particle_masses calls
+        a get_masses it doesn't have, so this uses the physics view directly."""
         cp = self.copies[c]
         pv = cp.cloth._cloth_prim_view._physics_view
         if cp.rest_masses is None:
             cp.rest_masses = pv.get_masses().clone()
         masses = cp.rest_masses * cp.mass_scale
-        for idx, _ in cp.pins.values():
-            ti = torch.as_tensor(idx, device=masses.device)
-            flat = masses.view(masses.shape[0], -1)
-            flat[0, ti] = 0.0 if self.weld_tau is None else flat[0, ti] * self.weld_mass
         pv.set_masses(masses, torch.arange(masses.shape[0], device=masses.device))
 
     def set_dynamics(self, mass_scale=1.0, friction_scale=1.0, damping_scale=1.0, c=0):
@@ -557,43 +502,7 @@ class SceneEnv(DirectRLEnv):
         cp.mass_scale = float(mass_scale)
         mat.set_friction(cp.rest_material[0] * float(friction_scale))
         mat.set_damping(cp.rest_material[1] * float(damping_scale))
-        self.set_pinned_masses(c)
-
-    def _drive_pins(self, c=0):
-        # the cloth view's set_positions/set_velocities index whole cloths, not particles, so the full buffer is
-        # written back; unpinned rows carry the values just read
-        cp = self.copies[c]
-        view = cp.cloth._cloth_prim_view
-        pos = view.get_world_positions(clone=False)
-        vel = view.get_velocities(clone=False)
-        for prefix, (idx, offsets) in cp.pins.items():
-            if len(idx) == 0:
-                continue
-            site, _, link_pos, _ = self.site_pose(prefix, c)
-            world = site + offsets
-            arm, b = cp.arms[prefix], cp.gripper_body[prefix]
-            lin = arm.data.body_link_lin_vel_w[0, b].cpu().numpy()
-            ang = arm.data.body_link_ang_vel_w[0, b].cpu().numpy()
-            v = np.broadcast_to(lin + np.cross(ang, site - link_pos), world.shape).copy()
-            # the table holds a pinned particle up, as MuJoCo's contact does against its soft weld: a kinematic pin
-            # would otherwise be pushed through it (W3 trace: 2.7 cm below the top as the gripper closed descending)
-            low = world[:, 2] < cp.pin_floor
-            world[low, 2] = cp.pin_floor
-            v[low, 2] = np.maximum(v[low, 2], 0.0)
-            ti = torch.as_tensor(idx, device=pos.device)
-            if self.weld_tau is None:
-                pos[0, ti] = torch.as_tensor(world, dtype=pos.dtype, device=pos.device)
-            else:
-                # soft weld, MuJoCo's equality with solref (weld_tau, 1): the pinned particles keep their mass and are
-                # steered toward the target at the gripper's velocity plus error / weld_tau; the cloth solver can
-                # still pull them, so the held corner gives under tension and hangs under gravity as in MuJoCo
-                here = pos[0, ti].detach().cpu().numpy().astype(np.float64)
-                v = v + (world - here) / self.weld_tau
-            vel[0, ti] = torch.as_tensor(v, dtype=vel.dtype, device=vel.device)
-        all_idx = torch.arange(pos.shape[0], device=pos.device)
-        if self.weld_tau is None:
-            view._physics_view.set_positions(pos, all_idx)
-        view._physics_view.set_velocities(vel, all_idx)
+        self._set_masses(c)
 
     def _get_observations(self):
         return {"policy": self.targets}

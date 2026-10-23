@@ -289,15 +289,15 @@ def test_keep_alive_ticks_while_idle():
 
 def test_envs_per_proc(monkeypatch):
     monkeypatch.delenv("WORLDFOLD_ISAAC_ENVS_PER_PROC", raising=False)
-    assert envs_per_proc("isaac_weld") == 1
+    assert envs_per_proc("isaac_friction") == 1
     monkeypatch.setenv("WORLDFOLD_ISAAC_ENVS_PER_PROC", "4")
-    assert envs_per_proc("isaac_weld") == 4
+    assert envs_per_proc("isaac_friction") == 4
     assert envs_per_proc("mujoco") == 1 and envs_per_proc(None) == 1
     with pytest.raises(ValueError):
         envs_per_proc("isaac")             # the CPU friction profile is not vectorised
     monkeypatch.setenv("WORLDFOLD_ISAAC_ENVS_PER_PROC", "0")
     with pytest.raises(ValueError):
-        envs_per_proc("isaac_weld")
+        envs_per_proc("isaac_friction")
 
 
 def test_thermal_pause_holds_work_and_keeps_episodes(monkeypatch, tmp_path):

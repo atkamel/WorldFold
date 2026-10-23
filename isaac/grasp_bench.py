@@ -179,7 +179,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", default="600000:600020", help="start:end (imitation.seeds TUNE_SEED_BASE block)")
     ap.add_argument("--out", help="output directory (absolute when cwd is another checkout)")
-    ap.add_argument("--profile", choices=("lehome", "friction", "strip", "roy"), default="lehome",
+    ap.add_argument("--profile", choices=("lehome", "friction"), default="lehome",
                     help="IsaacClothFoldEnv profile; friction = Phase F's GPU profile")
     ap.add_argument("--device", default=None, help="override the profile's device (cpu / cuda:0), a diagnostic")
     ap.add_argument("--no-dr", action="store_true", help="dynamics DR off (a diagnostic; the GPU profiles have it on)")

@@ -149,7 +149,7 @@ def apply_action(experts, action):
 
 
 def coordinate(experts):
-    """IsaacQuarterFoldExpert's gates: no arm lifts until both have closed; both release only once both hold."""
+    """The fold's gates: no arm lifts until both have closed; both release only once both hold."""
     ready = all(e.phase >= e.PHASES.index("close") for e in experts.values())
     for e in experts.values():
         e.lift_allowed = ready
