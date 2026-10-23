@@ -19,8 +19,8 @@ released, still), user 2026-10-22.
   touch-up (seed 930005, 0.95 / 1.45 cm) and with the RL policy p8 (seed 980008, 0.43 / 1.13 cm). Videos in
   `docs/reports/media/isaac_half_fold_pass_*.mp4`. RL shows no average gain over the scripted base (p8 hunt 2.65 cm,
   base hunt 2.62 cm).
-- **Quarter fold** has not passed. Every one-arm fold 2 tried failed. The two-arm fold 2 on the `quarter2` layout is
-  built (`isaac/tools/quarter_batch.py --profile quarter2 --fold2 two`) and has not run yet.
+- **Quarter fold** has not passed. Every one-arm fold 2 tried failed. The first two-arm runs on the `quarter2` layout
+  (n = 2, 2026-10-23) went badly: fold 1 broke in one, and three of four fold-2 grasps slipped.
 - **Gentle release** (user, 2026-10-22) is the place-servo default and has not run in Isaac yet. The jaw opens
   0.02 rad per step to 0.3 rad with the arm still, the arm lifts 2 mm per step, and the jaw opens fully 5 cm up.
   It adds about 30 steps per release, so window runs need `WORLDFOLD_WINDOW_STEPS=400`.
@@ -34,11 +34,10 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. One short Isaac run on WATcloud to check the restructured code inside the container (needs the user's go), then
-   merge `chore/cleanup`.
-2. Scripted quarter fold on `quarter2`, 8 seeds with video, gentle release on. First question: does the pinch hold at
-   the 35-50° tilts on A0 and S? The fallback for those two grasps is the slide grasp (`GRASP=slide`). Target: fold 2
-   landing within 3 cm on gated episodes, with video.
+1. Merge `chore/cleanup` (the WATcloud check, job 712165, ran the new layout end to end).
+2. Find why `quarter2` folds fail: read the per-arm grasp traces of 712165, then run 8 seeds with the gentle release
+   off and on. If the tilted pinches (A0 39°, S 34.5°) are what slips, try the slide grasp (`GRASP=slide`) on those
+   two. Target: fold 2 landing within 3 cm on gated episodes, with video.
 3. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
    with no drag and the idle arm parked.
 4. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
@@ -107,6 +106,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-10-23 · **Cleanup check (WATcloud 712165):** new layout runs in Isaac end to end; first `quarter2` folds, n = 2: fold 1 broke in 1/2, fold-2 grasps held 1/4, both endings invalid (results.md) · (this commit)
 - 2026-10-23 · **Repo cleanup:** run outputs and videos untracked (17 showcase videos kept), retired code deleted (weld, once-per-fold RL, Roy profiles, old quarter profiles, one-off probes, IQL, verifier, early PPO/MolmoAct), `isaac/` split into subpackages, `mujuco/` → `mujoco_sim/`, docs rewritten; fast suite 226 passed + #15, slow 12 passed · (this commit)
 - 2026-10-22 · **Gentle release:** jaw opens slowly part way, slow straight lift, full open above (env `jaw_open` cap for the binary gripper); isaac tests 72, fast suite 273 passed + #15 · (this commit)
 - 2026-10-22 · **Revised plan, steps 1-3 started:** gates + re-score (fa4c1ce); `quarter2` layout + two-arm fold 2 (28752bb); WATcloud jobs queued; fast suite 268 passed + #15 · (this commit)
