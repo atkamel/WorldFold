@@ -1,0 +1,20 @@
+1349 (base, move) IK jobs
+bases reaching each move: {'A0': 129, 'B0': 126, 'S': 124, 'C': 124, 'M': 123}
+2834 reach-feasible layouts before clearance
+0 layouts with clearance >= 0.02 m
+0 of 0 hold over +-1 cm offsets
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.275, -0.15], "clear_fold1": 0.0177, "clear_fold2": 0.0132, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.35, -0.1], "clear_fold1": 0.0132, "clear_fold2": 0.0132, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.325, -0.1], "clear_fold1": 0.0144, "clear_fold2": 0.0132, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.3, -0.125], "clear_fold1": 0.0197, "clear_fold2": 0.0132, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.275, -0.125], "clear_fold1": 0.0132, "clear_fold2": 0.0132, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.3, -0.1], "clear_fold1": 0.0187, "clear_fold2": 0.0132, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.3, -0.075], "clear_fold1": 0.0161, "clear_fold2": 0.0132, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.35, 0.1], "clear_fold1": 0.0171, "clear_fold2": 0.0131, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.375, 0.075], "clear_fold1": 0.0127, "clear_fold2": 0.0137, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.3, -0.05], "clear_fold1": 0.012, "clear_fold2": 0.0132, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.325, -0.075], "clear_fold1": 0.0115, "clear_fold2": 0.0132, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.35, -0.075], "clear_fold1": 0.0107, "clear_fold2": 0.0132, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.025, -0.2], "clear_fold1": 0.0184, "clear_fold2": 0.0091, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.325, 0.125], "clear_fold1": 0.0236, "clear_fold2": 0.0086, "worst_place_mm": 4.4415, "badness": 0.9791}
+{"variant": "M/-", "arm1": [-0.025, 0.225], "arm2": [0.05, -0.2], "clear_fold1": 0.0079, "clear_fold2": 0.0114, "worst_place_mm": 5.6193, "badness": 0.9791}
