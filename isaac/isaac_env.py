@@ -390,6 +390,9 @@ class IsaacClothFoldEnv(gym.Env):
 
         self._joint_targets = {p: self._home() for p in self.prefixes}
         self._gripper_closed = {p: False for p in self.prefixes}
+        # the binary gripper's open target per arm, None: GRIPPER_OPEN (a gentle release opens part way first:
+        # isaac.place_servo RELEASE_JAW)
+        self.jaw_open = {p: None for p in self.prefixes}
         self._step_count = 0
         self._task_id = 0
         self._goal_corners = np.zeros((4, 3))
@@ -589,7 +592,8 @@ class IsaacClothFoldEnv(gym.Env):
             self._gripper_closed[prefix] = True
         elif command > 0.3:
             self._gripper_closed[prefix] = False
-        target = self._closed_q if self._gripper_closed[prefix] else GRIPPER_OPEN
+        open_q = GRIPPER_OPEN if self.jaw_open[prefix] is None else self.jaw_open[prefix]
+        target = self._closed_q if self._gripper_closed[prefix] else open_q
         rate = self.grasp_knobs.get("jaw_open_rate")
         if rate and self.grasp_mode == "friction" and not self._gripper_closed[prefix]:
             target = min(target, self._joint_targets[prefix][5] + float(rate))     # open gradually (track G)
@@ -702,7 +706,7 @@ class IsaacClothFoldEnv(gym.Env):
         self._kit_ticked = time.time()
 
     # ---- residual-RL snapshots (plan 2026-10-20 R1; GPU pipeline) ----
-    SNAPSHOT_FIELDS = ("_joint_targets", "_gripper_closed", "_particles", "_particle_vel", "_step_count",
+    SNAPSHOT_FIELDS = ("_joint_targets", "_gripper_closed", "jaw_open", "_particles", "_particle_vel", "_step_count",
                        "_success_steps")
 
     def snapshot(self):
@@ -733,6 +737,7 @@ class IsaacClothFoldEnv(gym.Env):
             self.lab.set_pinned_masses(self._copy)
         for prefix in self.prefixes:
             self._gripper_closed[prefix] = False
+            self.jaw_open[prefix] = None
             self._joint_targets[prefix] = self._home()
 
         scales = None
@@ -855,6 +860,7 @@ class IsaacSubEnv(IsaacClothFoldEnv):
         self._pinned = {p: {} for p in self.prefixes}
         self._joint_targets = {p: self._home() for p in self.prefixes}
         self._gripper_closed = {p: False for p in self.prefixes}
+        self.jaw_open = {p: None for p in self.prefixes}
         self._batch.on_main(self.lab.reset_copy, self._copy)
         self._batch.on_main(self.lab.reset_cloth, np.zeros(2), self._prof["drop_height"], (0.0, 0.0, 0.0), self._copy)
         self.lab.set_pinned_masses(self._copy)

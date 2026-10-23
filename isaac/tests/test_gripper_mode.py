@@ -17,6 +17,7 @@ class _Env(IsaacClothFoldEnv):
         self._closed_q, self._dof_limits = 0.05, np.array([[-2.0, 2.0]] * 5 + [[LOW, 1.745]])
         self._joint_targets = {"left_": np.zeros(6)}
         self._gripper_closed = {"left_": False}
+        self.jaw_open = {"left_": None}
         self.grasp_corners, self.weld_mask = {"left_": (0,)}, {}
         self.jaw, self.jaw_speed = 1.0, 0.0
 
@@ -31,6 +32,17 @@ class _Env(IsaacClothFoldEnv):
 
     def cloth_positions(self):
         return np.zeros((1, 3))       # the corner sits in the jaws
+
+
+def test_binary_open_target_capped_by_jaw_open():
+    env = _Env({})
+    env.set_gripper("left_", -1.0)
+    env.jaw_open["left_"] = 0.3                         # a gentle release opens part way
+    env.set_gripper("left_", 1.0)
+    assert env._joint_targets["left_"][5] == 0.3 and not env._gripper_closed["left_"]
+    env.jaw_open["left_"] = None
+    env.set_gripper("left_", 1.0)
+    assert env._joint_targets["left_"][5] == GRIPPER_OPEN
 
 
 def test_binary_unchanged():

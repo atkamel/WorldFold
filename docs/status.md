@@ -62,6 +62,11 @@ half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
   fold 2 with no drag and the idle arm parked. Step 3 built: profile `quarter2` (left arm north of the cloth) and
   `quarter_batch.py --fold2 two` (sequenced two-arm fold 2, gated, relaxed bar); first run queued: 8 seeds with video.
   Watch whether the pinch holds at the 35-50° tilts on A0 and S; fallback is Roy's slide grasp for those two.
+  The q2_two job (711776) was cancelled by the user before it ran. **Gentle release (user: the release distorted the
+  cloth) is now the place-servo default:** the jaw opens 0.02 rad per step to 0.3 rad with the arm still, the arm lifts
+  straight up 2 mm per step, and the jaw opens fully 5 cm up (`RELEASE_JAW=null` restores the old release). It adds
+  ~30 steps per release, so window runs need `WORLDFOLD_WINDOW_STEPS=400` (the 200 default would truncate). Untested
+  in Isaac; the next runs (and the queued 711774 / 711775, which use the old release) are the A/B.
 - **First half fold at the bar by an RL policy:** p8 version 12, seed 980008, **0.43 / 1.13 cm**, no touch-up used,
   video `outputs/isaac/rl/p8/demo/seed980008.mp4` (1/64 in its hunt). Quarter fold still to do.
 - **First folds at the bar (scripted base + one touch-up):** seed 910009 0.85 / 1.17 cm (no video) and seed 930005
@@ -206,7 +211,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 268 fast on macOS 2026-10-22, 1 failing there (#15) (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 273 fast on macOS 2026-10-22, 1 failing there (#15) (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -268,6 +273,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit.
 
+- 2026-10-22 · **Gentle release:** jaw opens slowly part way, slow straight lift, full open above (env `jaw_open` cap for the binary gripper); isaac tests 72, fast suite 273 passed + #15 · (this commit)
 - 2026-10-22 · **Revised plan, steps 1-3 started:** gates + re-score (fa4c1ce); `quarter2` layout + two-arm fold 2 (28752bb); WATcloud jobs queued; fast suite 268 passed + #15 · (this commit)
 - 2026-10-22 · **Re-evaluation:** independent audit + Roy + research; corrections in results.md; revised plan in reviews/ · (this commit)
 

@@ -24,7 +24,7 @@ import numpy as np
 
 from isaac.fold_expert import ABOVE, RETREAT, IsaacArmExpert
 from isaac.servo_expert import IsaacServoExpert
-from mujuco.cloth_params import TABLE_TOP_Z
+from mujuco.cloth_params import GRIPPER_OPEN, TABLE_TOP_Z
 
 
 class IsaacPlaceServoExpert(IsaacServoExpert):
@@ -54,8 +54,17 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     TOUCH_BEHIND = 0.015
     TOUCH_PRESS = 0.002
     TOUCH_STEP = 0.004       # m per slide waypoint
+    # Gentle release (user, 2026-10-22: the release distorted the cloth; the 980008 video shows the jaw snapping open
+    # to GRIPPER_OPEN, sweeping the top layer, then a full-speed lift): the arm holds still while the jaw opens
+    # RELEASE_STEP rad per step to RELEASE_JAW only, lifts straight up RETREAT_STEP m per step to RETREAT, and opens
+    # the rest of the way up there (BACKOFF: after sliding the jaws out that far, at the same speed). RELEASE_JAW None:
+    # the old release (jaw straight to GRIPPER_OPEN, a move at the speed limit)
+    RELEASE_JAW = 0.3        # rad (closed -0.1, open 1.0)
+    RELEASE_STEP = 0.02      # rad per step: 20 steps (1 s) from closed to RELEASE_JAW
+    RETREAT_STEP = 0.002     # m per step: 4 cm/s
 
-    PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped", "latched", "touch")
+    PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped", "latched", "touch",
+                                                    "release_site")
 
     def __init__(self, *args, live_goal=None, **kwargs):
         self.live_goal = live_goal       # callable -> the partner vertex's current position; None: self.goal
@@ -70,6 +79,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         self.dropped = False
         self.latched = None
         self.touch = None
+        self.release_site = None
 
     def _goal_now(self):
         if self.latched is not None:
@@ -141,6 +151,8 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             if self.PHASES[self.phase] == "carry":        # the parent's lift just ended: steer from here
                 self._start_carry()
             return action
+        if name in ("release", "retreat", "done") and self.RELEASE_JAW is not None:
+            return self._release_gently(name)
         if name not in ("carry", "place", "hold"):
             return IsaacArmExpert.act(self)               # release, retreat, done
         action = np.zeros(6, dtype=np.float32)
@@ -179,7 +191,45 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             action[0:5], _ = self._toward(self._tip(self.hold_site + self.residual), jaw, weight=0.05)
             if self.release_allowed and (self.release_vote or self.phase_steps >= self.HOLD_CAP):
                 self.plan["arc"], self.wp = [self._q()], 0      # release where the arm is, not at the hold start
+                self.release_site = self._site()
                 self._go("release")
+        return action
+
+    def _set_jaw(self, action, q):
+        """Open target q (rad) for this arm's jaw, None: fully open."""
+        if self.base.grasp_knobs.get("gripper_mode") == "position":
+            action[5] = self.base.jaw_command(GRIPPER_OPEN if q is None else q)
+        else:
+            self.base.jaw_open[self.prefix] = q
+            action[5] = 1.0
+
+    def _release_gently(self, name):
+        """RELEASE_JAW: release opens the jaw slowly part way with the arm still, retreat lifts straight up slowly,
+        done opens the jaw fully."""
+        action = np.zeros(6, dtype=np.float32)
+        self.phase_steps += 1
+        if name == "done":
+            self._set_jaw(action, None)
+            return action
+        jaw = self.plan["jaw"]
+        if self.release_site is None:            # put into release / retreat by infer_phase, not by hold
+            self.release_site = self._site()
+        if name == "release":
+            q = min(self.RELEASE_JAW, float(self.base._joint_targets[self.prefix][5]) + self.RELEASE_STEP)
+            self._set_jaw(action, q)
+            action[0:5], _ = self._toward(self.release_site, jaw, weight=0.05)
+            opened = float(self.base.joint_positions(self.prefix)[5]) >= self.RELEASE_JAW - 0.05
+            if q >= self.RELEASE_JAW and (opened or self.phase_steps >= 60):     # 3 s patience
+                self._go("retreat")      # the jaw itself, not just its target, is open: the pads have let go
+            return action
+        self._set_jaw(action, self.RELEASE_JAW)
+        back = min(self.BACKOFF, self.phase_steps * self.RETREAT_STEP)        # BACKOFF: slide out first, then lift
+        lift = min(RETREAT, self.phase_steps * self.RETREAT_STEP - back)
+        top = self.release_site - back * np.r_[jaw[:2], 0.0]
+        action[0:5], _ = self._toward(top + [0.0, 0.0, lift], jaw, weight=0.05)
+        if lift >= RETREAT and (self._site()[2] >= self.release_site[2] + RETREAT - 0.005
+                                or self.phase_steps >= (self.BACKOFF + RETREAT) / self.RETREAT_STEP + 20):
+            self._go("done")
         return action
 
 

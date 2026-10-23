@@ -162,3 +162,80 @@ def test_touchup_comes_down_behind_presses_slides_and_lifts():
     for _ in range(13 * len(path)):         # the fake site never arrives: each waypoint waits out 13 steps
         e.act()
     assert e.PHASES[e.phase] == "done"
+
+
+class _JawBase(_Base):
+    """A binary gripper whose jaw sits at its target (isaac_env.set_gripper with jaw_open)."""
+
+    def __init__(self):
+        super().__init__()
+        self._joint_targets = {"left_": np.r_[np.zeros(5), -0.1]}
+        self.jaw_open = {"left_": None}
+
+    def joint_positions(self, prefix):
+        return self._joint_targets[prefix].copy()
+
+    def apply(self, action):
+        if action[5] > 0.3:
+            self._joint_targets["left_"][5] = 1.0 if self.jaw_open["left_"] is None else self.jaw_open["left_"]
+
+
+def _releasing():
+    e = _expert()
+    e.base = _JawBase()
+    e._start_hold()
+    e.release_allowed = True
+    e.base.apply(e.act())
+    assert e.PHASES[e.phase] == "release"
+    return e
+
+
+def test_gentle_release_opens_part_way_slowly_with_the_arm_still():
+    e = _releasing()
+    site = e.release_site.copy()
+    jaws = []
+    while e.PHASES[e.phase] == "release":
+        e.base.apply(e.act())
+        jaws.append(e.base._joint_targets["left_"][5])
+        assert np.allclose(e._ik.tips[-1], site)            # holds where it let go
+    assert np.allclose(np.diff(jaws[:-1]), e.RELEASE_STEP)
+    assert max(jaws) == e.RELEASE_JAW and len(jaws) == int(round((e.RELEASE_JAW + 0.1) / e.RELEASE_STEP))
+
+
+def test_gentle_retreat_lifts_straight_up_slowly_then_opens_fully():
+    e = _releasing()
+    while e.PHASES[e.phase] == "release":
+        e.base.apply(e.act())
+    site, tips = e.release_site.copy(), []
+    for _ in range(int(0.05 / e.RETREAT_STEP)):
+        e.base.apply(e.act())
+        tips.append(e._ik.tips[-1].copy())
+        assert e.base._joint_targets["left_"][5] == e.RELEASE_JAW
+    tips = np.array(tips)
+    assert np.allclose(tips[:, :2], site[:2]) and np.allclose(np.diff(tips[:, 2]), e.RETREAT_STEP)
+    e.base.site = site + [0.0, 0.0, 0.05]                   # the fake site arrives at the top
+    e.base.apply(e.act())
+    assert e.PHASES[e.phase] == "done"
+    e.base.apply(e.act())
+    assert e.base.jaw_open["left_"] is None and e.base._joint_targets["left_"][5] == 1.0
+
+
+def test_release_jaw_none_keeps_the_old_release(monkeypatch):
+    monkeypatch.setattr(IsaacPlaceServoExpert, "RELEASE_JAW", None)
+    e = _releasing()
+    action = e.act()
+    assert action[5] == 1.0 and e.base.jaw_open["left_"] is None
+
+
+def test_gentle_retreat_slides_out_by_backoff_before_lifting(monkeypatch):
+    monkeypatch.setattr(IsaacPlaceServoExpert, "BACKOFF", 0.02)
+    e = _releasing()
+    while e.PHASES[e.phase] == "release":
+        e.base.apply(e.act())
+    site, jaw, n = e.release_site.copy(), e.plan["jaw"], int(round(0.02 / e.RETREAT_STEP))
+    tips = []
+    for _ in range(n + 3):
+        e.act()
+        tips.append(e._ik.tips[-1].copy())
+    assert np.allclose(tips[n - 1], site - 0.02 * np.r_[jaw[:2], 0.0])      # out at the release height
+    assert np.allclose(tips[-1], tips[n - 1] + [0.0, 0.0, 3 * e.RETREAT_STEP])
