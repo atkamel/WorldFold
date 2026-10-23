@@ -5,7 +5,7 @@ import pytest
 
 pytestmark = pytest.mark.slow  # builds a sim
 
-from cloth_fold_rl.quarter_fold_env import CLOTH_0, CLOTH_10, CLOTH_110, CLOTH_120, SETTLE_STEPS, QuarterFoldEnv
+from cloth_fold_rl.quarter_fold_env import CLOTH_0, CLOTH_110, CLOTH_120, SETTLE_STEPS, QuarterFoldEnv
 from imitation.spec import OBS_DIM
 from imitation.tasks import HalfFoldEnv
 from imitation.teachers import ScriptedTeacher

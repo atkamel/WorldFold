@@ -98,7 +98,6 @@ class Task:
 
     def corner_starts(self, env) -> np.ndarray:
         """float32[4, 3]: start positions of CORNER_LIST, from a reset env."""
-        base = env.unwrapped
         if self.name == "single":
             return np.asarray(env._anchors0, dtype=np.float32)
         return np.asarray(env._start[list(CORNER_LIST)], dtype=np.float32)
