@@ -35,13 +35,14 @@ from lehome.assets.robots.lerobot import SO101_FOLLOWER_CFG
 
 from mujuco.cloth_params import (
     ARM_BASE_LEFT, ARM_BASE_RIGHT, ARM_BASE_QUAT, ARM_JOINTS, CAMERA_FOVY_DEG, CAMERA_POS, CAMERA_TARGET,
-    CLOTH_COUNT, CLOTH_MASS, GRIPPER_OPEN, TABLE_TOP_Z, camera_axes,
+    CLOTH_COUNT, CLOTH_MASS, CLOTH_SPACING, GRIPPER_OPEN, TABLE_TOP_Z, camera_axes,
 )
 from isaac.isaac_env import (
     CAMERA_CLIP, CLOTH_ADHESION, CLOTH_GRAVITY_SCALE, CLOTH_SUBDIV, FLOOR_COLOR, FLOOR_SIZE, GRIPPER_JOINT,
     GRIPPERFRAME_POS, GRIPPERFRAME_QUAT,
     HEADLIGHT_AMBIENT, HEADLIGHT_DIFFUSE, LIGHT_INTENSITY, LIGHTS, TABLE_SIZE, PAD_LINING_FRICTION,
-    PAD_LINING_THICKNESS, cloth_grid_mesh, usd_root_pose, _matrix_from_quat, _quat_facing, _quat_from_matrix,
+    PAD_LINING_THICKNESS, box_pad_poses, cloth_grid_mesh, usd_root_pose, _matrix_from_quat, _quat_facing,
+    _quat_from_matrix,
 )
 
 PARTICLE_CFG = Path(lehome.__file__).parent / "tasks" / "bedroom" / "config_file" / "particle_garment_cfg.yaml"
@@ -90,13 +91,14 @@ LININGS = {"gripper": ((-0.017042, 0.000205, -0.073359), (0.997564, 0.0, -0.0697
            "jaw": ((-0.001287, -0.050919, 0.018299), (0.709761, 0.696602, -0.069295, -0.078629), -1.0, 1.0)}
 
 
-def _robot(prim_path, base_pos, drive=None, gripper_drive=None):
+def _robot(prim_path, base_pos, drive=None, gripper_drive=None, base_quat=ARM_BASE_QUAT, home=None):
     """drive: {ImplicitActuatorCfg field: value} applied to every actuator group (the weld profile's
     MUJOCO_ARM_DRIVE); None keeps LeHome's SO101 drives. gripper_drive: the same for the gripper actuator only,
     applied after drive (a friction-grasp knob, isaac_env.FRICTION_GRASP)."""
-    pos, rot = usd_root_pose(base_pos, ARM_BASE_QUAT)
+    pos, rot = usd_root_pose(base_pos, base_quat)
     init = SO101_FOLLOWER_CFG.init_state.replace(pos=tuple(float(v) for v in pos), rot=tuple(float(v) for v in rot),
-                                                 joint_pos=HOME)
+                                                 joint_pos=HOME if home is None else
+                                                 dict(zip(ARM_JOINTS, map(float, home))) | {GRIPPER_JOINT: GRIPPER_OPEN})
     cfg = SO101_FOLLOWER_CFG.replace(prim_path=prim_path, init_state=init)
     if drive:
         cfg = cfg.replace(actuators={name: act.replace(**drive) for name, act in cfg.actuators.items()})
@@ -113,15 +115,17 @@ def _pinhole(H, W, fovy_deg):
         horizontal_aperture=aperture, vertical_aperture=aperture * H / W, clipping_range=CAMERA_CLIP)
 
 
-def _camera(image_size, prim_path="/World/main_camera", data_types=("rgb", "distance_to_image_plane")):
+def _camera(image_size, prim_path="/World/main_camera", data_types=("rgb", "distance_to_image_plane"),
+            pos=CAMERA_POS, target=CAMERA_TARGET):
     H, W = image_size
-    right, up = camera_axes(CAMERA_POS, CAMERA_TARGET)
+    right, up = camera_axes(pos, target)
     forward = np.cross(up, right)
     # "world" camera axes put +X forward; this roll makes image-up equal MuJoCo's camera up
     rot = _quat_from_matrix(np.column_stack([forward, -up, -right]))
     return TiledCameraCfg(
         prim_path=prim_path,
-        offset=TiledCameraCfg.OffsetCfg(pos=tuple(CAMERA_POS), rot=tuple(float(v) for v in rot), convention="world"),
+        offset=TiledCameraCfg.OffsetCfg(pos=tuple(float(v) for v in pos), rot=tuple(float(v) for v in rot),
+                                        convention="world"),
         data_types=list(data_types), spawn=_pinhole(H, W, CAMERA_FOVY_DEG), width=W, height=H)
 
 
@@ -155,6 +159,12 @@ def _wrist_camera(robot_path, size):
         data_types=["rgb"], spawn=_pinhole(size, size, WRIST_CAM_FOVY_DEG), width=size, height=size)
 
 
+TOP_VIEW_HEIGHT = 0.85     # m above the table: a 45 deg view spans +-0.35 m, both quarter-layout bases included
+TOP_VIEW_DY = 0.04         # the view centre sits this far north of the cloth (the right arm's base is north)
+SIDE_VIEW_TARGET = (-0.13, 0.135, 0.005)   # from the cloth centre: just inside the far-left corner
+SIDE_VIEW_OFFSET = (0.0, 0.17, 0.05)       # camera 17 cm beyond it and 5 cm up, looking back toward the arms
+
+
 def rig_camera_cfg(name, size, c=0, view_shift=(0.0, 0.0, 0.0)):
     """The imitation pipeline's camera rig (imitation.vision.render.CAMERAS): main + one camera per wrist, of copy c.
     view_shift slides the main / demo view (same angle) with the cloth: the friction profile's cloth sits 13.5 cm
@@ -167,6 +177,16 @@ def rig_camera_cfg(name, size, c=0, view_shift=(0.0, 0.0, 0.0)):
             pos = np.asarray(CAMERA_POS) + (COPY_OFFSETS[c] if c else 0.0) + shift
             cfg.offset = cfg.offset.replace(pos=tuple(float(v) for v in pos))
         return cfg
+    if name == "top":   # straight down over the cloth, both arm bases in view (the quarter fold's demo view)
+        c0 = np.asarray(view_shift, dtype=float) + (COPY_OFFSETS[c] if c else 0.0)
+        target = (c0[0], c0[1] + TOP_VIEW_DY, TABLE_TOP_Z)
+        return _camera((size, size), prim_path=f"{root}/rig_top", data_types=("rgb",),
+                       pos=(target[0], target[1], TABLE_TOP_Z + TOP_VIEW_HEIGHT), target=target)
+    if name == "side_left":   # low, from beyond the far edge, at the left arm's far corner: the jaws meeting the cloth
+        c0 = np.asarray(view_shift, dtype=float) + (COPY_OFFSETS[c] if c else 0.0)
+        target = (c0[0] + SIDE_VIEW_TARGET[0], c0[1] + SIDE_VIEW_TARGET[1], TABLE_TOP_Z + SIDE_VIEW_TARGET[2])
+        pos = tuple(t + o for t, o in zip(target, SIDE_VIEW_OFFSET))
+        return _camera((size, size), prim_path=f"{root}/rig_side_left", data_types=("rgb",), pos=pos, target=target)
     if name in ("left_wrist_cam", "right_wrist_cam"):
         return _wrist_camera(f"{root}/Robot/Left_Robot" if name.startswith("left") else f"{root}/Robot/Right_Robot",
                              size)
@@ -188,10 +208,14 @@ class SceneCfg(DirectRLEnvCfg):
     rig: dict | None = None         # {camera name: square size}, the imitation camera rig (opt-in)
     n_copies: int = 1               # milestone V: independent copies of arms + table + cloth (GPU pipeline)
     view_shift: tuple = (0.0, 0.0, 0.0)   # main / demo rig camera translation (rig_camera_cfg)
+    cloth_spacing: float = CLOTH_SPACING  # grid vertex gap; the cloth side is (CLOTH_COUNT - 1) times it
 
 
 def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", arm_drive=None, n_copies=1,
-             gripper_drive=None, view_shift=(0.0, 0.0, 0.0)):
+             gripper_drive=None, view_shift=(0.0, 0.0, 0.0), arm_bases=None, cloth_spacing=CLOTH_SPACING,
+             arm_home=None):
+    """arm_bases: {"left_" / "right_": (MJCF base position, wxyz quat)}, None for ARM_BASE_*. arm_home: the 5 arm
+    joints at spawn and reset, None for HOME (all zero)."""
     if not 1 <= n_copies <= MAX_COPIES:
         raise ValueError(f"n_copies must be in 1..{MAX_COPIES}, got {n_copies}")
     if n_copies > 1 and device == "cpu":
@@ -201,9 +225,13 @@ def make_cfg(physics_dt, decimation, image_size=None, rig=None, device="cpu", ar
     cfg = SceneCfg()
     cfg.n_copies = n_copies
     cfg.action_space = 12 * n_copies
-    if arm_drive or gripper_drive:
-        cfg.left_robot = _robot("/World/Robot/Left_Robot", ARM_BASE_LEFT, arm_drive, gripper_drive)
-        cfg.right_robot = _robot("/World/Robot/Right_Robot", ARM_BASE_RIGHT, arm_drive, gripper_drive)
+    if arm_drive or gripper_drive or arm_bases:
+        bases = arm_bases or {"left_": (ARM_BASE_LEFT, ARM_BASE_QUAT), "right_": (ARM_BASE_RIGHT, ARM_BASE_QUAT)}
+        cfg.left_robot = _robot("/World/Robot/Left_Robot", bases["left_"][0], arm_drive, gripper_drive,
+                                bases["left_"][1], arm_home)
+        cfg.right_robot = _robot("/World/Robot/Right_Robot", bases["right_"][0], arm_drive, gripper_drive,
+                                 bases["right_"][1], arm_home)
+    cfg.cloth_spacing = float(cloth_spacing)
     cfg.sim.device = device
     cfg.sim.use_fabric = device != "cpu"        # the GPU pipeline reads state through fabric / tensor views
     cfg.rig = dict(rig) if rig else None
@@ -286,7 +314,10 @@ class SceneEnv(DirectRLEnv):
             if c == 0:
                 lining.func("/World/Looks/pad_lining", lining)
             for r in robots.values():
-                self._add_linings(r.prim_path)
+                if self.grasp.get("pads") == "box":
+                    self._add_box_pads(r.prim_path)
+                else:
+                    self._add_linings(r.prim_path)
             if c == 0:
                 floor.func("/World/floor", floor)
             table.func(f"{root}/table", table, translation=(float(dx[0]), float(dx[1]), TABLE_TOP_Z / 2.0))
@@ -318,10 +349,33 @@ class SceneEnv(DirectRLEnv):
             UsdPhysics.CollisionAPI.Apply(box.GetPrim())
             sim_utils.bind_physics_material(box.GetPath().pathString, "/World/Looks/pad_lining")
 
+    def _add_box_pads(self, robot_path):
+        # pads="box": LeHome's capsule pads stop colliding; a flat box sits on each jaw tip (isaac_env.box_pad_poses)
+        stage = self.sim.stage
+        for link in ("gripper", "jaw"):
+            stage.GetPrimAtPath(f"{robot_path}/{link}/Capsule").GetAttribute("physics:collisionEnabled").Set(False)
+        joint = next(p for p in Usd.PrimRange(stage.GetPrimAtPath(robot_path))
+                     if p.GetName() == "gripper" and p.IsA(UsdPhysics.RevoluteJoint))
+        q = joint.GetAttribute("physics:localRot0").Get()
+        T0 = np.eye(4)
+        T0[:3, :3] = _matrix_from_quat([q.GetReal(), *q.GetImaginary()])
+        T0[:3, 3] = np.array(joint.GetAttribute("physics:localPos0").Get())
+        fixed, moving, size = box_pad_poses(T0)
+        for link, T in (("gripper", fixed), ("jaw", moving)):
+            quat = _quat_from_matrix(T[:3, :3])
+            box = UsdGeom.Cube.Define(stage, f"{robot_path}/{link}/flat_pad")
+            box.CreateSizeAttr(1.0)
+            box.AddTranslateOp().Set(Gf.Vec3d(*(float(v) for v in T[:3, 3])))
+            box.AddOrientOp().Set(Gf.Quatf(float(quat[0]), Gf.Vec3f(*(float(v) for v in quat[1:]))))
+            box.AddScaleOp().Set(Gf.Vec3f(*(float(v) for v in size)))
+            box.GetDisplayColorAttr().Set([Gf.Vec3f(0.1, 0.1, 0.1)])
+            UsdPhysics.CollisionAPI.Apply(box.GetPrim())
+            sim_utils.bind_physics_material(box.GetPath().pathString, "/World/Looks/pad_lining")
+
     def _spawn_cloth(self, cp):
         # WorldFold's square cloth packaged the way LeHome packages a garment: a USD whose default prim holds a
         # "mesh", plus a garment config. GarmentObject applies LeHome's particle system, material and cloth settings.
-        points, faces = cloth_grid_mesh(CLOTH_SUBDIV)
+        points, faces = cloth_grid_mesh(CLOTH_SUBDIV, self.cfg.cloth_spacing)
         usd = os.path.join(tempfile.mkdtemp(), "square_cloth.usd")
         stage = Usd.Stage.CreateNew(usd)
         UsdGeom.SetStageUpAxis(stage, "Z")
@@ -336,7 +390,9 @@ class SceneEnv(DirectRLEnv):
         stage.GetRootLayer().Save()
         n = (CLOTH_COUNT - 1) * CLOTH_SUBDIV + 1
         particle_cfg = OmegaConf.load(PARTICLE_CFG)
-        particle_cfg.objects.garment_config.particle_mass = CLOTH_MASS / (n * n)
+        # CLOTH_MASS is the 30 cm sheet's; a smaller sheet keeps its mass per area
+        particle_cfg.objects.garment_config.particle_mass = (CLOTH_MASS * (self.cfg.cloth_spacing / CLOTH_SPACING) ** 2
+                                                             / (n * n))
         particle_cfg.objects.particle_material.gravity_scale = CLOTH_GRAVITY_SCALE
         particle_cfg.objects.particle_material.adhesion = CLOTH_ADHESION
         mat = particle_cfg.objects.particle_material
@@ -401,6 +457,37 @@ class SceneEnv(DirectRLEnv):
             arm.write_data_to_sim()
         for cam in cp.rig_cameras.values():
             cam.reset()
+        self.sim.forward()
+
+    def snapshot_copy(self, c):
+        """Copy c's physical state for restore_copy (GPU pipeline; residual-RL snapshots, plan 2026-10-20 R1):
+        particle positions in the copy's own frame (world minus its offset, so the snapshot restores into any copy)
+        and velocities, each arm's joint positions and velocities, and the copy's 12 joint targets."""
+        cp = self.copies[c]
+        view = cp.cloth._cloth_prim_view
+        offset = np.asarray(cp.offset if c else np.zeros(3), dtype=np.float32)
+        return {"pos": view.get_world_positions().detach().cpu().numpy() - offset,
+                "vel": view.get_velocities().detach().cpu().numpy(),
+                "joints": {p: (arm.data.joint_pos.detach().cpu().numpy().copy(),
+                               arm.data.joint_vel.detach().cpu().numpy().copy()) for p, arm in cp.arms.items()},
+                "targets": self.targets[:, 12 * c:12 * c + 12].detach().cpu().numpy().copy()}
+
+    def restore_copy(self, c, snap):
+        """Write a snapshot_copy state (taken in any copy) into copy c without a physics step."""
+        if self.device == "cpu":
+            raise ValueError("restore_copy needs the GPU pipeline (the particle-cloth tensor view)")
+        cp = self.copies[c]
+        view = cp.cloth._cloth_prim_view
+        dev = view.get_world_positions(clone=False).device
+        idx = torch.arange(snap["pos"].shape[0], device=dev)
+        offset = np.asarray(cp.offset if c else np.zeros(3), dtype=np.float32)
+        view._physics_view.set_positions(torch.as_tensor(snap["pos"] + offset, device=dev), idx)
+        view._physics_view.set_velocities(torch.as_tensor(snap["vel"], device=dev), idx)
+        for p, arm in cp.arms.items():
+            q, v = snap["joints"][p]
+            arm.write_joint_state_to_sim(torch.as_tensor(q, device=self.device), torch.as_tensor(v, device=self.device))
+            arm.write_data_to_sim()
+        self.targets[:, 12 * c:12 * c + 12] = torch.as_tensor(snap["targets"], device=self.device)
         self.sim.forward()
 
     def set_copy_targets(self, c, targets):

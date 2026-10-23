@@ -79,9 +79,13 @@ class PinchIK:
         T = self._fk(np.asarray(q[:5], float))
         return pos + R0 @ T[:3, 3], R0 @ T[:3, :3]
 
-    def solve(self, prefix, tip, jaw_dir, seed_q, orientation_weight=ORIENTATION_WEIGHT, iters=300):
+    def solve(self, prefix, tip, jaw_dir, seed_q, orientation_weight=ORIENTATION_WEIGHT, iters=300, jaw_weight=None):
         """Joint angles (rad, 5) for the pinch pose, and the reached site position's error (m). Lift and carry poses
-        can pass a lower orientation_weight: there the fingers may tilt a little to keep the position."""
+        can pass a lower orientation_weight: there the fingers may tilt a little to keep the position.
+        The cross-product orientation error is zero for a jaw turned half a turn (antiparallel axes), so which way the
+        jaw faces is left to the seed. jaw_weight adds jaw_weight * (site x - target x), which is not: the jaw then
+        opens along jaw_dir even with a soft orientation_weight (2026-10-20 slide grasp: the soft tilt landed the jaw
+        180 deg round, the fixed finger leading and pushing the cloth)."""
         x = -np.array([jaw_dir[0], jaw_dir[1], 0.0])
         x /= np.linalg.norm(x)
         z = np.array([0.0, 0.0, -1.0])
@@ -91,7 +95,9 @@ class PinchIK:
         def error(q):
             p, R = self.site_pose(prefix, q)
             w = 0.5 * sum(np.cross(R[:, i], Rt[:, i]) for i in range(3))
-            return np.concatenate([tip - p, orientation_weight * w])
+            if jaw_weight is None:
+                return np.concatenate([tip - p, orientation_weight * w])
+            return np.concatenate([tip - p, orientation_weight * w, jaw_weight * (R[:, 0] - Rt[:, 0])])
 
         q = np.clip(np.asarray(seed_q[:5], float), self.low, self.high)
         for _ in range(iters):
@@ -99,7 +105,7 @@ class PinchIK:
             if np.linalg.norm(e) < 1e-5:
                 break
             J = np.column_stack([(e - error(q + dq)) / 1e-6 for dq in np.eye(5) * 1e-6])
-            q = np.clip(q + J.T @ np.linalg.solve(J @ J.T + 1e-4 * np.eye(6), e), self.low, self.high)
+            q = np.clip(q + J.T @ np.linalg.solve(J @ J.T + 1e-4 * np.eye(len(e)), e), self.low, self.high)
         return q, float(np.linalg.norm(self.site_pose(prefix, q)[0] - tip))
 
     def solve_position(self, prefix, target, seed_q, rng=None, iters=400, damping=0.08, restarts=12, tol=0.006):

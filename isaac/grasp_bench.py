@@ -66,7 +66,10 @@ def parse_kv(text):
     out = {}
     for item in filter(None, (s.strip() for s in (text or "").split(","))):
         key, val = item.split("=", 1)
-        val = json.loads(val)
+        try:
+            val = json.loads(val)
+        except json.JSONDecodeError:      # a bare word: pads=box
+            pass
         if "." in key:
             outer, inner = key.split(".", 1)
             out.setdefault(outer, {})[inner] = val
@@ -99,7 +102,7 @@ def run(args):
     sys.argv = sys.argv[:1]                  # AppLauncher reads sys.argv
     base = IsaacClothFoldEnv(observation_mode="state", max_episode_steps=CAP, grasp_corners=GRASP_CORNERS,
                              grasp_radius=GRASP_RADIUS, profile=args.profile, grasp_knobs=knobs or None,
-                             device=args.device)
+                             device=args.device, cameras={"side_left": 360} if args.video else None)
     # LeHome's 1 cm jitter on every profile here: the pinch reaches ~1.5 cm of cloth offset (imitation.seeds,
     # LEHOME_TASK_BACKENDS). F2 attempts up to G ran the friction profile at MuJoCo's 2.5 cm (config "jitter").
     jitter = ISAAC_CLOTH_JITTER
@@ -142,8 +145,11 @@ def run(args):
                 tr[p]["anchor"].append(np.round(env._vertex(moves[p].goal), 4).tolist())
 
         info, t = {}, 0
+        frames = [] if args.video else None
         for t in range(CAP):
             record()
+            if frames is not None:
+                frames.append(base.render_rig()["side_left"].transpose(1, 2, 0))
             _, _, term, trunc, info = env.step(teacher.act())
             if term or trunc:
                 break
@@ -159,6 +165,9 @@ def run(args):
         trace = {"seed": seed, "arms": {p: dict(tr[p], goal=np.round(goals[p], 4).tolist(), rest_z=rest_z[p])
                                         for p in arms}}
         (out / "traces" / f"{seed}.json").write_text(json.dumps(trace), encoding="utf-8")
+        if frames:
+            import imageio
+            imageio.mimwrite(str(out / f"side_{seed}.mp4"), frames, fps=20, macro_block_size=1)
         with open(out / "rows.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
         short = {p: {k: m[k] for k in ("acquired", "held", "placed", "released")} for p, m in metrics.items()}
@@ -170,12 +179,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", default="600000:600020", help="start:end (imitation.seeds TUNE_SEED_BASE block)")
     ap.add_argument("--out", help="output directory (absolute when cwd is another checkout)")
-    ap.add_argument("--profile", choices=("lehome", "friction"), default="lehome",
+    ap.add_argument("--profile", choices=("lehome", "friction", "strip", "roy"), default="lehome",
                     help="IsaacClothFoldEnv profile; friction = Phase F's GPU profile")
     ap.add_argument("--device", default=None, help="override the profile's device (cpu / cuda:0), a diagnostic")
     ap.add_argument("--no-dr", action="store_true", help="dynamics DR off (a diagnostic; the GPU profiles have it on)")
     ap.add_argument("--knobs", default=None, help="k=v,..., isaac_env.FRICTION_GRASP overrides (gripper_drive.stiffness=50)")
     ap.add_argument("--expert", default=None, help="k=v,..., IsaacArmExpert class-attribute overrides")
+    ap.add_argument("--video", action="store_true", help="side_left camera video per seed (the left jaws at their corner)")
     ap.add_argument("--overshoot", default=None, help="stage-0 'lx,ly,rx,ry' (m) placement offsets")
     ap.add_argument("--summarize", default=None, help="only summarize this output directory (no Isaac)")
     ap.add_argument("--rescore", action="store_true", help="with --summarize: recompute flags from the traces")

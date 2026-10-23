@@ -1,0 +1,249 @@
+"""The quarter fold on the GPU friction profile as three scripted stages over B copies (docs/results.md 2026-10-22).
+
+No two-armed fold 2 is collision-free on any layout, and the one-armed fold 2 from where fold 1 leaves the sheet
+slipped 8/8 (38 deg pinch at full reach). So between the folds both arms DRAG the half sheet by DRAG (m): the left arm
+pulls the west short edge's middle (cloth_2 under cloth_8), the right arm the east one (cloth_112 under cloth_118),
+flat and low. Then the right arm alone carries the west middle onto the east middle (fold 2) while the left arm
+parks at home. Offline (scratchpad/drag_search.py): with DRAG (0.12, 0.04) fold 2's pinch is near vertical at 0.29 m.
+
+    python isaac/quarter_batch.py --copies 8 --seeds 0:8 --video --out outputs/isaac/quarter/drag1
+
+Run with WORLDFOLD_PLACE_PARAMS for fold 1's base (latch + g-fold 1.2). One row per seed in <out>/episodes.jsonl
+(fold-1 alignment, the sheet's move in the drag, the final quarter-fold alignment), a top video per seed with --video.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from isaac.precision_env import ARMS, SETTLE_STEPS, PrecisionBatch, coordinate, gate  # noqa: E402
+
+WEST, EAST = (2, 8), (112, 118)          # the short edges' middles after fold 1 (bottom vertex, top vertex)
+# fold 2's grasp -> its target: "mid" the west edge's middle (two free layers; dropped 5/8 in run drag1) onto the
+# east one; "crease" the west crease end cloth_5 (the layers joined) onto the east crease end cloth_115
+FOLD2 = {"mid": (WEST, EAST), "crease": ((5,), (115,)), "two": None}
+# fold2 "two" (profile quarter2): both arms, the left one the crease end cloth_5 onto cloth_115, the right one the
+# corner stack (cloth_0 + cloth_10) onto the east stack (cloth_110 + cloth_120); the right arm waits at its start until
+# the left one has reached its pose above the crease end (sequenced approach), and neither lifts before both closed
+TWO = {"left_": ((5,), (115,)), "right_": ((0, 10), (110, 120))}
+DRAG = (0.12, 0.04)
+FLAT_ARC = 0.01                          # the drag's lift (IsaacArmExpert.ARC_HEIGHT for its plan) and no corner arc
+CAPS = {"fold1": 650, "drag": 300, "fold2": 400}
+PARK_STEPS = 40                          # the left arm goes home before fold 2 starts (it sits where fold 2 grasps)
+PARK_LIFT = 0.12                         # m: it first rises this far straight up (run drag1: going straight home with
+LIFT_STEPS = 25                          # the cloth on its fingers carried the sheet off the table)
+DRAG_BACKOFF = 0.02                      # the drag's release slides the open jaws out this far before lifting
+
+
+def park_action(q, home, scale):
+    """(6,) action moving joints q toward home at the speed limit, jaw open."""
+    a = np.zeros(6, dtype=np.float32)
+    d = (np.asarray(home, float) - np.asarray(q, float)) / scale
+    a[0:5] = d / max(1.0, float(np.max(np.abs(d))))
+    a[5] = 1.0
+    return a
+
+
+class QuarterBatch(PrecisionBatch):
+
+    def __init__(self, n, drag=DRAG, cameras=None, fold2="mid", profile="friction"):
+        self.parked = [set() for _ in range(n)]          # before super(): its warm-up steps through _scripted_step
+        self.park_steps, self.park_lift = [0] * n, [None] * n
+        self.drag = None if drag is None else np.r_[np.asarray(drag, float), 0.0]      # None: no drag stage
+        self.two = fold2 == "two"
+        self.fold2 = FOLD2[fold2]
+        self.sequenced = [False] * n
+        super().__init__(n, profile=profile, cameras=cameras)
+
+    def _configure(self, i, p, corners, goal, live_goal, flat):
+        e = self.experts[i][p]
+        e.corners = tuple(corners)
+        e.goal, e.live_goal = goal, live_goal
+        for k in ("ARC_HEIGHT", "ARC_FRAC", "BACKOFF"):
+            e.__dict__.pop(k, None)
+        if flat:
+            e.ARC_HEIGHT, e.ARC_FRAC, e.BACKOFF = FLAT_ARC, 0.0, DRAG_BACKOFF
+        e.reset()
+        e.release_allowed = False
+
+    def _park(self, i, p):
+        """The parked arm: straight up PARK_LIFT for LIFT_STEPS steps (IK from where it parked), then home."""
+        from mujuco.cloth_params import JOINT_DELTA_SCALE
+        sub, e = self.subs[i], self.experts[i][p]
+        q = sub.joint_positions(p)[:5]
+        self.park_steps[i] += 1
+        if self.park_steps[i] <= LIFT_STEPS:
+            if self.park_lift[i] is None:
+                tip = np.asarray(sub.gripper_position(p), float) + [0.0, 0.0, PARK_LIFT]
+                self.park_lift[i], _ = e._ik.solve(p, tip, e.plan["jaw"], q, orientation_weight=0.05)
+            return park_action(q, self.park_lift[i], JOINT_DELTA_SCALE)
+        return park_action(q, sub._home()[:5], JOINT_DELTA_SCALE)
+
+    def _scripted_step(self, actions=None):
+        for i, sub in enumerate(self.subs):
+            moving = {p: e for p, e in self.experts[i].items() if p not in self.parked[i]}
+            coordinate(moving)
+            left, right = self.experts[i]["left_"], self.experts[i]["right_"]
+            wait = self.sequenced[i] and right.phase == 0 and left.phase < left.PHASES.index("descend")
+            hold = np.r_[np.zeros(5), 1.0].astype(np.float32)          # the right arm waits where it is, jaw open
+            acts = [hold if (p == "right_" and wait) else moving[p].act() if p in moving else self._park(i, p)
+                    for p in ARMS]
+            sub.step_submit(self.tasks[i]._expand(np.concatenate(acts)))
+        self.batch.advance()
+        for sub in self.subs:
+            sub.step_collect()
+        if self.frames is not None:
+            for i, sub in enumerate(self.subs):
+                self.frames[i].append(sub.render_rig()["top"].transpose(1, 2, 0))
+
+    def _run_stage(self, cap):
+        """Step until every copy's moving arms have been done SETTLE_STEPS steps (or cap); per-copy settled flags."""
+        settle = [0] * self.n
+        for _ in range(cap):
+            self.prev_cloth = [sub.cloth_positions().copy() for sub in self.subs]
+            self._scripted_step()
+            for i in range(self.n):
+                moving = [e for p, e in self.experts[i].items() if p not in self.parked[i]]
+                settle[i] = settle[i] + 1 if all(e.PHASES[e.phase] == "done" for e in moving) else 0
+            if min(settle) >= SETTLE_STEPS:
+                break
+        return [s >= SETTLE_STEPS for s in settle]
+
+    def _gate(self, i):
+        sub = self.subs[i]
+        return gate(sub.cloth_positions(), self.prev_cloth[i], [sub.gripper_position(p) for p in ARMS],
+                    [sub.joint_positions(p)[5] for p in ARMS])
+
+    def _fold2_two(self, recs):
+        """Fold 2 with both arms (profile quarter2), sequenced approach; then score as run() does."""
+        from cloth_fold_rl.fold_alignment import QUARTER_FOLDS, score
+        for i, sub in enumerate(self.subs):
+            for p, (grasp, target) in TWO.items():
+                self._configure(i, p, grasp, lambda s=sub, t=target: s.cloth_positions()[list(t)].mean(axis=0),
+                                lambda s=sub, t=target: s.cloth_positions()[list(t)].mean(axis=0), flat=False)
+            self.sequenced[i] = True
+        ok2 = self._run_stage(CAPS["fold2"])
+        for i, sub in enumerate(self.subs):
+            cloth = sub.cloth_positions()
+            s = score(cloth, folds=QUARTER_FOLDS)
+            recs[i]["fold2"] = {"settled": ok2[i], "dropped": [p for p in ARMS if self.experts[i][p].dropped],
+                                "landed_xy": {p: np.round((cloth[list(g)].mean(axis=0) - cloth[list(t)].mean(axis=0))[:2],
+                                                          4).tolist() for p, (g, t) in TWO.items()}}
+            g = self._gate(i)
+            recs[i]["final"] = {"mean": round(s["mean"], 4), "edge_max": round(s["edge_max"], 4),
+                                "passed": bool(s["passed"]), "unstable": bool(sub._failed()), "gate": g,
+                                "passed_valid": bool(s["passed"] and g["valid"] and ok2[i]),
+                                "passed_relaxed": bool(s["mean"] <= 0.02 and s["edge_max"] <= 0.03 and g["valid"]
+                                                       and ok2[i])}
+            recs[i]["cloth"] = np.round(cloth, 4).tolist()
+            self.sequenced[i] = False
+        return recs
+
+    def run(self, seeds):
+        """Fold 1, drag, fold 2 for copy i from seeds[i]; returns one record per copy."""
+        from cloth_fold_rl.fold_alignment import QUARTER_FOLDS, score
+        from isaac.precision_env import FOLDS
+        recs = [{"seed": int(s)} for s in seeds]
+        for i, seed in enumerate(seeds):
+            self.tasks[i].reset(seed=int(seed))
+            self.parked[i] = set()
+            self.park_steps[i], self.park_lift[i] = 0, None
+            self.sequenced[i] = False
+            task, sub = self.tasks[i], self.subs[i]
+            for p, m in self.moves.items():
+                self._configure(i, p, m.corners, lambda m=m, t=task: t.goal(m),
+                                lambda m=m, s=sub: s.cloth_positions()[m.goal], flat=False)
+        ok1 = self._run_stage(CAPS["fold1"])
+        for i, sub in enumerate(self.subs):
+            s = score(sub.cloth_positions(), folds=FOLDS)
+            recs[i]["fold1"] = {"settled": ok1[i], "mean": round(s["mean"], 4), "edge_max": round(s["edge_max"], 4),
+                                "gate": self._gate(i)}
+            cloth = sub.cloth_positions()
+            w0, e0 = cloth[list(WEST)].mean(axis=0), cloth[list(EAST)].mean(axis=0)
+            recs[i]["drag_from"] = {"west": np.round(w0, 4).tolist(), "east": np.round(e0, 4).tolist()}
+            if self.drag is not None:
+                self._configure(i, "left_", WEST, lambda g=w0 + self.drag: g, lambda g=w0 + self.drag: g, flat=True)
+                self._configure(i, "right_", EAST, lambda g=e0 + self.drag: g, lambda g=e0 + self.drag: g, flat=True)
+        if self.two:
+            return self._fold2_two(recs)
+        okd = self._run_stage(CAPS["drag"]) if self.drag is not None else [True] * self.n
+        for i, sub in enumerate(self.subs):
+            cloth = sub.cloth_positions()
+            w1, e1 = cloth[list(WEST)].mean(axis=0), cloth[list(EAST)].mean(axis=0)
+            w0, e0 = (np.array(recs[i]["drag_from"][k]) for k in ("west", "east"))
+            recs[i]["drag"] = {"settled": okd[i], "west_moved": np.round(w1 - w0, 4).tolist(),
+                               "east_moved": np.round(e1 - e0, 4).tolist(),
+                               "dropped": [p for p in ARMS if self.experts[i][p].dropped],
+                               "fold1_after": round(score(cloth, folds=FOLDS)["mean"], 4)}
+            # did the drag let go? each arm's top / bottom vertex height above where it lay, and its distance to the site
+            for p, idx in (("left_", WEST), ("right_", EAST)):
+                site = np.asarray(sub.gripper_position(p), float)
+                recs[i]["drag"][f"{p}after"] = {"z_cm": np.round((cloth[list(idx), 2] - cloth[list(idx), 2].min()) * 100, 2).tolist(),
+                                                "site_cm": round(float(np.linalg.norm(cloth[list(idx)].mean(axis=0) - site)) * 100, 1)}
+            self.parked[i] = {"left_"}
+            self.park_steps[i], self.park_lift[i] = 0, None
+        for _ in range(LIFT_STEPS + PARK_STEPS):           # the right arm is done (idle) while the left one goes home
+            self._scripted_step()
+        grasp, target = self.fold2
+        for i, sub in enumerate(self.subs):
+            recs[i]["cloth_after_park"] = {"center_xy": np.round(sub.cloth_positions()[:, :2].mean(axis=0), 4).tolist(),
+                                           "z_max_cm": round(float(sub.cloth_positions()[:, 2].max() - sub.cloth_positions()[:, 2].min()) * 100, 1)}
+            self._configure(i, "right_", grasp, lambda s=sub: s.cloth_positions()[list(target)].mean(axis=0),
+                            lambda s=sub: s.cloth_positions()[list(target)].mean(axis=0), flat=False)
+        ok2 = self._run_stage(CAPS["fold2"])
+        for i, sub in enumerate(self.subs):
+            cloth = sub.cloth_positions()
+            s = score(cloth, folds=QUARTER_FOLDS)
+            off = cloth[list(grasp)].mean(axis=0) - cloth[list(target)].mean(axis=0)
+            recs[i]["fold2"] = {"settled": ok2[i], "grasp_on_target_xy": np.round(off[:2], 4).tolist(),
+                                "dropped": self.experts[i]["right_"].dropped}
+            g = self._gate(i)
+            recs[i]["final"] = {"mean": round(s["mean"], 4), "edge_max": round(s["edge_max"], 4),
+                                "passed": bool(s["passed"]), "unstable": bool(sub._failed()), "gate": g,
+                                "passed_valid": bool(s["passed"] and g["valid"] and ok2[i])}
+            recs[i]["cloth"] = np.round(cloth, 4).tolist()
+        return recs
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--copies", type=int, default=8)
+    ap.add_argument("--seeds", default="0:8")
+    ap.add_argument("--drag", default="0.12,0.04", help="dx,dy (m), or 'none' to skip the drag")
+    ap.add_argument("--video", action="store_true")
+    ap.add_argument("--fold2", choices=sorted(FOLD2), default="mid")
+    ap.add_argument("--profile", default="friction", help="quarter2 for --fold2 two")
+    ap.add_argument("--out", required=True)
+    args = ap.parse_args()
+    sys.argv = sys.argv[:1]
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    qb = QuarterBatch(args.copies, drag=None if args.drag == "none" else [float(v) for v in args.drag.split(",")],
+                      cameras={"top": 400} if args.video else None, fold2=args.fold2, profile=args.profile)
+    a, b = (int(v) for v in args.seeds.split(":"))
+    for start in range(a, b, qb.n):
+        seeds = list(range(start, start + qb.n))
+        qb.frames = [[] for _ in range(qb.n)] if args.video else None
+        for rec in qb.run(seeds):
+            print("QUARTER", json.dumps({k: v for k, v in rec.items() if k != "cloth"}), flush=True)
+            with open(out / "episodes.jsonl", "a") as f:
+                f.write(json.dumps(rec) + "\n")
+        if args.video:
+            import imageio
+            for i, seed in enumerate(seeds):
+                imageio.mimwrite(str(out / f"quarter_seed{seed}.mp4"), qb.frames[i] + qb.frames[i][-1:] * 20, fps=20,
+                                 macro_block_size=1)
+    sys.stdout.flush()
+    import os
+    os._exit(0)
+
+
+if __name__ == "__main__":
+    main()

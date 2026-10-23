@@ -62,8 +62,14 @@ def arm_metrics(trace: dict, goal, rest_z: float) -> dict:
     out = {"t_carry": t_carry, "t_release": t_rel,
            "anchor_drift": float(np.max(np.linalg.norm(anchor - anchor[0], axis=1))) if len(anchor) else 0.0}
     rise = float(corner[t_carry, 2] - rest_z) if t_carry is not None else None
-    acquired = t_carry is not None and rise >= LIFT_MIN and dist[t_carry] < HOLD_DIST
+    # acquired: the corner is up LIFT_MIN and in the jaws at some step between the carry's start and the release. The
+    # pinch's corner is up when the carry starts; a slide grasp's arc starts from its pressed height, so its corner
+    # only leaves the table during the carry (2026-10-20: read at the carry's start, its 20/20 grasps scored 0)
+    window = range(t_carry, t_rel if t_rel is not None else len(phases)) if t_carry is not None else ()
+    t_up = next((t for t in window if corner[t, 2] - rest_z >= LIFT_MIN and dist[t] < HOLD_DIST), None)
+    acquired = t_up is not None
     out["lift_rise"] = rise
+    out["t_acquired"] = t_up
     held = False
     if acquired and t_rel is not None and t_rel > t_carry:
         out["carry_max_dist"] = float(np.max(dist[t_carry:t_rel]))

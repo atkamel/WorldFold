@@ -1923,3 +1923,691 @@ Demos only, not a measurement: the first 3 seeds of each set, 1 env, `imitation.
   - id_hard 2/3: 200001 times out at 400 steps;
   - knock_arm 1/3: 310000 and 310002 time out.
 - **Expert:** knock_arm 3/3, in 183 / 175 / 185 steps.
+
+## Quarter fold layout search on Isaac (2026-10-14)
+
+`isaac/layout_search.py`, no physics: `isaac.pinch.PinchIK` on LeHome's SO101 URDF, IsaacArmExpert's waypoint rules
+(pinch 5 mm in from the point, straight down; arc 12 cm high; place at the pinch's mirror). Fold 1 is north onto
+south, two arms; fold 2 is west onto east, either two arms (stack S + crease end C) or one arm from the short edge's
+midpoint (M). Arm bases on a 2.5 cm grid around the cloth, at least 5 cm outside it, facing its centre.
+
+- **Reach is bounded by tilt.** PinchIK trades orientation for position, so position errors are ~0 almost everywhere.
+  Bounds are what today's half fold already does over the ±1.5 cm shifted poses (F3 expert id_hard 94%): pinch tilt
+  ≤ 16.5° (measured max 16.3°; nominal 5.5°), place tilt ≤ 33° (measured 32.4°). Clearance between the arms'
+  link centrelines ≥ 6 cm.
+- On today's layout the fold-2 pinches would tilt 36–64°.
+- **Robust** = every move within bounds at all 9 cloth offsets of ±1 cm (the reset jitter). Badness = worst ratio to a
+  bound; ≤ 1 passes. Only the best-margin layouts were re-checked (top 40, then top 15 per variant).
+
+| cloth | two-arm fold 2, best robust badness | one-arm fold 2, best robust badness |
+|---|---|---|
+| 30 cm | none in the checked set | 1.23 |
+| 28.5 cm | not checked | **0.77** (39/40 checked pass) |
+| 27 cm | 1.64 | 0.84 |
+| **25.5 cm** | **0.78** | 0.72 |
+| 24 cm | 2.19 | 2.36 |
+
+Mount height ±4 cm on the 30 cm cloth: no reach-feasible layout either way (10° tilt bound). Smaller is not
+monotonically easier: points close to a base need a steep tilt too, and the grid is coarse.
+
+**Chosen:** 25.5 cm, two-arm fold 2 (holding both ends of the carried edge is what the edge-alignment bar needs).
+Cloth-local bases: left (−0.225, −0.125), right (0.10, 0.225); clearance 18.3 cm (fold 1) and 11.6 cm (fold 2).
+`isaac_env.PROFILES["quarter"]`. The one-arm fold at 28.5 cm is the alternative if the two-arm fold fails physically.
+
+### Revision (2026-10-15): what the arm can track, and the chosen layout
+
+The first pick (25.5 cm, right arm north) failed on Isaac (Modal runs q1–q4, 13 episodes, 0 quarter folds):
+
+- At HOME (all joints zero) the two arms crossed over the cloth and jammed → a tucked rest pose per profile.
+- The friction profile's 5.2 cm placement overshoot was the whole fold-1 miss on this layout → zero for quarter.
+- The north arm's fold-1 pinch, 11 cm from its base, asked elbow 1.67 / wrist 1.40 rad and got 1.56 / 1.14: the jaw
+  meets the arm's own upper link (self-collision on). New bound: elbow and wrist ≤ 1.3 rad above and at the pinch
+  (the half fold pinches at elbow −0.07, wrist 0.92). An elbow-branch rule was tried and dropped: the working half
+  fold itself crosses from elbow −1.22 to +1.33 along its arc.
+
+Re-searched with that bound (best robust badness; ≤ 1 passes):
+
+| cloth | ±1 cm, two-arm | ±1 cm, one-arm | ±0.5 cm, two-arm | ±0.5 cm, one-arm |
+|---|---|---|---|---|
+| 27 cm | — | 1.20 | — | 1.07 |
+| 25.5 cm | 1.71 | 1.02 | 1.28 | **0.978** |
+| 24 cm | | | **0.997** | |
+| 22.5 cm | | | **0.905** | 1.07 (C/S two-arm) |
+
+Profiles: `quarter` = 24 cm, left (−0.225, −0.05), right (0.0, 0.175); `quarter_s` = 22.5 cm, left (−0.225, −0.025),
+right (−0.025, 0.175) (cloth-local). The quarter task's reset jitter has to come down to ±0.5 cm for these margins.
+
+### Collision-aware layout search (2026-10-15)
+
+`isaac/arm_collision.py` poses the SO101 URDF's collision meshes (SO-ARM100 STLs) by FK. It reproduces run q4's stall:
+the planned north-arm pinch left 0.7 mm between jaw and upper arm, and the joints stopped where 1–5 mm remained.
+Bounds: jaw vs own base/shoulder/upper arm ≥ 8 mm up to the pinch (the working half fold's place end touches, so not
+after), links ≥ 5 mm above the table, arms ≥ 2 cm apart (in lockstep, and each path against the other arm tucked or
+parked at its path's end). The old side-by-side half-fold layout clears at 2.2 cm.
+
+24 cm cloth, ±0.5 cm: 10,022 reach-feasible layouts, **none** with 2 cm between the arms. Best per variant:
+
+| variant | best (fold 1, fold 2) clearance |
+|---|---|
+| two-arm S/C | 1 mm, 1 mm |
+| two-arm C/S | 3 mm, 1 mm |
+| one-arm M/- | 15 mm, 2 mm |
+| one-arm -/M | 34 mm, 4 mm |
+
+Best S/C, by situation: fold 1 lockstep 9 mm, left arm vs right arm tucked 1 mm; fold 2 lockstep 1 mm, right arm vs
+left arm tucked 0. Two SO101s on two sides of a cloth they can both reach work in each other's space; the second
+fold's two grasp points share a 12 cm edge. Matches Isaac runs q1–q5 (20 episodes on new layouts, 0 quarter folds).
+
+## Strip fold, scripted, on the friction layout (2026-10-15)
+
+Profile `strip` (user's pick after the square layout failed): the half fold, then each arm carries its crease end
+onto its near corner. `isaac/quarter_fold_run.py`, IsaacQuarterFoldExpert (lift gate, retries), alignment with
+`STRIP_FOLDS`. Bar: mean ≤ 1.0 cm, edges ≤ 1.5 cm.
+
+| run | fold-2 overshoot | goals | n | env success | fold-1 align (mean / edge) | final align (mean / edge) | anchor drift |
+|---|---|---|---|---|---|---|---|
+| strip1 (WATcloud) | 0 | start | 1 | 1 | 3.3 / 4.7 cm | 7.9 / 12.7 cm | 10 cm |
+| s2 (Modal) | fold 1's | start | 2 | 1 (other: timeout in fold 2) | 9.5 / 15.5, 6.1 / 12.9 cm | 7.2 / 11.4, 7.3 / 14.4 cm | 14, 7 cm |
+| strip5 (WATcloud) | fold 1's | partner's current position + retarget | 2 | 0 (both unstable in fold 1) | — | 11.3, 10.1 cm | 11, 18 cm |
+
+The fold completes mechanically; the layers end ~7 cm apart because the bottom layer slides 6–14 cm while the top
+is carried over it, and the corners land on where their partners started. Chasing the partner (strip5) made the
+retries re-grasp a corner that springs back after release and destabilised the cloth: dropped. n is tiny (Modal
+refused 64 of 64 starts on driver 610 at the end; WATcloud jobs carry a 10 min image build).
+
+## Roy's grasp port, grasp bench (plan 2026-10-19), WATcloud 3090s
+
+`isaac/grasp_bench.py`, half fold, retries off, tune seeds 600000–600019 (n = 20 per arm), 1 cm jitter.
+acquired / held / placed / released per arm (left | right).
+
+| step | profile + settings | left | right | notes |
+|---|---|---|---|---|
+| 2 | `roy` (Roy's bases and cloth placement, box pads, position gripper −0.17), corner pinch, `PINCH_ORIENTATION_WEIGHT=0.005` | 0/0/0/0 | 0/0/0/0 | jaws land within 0.6–1.2 cm of the corner, 0.7 cm up, close all the way to −0.17: nothing between the pads |
+| 3 | as 2, `GRASP=slide`, `RELEASE_RATE=0.3` | 0/0/0/0 | 1/0/0/0 | the slide runs (3.8 cm inward) and bunches the cloth (corner up 1.1–2.5 cm), but the jaw closes to −0.15…−0.17 and the cloth falls out; the open jaw (1.0 rad) met the table with the fingertip 0.7 cm up |
+| 3b | as 3, slide opens to Roy's 0.55 rad (`GRASP_OPEN`) | 0/0/0/0 | 0/0/0/0 | |
+| 3c | `roy` rebuilt on `lehome` (LeHome drives, CPU, adhesion 0.1), slide | 0/0/0/0 | 0/0/0/0 | n = 10 |
+| 1 | `friction` + `pads=box`, position gripper −0.17, our near-vertical pinch | lifts 7/7 | lifts 5/7 | n = 7 when read; held 0: the jaw sits at −0.170 (its limit), the corner rides up ~9.6 cm and slips once the carry moves sideways |
+
+**Root cause of steps 2–3c (side video + trace, 2026-10-20):** the jaw faced half a turn round (176–179° to the slide), so
+the fixed finger led and pushed the cloth ahead of both pads. `PinchIK.solve`'s cross-product orientation error is zero
+for antiparallel axes; on the roy layout `_home_seed`'s tie-break picked the right-arm wrist-roll family. Fixed with a
+`jaw_weight` term (commit e0f8d79); offline the best seed then aligns at +0.99 (was −0.99). Not yet re-run on Isaac
+(WATcloud unreachable, Modal hosts on driver 610).
+
+**After the jaw fix (e0f8d79), `roy` on lehome, n = 10:**
+
+| run | settings | left a/h/p/r | right a/h/p/r | what the trace and side video show |
+|---|---|---|---|---|
+| 3d | slide, soft tilt 0.005, `RELEASE_RATE=0.3` | 0/0/1/0 | 0/0/1/0 | jaw axis now along the slide (+1.00, was −0.99); the open jaws straddle the cloth edge and close on it, the cloth rises as the gripper lifts, then slides out; jaw at −0.17 (limit); the slide stalls after ~1 cm of its 4 (fingertip 1.5 cm from the corner at close, planned 3.4) |
+| 2b | corner pinch, soft tilt 0.005 | 0/0/0/0 | 0/0/0/0 | the pinch can't reach: with the jaw forced along the corner diagonal and the gripper tilted, the 5-joint arm ends 4–6 cm from the corner (it leans its fingers only radially) |
+
+**Re-scored (c59b9bf: `acquired` read anywhere from carry to release; the slide grasp's corner only leaves the table in
+the carry, so the old lift-end reading gave it 0).** n = 10 per arm unless noted, Wilson 95% in brackets:
+
+| run | settings | left acquired / held / placed | right acquired / held / placed |
+|---|---|---|---|
+| 1 (n = 20) | `friction` + box pads, our pinch | 20 / 0 / 0 | 11 / 0 / 0 |
+| 2b | `roy`, tilted corner pinch | 0 / 0 / 0 | 0 / 0 / 0 |
+| **3d** | `roy`, slide, squeeze −0.17 | **10 / 9 [59.6, 98.2] / 1** | **10 / 7 [39.7, 89.2] / 1** |
+| v2 | 3d + pad friction 0.5 | 10 / 9 / 1 | 10 / 7 / 1 |
+| v1 | 3d + squeeze −0.05 | 10 / 4 / 2 | 10 / 5 / 2 |
+| v3 | 3d + squeeze 0.0 + pad friction 0.5 | 10 / 0 / 0 | 10 / 0 / 0 |
+
+The video-based reading above ("the cloth slides out") was wrong: corners rise 13–18 cm with the gripper and 16/20 stay
+in the jaws to release. A full squeeze holds; softer squeezes don't. Placement is now the gap: held corners land a mean
+(+7.4, +4.3) cm (left) and (−6.8, +3.1) cm (right) off their goals, sd ~2 cm (s3d + v2, n = 18 / 14): inward, the
+grasp's inset plus the slide's push. Next: the mean miss as the roy overshoot (bench s3e, seeds 600010–29).
+
+**Step 3 stack test (WATcloud 711408, 2026-10-20).** `quarter_fold_run.py --profile roy --fold2 stack
+--overshoot=-0.074,-0.043,0.068,-0.031`, `WORLDFOLD_EXPERT_PARAMS=GRASP=slide,PINCH_ORIENTATION_WEIGHT=0.005,RELEASE_RATE=0.3`,
+seeds 0–9, retries on, 1 cm jitter, no dynamics DR (CPU). Output `outputs/isaac/quarter/roy_stack1/` (videos, traces).
+
+- Fold 1 with the 7 cm correction finished in **2/10** [5.7, 51.0]. The other 8 timed out after 2–4 retries with
+  corners 4–25 cm from their goals, anchor drift up to 18 cm. The correction moved the miss; it didn't remove it.
+- Stacks reaching fold 2: 4 (2 episodes × 2 arms). **Lifted with both layers: 0/4.**
+  - Seed 1 (stack gaps 0.6 and 0.4 cm): both corners of both stacks rose 11–15 cm, but never within 1 cm of each
+    other in height while within 5 cm of the site; the episode ended `cloth_dragged` (crease ends moved 20 cm).
+    Fold-1 alignment 5.9 / 10.7 cm (mean / edge).
+  - Seed 2 (stack gaps 13 cm, not a stack): each gripper caught one layer.
+- Not a test of the grasp at n = 4. The step-3 bar (≥ 15/20 stacks) is undecided; fold 1 placement blocks it.
+
+**Step 3 placement bench s3e (WATcloud 711407, 2026-10-20)** `grasp_bench --profile roy --expert
+GRASP=slide,PINCH_ORIENTATION_WEIGHT=0.005,RELEASE_RATE=0.3 --overshoot=-0.074,-0.043,0.068,-0.031`, seeds 600010–29,
+n = 20 per arm (`outputs/isaac/grasp/roy_s3e_place/`, side videos):
+
+| arm | acquired | held | placed | released |
+|---|---|---|---|---|
+| left | 20/20 [83.9, 100] | 15/20 [53.1, 88.8] | 1/20 [0.9, 23.6] | 5/20 [11.2, 46.9] |
+| right | 20/20 [83.9, 100] | 11/20 [34.2, 74.2] | 2/20 [2.8, 30.1] | 1/20 [0.9, 23.6] |
+
+- **The release fails, and that was the "miss".** In the traces (seeds 600010–17) the jaw opens fully (−0.17 →
+  0.98 rad in 5 steps → 1.0), yet the held corner stays 4–5 cm up at the release and rises to 7–8 cm with the
+  retreat, 6–7 cm from the site: the cloth hangs on the fingers. "placed" fails on height, not on x/y: the held
+  corners' final x/y sit a median 1.5 cm (left) and 0.5 cm (right) from their goals (mean (−1.9, +0.7) / (0.1,
+  −0.4) cm, sd (2.7, 1.9) / (1.3, 0.8)).
+- **Correction to the s3d reading above:** the "(+7.4, +4.3) / (−6.8, +3.1) cm inward" miss was read from corners
+  still on the fingers, carried by the retreat. It was not a landing offset, so the s3e overshoot is not a fix for
+  anything. The stack test's fold-1 failures (2/10 finished) are the same release failure under retries.
+- Held fell to 26/40 from s3d's 16/20 (different seeds; within noise of each other: s3d [58.4, 91.9] vs s3e [49.5,
+  77.9] pooled).
+- Next for the Roy port (parked behind the RL redesign): why the cloth stays on the fingers after the jaw opens
+  (adhesion 0.1 on the box pads, the slide's bunching wrapping cloth round a finger).
+
+## Closed-loop residual RL (plan 2026-10-20-closed-loop-rl.md)
+
+### R0: gripper baselines, half fold, GPU `friction` profile (WATcloud 711464 / 711465, 2026-10-20)
+
+`quarter_fold_run.py --profile friction --fold2 none --no-retries --max-steps 400 --seeds 0..19`, dynamics DR off,
+1 cm cloth jitter, n = 20 each, the same seeds. Alignment = `fold_alignment.score(folds=(("y", 5),))` at the episode's
+end (`outputs/isaac/rl/r0_servo/`, with top videos; `outputs/isaac/rl/r0_open/`).
+
+| base | align mean (sd) | best | median | edge mean (best) | passed | env success | anchor drift |
+|---|---|---|---|---|---|---|---|
+| open loop (`IsaacArmExpert`, the profile's overshoot) | 6.10 (1.59) cm | 3.76 cm | 5.75 cm | 11.40 (4.88) cm | 0/20 [0, 16.1] | 19/20 | 2.9–4.5 cm on 16, 7–16 cm on 4 |
+| **closed loop** (`PLACE_SERVO=1`: corner steered onto the partner's current position) | **3.61 (0.89) cm** | **2.01 cm** | 3.36 cm | **6.90 (2.96) cm** | 0/20 [0, 16.1] | 12/20 | 7–12 cm, 23 cm on 1 (`cloth_dragged`) |
+
+- Steering the corner onto where the bottom layer is cut the mean misalignment by 41% and the edge by 39%.
+- It drags the bottom layer 2–3× further. The env's own success test reads goals at their start positions, so the
+  7 truncations are corners on a moved bottom layer, not misses. Alignment is what counts here.
+- Nothing passes (1.0 / 1.5 cm). The closed-loop base is R4's reference: mean 3.61 cm, edge 6.90 cm.
+
+**R0 A/B on the closed-loop base (WATcloud 711480):** `WORLDFOLD_PLACE_PARAMS=PRESS_Z=0.012,LIVE_MAX=0.03,ARC_FRAC=1.0`
+(release 1.2 cm above the partner, live goal capped 3 cm from its start, the open-loop expert's full arc), same 20
+seeds: align mean **6.21 cm** (sd 1.99, best 3.37), edge 10.23 cm, 0/20 passed; anchor drift median 9.1 cm (max 22.3).
+Worse than R0's base (3.61 cm) and no less drift, so the drag is not the place-phase chase or the press: it builds
+up in the carry. Kept R0's base (PRESS_Z 0.003, no cap, ARC_FRAC 0.6); the drift is the residual policy's to reduce
+(its reward charges new drift). `outputs/isaac/rl/r0_servo_b/` (videos).
+
+### R1: snapshot / restore on Isaac (WATcloud 711481, trpro 3090, 2026-10-20)
+
+`precision_rl.py check-restore --copies 8 --seeds 810000:810008`: per seed, the base run straight through the window
+("direct") and twice from its restored carry-start snapshot, zero residual. Mean alignment (cm), `d` = the arm's corner
+left the jaws (then a failure in the window env):
+
+| seed | direct | restored 1 | restored 2 |
+|---|---|---|---|
+| 810000 | 5.19 | 4.99 | 5.76 |
+| 810001 | 4.65 | 3.92 | 3.24 d |
+| 810002 | 2.07 | 2.59 d | 4.34 |
+| 810003 | 2.67 | 2.89 | 3.19 |
+| 810004 | 3.79 | 3.24 d | 3.18 |
+| 810005 | 4.06 | 3.79 | 3.67 |
+| 810006 | 1.47 d | 1.69 d | 1.58 d |
+| 810007 | 3.42 d | 3.85 | 2.85 |
+
+- **Restore works; the sim isn't deterministic.** Two restores of the same snapshot differ by 0.1–1.8 cm, as much as
+  either differs from the direct run (GPU PhysX). The plan's "within 3 mm" bar can't be met by any restore; restored
+  and direct runs share one distribution (means 3.42 / 3.37 / 3.48 cm over the 8 seeds). Evaluation is statistical.
+- **Throughput: 22.1 env steps/s** at B = 8 (164 batch steps in 59.5 s, window only), ~6× the plan's estimate.
+- **"Dropped" was a bad failure label:** 6/24 runs flagged it, with some of the best alignments (1.5–3.4 cm): the
+  corner leaves the jaws at the end of the place. The window env no longer ends or penalises an episode for it
+  (recorded in the final info); the terminal alignment scores it.
+
+### R2 + first training run p1 (WATcloud 711482, 2026-10-20, cancelled)
+
+`precision_rl.py train --run outputs/isaac/rl/p1 --copies 8` (160 train snapshots from seeds 800000+, 16 eval from
+900000+, all reached the window).
+- **R2, version 0 (zero residual = the base) on the 16 eval snapshots: mean 3.09 cm (sd 0.50, best 2.39), edge 6.70
+  cm, 0/16 passed [0, 19.4], all settled.** R0's full-episode base: 3.61 (sd 0.89), n = 20, other seeds. 2.2 SE apart;
+  the window env scores 15 steps after both arms are done, the full run at the env's end. Parity is close enough
+  to train against; version 0 is the reference for this run.
+- **Then it blew up.** The first noisy prior batch (OU σ 0.2): 6/8 `unstable`, 2/8 `cloth_dragged`. Every later episode
+  (prior batch 2, training) ended `unstable` after one step in all 8 copies, at the snapshot's own alignment (16.3 cm),
+  so the grid restored but something else did not. Cancelled; diagnosis in `check-recover` (job 711486).
+
+**Recovery diagnostic (WATcloud 711486, `check-recover`, seeds 820000–07):** clean window run 2.1–4.3 cm, all settled;
+jaws driven into the table with the floor off: fold wrecked (13–18 cm), truncated, **no instability**; two plain
+restores and a park + 30-step settle + restore after it: all settled (1.2–4.1 cm); the OU prior (σ 0.1) with the 5 mm
+table floor: no instability, 1.9–10.1 cm, 3/8 truncated. The p1 blow-up did not reproduce. Training now parks a
+blown-up copy at once, and a copy unstable within two steps of a restore exits the child process (saved learner,
+online buffer, state) for a supervisor restart. Run p2 (711487) carries all of it.
+
+**Root cause of p1's blow-up (p2, WATcloud 711487):** p2 restarted 20 times on "corrupt scene", each corruption the
+same: at step 1 after a restore, **all 10201 particles out of the workspace and moving 50.5 m/s, at table height**.
+50.5 m/s × 0.05 s = 2.5 m, the copy spacing (`COPY_OFFSETS`). Snapshots stored world-frame particle positions, and
+training restores a random snapshot into any copy, so a cloth captured in copy j landed on copy j's table while copy
+i's arms and frame stayed put. The same-copy checks (check-restore, check-recover) could not see it; p1's version-0
+evaluation (3.09 cm) restored each snapshot into its own copy and stands. p2's version-0 scores (10.5–11.0 cm, sd 7)
+were partly cross-copy and are void. Fix: snapshots keep particles in the copy's frame and restore adds the
+destination's offset; a restart no longer re-scores version 0 or re-collects the prior. Run p3 (711562).
+
+### p3 (WATcloud 711562, 2026-10-21, cancelled at 11.5k env steps)
+
+Frame fix confirmed: no corrupt restores in 80 training episodes and 2 evaluations.
+- Version 0 (zero residual) on the 16 eval snapshots: **3.22 cm** (sd 0.74, best 1.91), edge 6.11 cm, 0/16 passed
+  [0, 19.4], all settled (p1: 3.09).
+- Prior (16 episodes, OU σ 0.1 on the integrated residual): 5.1 and 7.6 cm per batch of 8.
+- Training batches drifted worse: 6.4–10.5 cm mean, `cloth_dragged` rising from 2/8 to 8/8, truncations 0–5/8.
+  Version 1 (10.2k steps, deterministic) on the eval snapshots: **12.47 cm** (sd 2.33), 7/16 dragged, 4/16
+  truncated. Critic q_mean started at +15.3 against returns near −1; entropy fell from +5.0 to −4.9.
+- Read as three design faults: (1) the action integrated into the residual, so any bias reached ±6 cm in ~30 steps
+  and dragged the cloth; (2) a T_MAX truncation took no terminal score and bootstrapped on the critic while the
+  terminal score is negative short of the bar, so not finishing paid; (3) 16 prior episodes left the critic
+  over-optimistic as the actor started. p4 (711576): the action sets a bounded residual (±3 cm xy, ±2 cm z,
+  smoothed 0.3), T_MAX is a scored ending, the terminal charges 0.3 per cm of mean bottom-half displacement, 48 prior
+  episodes (OU σ 0.3), 3000 critic-only transitions before the actor moves, UTD 5, target entropy −4.
+
+### p4 (WATcloud 711576, 2026-10-21, running): first evaluation
+
+| | eval mean (sd), n = 16 | best | edge | passed |
+|---|---|---|---|---|
+| base, version 0 (p3, same eval snapshots, warm scene) | 3.22 (0.74) cm | 1.91 cm | 6.11 cm | 0 |
+| **p4 version 1, 10.2k env steps** | **2.81 (0.84) cm** | **1.34 cm** | 5.76 cm | 0 [0, 19.4] |
+
+- 0.41 cm better than the base, 1.5 SE: right direction, not yet conclusive. All 16 settled.
+- Prior (48 episodes, OU σ 0.3 on the bounded residual): 3.38–3.94 cm per batch, 0–3 dragged per 8. Training
+  batches: 3.56, 3.16, 3.15, 3.14, 3.40, 3.29, 3.55, **2.76** cm; 2 drags in 64 episodes. The critic starts negative
+  (q_mean −19 at the first actor update, then −3.8 to +3.6), entropy 4.9 → 4.1. 7.4 env steps/s with UTD 5.
+- **p4's own version 0 read 10.41 cm (sd 7.58, best 2.18): void.** It was the first restore in a scene that had never
+  stepped (libraries loaded from disk), the bimodal pattern p2 showed; p1 and p3, which built their libraries
+  in-process first, read 3.09 and 3.22. `PrecisionBatch` now resets and steps every copy once before any restore.
+
+**p4 curve (cancelled at 43k env steps, 2 h 18 min):** eval mean on the 16 eval snapshots, n = 16 each:
+
+| version | env steps | mean (sd) | best | edge | endings |
+|---|---|---|---|---|---|
+| 1 | 10.2k | 2.81 (0.84) | 1.34 | 5.76 | 16 settled |
+| 2 | 20.9k | 3.60 (0.78) | 1.80 | 8.37 | 13 settled, 2 truncated, 1 dragged |
+| 3 | 31.9k | 3.01 (0.82) | 1.68 | 7.15 | 16 settled |
+| 4 | 43.1k | 4.19 (0.91) | 2.82 | 7.95 | 5 settled, 9 truncated, 2 dragged |
+
+No trend below the base (3.22); version 1's gain reads as noise. The critic diverged: critic loss 4.8 → 17 and
+q_mean +3 → +20.7 between 36k and 43k steps (returns that size need passing folds; none happened), entropy −4.7.
+Truncations came back as the residual kept the carried corner off its waypoints (each waits WP_PATIENCE). Before
+another learner change: where the base's error sits (demos of the base and of version 1 on seeds 910000–15 with the
+final cloth grids, jobs 711581/711582).
+
+### Where the base's error sits, and p4 version 1 on fresh seeds (demo jobs 711581/711582, 2026-10-21)
+
+`precision_rl.py demo --run outputs/isaac/rl/p4 [--base | --ckpt v1.pt] --seeds 910000:910016 --video`: full half
+folds (scripted grasp and lift, restore at the carry start, then the base or version 1 through the window), the final
+and window-start grids per episode in `outputs/isaac/rl/p4/demo*/demo.jsonl`, top videos per seed. Both jobs hung
+for 7.5 h in Kit's shutdown after finishing (cancelled; the driver now ends with `os._exit`).
+
+| | mean | edge | bottom-half shift | best episode (mean / edge) | endings |
+|---|---|---|---|---|---|
+| base | 3.36 cm | 6.71 cm | 2.60 cm | 2.30 / 5.78 cm | 16 settled |
+| p4 version 1 (10.2k steps) | **2.84 cm** | 6.51 cm | 3.41 cm | **1.17 / 2.13 cm** | 14 settled, 2 dragged |
+
+Paired over the 16 seeds: mean −0.52 cm (SE 0.23), version 1 better on 11/16; edge −0.20 (SE 0.79); bottom shift
++0.82 (SE 0.65). Version 1's gain is real; p4's later versions lost it as the critic diverged.
+
+**Error structure of the base** (`scratchpad/error_structure.py` logic, spreads per stacked pair):
+- Spread is ~3 cm everywhere: 2.8–5.0 cm across the 55 pairs; the open-edge row (the corners' row) carries 21% of
+  the mean for 20% of the pairs. The right-arm side is worst (ix 8–10: 3.3–5.0 cm).
+- Top minus bottom, xy bias (sd): left corner pair (0.0, −1.7) (2.0, 3.0) cm; right corner pair (+1.4, −0.4)
+  (4.2, 3.9); open-edge middle (+0.6, −1.1) (2.0, 1.7); centre (+0.4, −2.6) (1.8, 1.5); **next to the crease
+  (0.0, −2.8) (1.1, 1.5)**.
+- So the fold line forms ~1.4 cm short of the cloth's middle (the top layer next to the crease sits 2.8 cm toward the
+  open edge) while the corners are nearly on target: the carry drags the bottom half (mean 2.6 cm) and the hinge with
+  it. Corner placement alone can't remove that. Version 1 cut the scatter next to the crease (sd (1.11, 1.51) →
+  (0.57, 1.13) cm) by changing the carry; its left corner got worse (x bias −4.1 cm).
+
+**p5 (WATcloud 711593):** continues from p4's version 1 with p4's prior and 43k online transitions, UTD 2, critic
+gradient norm clipped at 10, 3000 critic-only transitions first; first evaluation after one batch (= version 1).
+
+### p5 (WATcloud 711593, cancelled at 22k env steps)
+
+From p4's version 1, UTD 2, critic gradients clipped at 10: the critic stayed sane (q_mean −1.5…+0.7, critic loss
+0.15–0.48). Eval: version 1 re-read **2.81 cm** (sd 0.86, best 1.28), version 2 (11.6k) 2.75 (6/16 truncated),
+version 3 (22.2k) 3.23 (11/16 truncated). Training batches truncated 4–7/8. The policy learned to stall the carry: the
+base advances a waypoint once the corner is within 1.5 cm of it or after 15 steps, so a residual holding the corner
+just off each waypoint stretches the carry past T_MAX with the cloth still held, and a scored T_MAX rated the held
+cloth above a released one. Fix: only a settled fold scores; T_MAX costs −FAIL like a drag. p6 (711598) restarts from
+p4's version 1 with fresh prior and online buffers (the stored rewards used the old rule).
+
+### Brainstorm (opus agent, read-only, 2026-10-21), lead-verified numbers
+
+From the 32 final grids of the base / version-1 demos (seeds 910000–15):
+- **Half the base's error is one rigid shift of the top layer:** removing each episode's mean top-minus-bottom xy
+  offset takes the base from 3.36 to **1.66 cm** (version 1: 2.84 → 1.87). The shift averages (+0.4, −2.1) cm and is
+  below −1.5 cm in y on 13/16 episodes. (Recomputed by the lead.)
+- **Corners ride up on the fingers at release on this profile too:** a top corner ends > 2 cm above its partner in
+  7/16 base and 7/16 version-1 episodes (recomputed), carried by the 5 cm straight-up retreat, as on the roy profile.
+- The cloth is 30 cm (`CLOTH_SPACING` 0.03 × 10), not 27 cm; the measured layer gap is ~5 mm.
+- Mechanism proposed: the late carry swings a near-taut top half about the crease (circular-type path), pulling the
+  bend toward the open edge; the place then grinds the bottom layer (PRESS_Z 0.003 + the 5 mm floor) while the live
+  goal chases the partner the fingers push. Thickness and the grasp inset ruled out (≤ 0.2 cm on the mean).
+- Ranked fixes: a g-fold-like height cap on the carried corner's path; release at stack height with a sideways
+  back-off before lifting; a goal latched at place start; RL observations of the crease rows; carry waypoints
+  driven by time (no stall loophole); a post-release press-and-slide. One passing demo plausible after the first
+  three; reliable passing unlikely without a post-lay-down correction.
+- Literature: Petrík & Kyrki 2019 (arXiv 1904.01298): on 0.6 m strips, triangular paths land −36.8 mm, circular
+  +62.7 mm, feedback RL < 20 mm, a known-material model < 10 mm.
+
+Implemented as `IsaacPlaceServoExpert` knobs, off by default: `GFOLD_SLOPE`/`GFOLD_Z0`, `BACKOFF`, `LATCH_GOAL`
+(10 sim-free tests). Sweep 1 (job 711602, `precision_rl.py sweep`, n = 32 paired seeds 910000–31): base, release
+(PRESS_Z 0.007, Z_FLOOR 0.009, BACKOFF 0.02), latch, g-fold slope 0.6 / 1.0 / 1.5, slow carry + 1.5× arc.
+
+**Carry A/Bs (n = 16, seeds 910000–15, paired against the base demo):**
+- **Arc 1.5× higher** (`ARC_FRAC=1.5`, job 711600): mean **6.10** vs 3.36 cm (paired +2.73, SE 0.64; better on 2/16),
+  edge 12.50 vs 6.71, bottom shift **14.98** vs 2.60 cm, 10/16 `cloth_dragged`. A higher arc asks for more cloth than
+  the fold has (the brainstorm's path-length check): rejected.
+- **Carry at half speed** (`CARRY_SPEED=0.5`, job 711599): hung after scene construction (no output for 42 min);
+  cancelled, no result. Same code ran fine with the arc override; cause not found.
+
+**p6 (from p4's version 1, T_MAX a failure):** version 1 2.96 cm (2 dragged), version 2 at 12.3k steps 2.94 (7
+dragged), **version 3 at 22.7k: 2.77 cm, best episode 0.99 cm mean** (edge above 1.5, so not passing), 16/16 settled.
+p6 version 4 (33.3k steps): **3.77 cm** (sd 1.19, best 2.04), 2 truncated, 2 dragged: lost version 3's gain, as p4
+did after ~20k steps. q_mean +3 to +4 while no episode has passed (true returns ≈ −2), so the critic is still
+optimistic and the actor follows its errors. best.pt = version 3 (2.77 cm).
+
+### Sweep 1: base fixes, n = 32 paired (job 711602, seeds 910000–31, `outputs/isaac/rl/sweep1/`)
+
+Base: mean 3.29 cm, edge 6.32 cm, bottom-half shift 2.28 cm, 32/32 settled. Paired differences (SE in brackets):
+
+| config | mean | edge | bottom shift | endings | best (mean / edge) |
+|---|---|---|---|---|---|
+| g-fold cap, slope 0.6 | **2.02 (−1.26 [0.24])**, better 26/32 | 5.57 (−0.74 [0.55]) | 8.55 (+6.26) | 27 dragged, 5 settled | 0.90 / 2.41 |
+| g-fold cap, slope 1.0 | 2.58 (−0.71 [0.23]), 26/32 | 5.63 (−0.69 [0.51]) | 5.94 (+3.65) | 15 dragged | 1.26 / 3.58 |
+| g-fold cap, slope 1.5 | 2.87 (−0.42 [0.21]), 21/32 | 5.90 (−0.41 [0.46]) | 3.52 (+1.23) | 29 settled, 3 dragged | 1.52 / 3.60 |
+| latched goal | 3.11 (−0.18 [0.26]), 17/32 | 5.59 (−0.73 [0.53]) | 1.81 (−0.48 [0.27]) | 32 settled | **1.42 / 1.62** |
+| release (PRESS_Z 0.007, Z_FLOOR 0.009, back-off 2 cm) | 3.60 (+0.32 [0.27]) | 5.75 (−0.56 [0.56]) | 2.02 (−0.26) | **22 truncated** | **0.95 / 1.75** |
+| slow carry + 1.5× arc | 9.74 (+6.46 [0.54]) | 20.09 | 14.14 | 12 dragged | 2.47 / 7.34 |
+
+- The g-fold cap attacks the fold-line error: a lower path aligns better (−1.26 cm at slope 0.6, 5 SE), but the
+  corner reaches the table early and slides the whole cloth (`cloth_dragged` ends those episodes at a 20 cm anchor
+  drift, before release, so slope 0.6's numbers are not finished folds). Slope 1.5 is the clean middle.
+- The release's truncations were a bug: the back-off reused the slide grasp's 3 mm lift steps (17 waypoints); now
+  two moves (out, then up 5 cm).
+- Sweep 2 (job 711606): latch + slope 1.5 / 1.2, the release with the fixed retreat, all three at slope 1.5, and slope
+  0.6 alone / with latch + release at a 0.5 m drag limit (so they finish and are scored as folds).
+
+### Sweep 2 (job 711606, n = 32 paired against sweep 1's base, 6 h limit hit)
+
+| config | mean | edge | bottom shift | endings | best (mean / edge) |
+|---|---|---|---|---|---|
+| **latch + g-fold slope 1.2** | **2.69 (−0.60 [0.23]), better 22/32** | 6.22 (−0.10 [0.61]) | 3.03 (+0.75) | 32 settled | 1.31 / 1.93 |
+| release, two-move retreat | 3.91 (+0.62 [0.26]) | 7.03 | 2.52 | 30 settled, 2 dragged | 1.84 / 3.14 |
+| latch + slope 1.5 + release | 3.66 (+0.37 [0.22]) | 6.59 | 2.50 | 32 settled | 2.13 / 3.93 |
+| slope 0.6, drag limit 0.5 m | 3.09 (−0.20 [0.25]) | 7.67 (+1.36) | 9.61 (+7.32) | 32 settled | 1.52 / 3.43 |
+| latch + slope 0.6 + release, drag limit 0.5 m | 3.39 (+0.11 [0.18]) | 7.61 (+1.29) | 5.13 | 32 settled | 1.70 / 3.92 |
+| latch + slope 1.5 | hung (no output for ~5 h); the sweep hit its 6 h limit | | | | |
+
+- Best clean base: **latched goal + g-fold slope 1.2** (2.69 cm, −0.60, 2.6 SE; no drags, no timeouts).
+- The release at stack height with a back-off hurts in every combination: dropped.
+- Slope 0.6's sweep-1 gain was an artifact of drag-terminated episodes scored mid-place: allowed to finish, the
+  cloth slides ~10 cm and the mean gain mostly goes.
+- Second silent hang of a demo child (after the slow-carry job); cause unknown. Sweeps need a per-child timeout.
+
+### p6 final (job 711598, 8 h, 234k env steps)
+
+24 evaluations; none beat version 3 (2.77 cm). Versions 4–24: 2.90–4.83 cm, mostly 3.4–4.4, with 1–14/16 truncated
+per evaluation even though T_MAX now costs −FAIL. The policy keeps slowing the carry (the base advances a waypoint
+on arrival or after WP_PATIENCE) and the critic can't anticipate the deadline (no window clock in the observation).
+p7 (job 711637) avoids it by bounding: the base's phases are bounded (≤ ~300 steps), so T_MAX = 400 can't be hit;
+p7 also runs on the improved base (`WORLDFOLD_PLACE_PARAMS=LATCH_GOAL=1,GFOLD_SLOPE=1.2`), fresh snapshots and
+learner. Demo hunt (job 711638): p6 best.pt on 64 fresh seeds (920000–63) with top videos.
+
+### Demo hunt: p6 best (version 3) on 64 fresh seeds (job 711638, seeds 920000–63, top videos)
+
+**0/64 passed** [0, 5.7]. Closest: seed 920034 mean **0.75** / edge 2.32 cm; 920001 1.62 / 1.97; 920053 1.24 / 2.84;
+920029 1.27 / 3.39. In 920034 three of 19 edge pairs exceed 1.5 cm, all at the left corner (corner pair 2.33,
+(ix 1, iy 0) 2.04, (ix 0, iy 2) 1.71 cm); the final frame shows the folded half skewed on the table and wrinkled.
+In 920001, 14/19 edge pairs sit at ~1.9–2.0 cm: a uniform offset. The edge bar is the binding one; a fold that
+passes needs the last corner's 1–2 cm removed after lay-down (a touch-up), not only a better carry.
+Videos: `outputs/isaac/rl/p6/demo/seed920034.mp4`, `seed920001.mp4`.
+**Touch-up (sweep 3, job 711713):** `IsaacPlaceServoExpert.start_touchup`: once the fold has settled, each arm whose
+top corner is > 8 mm from its partner comes down 1.5 cm behind it with the jaw closed, presses `TOUCH_PRESS` above
+the top layer and slides it by the measured offset, then lifts. Open question it tests: the fingertips grip at the
+cloth's 0.5 (the 2.0 lining is on the inner faces), about what cloth grips cloth, so the top layer may not slide
+over the bottom one. Base latch + g-fold 1.2, n = 32 (seeds 910000–31), press +2 / 0 / −2 mm; each episode records
+its alignment before the touch-up, so the effect is read within the fold.
+
+**Sweep 3, touch-up (partial: press +2 / 0 mm at 23/32, press −2 mm 31/32):** within-episode, before → after:
+
+| press | mean | edge | touched corners' gap | passed |
+|---|---|---|---|---|
+| +2 mm | 2.66 → 2.66 (+0.00, SE 0.10) | 5.83 → 5.53 | 4.08 → 3.70 cm (n 43) | 0/23 |
+| 0 mm | 2.80 → 2.63 (−0.17, SE 0.14) | 6.18 → 5.52 | 4.11 → 3.76 (n 46) | 0/23 |
+| −2 mm | 2.65 → 2.55 (−0.11, SE 0.11) | 5.43 → 5.27 | 3.55 → 3.48 (n 61) | **1/31** [0.6, 16.2] |
+
+- On average the push barely moves the top corner (gap −10%): the fingertips grip the cloth no harder than cloth
+  grips cloth, so both layers move.
+- **First fold at the bar: seed 910009 (press −2 mm), 0.85 cm mean / 1.17 cm edge, settled, bottom shift 1.3 cm.**
+  Before its touch-up: 1.77 / 2.28 cm; both arms touched up (offsets (0.97, 1.19) and (0.29, 2.12) cm). The same seed
+  scored 2.69 / 4.75 (sweep 2) and 4.04 / 9.31 (sweep 1 base): not an easy seed. Scripted base, no video (sweeps
+  run without it); not reproducible on demand (GPU nondeterminism).
+- Next: p8 = RL with the touch-up in the base (press −2 mm, tol 8 mm), the residual also steering the touch-up, and
+  the touch phase in the observation (OBS_DIM 85); a scripted hunt with video (64 seeds) for a recorded pass.
+Sweep 3 final (n = 31 each): +2 mm 2.67 → 2.67 (SE 0.08), 0/31, 5 truncated; 0 mm 2.85 → 2.76 (−0.08, SE 0.13),
+0/31, 10 truncated; −2 mm 2.65 → 2.55 (−0.11, SE 0.11), **1/31**, 6 truncated. The touch-up adds ~100 steps and
+overran the 400-step window on 16–32% of folds, so p8 (job 711717) and the video hunt (711718) run with a 500-step
+window: `WORLDFOLD_PLACE_PARAMS=LATCH_GOAL=1,GFOLD_SLOPE=1.2,TOUCH_PRESS=-0.002 WORLDFOLD_TOUCHUP=0.008
+WORLDFOLD_WINDOW_STEPS=500`.
+
+### p7 (job 711637, cancelled at 32k steps): RL on the latch + g-fold 1.2 base, no touch-up
+
+Version 0 (the base) **2.68 cm** (best 1.18), then 3.02 (10.8k), 3.89 (21.7k), 4.03 (31.9k): steadily worse, with no
+timeouts, a sane critic (q_mean −0.9 … +0.25) and entropy collapsed to about −5. Every run so far either gained a little
+early and lost it, or only lost: the per-step carry residual is not paying, the actor exploits the critic's errors.
+
+**Touch-up push transfer (sweep 3, 182 touched corners):** along the commanded push, the corner moved a median 0.12 /
+0.25 / 0.16 of it (press +2 / 0 / −2 mm); quartiles about −0.3 to +0.6; > 0.5 in 60, wrong way in 69. A single push is
+close to a coin flip, so sweep 4 (job 711724, n = 32, seeds 940000–31, video) repeats it: up to 3 and 5 rounds, each
+re-aimed at the corner's offset after the fold resettles. If rounds raise the pass rate, the RL target becomes the
+corrector: a policy choosing each push from the settled cloth.
+
+### Scripted video hunt (job 711718): first recorded fold at the bar
+
+Base latch + g-fold 1.2, one touch-up (press −2 mm, tolerance 8 mm), 500-step window, seeds 930000–63, top videos.
+**1/64 passed** [0.3, 8.3]: **seed 930005, 0.95 cm mean / 1.45 cm edge** (before its touch-up 1.03 / 1.69),
+`outputs/isaac/rl/hunt_base/demo_base/seed930005.mp4`. Endings: 57 settled, 6 truncated, 1 dragged. Near misses:
+930056 0.94 / 1.66 (from 2.03 / 2.61), 930043 1.29 / 2.05. **Seed 930019 passed before its touch-up (0.59 / 1.40) and
+the touch-up broke it (0.60 / 1.70)**: a corrector needs a "stop" choice (the state is fully observed: it can score
+the fold before it pushes). Scripted, not an RL policy.
+
+### Sweep 4: touch-up rounds (job 711724, n = 32 each, seeds 940000–31, videos)
+
+| rounds | mean before → after (paired) | edge | passed | endings |
+|---|---|---|---|---|
+| up to 3 (used 2.8) | 2.88 → **2.49** (−0.39, SE 0.17) | 6.43 → 6.03 | 0/32 | 20 settled, 9 truncated, 3 dragged |
+| up to 5 (used 4.5) | 3.08 → **2.66** (−0.42, SE 0.21) | 6.74 → 6.54 | 0/32 | 14 settled, 16 truncated, 2 dragged |
+
+Repeating the push lowers the mean ~0.4 cm (2 SE) but hardly the edge (the worst outline pair), and 0/64 pass. The
+passes so far (2/95 with one touch-up) are folds already close to the bar that one push tipped over, and one fold
+that passed before its push was broken by it. **p8** (RL residual on the carry + one touch-up): version 0 2.75 cm (best
+0.71), training slowly (episodes ~400 steps).
+
+**Next: an RL corrector.** Episodes start from settled scripted folds (snapshots after lay-down); the policy sees the
+settled cloth (pair offsets, corner gaps, the 19 outline spreads, the current mean and edge) and makes up to 3
+decisions, each a push per arm (direction, distance, press depth) or stop; reward = the change in the alignment score
+per decision plus a bonus for stopping on a passing fold. Closed loop, ~3 decisions per episode, each scored directly
+against the bar.
+
+### RL corrector c1 (job 711726, restarted as c2)
+
+Settled-fold libraries from the latch + g-fold 1.2 base (train 160 from seed 960000, eval 32 from 970000). Baselines
+on the 32 eval folds (3 decisions each):
+
+| policy | mean | edge | passed |
+|---|---|---|---|
+| no-op | 2.74 cm (sd 0.86, best 0.70) | 6.73 cm | 0/32 [0, 10.7] |
+| scripted push (onto the partner at −2 mm, stop within 8 mm or on a pass) | 2.56 cm (best 0.88) | 6.40 cm | 1/32 [0.6, 15.7] |
+
+c1's stop fired when its action exceeded 0, so the untrained policy's noise stopped about half its decisions (7–8 of
+8 training episodes ended early). c2 (job 711732) stops above 0.5, reuses c1's libraries, skips the baselines and
+saves its prior.
+
+### Overnight 2026-10-22: c2 and p8 so far
+
+- **c2 (RL corrector, job 711732):** eval on the 32 settled folds: version 0 (no-op) 2.75 cm, version 1 (424 decisions)
+  2.93, version 2 (833) 2.82; 0/32 passed each. One training batch had a passing fold (stochastic policy). ~400
+  decisions per hour; no gain over the scripted push (2.56, 1/32) yet.
+- **p8 (RL residual on the carry + one touch-up, job 711717):** 15 evaluations to 170k env steps: version 0 2.75 cm,
+  then 2.52–4.59 cm with no trend; best version 12 (136k steps) **2.52 cm** (best fold 1.06), 0/16 passed throughout;
+  truncations back (2–13/16 per evaluation) as the residual slows the carry and the touch-up adds steps.
+- The per-fold noise of the sim (0.5–1 cm in the mean between restores of one state) is as large as the effects
+  these learners chase; neither run shows learning above it.
+- **RL-policy video hunt (job 711740):** p8 best.pt (version 12) on 64 fresh seeds (980000–63) with videos. A pass
+  here is a fold made by an RL policy (residual on the carry) with the scripted touch-up.
+
+### First fold at the bar by an RL policy (job 711740, 2026-10-22)
+
+p8 best.pt (version 12, 136k env steps: the residual on the carry, place and hold of the latch + g-fold 1.2 base,
+with the scripted touch-up available) on 64 fresh seeds (980000–63), top videos.
+**1/64 passed** [0.3, 8.3]: **seed 980008, 0.43 cm mean / 1.13 cm edge**, settled at window step 178, bottom-half shift
+0.95 cm. Its touch-up round found both corners within 8 mm and **did not push**, so the fold is the policy's (final
+residuals left (1.9, 0.7, −1.8) cm, right (0.2, 1.0, 1.3) cm). Video: `outputs/isaac/rl/p8/demo/seed980008.mp4`.
+Other endings: 41 settled, 23 truncated (500-step window). Near misses: 980039 0.72 / 2.12, 980026 1.07 / 2.71.
+- This meets the bar (mean ≤ 1.0, edges ≤ 1.5) **for the half fold**, once in 64. The pass rate is not shown to be
+  above the scripted base's (1/64 in its hunt); GPU nondeterminism means the episode can't be replayed exactly.
+- The quarter fold (fold 2 on top of this) is not done.
+
+## Quarter fold, second fold (user, 2026-10-22: start it reusing the half-fold machinery; a small cloth-table friction change is allowed)
+
+- **Friction:** PhysX's particle cloth has one friction against every rigid body (table and jaws alike); there is no
+  table-only coefficient. Sweep 5 (job 711745, n = 32 paired, seeds 910000–31): particle friction 0.5 / 0.6 / 0.7 on
+  the latch + g-fold 1.2 base with one touch-up. Reported with its effect on the grasp.
+- **Fold 2 geometry (friction layout):** bases at (±0.22, −0.30), cloth centred, half sheet x ∈ [−0.15, 0.15],
+  y ∈ [−0.15, 0]. Fold 2 (west onto east) needs a 30 cm carry across; quarter_fold_env STAGES[1] has the arms cross
+  (right arm: the west stack to (+h, −h); left arm: the west crease end to (+h, 0), ~0.48 m from its base vs fold 1's
+  farthest ~0.46 m). Offline reach / clearance check (subagent) and a scripted quarter fold on Isaac
+  (`quarter_fold_run.py --profile friction --fold2 cross`, PLACE_SERVO + latch + g-fold 1.2, 8 seeds, videos, job
+  711746) running.
+
+**Fold-2 reach on the friction layout (offline, subagent, `scratchpad/fold2_reach.py`):** the friction profile's cloth
+is centred at (0, −0.135), so fold 1 reaches ~0.32 m at most. For fold 2 (5 mm IK tolerance, pinch weight 0.1 / 0.005):
+right arm + stack S reachable (both weights, 0.37 m); right arm one-armed from the west edge's middle M reachable at
+weight 0.1 only (pinch tilt ~38°); every move that needs the LEFT arm to place on the east side fails (45–525 mm),
+and the right arm can't reach the crease end C. The crossed STAGES[1] assignment also comes within ~1.2 mm arm-arm at
+the pinch. No two-armed fold 2 on this layout. The crossed Isaac run (711746) was cancelled; the one-arm fold 2
+(`--fold2 one_right`, job 711747, 8 seeds, videos) runs instead, and a layout search for a two-armed quarter-fold
+layout with the tilt unbounded (subagent) runs offline.
+
+**Two-armed quarter-fold layout search, tilt unbounded (offline, subagent; `outputs/isaac/layout_search_quarter_untilted.json`,
+script `scratchpad/quarter_layout_search.py` reusing `isaac/layout_search.py`):** bases on a 2.5 cm grid over the real
+table (table centred at world (0, 0), cloth at (0, −0.135)), yaw facing the cloth, 5 mm IK tolerance, ±1 cm jitter,
+arm-arm clearance ≥ 20 mm. Bases reaching each move (weight 0.1 / 0.005): A0 102 / 95, B0 99 / 92, S 37 / 32, C 107 / 87,
+M 75 / 60, so reach is not the limit once tilt isn't capped. **No layout passes all checks at either weight:**
+- every two-armed fold 2 (S + C, either assignment) brings the arms within 0.1–5 mm (both arms work the same short
+  edge at once);
+- the best one-armed fold 2 (M) layout, bases (−0.35, −0.065) and (0.225, −0.19) in the cloth frame: fold-1
+  clearance 30.8 mm, fold-2 8.4 mm (against the idle arm, which could park further away), pinch tilt ~30°, place
+  tilt ~36°, robust to the jitter.
+So the quarter fold here is a two-armed fold 1 and a one-armed fold 2, and the current friction layout already reaches
+the one-armed M with the right arm (reach check above). Isaac run of that (job 711747) pending.
+
+**Friction sweep 5 (partial, 24/32 per setting; job 711745), latch + g-fold 1.2 + one touch-up, paired against
+particle friction 0.5:** 0.6: mean 2.51 vs 2.56 (−0.05, SE 0.11), edge +0.90 (SE 0.53), bottom shift +0.24 (SE 0.28);
+0.7: mean 3.65 (+1.09, SE 0.32), edge +1.65, bottom shift +0.09. Raising the particle friction (the only cloth-friction
+coefficient PhysX PBD has: table, jaws and cloth-on-cloth alike) does not reduce the bottom layer's drag (the top layer
+also grips it harder) and 0.7 hurts. No passes in 72. The one-arm fold-2 run crashed on a runner bug (a one-arm stage
+has no left-arm phase), fixed; rerun job 711748.
+Layout search, final report: in the best one-armed layouts the fold-2 near miss (7.4–8.6 mm) is the idle arm's wrist
+against the mover's wrist, so the idle arm's parking pose sets it; orientation weight 0.1 is the robust one under the
+±1 cm jitter (0.005 fails B0 at the same bases). No new profile built: the friction layout already reaches the
+one-armed M with the right arm.
+Sweep 5 final (n = 32 each, paired against particle friction 0.5 at 2.57 cm / 4.73 cm edge / 2.58 cm bottom shift):
+0.6 mean −0.15 (SE 0.13), edge +0.72 (SE 0.48), bottom shift **+0.50** (SE 0.32); 0.7 mean +0.66 (SE 0.29), edge +1.06,
+bottom shift +0.18; 0/96 passed. Friction stays at 0.5.
+
+**One-arm fold 2 on Isaac (job 711748, `quarter_fold_run.py --profile friction --fold2 one_right`, PLACE_SERVO + latch +
+g-fold 1.2, 8 seeds, videos `outputs/isaac/quarter/friction_one_right/`):** fold 1 finished 7/8 (alignment after it
+2.6–5.4 cm mean); **fold 2 0/8**: the right arm gripped the west edge's middle in 4/8 and slipped every time before the
+place, missed it in 3/8; the edge ended 28–33 cm from its goal. Video: the arm lies at full stretch across the folded
+sheet and the ~38° tilted pinch drags the cloth instead of holding it. Next: an offline search of the cloth's start
+position (shifted toward the right arm) for a lower-tilt, closer fold 2 that keeps fold 1 reachable (subagent).
+
+**c2 final (job 711732, 8 h, 2565 decisions, 920 episodes):** eval on the 32 settled folds: version 0 (no-op) 2.75 cm,
+then 2.93, 2.82, 2.84, **2.78 with 1/32 passed** (version 4, best.pt), 2.65, 2.62, 2.66 (versions 5–7), edges 6.3–6.8 cm.
+The corrector ends about where the scripted push sits (2.56 cm, 1/32): it learned to roughly match it, not to beat it,
+within ~2.5k decisions and the sim's per-fold noise.
+
+**Cloth-start search for the one-arm fold 2 (offline, subagent, `scratchpad/grid_search.py`):** cloth centre over
+x ∈ [−0.06, 0.14], y ∈ [−0.20, −0.08] (273 positions), fold 1 (A0, B0) + the right arm's M, weight 0.1 / 0.005. Only 10
+positions keep all three moves within 5 mm (weight 0.1), all within 2 cm of today's (0, −0.135); the best, (+0.01,
+−0.13), lowers M's pinch tilt 37.7° → 33.5°; none is robust to ±1 cm jitter; M is unreachable at weight 0.005 everywhere.
+The start position can't fix fold 2 (fold 1's reach pins it). Next: a drag of the half sheet between the folds (both
+arms pull the short edges' middles), which doesn't constrain fold 1 (offline check, subagent).
+
+**Drag between the folds (offline, subagent, `scratchpad/drag_search.py`, 195 drags):** both arms pulling the short
+edges' middles by (dx, dy), then the right arm's one-armed fold 2. 108/195 feasible. Best: **(0.12, 0.04) m**: drag IK
+error < 0.01 mm, arms ≥ 177 mm apart during the drag, fold-2 pinch tilt **~0°** (vs 40° without a drag), place tilt 16°,
+grasp 0.29 m / place 0.15 m from the right base, robust to ±1 cm (0.01 mm worst). Lead check: post-drag west middle at
+(−0.03, −0.17) is 0.28 m from the right base, the east target (0.27, −0.17) 0.14 m. Caveat: the parked left arm sits
+where fold 2 grasps, so it goes home first. Built: `isaac/quarter_batch.py` (fold 1 → flat two-arm drag → left arm
+home → one-arm fold 2; quarter-fold alignment; videos). First run: job 711753, 8 seeds.
+
+**Quarter fold with the drag, first run (job 711753, `isaac/quarter_batch.py`, 8 seeds, videos `outputs/isaac/quarter/drag1/`):**
+- Fold 1 settled 8/8, alignment 1.4–4.5 cm mean.
+- Drag: the west middle moved +5 to +17 cm in x (target +12), the east middle −0.4 to +12 (often 4–6): the sheet
+  partly bunched instead of sliding whole; fold 1's alignment after the drag 2.5–6.6 cm.
+- Fold 2 (right arm, the west edge's middle, cloth_2 under cloth_8): **dropped in the carry 5/8**, timed out 3/8; the west
+  middle ended on the east one in 2 (seeds 1 and 5: offsets (−2.4, −3.4) and (+0.5, +2.4) cm; quarter-fold alignment
+  6.3 / 4.8 cm mean, edge 11.2 / 9.6 cm); 0/8 passed.
+- Video (seed 0): the pinch from above takes the two free layers of the open short edge unevenly; one slips and the
+  held point's mean jumps (`dropped`). Next candidates: grasp fold 2 at the crease end (cloth_5, the layers joined),
+  and/or make the drag pull through both corners of each short edge so the sheet slides whole.
+**Correction (video, seeds 1 and 5 of drag1):** the two "closest" quarter folds were not folds. After the drag the
+left arm went straight to its home pose (joints 0: the arm reaches out across the table) with the cloth still on its
+fingers and carried the sheet off; the right arm then reached for it. Their 4.8 / 6.3 cm scores are of a crumpled,
+carried sheet. **No quarter fold has worked yet.** Fixes in `quarter_batch.py`: the drag's release slides the open
+jaws out 2 cm before lifting (`BACKOFF`), the parked arm rises 12 cm before going home, and each episode logs whether
+the drag let go (edge heights, distance to the site) and where the sheet is after parking. Reruns: jobs 711761
+(fold 2 at the crease end) / 711762 (at the edge's middle), seeds 100–107, videos.
+
+**Fold-2 grasp A/B with the fixed drag release and parking (jobs 711761 crease end / 711762 edge middle, seeds 100–107,
+videos `outputs/isaac/quarter/drag_crease/`, `drag_mid/`):**
+
+| | fold 1 settled | drag moved the sheet ~as planned | sheet carried off while parking | fold 2 dropped | fold 2 landed (no drop) | quarter-fold alignment of those |
+|---|---|---|---|---|---|---|
+| crease end (cloth_5 → cloth_115) | 8/8 | 6/8 | 1/8 | 5/8 | 2/8: offsets (8.1, −1.2), (1.4, 3.7) cm | 9.4 / 8.6 cm mean (edge 12.2 / 15.8) |
+| edge middle (cloth_2+8 → 112+118) | 8/8 | 3/8 | 2/8 | 6/8 | 0/8 | — |
+
+- **No quarter fold has worked.** The edge-middle run's two lowest scores (4.5 / 6.1 cm) are again the sheet carried off on
+  the parked arm (centre at (−0.21, 0.08), 30 cm up), not folds.
+- Fold 2 with one arm from one point drops the half sheet in the carry 5–6/8 at either grasp; when it doesn't, the edge's
+  other end trails and the fold lands 8–9 cm out. The drag release still fails ~1–2/8 (cloth on the fingers).
+
+## Re-evaluation (2026-10-22): independent audit and corrections
+
+See `docs/reviews/2026-10-22-quarter-fold-reevaluation.md`. Corrections to entries above (lead-verified re-runs):
+- **Two-armed fold 2:** the "no collision-free layout" conclusion is refuted; the search counted the arms' simultaneous
+  approach from home. Best C/S layout (crease-end arm at cloth-local (0.025, 0.21), stack arm at (0.225, −0.215)):
+  0.8 mm only in the lockstep home→above approach; fold paths vs the other arm parked 33.6 / 67.9 mm, vs home 95 / 170 mm.
+- **One-arm fold 2 (job 711748):** confounded by the idle left arm left ~6 cm from the grasp point and pushed by the
+  right gripper; nothing was lifted (stack rise ≤ 2 cm); the 38° explanation is unproven.
+- **`dropped` in quarter_batch** counts one-layer holds and missed grasps, not only slips.
+- **The RL-policy half-fold pass (980008)** is a real fold but not evidence of an RL gain: p8 hunt mean 2.65 cm (1/64,
+  23 truncated) vs the base hunt 2.62 cm (1/64, 6 truncated).
+- **Sweep 4 (touch-up rounds)**, settled episodes only: 3 rounds −0.20 cm (SE 0.19), 5 rounds −0.79 (SE 0.20) on 14/32
+  settled, not −0.39 / −0.42 over all endings.
+- **Scores have had no validity gate** (on the table, released, still); a hanging cloth scores 0.0 cm.
+- **Roy's environment** has no Isaac quarter fold (teleop rig for the LeHome shirt; his quarter task is our MuJoCo weld env).
+- **Fold-1 bound on the quarter bar** (688 stored settled half folds): fold 1 alone allows 1.0/1.5: 0.4%, 1.5/2.5: 3.5%,
+  2.0/3.0: 6.8%, 2.0/4.0: 12.2%, 2.5/5.0: 25.4%.
+
+### Validity gate (revised plan step 1, 2026-10-22)
+
+`precision_env.gate`: every grid vertex within 5 cm of the table top and on the table, both jaws open (> 0.5 rad) and
+both gripper sites ≥ 3 cm from the cloth, the cloth moving < 1 mm in the last step. Now in every final record (window
+env, corrector, quarter_batch), `passed_valid` = passed and gated and completed; summaries report gated counts and
+means over settled gated episodes; in RL an ungated ending scores −FAIL. Height threshold calibrated on the stored folds
+(`isaac/rescore_gate.py`, final grids only, so height and on-table checks): settled half folds peak at a median 2.2–2.8 cm
+with a tail to ~5 cm (ridges, bunching); carried-off sheets sat ~30 cm up; at 3 cm the gate rejected 25–44% of real
+folds and the 980008 pass (a 3.1 cm ridge at (7, 10)), so it is 5 cm.
+Static re-score at 5 cm: the three half-fold passes (910009, 930005, 980008) stay valid; the carried-off quarter-fold
+"near misses" are rejected (drag1 4.79 / 6.30, drag_crease 5.71, drag_mid 4.54 / 6.12 / 13.11 cm); 9/32 of sweep 2's
+latch + g-fold 1.2 folds peak 5–10 cm (a corner left up, as in the brainstorm's 7/16), now invalid.
+
+### Two-arm quarter layout `quarter2` (revised plan step 3, 2026-10-22, offline kinematics only)
+
+Layout search (sonnet subagent, scratchpad `layout2/04_deep_v2.py`; lead re-read `deep_report_v2.json`). Bases in
+cloth-local coordinates: left arm (−0.10, 0.235), north of the cloth; right arm (0.25, −0.14), south-east; both facing
+the cloth centre, home `QUARTER_HOME`. Fold 1: left grasps A0, right grasps B0. Fold 2: left grasps the crease end C,
+right grasps the corner stack S. No sim run yet; these are IK and clearance numbers.
+
+| move | pinch error | place error | pinch tilt | place tilt | arm-to-arm clearance |
+|---|---|---|---|---|---|
+| fold 1, left A0 | 0.0 mm | 0.0 mm | 39.0° (jitter max 50.1°) | 36.4° | 154 mm in the fold, 69 mm sequenced approach |
+| fold 1, right B0 | 0.0 mm | 0.0 mm | 0° | 0° | (same) |
+| fold 2, left C | 0.0 mm | 2.9 mm | 0° | 10.6° | 38.7 mm in the fold (jitter 30.2), 59 mm sequenced approach |
+| fold 2, right S | 0.0 mm | 0.0 mm | 34.5° (jitter 39.2°) | 41.1° | (same) |
+
+- A lockstep approach from home to above the fold-2 grasps brings the arms within 0.3 mm, hence the sequenced approach
+  (left first, the right arm holds until the left reaches `descend`).
+- All-zero home puts the two grippers 0.1 mm apart on this layout; `QUARTER_HOME` keeps them 321 mm apart.
+- S sits at 0.396 m from the right base, near the reach limit. The pinch tilts on A0 and S (35-50°) are inside the
+  range where Roy's slide grasp held (30-46°) but beyond the 16.5° our pinch was validated at: the open question for
+  the first run.

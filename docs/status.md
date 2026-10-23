@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-08 · **Branch:** `feature/isaac-imitation` · **Phase:** F4 finals done (BC only); F4 ☐ until DAgger
+**Updated:** 2026-10-22 · **Branch:** `feature/quarter-fold-rl` · **Phase:** Q (revised plan, signed off 2026-10-22: gates done; adhesion and no-drag checks queued; two-arm fold 2 on `quarter2` queued)
 
 One-screen answer to "where are we". Update at the end of **every work pass** (see
 `CLAUDE.md`), and add a line to the pass log at the bottom. Full plan in
@@ -40,6 +40,61 @@ I0.1 ✅: main is merged into `feature/imitation`, and MuJoCo is unchanged (expe
 rows identical to M1.5). Phase I work continues on `feature/isaac-imitation`.
 
 ## Next action
+
+**2026-10-20, closed-loop residual RL (plan [superpowers/plans/2026-10-20-closed-loop-rl.md](superpowers/plans/2026-10-20-closed-loop-rl.md), signed off):**
+half fold on the GPU `friction` profile, DR off, gripper only (no weld: user).
+- **R0 done:** closed-loop base (`PLACE_SERVO=1`, `isaac/place_servo.py`) aligns 3.61 cm mean (open loop 6.10), 0/20
+  at the bar, and drags the bottom layer 7-12 cm. The A/B (higher release, capped live goal, full arc) was worse
+  (6.21 cm, same drift): base kept as R0's.
+- **R1 done:** restore works; the GPU sim is not deterministic (0.1-1.8 cm between two restores of one snapshot), so
+  evaluation is statistical. 22 env steps/s at B = 8. A corner leaving the jaws no longer ends a window episode.
+- **R2:** version 0 (the base through the window env) 3.09 cm on the 16 eval snapshots (R0 3.61): parity close.
+- **R4:** p4's version 1 (10k steps) beats the base on 16 fresh seeds: 2.84 vs 3.36 cm (paired −0.52, SE 0.23),
+  best episode 1.17 / 2.13 cm; then its critic diverged. The base's error is a fold line forming ~1.4 cm short (the
+  carry drags the bottom half 2.6 cm), spread over the whole cloth, not the corners (results.md).
+- **R4:** best policy so far p6 version 3 (2.77 cm eval; later versions no better over 234k steps). Base sweeps:
+  best clean base = latched goal + g-fold slope 1.2 (2.69 cm vs 3.29, n = 32 paired); release fix dropped.
+- **Re-evaluation 2026-10-22** (`reviews/2026-10-22-quarter-fold-reevaluation.md`, independent audit): the half-fold passes
+  are real but RL shows no gain over the base; two-arm fold 2 is NOT ruled out (the search's collision was the approach);
+  scores need validity gates; the strict quarter bar needs fold 1 at the half bar (0.4% of folds). **User signed off:
+  quarter bar mean ≤ 2.0 / edge ≤ 3.0 cm on gated settled episodes; an arm may sit on the far side.** Step 1 (gates,
+  stored-data re-score) done. Step 2 queued (WATcloud down): adhesion 0 vs 0.1 half-fold sweep (sweep6); one-arm
+  fold 2 with no drag and the idle arm parked. Step 3 built: profile `quarter2` (left arm north of the cloth) and
+  `quarter_batch.py --fold2 two` (sequenced two-arm fold 2, gated, relaxed bar); first run queued: 8 seeds with video.
+  Watch whether the pinch holds at the 35-50° tilts on A0 and S; fallback is Roy's slide grasp for those two.
+  The q2_two job (711776) was cancelled by the user before it ran. **Gentle release (user: the release distorted the
+  cloth) is now the place-servo default:** the jaw opens 0.02 rad per step to 0.3 rad with the arm still, the arm lifts
+  straight up 2 mm per step, and the jaw opens fully 5 cm up (`RELEASE_JAW=null` restores the old release). It adds
+  ~30 steps per release, so window runs need `WORLDFOLD_WINDOW_STEPS=400` (the 200 default would truncate). Untested
+  in Isaac; the next runs (and the queued 711774 / 711775, which use the old release) are the A/B.
+- **First half fold at the bar by an RL policy:** p8 version 12, seed 980008, **0.43 / 1.13 cm**, no touch-up used,
+  video `outputs/isaac/rl/p8/demo/seed980008.mp4` (1/64 in its hunt). Quarter fold still to do.
+- **First folds at the bar (scripted base + one touch-up):** seed 910009 0.85 / 1.17 cm (no video) and seed 930005
+  0.95 / 1.45 cm with video (`outputs/isaac/rl/hunt_base/demo_base/seed930005.mp4`): 2/95 folds. Not an RL policy.
+- **RL residual on the carry (p4-p8):** never beat its base (p7 degraded 2.68 -> 4.03 cm). p8 (711717, + one
+  touch-up) still running.
+- **RL corrector (new, `isaac/corrector_env.py`, `isaac/corrector_rl.py`):** episodes from settled folds, up to 3
+  push-or-stop decisions scored against the bar. c1 (WATcloud 711726, 8 h) running; baselines (no-op, scripted push)
+  on 32 eval folds come first. Next: `corrector_rl.py demo --video` on the best version for an RL-made pass.
+- **Roy port, parked:** its release fails (the cloth stays on the open fingers; s3e), which was also the "7 cm miss".
+
+**2026-10-14/15, Phase Q (user: RL quarter fold on Isaac, one clean demo, edges and body lined up):** plan
+[superpowers/plans/2026-10-14-quarter-fold-rl.md](superpowers/plans/2026-10-14-quarter-fold-rl.md), signed off.
+Decisions: bar mean ≤ 1.0 cm / edges ≤ 1.5 cm (`cloth_fold_rl/fold_alignment.py`); RL over fold moves
+(`isaac/fold_rl.py`); long jobs on WATcloud.
+
+- **Square fold dropped (user, 2026-10-15):** no collision-free two-arm layout (results.md). Now the **strip fold**
+  on the proven friction layout (profile `strip`).
+- **Scripted strip fold:** completes (3 of 5 episodes), but layers end ~7 cm apart: the bottom layer slides 6-14 cm
+  during each carry. Goal-following placement was tried and dropped (unstable).
+- **RL running:** WATcloud job 707504 (started 2026-10-15 23:30 UTC, trpro-slurm1; 707334 died building the image: 80 GB tmpdisk ran out), `isaac/fold_rl.py launch --run outputs/isaac/rl/strip_r2 --workers 4 --gpus 1
+  --hours 10` (1x 3090; the 2-GPU request sat pending). Version 0 = the scripted fold; placement offsets ±8 cm. Watch
+  `outputs/isaac/rl/strip_r2/learner.jsonl` on WATcloud. Next: eval the best version with video
+  (`fold_rl.py eval --video`).
+- **Compute:** Modal unusable for Isaac (all A10G starts on driver 610). WATcloud works after three container fixes
+  (`--gpus device=$CUDA_VISIBLE_DEVICES`, `NVIDIA_DRIVER_CAPABILITIES=all`, Kit hang detector off).
+
+The F4 DAgger item below is parked behind Phase Q.
 
 **2026-10-08, F4 finals (BC only, 3.5 h plan):** privileged diffusion BC on `isaac_v1_friction` scored id_easy
 81 / id_hard 71 / knock_arm 35 (n = 100), joint_noise 26 and overshoot 4 (n = 50). The expert scored 92 / 94 / 75 on the same sets. Stalls (S1) dominate the
@@ -156,7 +211,7 @@ Everything above Phase 6 must be ✅ or ❌-closed-with-evidence before the VLA 
 | pins | `imitation/requirements.txt` — mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0 |
 | torch | 2.13.0+cu130, **CUDA available** |
 | Isaac venv | `.venv-isaac` (gitignored): py3.11.9, Isaac Sim 5.1.0, torch 2.7.0+cu128, LeHome a805ad2 + IsaacLab fork 69f6fa5. Hashed locks are in `isaac/requirements-*-windows.lock`; Kit uses D3D12 (Vulkan crashes on driver 616.56); `N_ISAAC = 2` |
-| tests | 187 fast (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
+| tests | 273 fast on macOS 2026-10-22, 1 failing there (#15) (+ Isaac-only weld / profile / chain tests in .venv-isaac) + 12 slow, all passing (`pytest -m "not slow"` / `-m slow`); testpaths now include `isaac/tests`, `cloth_fold_rl/tests` |
 
 ⚠️ `cloth_fold_rl/requirements.txt` pins mujoco 3.11.0 / so101-nexus 0.5.1 for its own
 committed checkpoint. Do not "unify" these without re-running the expert benchmark — cloth
@@ -197,6 +252,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
+| 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
+| 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujuco/` first on `sys.path`; `mujuco/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
 | 12 | `imitation.cpu_slot` isn't fair: a lane that releases and re-takes it between eval sets starves a lane polling every 2 s (lane A waited 37 min) | parallel queues | — |
 | 11 | `v1_dagger_v1_r1`/`_r2` frozen with bad teacher labels — never train on them | DAgger | — |
@@ -215,6 +272,46 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit.
+
+- 2026-10-22 · **Gentle release:** jaw opens slowly part way, slow straight lift, full open above (env `jaw_open` cap for the binary gripper); isaac tests 72, fast suite 273 passed + #15 · (this commit)
+- 2026-10-22 · **Revised plan, steps 1-3 started:** gates + re-score (fa4c1ce); `quarter2` layout + two-arm fold 2 (28752bb); WATcloud jobs queued; fast suite 268 passed + #15 · (this commit)
+- 2026-10-22 · **Re-evaluation:** independent audit + Roy + research; corrections in results.md; revised plan in reviews/ · (this commit)
+
+- 2026-10-22 · **RL half fold at the bar:** p8 v12 hunt 1/64, seed 980008 0.43/1.13 cm with video, no touch-up · (this commit)
+
+- 2026-10-22 · **Recorded pass + RL corrector:** scripted hunt 1/64 at the bar with video (930005); rounds don't help the edge; p7 cancelled (degraded); corrector built (62 isaac tests), c1 launched · b663cf2
+
+- 2026-10-22 · **Touch-up + first pass:** sweep 3 (touch-up, 1/31 at the bar: 0.85/1.17 cm), p8 and video hunt launched · (this commit)
+
+- 2026-10-22 · **Sweeps 1-2, p6 done:** best base latch + g-fold 1.2 (2.69 cm); p6 plateaued at 2.77; p7 + demo hunt launched · (this commit)
+
+- 2026-10-21 · **Brainstorm + base fixes:** rigid top-layer shift (3.36 → 1.66 cm when removed), lifted corners, 3 base knobs, sweep command; p6, A/Bs and sweep 1 running · 22e82ae
+
+- 2026-10-21 · **Error structure + p5:** base vs v1 demos (v1 −0.52 cm paired), error = fold line forming short, p5 launched from v1 · 050b9f1
+
+- 2026-10-21 · **p4 learning:** 2.81 vs 3.22 cm at 10k steps; cold-scene restore found (warm-up added); demo command · 3959c8e
+
+- 2026-10-21 · **p3 read, p4 launched:** bounded residual, scored step cap, bottom-shift charge, critic warm-up · (this commit)
+
+- 2026-10-21 · **Snapshot frame bug:** p2's corruption detail (all particles 2.5 m off) pinned p1/p2 on cross-copy restores of world-frame snapshots; fixed, p3 launched (711562) · (this commit)
+
+- 2026-10-20 · **p1 blow-up handled:** table floor, check-recover (not reproduced), park + corrupt-scene restart; p2 launched (711487) · (this commit)
+
+- 2026-10-20 · **R1 + launch:** restore verified (sim nondeterministic), throughput 22 steps/s, drop no longer a failure, base A/B rejected, training run p1 launched (711482) · 1483199
+
+- 2026-10-20 · **Closed-loop RL R0-R3:** R0 baselines (closed loop 3.61 cm vs open 6.10), s3e release failure found, snapshot/restore, window env, RLPD learner (subagent), driver; isaac/tests 52 passed, fast suite 253 passed + #15 · 99da9a4
+
+- 2026-10-20 · **RL redesign + stack test:** plan `superpowers/plans/2026-10-20-closed-loop-rl.md` (3 research agents); `make_quarter_fold_env(fold2="stack")`, `quarter_fold_run.py --fold2/--overshoot` + per-arm stack score, `WORLDFOLD_EXPERT_PARAMS` bare words and passed into the container. Fast suite 233 passed, 1 failing (#15) · (this commit)
+
+- 2026-10-19/20 · **Roy grasp port, steps 1–3 (paused by the user):** box pads, roy profile (on lehome), soft pinch IK, slide grasp, side camera + bench video, WATcloud GPU-by-UUID. Benches: pads + our pinch lift but don't hold (0/20); roy pinch 0/40; slide 1/40, 0/40, 0/20 — jaw faced half a turn round (IK blind to antiparallel axes), fixed with `jaw_weight`, re-run pending WATcloud. 30 isaac tests pass · (this commit)
+
+- 2026-10-19 · **Plan:** port Roy's grasp into our env instead of merging his branch (user): `superpowers/plans/2026-10-19-roy-grasp-port.md`, 5 steps with tests and pass bars. No code · (this commit)
+
+- 2026-10-18 · **Diagnosis, no code:** the square quarter fold looked infeasible because layout_search capped pinch tilt at 16.5° (our corner pinch); Roy's LeHome layout needs 30–46° and works with his slide-and-press grasp, plus a drag between steps. Grasp/env differences vs Roy inventoried. Tests not run (no code change) · (this commit)
+
+- 2026-10-14/15 · **Phase Q overnight:** layout search (reach, tilt, collision meshes), quarter profiles, position gripper, alignment score, fold-move PPO (untested on Isaac), WATcloud container fixes; 20 Isaac episodes on new layouts, 0 quarter folds; no collision-free two-arm layout at 24 cm. Fast tests: 221 passed, 1 failed (#15) · (this commit)
+
+- 2026-10-14 · **Quarter fold RL: survey and plan, no code.** Plan `superpowers/plans/2026-10-14-quarter-fold-rl.md`. Found: stage 1 out of reach on the Isaac layout (37 / 40.5 cm vs 32 cm), gripper binary only, no whole-cloth alignment number for the friction expert, WATcloud unreachable (#16), Modal CLI works. Fast tests on macOS: 205 passed, 1 failed (#15, 1-ulp platform diff), 6 skipped · (this commit)
 
 - 2026-10-08 · **Phase F report:** `docs/reports/2026-10-08-physical-grasp.md` (+ HTML, shareable https://claude.ai/artifact/Jj6aJ5aTKBNQEFzLkU9uuF), 4 videos (student clean 2/3, shifted 2/3, arm bump 1/3; expert arm bump 3/3) · tests unchanged (207 fast) · 43a4d8b
 - 2026-10-08 · **F4 finals, BC only:** id_easy 81, id_hard 71, knock_arm 35 (n = 100), joint_noise 26, overshoot 4 (n = 50). Docs. Tests: 207 passed, 5 skipped (not slow) · 5f7e931

@@ -81,3 +81,13 @@ def test_summary_and_bar():
     assert meets_ig2(s) and not meets_ig2(summarize([good] * 10 + [bad]))
     lo, hi = wilson(49, 50)
     assert 88 < lo < 90 and hi > 99
+
+
+def test_corner_that_rises_only_in_the_carry_is_acquired():
+    """A slide grasp's arc starts from its pressed height: the corner is still on the table when the carry starts."""
+    tr = _trace(lift=0.05)
+    t_carry = tr["phase"].index("carry")
+    tr["corner"][t_carry, 2] = REST                       # not up yet at the carry's first step
+    tr["site"][t_carry, 2] = REST + 0.01
+    m = arm_metrics(tr, GOAL, REST)
+    assert m["acquired"] and m["held"] and m["t_acquired"] > t_carry
