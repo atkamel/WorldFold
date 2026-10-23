@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Builds the Linux Isaac Sim stack WorldFold runs on: LeHome's locked lehome-challenge env (Isaac Sim 5.1.0,
 # Python 3.11, torch 2.7.0), LeHome's IsaacLab fork, the garment assets and the imitation pipeline's extra packages.
-# One script for both images, so they cannot drift: the Modal image (isaac/modal_isaac.py) and the WATcloud Docker
-# image (isaac/Dockerfile). Runs as root on Debian bookworm with Python 3.11; installs into $CH.
+# The WATcloud Docker image (isaac/Dockerfile) runs it. Runs as root on Debian bookworm with Python 3.11; installs into $CH.
 set -euo pipefail
 
 CH=${CH:-/opt/lehome-challenge}

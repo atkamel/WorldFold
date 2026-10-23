@@ -9,6 +9,10 @@ dataset version and n that produced it. Rates carry Wilson 95% intervals — see
 Audit trail for any row: `run.json` (git commit, dataset hash, config, checkpoint hash) in
 the run directory, plus the dataset `manifest.json`.
 
+Paths below are as they were when each entry was written. The October 2026 cleanup moved the Isaac code into
+`isaac/sim`, `isaac/experts`, `isaac/rl` and `isaac/tools`, renamed `mujuco/` to `mujoco_sim/`, deleted retired code
+and untracked run outputs and videos; tag `pre-cleanup-2026-10-22` has everything as it was.
+
 ---
 
 ## Expert benchmark

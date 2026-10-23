@@ -55,7 +55,7 @@ dependencies.
 - The lock's torch is the PyPI wheel, which is CPU-only on Windows. It gets replaced by the
   hash-pinned cu128 build. `uv sync` is never re-run afterwards, because it would restore
   the CPU wheel.
-- The lock's `pinocchio` 0.4.3 is an unrelated pure-Python PyPI package. Our `isaac/pinch.py`
+- The lock's `pinocchio` 0.4.3 is an unrelated pure-Python PyPI package. Our `isaac/sim/pinch.py`
   doesn't use it.
 
 **Assets:** the whole HF dataset has only USD/USDZ/GLB, JPG/PNG, JSON, TXT and the URDF. It

@@ -13,7 +13,7 @@ each segment's last pose gets POSE_SETTLE_STEPS more than its largest joint move
 The result is scored on the whole cloth (fold_error): an ideal half fold puts each far-half grid vertex on the start
 of its mirror image across the middle row and leaves the near half where it started.
 
-    modal run isaac/modal_isaac.py::half_fold --episodes 3      # on Modal, with videos
+    python isaac/experts/half_fold_demo.py --episodes 3 --video-dir outputs/isaac/half_fold   # in the Isaac container
 """
 
 import argparse

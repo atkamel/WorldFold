@@ -332,10 +332,9 @@ sets the caches, the EULA, telemetry off, D3D12 and offline mode.
 ```
 
 What to know:
-- `scripts/isaac_pilot.ps1` runs the whole chain resumably. The background-task limit stops long
-  runs every 2 h; relaunching skips finished stages.
 - `tests/imitation/test_isaac_chain.py` (`-m "isaac and slow"`, about 30 min) is the end-to-end
   regression guard.
-- `python -m imitation.verify --all` checks every Phase I milestone from its committed artifacts.
+- The Phase I driver scripts and milestone verifier were removed in the October 2026 cleanup
+  (tag `pre-cleanup-2026-10-22`).
 - Throughput is about 5 steps/s per worker pair. Most of that time goes to 400-step truncations
   while the expert's grasp is weak.

@@ -48,4 +48,5 @@ itself and never accepts a subagent's "it passes" on trust.
 - The dataset store is write-once. Anything touching the observation or episode schema
   lands before a version is frozen.
 - Observation/action sizes live in `imitation/spec.py`; never hard-code them.
-- Don't merge `cloth_fold_rl/requirements.txt` pins with `imitation/requirements.txt`.
+- Run outputs (logs, episode records, checkpoints, videos) stay out of git. Only a few showcase videos go in
+  `docs/reports/media/`. Delete superseded code in the pass that replaces it.

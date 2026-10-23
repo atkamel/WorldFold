@@ -1,63 +1,60 @@
 # WorldFold
 
-Dual-arm cloth manipulation in MuJoCo. Two SO101 arms and a simulated cloth, wrapped as a Gymnasium environment, plus a world model trained on the cloth's surface-angle field
+Two SO-101 arms folding a cloth in simulation. The active work trains a closed-loop RL policy in Isaac Sim (LeHome's
+stack, PhysX particle cloth, a friction gripper with no weld) to do a quarter fold whose edges and body line up.
+Earlier phases built the half fold in MuJoCo with an imitation pipeline (BC, DAgger, diffusion, a vision student) and
+a world model over the cloth's surface-angle field.
 
-WatAI, Spring/Fall 2026
+WatAI, 2026
 
-## Setup
+## Where things stand
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r cloth_fold_rl/requirements.txt
-```
-
-Windows: see [mujuco/other/setup.md](mujuco/other/setup.md).
-
-## Usage
-
-```bash
-# watch the trained fold policy (100% success), viewer at http://localhost:8080
-python -m cloth_fold_rl.run_trained --checkpoint outputs/cloth_fold_rl/run2/best.zip
-python -m cloth_fold_rl.run_trained --policy expert          # scripted expert instead
-
-# retrain from scratch: expert demos -> behavior cloning -> PPO fine-tune
-python -m cloth_fold_rl.prove_feasible --episodes 3
-python -m cloth_fold_rl.collect_demos --episodes 200 --workers 8
-python -m cloth_fold_rl.bc --epochs 30
-python -m cloth_fold_rl.train --init-from outputs/cloth_fold_rl/bc.zip --rounds 8
-python -m cloth_fold_rl.record_video --checkpoint outputs/cloth_fold_rl/run2/best.zip
-
-# world model
-python -m cloth_angles.collect_episodes --config cloth_angles/config.yaml
-python -m cloth_angles.train --config cloth_angles/config.yaml
-```
+[docs/status.md](docs/status.md) says where the project is and what comes next. The plan is in
+[docs/roadmap.md](docs/roadmap.md) and every measured number is in [docs/results.md](docs/results.md).
 
 ## Layout
 
 ```
-mujuco/sim_main.py   ClothFoldEnv: tasks fold/drop/push/drag, state/pixels/hybrid obs, 14-dim action
-cloth_fold_rl/       single-corner fold task: env wrapper, scripted expert, BC, PPO, committed checkpoints
-imitation/           half-fold imitation + DAgger: teachers, episode store, chunk/diffusion policies
-mujuco/simulations/  earlier prototypes and smoke test
-cloth_angles/        RSSM world model over cloth angle fields: collect, train, evaluate
-policy_runner/       policy interface and registry (random, ppo)
-scripts/             train, evaluate, record videos
-docs/                experiment notes
-outputs/videos/      recorded rollouts
+isaac/                 Isaac Sim env and the active work
+  sim/                 the env, its profiles (lehome, friction, quarter2), the IsaacLab scene, IK
+  experts/             scripted pinch expert and the closed-loop servo experts
+  rl/                  residual-RL window env, push corrector, RLPD learner and their CLIs
+  tools/               quarter-fold batch runner, grasp bench, gate re-score, install smoke test
+  tests/               sim-free tests
+  watcloud.sbatch      WATcloud job wrapper (Isaac Sim in Docker)
+mujoco_sim/            MuJoCo ClothFoldEnv and the shared cloth, arm and camera constants (cloth_params.py)
+cloth_fold_rl/         fold-task wrappers, scripted experts and the fold alignment score (both simulators)
+imitation/             imitation pipeline on MuJoCo and Isaac (spec in docs/imitation.md)
+cloth_angles/          RSSM world model over cloth angle fields (parked)
+docs/                  status, roadmap, results, design docs, dated reports
+docs/reports/media/    showcase videos
 ```
 
-## Docs
+## Setup
 
-**Imitation pipeline (active work):**
+MuJoCo, the imitation pipeline and every sim-free test run in a local venv on the pinned versions.
 
-- [Status — where we are right now](docs/status.md)
-- [Roadmap — what we are building, in order](docs/roadmap.md)
-- [Design doc — task, obs/action spec, metrics, budget](docs/imitation.md)
-- [Results — every measured number](docs/results.md)
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r imitation/requirements.txt
+pytest -m "not slow"        # fast suite; -m slow adds the MuJoCo runs
+```
 
-**Reference:**
+Isaac Sim runs in Docker on WATcloud through `isaac/watcloud.sbatch`, or natively on Windows (see
+[isaac/README.md](isaac/README.md)).
 
-- [Fold task: why the wrapper, results, physical grasp](cloth_fold_rl/README.md)
-- [World model: benchmarks, analytic reward, imagination](docs/world_model.md)
-- [Adding a policy](policy_runner/NOTES.md)
+## Running the Isaac work
+
+```bash
+# scripted two-arm quarter fold, 8 copies in one scene, top-view video per seed
+sbatch --gres=gpu:rtx_3090:1,tmpdisk:200000 isaac/watcloud.sbatch isaac/tools/quarter_batch.py \
+    --copies 8 --seeds 0:8 --profile quarter2 --fold2 two --drag none --video --out outputs/isaac/quarter/q2
+
+# residual RL on the half fold, then a demo hunt with video
+python isaac/rl/precision_rl.py train --run outputs/isaac/rl/p9 --copies 8 --hours 8
+python isaac/rl/precision_rl.py demo --run outputs/isaac/rl/p9 --ckpt best.pt --seeds 990000:990064 --video
+```
+
+Run outputs (logs, episode records, videos) stay on WATcloud or the local disk and are gitignored. Code and outputs
+removed in the October 2026 cleanup are at tag `pre-cleanup-2026-10-22`.

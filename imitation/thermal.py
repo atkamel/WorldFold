@@ -1,6 +1,6 @@
 """Cooperative thermal pause (2026-10-06): keep the laptop under 94 °C during long runs.
 
-`scripts/thermal_guard.py` watches the GPU temperature and holds a flag file while it is too hot. Rollouts and
+`imitation/thermal_guard.py` watches the GPU temperature and holds a flag file while it is too hot. Rollouts and
 training call `wait_while_hot()` at points where pausing is safe: nothing is suspended, the parent just stops
 sending work, and idle Isaac workers keep ticking Kit (its hang detector aborts after 120 s without a tick).
 """
