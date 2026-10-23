@@ -164,7 +164,7 @@ Added 2026-10-02.
 |---|---|---|---|
 | I0.1 | Pull: merge `origin/main` into `feature/imitation`; fix the merge silent-breakers (`stages` shadowing, hard-coded one-hot offset, isaac test stub) | fast + slow tests green; MuJoCo expert benchmark 48/50 with rows identical to M1.5 | ✅ 2026-10-02: 116 fast + 12 slow; rows identical |
 | I0.2 | Install review: pinned sources, hashed lock, source review of the LeHome repos, asset audit | `isaac/INSTALL_REVIEW.md`; user OK on artifact list + EULA | ✅ 2026-10-02: SAFE; user OK + EULA |
-| I0.3 | **Gate:** scoped install in `.venv-isaac` + `isaac/smoke_test.py` state and hybrid on Windows | `SMOKE OK` ×2, CUDA torch, nothing written outside documented paths. Fails → stop and report | ✅ 2026-10-03: SMOKE OK ×2, 3.4 / 4.97 steps/s |
+| I0.3 | **Gate:** scoped install in `.venv-isaac` + `isaac/tools/smoke_test.py` state and hybrid on Windows | `SMOKE OK` ×2, CUDA torch, nothing written outside documented paths. Fails → stop and report | ✅ 2026-10-03: SMOKE OK ×2, 3.4 / 4.97 steps/s |
 | I0.4 | Verifier `python -m imitation.verify` | its tests green | ✅ 2026-10-03 |
 | I1.1 | Backend switch (`make_env(backend=)`, EnvPool, CLIs, lazy MuJoCo imports, Isaac worker lifecycle) | tests green in both venvs; MuJoCo unchanged | ✅ 2026-10-03: hash-identical MuJoCo, Isaac pool green |
 | I1.2 | Isaac seed sets (id_easy / id_hard ring / scaled recovery) | disjoint; id_hard reachable 200/200 | ✅ 2026-10-03: R_max 1.0 cm (id_hard = edge of jitter, not OOD) |
@@ -179,7 +179,7 @@ Added 2026-10-02.
 
 | | milestone | exit |
 |---|---|---|
-| IG.1 | Grasp bench (per-arm acquired / held / placed / released, anchor drift) | baseline on tuning seeds 600 000+ — ✅ 2026-10-03 (track G): `isaac/grasp_bench.py`, n = 20; left held 18/20, right held 1/20 |
+| IG.1 | Grasp bench (per-arm acquired / held / placed / released, anchor drift) | baseline on tuning seeds 600 000+ — ✅ 2026-10-03 (track G): `isaac/tools/grasp_bench.py`, n = 20; left held 18/20, right held 1/20 |
 | IG.2 | Grasp reliability loop (one knob per iteration; adhesion 0, friction ≤ 2.0, no attachments) | per arm, n = 100 on two blocks plus a fresh block: acquired / held / released ≥ 98, placed ≥ 95. "released" (redefined, user-approved 2026-10-04): the corner was held and by the end of the retreat is back on the cloth, not carried up by the gripper (within 2.5 cm of its rest height); where it lands is "placed". The old < 3 cm move test is kept as `released_strict`, a record only |
 | IG.3 | Expert ceiling gate on Isaac | id_easy ≥ 95, id_hard ≥ 90, recovery ≥ 90, check_resync ≥ 90 (n = 100; 92–94 extends to n = 200) |
 | IS.1–6 | Full retrain at scale (`isaac_v1` 400 eps, BC ×2 seeds, replan sweep, DAgger, vision ×2, detector ≥ 90%) | n = 200 × 3 sets, Wilson, gains in SE |

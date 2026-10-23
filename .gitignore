@@ -15,18 +15,19 @@ outputs/imitation/runs/**/*.pt
 outputs/imitation/gpu_sim/**/*.mjb
 outputs/imitation/gpu_sim/**/*.npz
 outputs/imitation/**/events.out.tfevents.*
-outputs/cloth_angles/*
-!outputs/cloth_angles/videos/
-!outputs/cloth_angles/videos/*
-# NOTE: outputs/cloth_fold_rl/ is deliberately NOT ignored -- the trained weights
-# are committed so `python -m cloth_fold_rl.run_trained` works straight from a
-# clone, with no retraining.
+outputs/cloth_angles/
 .DS_Store
-MUJOCO_LOG.TXT
+**/MUJOCO_LOG.TXT
 .venv-warp/
 .venv-isaac/
 /Assets
-# Phase I local-only diagnostics: user-folder listings (personal file names) and crash logs
-outputs/isaac/scope_*.txt
-outputs/isaac/debug/
-outputs/isaac/bench/
+# Run outputs and videos stay on WATcloud / the local disk (2026-10-22 cleanup; tag pre-cleanup-2026-10-22 has the
+# old ones). Showcase videos live in docs/reports/media.
+outputs/isaac/
+outputs/videos/
+outputs/cloth_fold_rl/
+outputs/imitation/smoke/
+renders/
+*.mp4
+!docs/reports/media/*.mp4
+.claude/

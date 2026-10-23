@@ -45,14 +45,11 @@ def _group(name):
 class ScriptedTeacher(Teacher):
     def __init__(self, env, seed=0):
         self.env = env
-        if getattr(env.unwrapped, "profile", None) == "weld":     # Isaac weld profile (Phase W): the FoldExpert
-            from isaac.weld_expert import OVERSHOOT_ISAAC, IsaacFoldExpert
-            self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=IsaacFoldExpert, overshoot=OVERSHOOT_ISAAC)
-        elif hasattr(env.unwrapped, "lab"):     # Isaac friction-grasp profiles: the friction-pinch expert, the profile's overshoot
-            from isaac.fold_expert import OVERSHOOTS, IsaacArmExpert
+        if hasattr(env.unwrapped, "lab"):     # Isaac: the friction-pinch expert, the profile's overshoot
+            from isaac.experts.fold_expert import OVERSHOOTS, IsaacArmExpert
             cls = IsaacArmExpert
             if IsaacArmExpert.SERVO:          # Phase F3b: the closed-loop expert on the live cloth state
-                from isaac.servo_expert import IsaacServoExpert as cls
+                from isaac.experts.servo_expert import IsaacServoExpert as cls
             table = OVERSHOOTS[getattr(env.unwrapped, "profile", "lehome")]
             scale = float(cls.OVERSHOOT_SCALE)
             self.expert = QuarterFoldExpert(env, seed=seed, expert_cls=cls,

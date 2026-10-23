@@ -38,7 +38,7 @@ Control: `control_dt = 0.05` (20 Hz), 100 physics substeps per control step.
 ## 2. Observation
 
 `Box(139,) float32` (`imitation.spec.OBS_DIM`) — `QuarterFoldEnv._observe` takes the
-`StateOnlyWrapper` (`mujuco/sim_main.py:627`) flattening of three keys, drops the task
+`StateOnlyWrapper` (`mujoco_sim/sim_main.py:627`) flattening of three keys, drops the task
 one-hot and appends two wrapper-state dims:
 
 | block | dims | contents |
@@ -95,7 +95,7 @@ recorded in `domain_params` (it was drawn by the wrapper and bypassed the base e
 
 ### 2.3 Index map and who consumes what (Phase 5b)
 
-**Why 139 and not 141.** The base env (`mujuco/sim_main.py::_get_obs`, flattened by
+**Why 139 and not 141.** The base env (`mujoco_sim/sim_main.py::_get_obs`, flattened by
 `StateOnlyWrapper`) emits **141** dims: proprio 50 + cloth_state 69 + task 22, where task =
 a 4-dim task one-hot (`n_tasks = 4`) + mean progress 1 + goal keypoints 12 + per-corner
 progress 4 + time-left 1. M1.1 deletes the one-hot (constant for a single-task policy:
@@ -364,10 +364,8 @@ they do not ship, regardless of success rate.
 ## 9. Reproducibility
 
 - Pins: `imitation/requirements.txt`. **mujoco 3.10.0 / so101-nexus 0.4.8** — the versions
-  the expert benchmark was measured on. This deliberately differs from
-  `cloth_fold_rl/requirements.txt` (3.11.0 / 0.5.1, which its committed checkpoint was
-  verified against). Cloth grasping is contact-dominated, so MuJoCo minor versions change
-  results; upgrading invalidates the benchmark and every dataset collected under it.
+  the expert benchmark was measured on. Cloth grasping is contact-dominated, so MuJoCo minor
+  versions change results; upgrading invalidates the benchmark and every dataset collected under it.
 - Tests: `pytest -m "not slow"` for the fast suite, `-m slow` for the MuJoCo ones
   (snapshot/restore determinism, teacher labeling side-effect freedom).
 - Datasets are gitignored and reproducible from seed + pinned env; the **manifest hash in
@@ -381,15 +379,15 @@ is unchanged: collection hashes are identical before and after the switch.
 
 | | MuJoCo (`.venv`, py3.13) | Isaac Sim 5.1 (`.venv-isaac`, py3.11) |
 |---|---|---|
-| base env | `mujuco.sim_main.ClothFoldEnv` | `isaac.isaac_env.IsaacClothFoldEnv` (LeHome stack) |
+| base env | `mujoco_sim.sim_main.ClothFoldEnv` | `isaac.sim.isaac_env.IsaacClothFoldEnv` (LeHome stack) |
 | cloth | 11×11 flexcomp | 101×101 PhysX particles; the 121 grid vertices are a subset |
 | grasp | weld when closed within `GRASP_RADIUS` | **friction** pinch; `grasp_active` is a proxy (closed + corner within radius) |
 | cloth start | ±2.5 cm offset, dynamics DR ±30% | centre at y = −0.135 m, ±1 cm offset, ≤10° drop tilt, **no dynamics DR** |
 | episode cap | 250 | 400 (the fold takes ~230 steps at the arm's speed) |
-| expert | `FoldExpert` (MuJoCo IK) | `isaac.fold_expert.IsaacArmExpert` (URDF PinchIK; half_fold_demo's pinch / arc) |
+| expert | `FoldExpert` (MuJoCo IK) | `isaac.experts.fold_expert.IsaacArmExpert` (URDF PinchIK; half_fold_demo's pinch / arc) |
 | DAgger labels | look-ahead from a `mj_getState` snapshot | **takeover**: the expert executes K steps and that chunk is the label (no snapshot exists) |
 | images | MuJoCo renderer, rendered or replayed | TiledCameras in the scene, rendered at collection (Isaac isn't deterministic, so no replay) |
-| processes | one env per worker, 10–14 workers | one Kit app per worker, `N_ISAAC = 2`, started serially, kept alive while idle; `isaac_weld` only: `WORLDFOLD_ISAAC_ENVS_PER_PROC = B` (default 1) hosts B envs per Kit app as copies of the scene stepped in lockstep, `len(pool) = workers × B` (milestone V, `docs/superpowers/specs/2026-10-04-isaac-vec-design.md`) |
+| processes | one env per worker, 10–14 workers | one Kit app per worker, `N_ISAAC = 2`, started serially, kept alive while idle; GPU backends (`isaac_friction`) only: `WORLDFOLD_ISAAC_ENVS_PER_PROC = B` (default 1) hosts B envs per Kit app as copies of the scene stepped in lockstep, `len(pool) = workers × B` (milestone V, `docs/superpowers/specs/2026-10-04-isaac-vec-design.md`) |
 
 **Observation semantics on Isaac.** The 139-D layout is unchanged (`imitation/spec.py`), but some
 fields mean slightly different things:
@@ -407,17 +405,6 @@ MuJoCo-trained normalizers and checkpoints don't transfer.
 - `recovery`: perturbations at t ∈ [35, 140).
 
 Pilot numbers are in results.md. Grasp reliability and the n = 200 retrain are roadmap IG / IS.
-**`isaac_weld` backend (Phase W, W2, 2026-10-03).** This is the MuJoCo setup transferred onto Isaac:
-`IsaacClothFoldEnv(profile="mujoco")`, chosen with `--backend isaac_weld` and recorded in dataset configs. It
-differs from the `isaac` column above in these ways:
-
-| | `isaac_weld` |
-|---|---|
-| grasp | MuJoCo's **weld**: on close, every allowed grasp vertex within `GRASP_RADIUS` is pinned with its offset, a 1.2 cm particle patch at zero mass, driven every substep. It runs on the GPU pipeline (`device="cuda:0"`); `grasp_active` is true while anything is pinned |
-| cloth start | centred at (0, 0) (so no y shift), MuJoCo's ±2.5 cm offset, flat drop, dynamics DR ×U(0.7, 1.3) on cloth mass, cloth–table friction and cloth damping, recorded in `domain_parameters` with MuJoCo's keys |
-| arm | MuJoCo's SO101 drives (kp 998.22, kd 3.331, 3.35 N m, armature 0.028), replacing LeHome's kp 17.8 |
-| episode cap, eval sets, recovery timing | MuJoCo's (250; `eval_set(..., "isaac_weld")` returns the MuJoCo sets) |
-| expert | MuJoCo's `FoldExpert` phase machine on Isaac accessors (`isaac.weld_expert.IsaacFoldExpert`, W3) |
-
-The observation layout is unchanged. The grasp flag is the real weld state. The 101×101 particle cloth still differs
-from the flexcomp, so checkpoints still don't transfer between simulators.
+**`isaac_weld` backend (Phase W, 2026-10-03), retired.** It ran the MuJoCo setup on Isaac with MuJoCo's weld grasp.
+The weld was retired on 2026-10-20 and the backend removed in the October 2026 cleanup (tag
+`pre-cleanup-2026-10-22` has its spec). `isaac_friction` keeps its arm drives, flat drop and dynamics DR.

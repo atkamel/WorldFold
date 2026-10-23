@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from isaac.quarter_batch import EAST, WEST, park_action
+from isaac.tools.quarter_batch import EAST, WEST, park_action
 
 
 def test_park_moves_toward_home_at_the_speed_limit_with_the_jaw_open():

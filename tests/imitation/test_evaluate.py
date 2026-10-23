@@ -1,5 +1,3 @@
-import numpy as np
-
 from imitation.evaluate import failure_code, save_version_name, summarize
 from tests.imitation.test_data_and_policies import make_episode
 

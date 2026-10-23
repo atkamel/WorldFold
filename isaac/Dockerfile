@@ -1,4 +1,4 @@
-# The WATcloud image: the same Isaac Sim stack as the Modal image (both run isaac/install_lehome.sh). The repo is
+# The WATcloud image: the Isaac Sim stack isaac/install_lehome.sh installs. The repo is
 # mounted at run time (isaac/watcloud.sbatch), so code edits need no rebuild.
 #   docker build -t worldfold-isaac -f isaac/Dockerfile isaac
 FROM python:3.11-slim-bookworm

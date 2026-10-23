@@ -1,6 +1,6 @@
 """Camera rig on Isaac Sim (Phase I, I1.3): the same interface as imitation.vision.render.CameraRig.
 
-The cameras themselves live in the Isaac scene (isaac/lab_scene.py rig_camera_cfg: `main` at the shared pose, one
+The cameras themselves live in the Isaac scene (isaac/sim/lab_scene.py rig_camera_cfg: `main` at the shared pose, one
 camera per wrist at the so101-nexus MJCF wrist_cam mount) and are rendered once per control step; this class only
 reads them. No visual domain randomization in this pass (roadmap I-DR), so reset(seed) changes nothing.
 """

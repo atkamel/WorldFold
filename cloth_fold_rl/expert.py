@@ -108,7 +108,7 @@ class FoldExpert:
         self._init_sim(raw_vertex)
         self.reset()
 
-    # ---- the sim reads, overridden by isaac.weld_expert.IsaacFoldExpert ----
+    # ---- the sim reads ----
     def _init_sim(self, raw_vertex):
         import mujoco
         self._scratch = mujoco.MjData(self.base.model)

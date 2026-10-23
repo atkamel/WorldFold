@@ -40,7 +40,7 @@ SETTLE_WAIT = 15   # steps to wait in "done" before judging placement -- the
 
 class QuarterFoldExpert:
     def __init__(self, env, seed=0, expert_cls=None, overshoot=None):
-        # expert_cls: the per-arm phase machine (default the MuJoCo FoldExpert; isaac.fold_expert.IsaacArmExpert on
+        # expert_cls: the per-arm phase machine (default the MuJoCo FoldExpert; isaac.experts.fold_expert.IsaacArmExpert on
         # Isaac); overshoot: per (stage, arm) placement offset, MuJoCo's measured spring-back by default
         if expert_cls is None:
             from cloth_fold_rl.expert import FoldExpert as expert_cls

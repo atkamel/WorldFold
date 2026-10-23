@@ -1,5 +1,8 @@
 # World model: benchmarks, analytic reward, imagination
 
+> Parked. The experiment scripts this page names (`scripts/*.py`) and the one-corner PPO checkpoint were removed in
+> the October 2026 cleanup; tag `pre-cleanup-2026-10-22` has them. The `cloth_angles/` package is still here.
+
 The repo's world model went from a latent RSSM over angle fields that lost to
 persistence by an order of magnitude, to a residual MLP over physical state
 that predicts held-out fold episodes with a corner error of 10.6 mm at ten

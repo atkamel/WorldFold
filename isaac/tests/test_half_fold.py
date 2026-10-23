@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from cloth_fold_rl.quarter_fold_env import (  # noqa: E402
     CLOTH_0, CLOTH_10, CLOTH_110, CLOTH_120, SETTLE_STEPS, HalfFoldEnv,
 )
-from isaac.isaac_env import cloth_grid_mesh  # noqa: E402
+from isaac.sim.isaac_env import cloth_grid_mesh  # noqa: E402
 
 
 class ScriptedBase(gym.Env):

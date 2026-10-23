@@ -72,11 +72,11 @@ class HalfFoldEnv(QuarterFoldEnv):
         return super().step(action)
 
 
-BACKENDS = ("mujoco", "isaac", "isaac_weld", "isaac_friction")
+BACKENDS = ("mujoco", "isaac", "isaac_friction")
 
 
 # the GPU-pipeline Isaac profiles: MuJoCo's eval sets, jitter and DR; vectorised (milestone V)
-GPU_BACKENDS = ("isaac_weld", "isaac_friction")
+GPU_BACKENDS = ("isaac_friction",)
 
 
 def _gpu_cap(backend):
@@ -97,7 +97,7 @@ def _jitter(backend):
 
 
 def is_isaac(backend) -> bool:
-    """True for every Isaac Sim backend ("isaac", "isaac_weld", "isaac_friction")."""
+    """True for every Isaac Sim backend ("isaac", "isaac_friction")."""
     return str(backend).startswith("isaac")
 
 
@@ -105,12 +105,10 @@ def make_env(backend="mujoco", **kwargs):
     """The half-fold env on either simulator; the only place an env should be built (Phase I).
 
     backend="mujoco": the MuJoCo ClothFoldEnv the pipeline was built on (default, unchanged).
-    backend="isaac":  isaac.isaac_env.IsaacClothFoldEnv (Isaac Sim 5.1, friction grasp) with the Isaac
+    backend="isaac":  isaac.sim.isaac_env.IsaacClothFoldEnv (Isaac Sim 5.1, friction grasp) with the Isaac
                       episode cap and jitter; needs the .venv-isaac environment and one env per process.
-    backend="isaac_weld": the same Isaac env built with profile="weld" (weld grasp, MuJoCo arm drives); episode
-                      cap (HALF_FOLD_MAX_STEPS) and cloth jitter (MuJoCo CLOTH_JITTER) are MuJoCo's.
-    backend="isaac_friction": as isaac_weld, with profile="friction" (the jaws hold the cloth by contact, no weld) and
-                      the FRICTION_MAX_STEPS cap (Phase F).
+    backend="isaac_friction": the same Isaac env built with profile="friction" (MuJoCo arm drives and cloth jitter,
+                      the jaws hold the cloth by contact) and the FRICTION_MAX_STEPS cap (Phase F).
     """
     if backend == "mujoco":
         return HalfFoldEnv(**kwargs)
@@ -138,12 +136,12 @@ def make_env(backend="mujoco", **kwargs):
     raise ValueError(f"backend must be one of {BACKENDS}, got {backend!r}")
 
 
-def make_env_batch(backend="isaac_weld", n=1, **kwargs):
+def make_env_batch(backend="isaac_friction", n=1, **kwargs):
     """n half-fold envs sharing one Isaac scene (milestone V): -> (batch, [HalfFoldEnv over sub-env i]).
 
     Each env is built exactly as make_env(backend, **kwargs) builds one, except that its base env is
-    sub-env i of an isaac.isaac_env.IsaacClothFoldBatch; physics advances only through the batch (see
-    imitation/lockstep.py). Only the GPU weld profile (isaac_weld) is vectorised."""
+    sub-env i of an isaac.sim.isaac_env.IsaacClothFoldBatch; physics advances only through the batch (see
+    imitation/lockstep.py). Only the GPU-pipeline backends (GPU_BACKENDS) are vectorised."""
     if backend not in GPU_BACKENDS:
         raise ValueError(f"only {GPU_BACKENDS} run several envs per process, got {backend!r}")
     from imitation.isaac_runtime import ISAAC_PROFILES, make_isaac_batch

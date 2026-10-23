@@ -4,7 +4,7 @@ jaw target and reads a stalled squeeze as a grasp."""
 import numpy as np
 import pytest
 
-from isaac.isaac_env import GRIPPER_OPEN, JAW_CLOSED_BELOW, IsaacClothFoldEnv
+from isaac.sim.isaac_env import GRIPPER_OPEN, JAW_CLOSED_BELOW, IsaacClothFoldEnv
 
 LOW = -0.174533
 

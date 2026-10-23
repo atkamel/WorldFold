@@ -9,6 +9,10 @@ dataset version and n that produced it. Rates carry Wilson 95% intervals — see
 Audit trail for any row: `run.json` (git commit, dataset hash, config, checkpoint hash) in
 the run directory, plus the dataset `manifest.json`.
 
+Paths below are as they were when each entry was written. The October 2026 cleanup moved the Isaac code into
+`isaac/sim`, `isaac/experts`, `isaac/rl` and `isaac/tools`, renamed `mujuco/` to `mujoco_sim/`, deleted retired code
+and untracked run outputs and videos; tag `pre-cleanup-2026-10-22` has everything as it was.
+
 ---
 
 ## Expert benchmark
@@ -2611,3 +2615,21 @@ right grasps the corner stack S. No sim run yet; these are IK and clearance numb
 - S sits at 0.396 m from the right base, near the reach limit. The pinch tilts on A0 and S (35-50°) are inside the
   range where Roy's slide grasp held (30-46°) but beyond the 16.5° our pinch was validated at: the open question for
   the first run.
+
+### Cleanup check on WATcloud: first `quarter2` two-arm quarter fold (2026-10-23, job 712165)
+
+The cleanup branch's code (new `isaac/` layout, weld code removed, gentle release on, `LATCH_GOAL=1,GFOLD_SLOPE=1.2`)
+ran `isaac/tools/quarter_batch.py --copies 2 --seeds 0:2 --profile quarter2 --fold2 two --drag none --video` end to
+end (59 min with the image build, python exit 0). As a code check it passed. As a fold, n = 2:
+
+| seed | fold 1 mean / edge | fold 1 gate | fold 2 | final mean / edge | final gate |
+|---|---|---|---|---|---|
+| 0 | 9.25 / 28.8 cm | invalid (a part 10.5 cm up, a gripper 1.5 cm from the cloth) | right arm dropped, not settled | 9.98 / 22.9 cm | invalid (9.9 cm up, jaws not open) |
+| 1 | 3.31 / 7.05 cm | invalid (still moving, 3.3 mm per step) | both arms dropped, not settled | 13.4 / 24.9 cm | invalid (13.1 cm up, jaws not open) |
+
+- Video (local, `outputs/isaac/quarter/smoke_cleanup/`): in seed 0 one arm lifts the whole edge into a bunch in fold 1
+  and the arms tangle over it; in seed 1 fold 1 lays down, then both fold-2 grasps slip and the arms drag the half
+  sheet into a heap.
+- So on `quarter2`, fold 1 (8/8 on the friction layout) broke in 1 of 2 and the fold-2 grasps held 1 of 4. Too few
+  episodes to separate the tilted pinches (A0 39°, S 34.5°) from the gentle release; the per-arm grasp traces are the
+  next thing to read.

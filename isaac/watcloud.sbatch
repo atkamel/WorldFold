@@ -1,14 +1,14 @@
 #!/bin/bash
-# One WorldFold Isaac command on a WATcloud GPU node, in the image isaac/Dockerfile builds (the same Isaac stack as
-# the Modal image). The repo is mounted, so outputs land in your checkout and code edits need no rebuild.
+# One WorldFold Isaac command on a WATcloud GPU node, in the image isaac/Dockerfile builds. The repo is mounted, so
+# outputs land in your checkout and code edits need no rebuild.
 #
-#   sbatch --gres=shard:<gpu>:<MiB>,tmpdisk:61440 isaac/watcloud.sbatch scripts/f4_retrain.py --no-vision --episodes 200
-#   sbatch --gres=shard:<gpu>:<MiB>,tmpdisk:61440 isaac/watcloud.sbatch -m imitation.evaluate --backend isaac_friction ...
-#   sbatch --gres=shard:<gpu>:<MiB>,tmpdisk:61440 isaac/watcloud.sbatch isaac/smoke_test.py --mode state
+#   sbatch --gres=gpu:rtx_3090:1,tmpdisk:200000 isaac/watcloud.sbatch isaac/tools/quarter_batch.py --copies 8 ...
+#   sbatch --gres=gpu:rtx_3090:1,tmpdisk:200000 isaac/watcloud.sbatch -m imitation.evaluate --backend isaac_friction ...
+#   sbatch --gres=gpu:rtx_3090:1,tmpdisk:200000 isaac/watcloud.sbatch isaac/tools/smoke_test.py --mode state
 #
 # GPU: Isaac Sim 5.1 needs RT cores and lists an RTX 4080 with 16 GB as its minimum; the 2080 Ti nodes (11 GB) used
 # for Isaac Sim 4.5 are below it. Pick an RTX node with >= 16 GB in --gres. Driver: on Modal, Isaac Sim 5.1 ran on
-# the 580 branch and segfaulted at start-up on 610 (isaac/modal_isaac.py, SUPPORTED_DRIVER), so this job stops on
+# the 580 branch and segfaulted at start-up on 610, so this job stops on
 # any other branch unless ISAAC_ANY_DRIVER=1. --gres replaces the whole request, so it carries tmpdisk too (Docker's
 # image and layers live there; the build unpacks a second copy: ask for 200 GB, 80 GB ran out on thor, job 707334).
 # Each job builds the image (~10 min, ~20 GB on tmpdisk), or loads $IMAGE_TAR if one was saved by hand.

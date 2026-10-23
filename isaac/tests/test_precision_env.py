@@ -3,8 +3,8 @@ and the arms' gates."""
 
 import numpy as np
 
-from isaac import precision_env as pe
-from mujuco.cloth_params import TABLE_TOP_Z
+from isaac.rl import precision_env as pe
+from mujoco_sim.cloth_params import TABLE_TOP_Z
 
 S = 0.027
 

@@ -1,4 +1,4 @@
-"""isaac.rlpd without Isaac: buffer mechanics, RLPD symmetric sampling, REDQ terminal bootstrap, and a toy
+"""isaac.rl.rlpd without Isaac: buffer mechanics, RLPD symmetric sampling, REDQ terminal bootstrap, and a toy
 1-D placement task that checks the SAC loop actually learns something in a few thousand env steps."""
 
 import numpy as np
@@ -6,7 +6,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from isaac import rlpd as R   # noqa: E402
+from isaac.rl import rlpd as R   # noqa: E402
 
 
 def test_initial_policy_outputs_zero():

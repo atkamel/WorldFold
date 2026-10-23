@@ -6,14 +6,14 @@ import sys
 import numpy as np
 import pytest
 
-# imitation.tasks is imported inside the tests: cloth_fold_rl.fold_env puts mujuco/ first on sys.path, whose
+# imitation.tasks is imported inside the tests: cloth_fold_rl.fold_env puts mujoco_sim/ first on sys.path, whose
 # tests/ package then shadows this repo's `tests` namespace for test modules collected afterwards
 # (they import `tests.imitation...`). Known defect, docs/status.md.
 
 
 def test_backends_listed():
     from imitation.tasks.half_fold import BACKENDS
-    assert BACKENDS == ("mujoco", "isaac", "isaac_weld", "isaac_friction")
+    assert BACKENDS == ("mujoco", "isaac", "isaac_friction")
 
 
 def test_unknown_backend_rejected():
@@ -59,7 +59,7 @@ def test_finite_guard_keeps_last_finite_obs():
 # ---- CLI --backend plumbing (argparse level only; nothing is simulated) ----
 
 _CLI_ARGS = {"imitation.data.collect": [], "imitation.evaluate": ["--ckpt", "expert"],
-             "imitation.dagger": ["--init", "x.pt", "--out", "o"], "imitation.check_resync": [],
+             "imitation.dagger": ["--init", "x.pt", "--out", "o"],
              "imitation.benchmark_expert": []}
 
 

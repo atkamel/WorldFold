@@ -1,4 +1,4 @@
-"""imitation/thermal.py: the pause flag the GPU thermal guard holds (scripts/thermal_guard.py)."""
+"""imitation/thermal.py: the pause flag the GPU thermal guard holds (imitation/thermal_guard.py)."""
 
 from __future__ import annotations
 
