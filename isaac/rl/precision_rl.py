@@ -1,11 +1,11 @@
 """Residual RL on the half fold's placement window (docs/superpowers/plans/2026-10-20-closed-loop-rl.md, R1-R4).
 
-One Isaac process holds B scene copies (isaac.precision_env.PrecisionBatch, GPU `friction` profile, dynamics DR off)
-and the learner (isaac.rlpd.RLPDAgent, SAC with RLPD settings) on the same GPU. Episodes start from snapshots taken at
+One Isaac process holds B scene copies (isaac.rl.precision_env.PrecisionBatch, GPU `friction` profile, dynamics DR off)
+and the learner (isaac.rl.rlpd.RLPDAgent, SAC with RLPD settings) on the same GPU. Episodes start from snapshots taken at
 the start of the carry, so only the window (carry, place, hold, release, settle) is simulated per episode.
 
-    python isaac/precision_rl.py check-restore --copies 8 --seeds 810000:810008       # R1
-    python isaac/precision_rl.py train --run outputs/isaac/rl/p1 --copies 8 --hours 8   # R2 (version 0) + R4
+    python isaac/rl/precision_rl.py check-restore --copies 8 --seeds 810000:810008       # R1
+    python isaac/rl/precision_rl.py train --run outputs/isaac/rl/p1 --copies 8 --hours 8   # R2 (version 0) + R4
 
 `train` builds (or reloads) two snapshot libraries in the run directory, train (seeds 800000+) and eval (900000+);
 evaluates version 0, the zero residual, which is the scripted base (R2's parity number); collects PRIOR_EPISODES
@@ -27,7 +27,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 TRAIN_SEED, EVAL_SEED = 800000, 900000
 N_TRAIN_SNAPS, N_EVAL_SNAPS = 160, 16
@@ -96,7 +96,7 @@ def snapshot_library(pb, path, seed0, count):
 def run_episodes(pb, snaps, policy, on_step=None):
     """One window episode per copy from snaps (len n); policy(obs (n, D)) -> actions (n, A). on_step(transitions)
     gets [(obs, act, rew, next_obs, terminal)] for the live copies after every step. Returns the n finals."""
-    from isaac.precision_env import ACT_DIM
+    from isaac.rl.precision_env import ACT_DIM
     obs = pb.reset_window(snaps)
     finals = [None] * pb.n
     while any(pb.state[i]["alive"] for i in range(pb.n)):
@@ -123,7 +123,7 @@ def evaluate(pb, snaps, policy):
 
 def check_restore(args):
     """R1: per copy, the base run straight through the window vs twice from the restored snapshot."""
-    from isaac.precision_env import ACT_DIM, PrecisionBatch
+    from isaac.rl.precision_env import ACT_DIM, PrecisionBatch
     pb = PrecisionBatch(args.copies)
     a, b = (int(v) for v in args.seeds.split(":"))
     zero = lambda obs: np.zeros((pb.n, ACT_DIM))
@@ -151,8 +151,8 @@ def check_restore(args):
 def check_recover(args):
     """Can a copy come back after its cloth blows up? Clean run, a forced blow-up (the jaws driven into the table with
     the floor off), plain restores, then park + settle + restore; and the noisy prior with the floor on."""
-    from isaac.place_servo import IsaacPlaceServoExpert
-    from isaac.precision_env import ACT_DIM, PrecisionBatch, instability
+    from isaac.experts.place_servo import IsaacPlaceServoExpert
+    from isaac.rl.precision_env import ACT_DIM, PrecisionBatch, instability
     pb = PrecisionBatch(args.copies)
     seeds = list(range(820000, 820000 + pb.n))
     snaps, _ = pb.scripted_to_window(seeds)
@@ -191,8 +191,8 @@ def check_recover(args):
 
 def train(args):
     import torch
-    from isaac.precision_env import ACT_DIM, OBS_DIM, PrecisionBatch
-    from isaac.rlpd import ReplayBuffer, RLPDAgent
+    from isaac.rl.precision_env import ACT_DIM, OBS_DIM, PrecisionBatch
+    from isaac.rl.rlpd import ReplayBuffer, RLPDAgent
     run = Path(args.run)
     run.mkdir(parents=True, exist_ok=True)
     log = open(run / "learner.jsonl", "a")
@@ -235,7 +235,7 @@ def train(args):
 
 
 def loop(args, pb, agent, online, prior, rng, state, train_snaps, eval_snaps, run, write, save, t_end):
-    from isaac.precision_env import ACT_DIM
+    from isaac.rl.precision_env import ACT_DIM
 
     def det(obs):
         return agent.act(obs, deterministic=True)
@@ -299,8 +299,8 @@ def demo(args):
     """Full half folds from cloth seeds: the base to the carry, then the policy (or the base, --base) through the
     window, restored from the carry-start snapshot so the video runs on without a cut. One row per seed in
     <run>/demo/demo.jsonl, a top-camera video per seed with --video."""
-    from isaac.precision_env import ACT_DIM, OBS_DIM, PrecisionBatch
-    from isaac.rlpd import RLPDAgent
+    from isaac.rl.precision_env import ACT_DIM, OBS_DIM, PrecisionBatch
+    from isaac.rl.rlpd import RLPDAgent
     run = Path(args.run)
     out = run / ("demo_base" if args.base else "demo")
     out.mkdir(parents=True, exist_ok=True)

@@ -22,9 +22,9 @@ import os
 
 import numpy as np
 
-from isaac.fold_expert import ABOVE, RETREAT, IsaacArmExpert
-from isaac.servo_expert import IsaacServoExpert
-from mujuco.cloth_params import GRIPPER_OPEN, TABLE_TOP_Z
+from isaac.experts.fold_expert import ABOVE, RETREAT, IsaacArmExpert
+from isaac.experts.servo_expert import IsaacServoExpert
+from mujoco_sim.cloth_params import GRIPPER_OPEN, TABLE_TOP_Z
 
 
 class IsaacPlaceServoExpert(IsaacServoExpert):

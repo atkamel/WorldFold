@@ -1,5 +1,5 @@
 """Friction-grasp bench (track G, roadmap IG.1-IG.2): the friction expert's first attempt on each arm, scored per arm
-as acquired / held / placed / released plus anchor drift (definitions in isaac/grasp_metrics.py).
+as acquired / held / placed / released plus anchor drift (definitions in isaac/tools/grasp_metrics.py).
 
 Each episode is the Isaac half fold on the "lehome" profile (friction grasp, CPU device; --profile friction: the
 Phase F GPU profile) driven by the pipeline's
@@ -9,9 +9,9 @@ Every step's phase, gripperframe site, corner, jaw angle and anchor per arm goes
 episode goes to rows.jsonl. The run resumes: seeds already in rows.jsonl are skipped.
 
     (Isaac venv, cwd = the checkout that holds Assets/)
-    python -u <repo>/isaac/grasp_bench.py --seeds 600000:600020 --out <repo>/outputs/isaac/grasp/baseline
-    python -u <repo>/isaac/grasp_bench.py ... --knobs particle_friction=1.0 --expert PINCH_INSET=0.01
-    python isaac/grasp_bench.py --summarize outputs/isaac/grasp/baseline [--rescore]     (any venv, no Isaac)
+    python -u <repo>/isaac/tools/grasp_bench.py --seeds 600000:600020 --out <repo>/outputs/isaac/grasp/baseline
+    python -u <repo>/isaac/tools/grasp_bench.py ... --knobs particle_friction=1.0 --expert PINCH_INSET=0.01
+    python isaac/tools/grasp_bench.py --summarize outputs/isaac/grasp/baseline [--rescore]     (any venv, no Isaac)
 """
 
 import argparse
@@ -23,9 +23,9 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from isaac.grasp_metrics import SETTLE_WAIT, arm_metrics, summarize  # noqa: E402
+from isaac.tools.grasp_metrics import SETTLE_WAIT, arm_metrics, summarize  # noqa: E402
 
 CAP = 400                 # = imitation.isaac_runtime.ISAAC_MAX_STEPS
 
@@ -83,8 +83,8 @@ def run(args):
     from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS
     from imitation.tasks.half_fold import HalfFoldEnv
     from imitation.isaac_runtime import ISAAC_CLOTH_JITTER
-    from isaac.isaac_env import IsaacClothFoldEnv
-    from isaac.fold_expert import OVERSHOOTS, IsaacArmExpert
+    from isaac.sim.isaac_env import IsaacClothFoldEnv
+    from isaac.experts.fold_expert import OVERSHOOTS, IsaacArmExpert
     from imitation.teachers.scripted import ScriptedTeacher
 
     qfe.MAX_RETRIES = 0

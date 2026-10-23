@@ -2,7 +2,7 @@
 within GATE_Z of the table, the cloth on the table). Old rows have no gripper or motion data, so the clearance, jaw and
 stillness checks can't be applied after the fact (re-evaluation 2026-10-22).
 
-    python isaac/rescore_gate.py outputs/isaac/rl/*/demo*/demo.jsonl outputs/isaac/quarter/*/episodes.jsonl
+    python isaac/tools/rescore_gate.py outputs/isaac/rl/*/demo*/demo.jsonl outputs/isaac/quarter/*/episodes.jsonl
 """
 
 import json
@@ -11,10 +11,10 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from isaac.precision_env import GATE_Z, TABLE_HALF  # noqa: E402
-from mujuco.cloth_params import TABLE_TOP_Z  # noqa: E402
+from isaac.rl.precision_env import GATE_Z, TABLE_HALF  # noqa: E402
+from mujoco_sim.cloth_params import TABLE_TOP_Z  # noqa: E402
 
 
 def static_gate(cloth):

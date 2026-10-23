@@ -82,7 +82,7 @@ def build_config(args):
         "task": "half_fold", "teacher": "QuarterFoldExpert(stage 0)"}
     from imitation.tasks.half_fold import is_isaac
     if is_isaac(args.backend):
-        knobs = Path(__file__).resolve().parents[2] / "isaac" / "isaac_env.py"
+        knobs = Path(__file__).resolve().parents[2] / "isaac" / "sim" / "isaac_env.py"
         config["teacher"] = f"QuarterFoldExpert(stage 0) [{args.backend} backend]"
         config["isaac_stack"] = dict(ISAAC_STACK, knobs_sha256=hashlib.sha256(knobs.read_bytes()).hexdigest())
     return config

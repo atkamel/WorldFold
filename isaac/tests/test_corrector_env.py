@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from isaac import corrector_env as ce
-from mujuco.cloth_params import TABLE_TOP_Z
+from isaac.rl import corrector_env as ce
+from mujoco_sim.cloth_params import TABLE_TOP_Z
 
 S = 0.03
 

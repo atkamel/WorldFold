@@ -6,7 +6,7 @@ import sys
 import numpy as np
 import pytest
 
-# imitation.tasks is imported inside the tests: cloth_fold_rl.fold_env puts mujuco/ first on sys.path, whose
+# imitation.tasks is imported inside the tests: cloth_fold_rl.fold_env puts mujoco_sim/ first on sys.path, whose
 # tests/ package then shadows this repo's `tests` namespace for test modules collected afterwards
 # (they import `tests.imitation...`). Known defect, docs/status.md.
 

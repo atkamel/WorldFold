@@ -4,7 +4,7 @@ Same task, reward and observation layout as fold_env.SingleCornerFoldEnv, so
 every script in this package (expert gate, demos, BC, PPO, video) runs on it
 through the --physical flag. What changes:
 
-  * the SO101 jaws carry the scoop ramp + paddle from mujuco/prove_grabber.py
+  * the SO101 jaws carry the scoop ramp + paddle from mujoco_sim/prove_grabber.py
     (added through compile_model's spec_hook -- the stock model is untouched),
   * the weld equality is never engaged; closing the gripper only closes the
     gripper, and holding the cloth is contact + friction,
@@ -30,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mujuco"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mujoco_sim"))
 from sim_main import ClothFoldEnv, GRIPPER_OPEN, GRIPPER_CLOSED  # noqa: E402
 from prove_grabber import make_grabber_hook, calibrate_paddle  # noqa: E402
 

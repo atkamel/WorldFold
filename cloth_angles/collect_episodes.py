@@ -31,7 +31,7 @@ import numpy as np
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mujuco"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mujoco_sim"))
 
 from cloth_angles.data.angle_field import compute_angle_field, vertices_grid_from_flat
 from cloth_angles.data.episode_store import Episode, EpisodeStore
@@ -45,7 +45,7 @@ def load_config(path: str) -> dict:
 
 
 def make_env(max_episode_steps: int):
-    from sim_main import ClothFoldEnv  # noqa: PLC0415 -- mujuco/ only importable once sys.path is set above
+    from sim_main import ClothFoldEnv  # noqa: PLC0415 -- mujoco_sim/ only importable once sys.path is set above
     return ClothFoldEnv(max_episode_steps=max_episode_steps, observation_mode="state")
 
 
@@ -61,7 +61,7 @@ def still_action(env, rng, t: int) -> np.ndarray:
 
 def fold_action(env, rng, t: int) -> np.ndarray:
     """Drives both grippers toward their target corner and closes once close,
-    mirroring test_idk's scripted demo policy in mujuco/sim_main.py (a partial
+    mirroring test_idk's scripted demo policy in mujoco_sim/sim_main.py (a partial
     fold attempt, not guaranteed to reach the success threshold).
     """
     action = np.zeros(env.action_space.shape, dtype=np.float32)

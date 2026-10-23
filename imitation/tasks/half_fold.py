@@ -105,7 +105,7 @@ def make_env(backend="mujoco", **kwargs):
     """The half-fold env on either simulator; the only place an env should be built (Phase I).
 
     backend="mujoco": the MuJoCo ClothFoldEnv the pipeline was built on (default, unchanged).
-    backend="isaac":  isaac.isaac_env.IsaacClothFoldEnv (Isaac Sim 5.1, friction grasp) with the Isaac
+    backend="isaac":  isaac.sim.isaac_env.IsaacClothFoldEnv (Isaac Sim 5.1, friction grasp) with the Isaac
                       episode cap and jitter; needs the .venv-isaac environment and one env per process.
     backend="isaac_friction": the same Isaac env built with profile="friction" (MuJoCo arm drives and cloth jitter,
                       the jaws hold the cloth by contact) and the FRICTION_MAX_STEPS cap (Phase F).
@@ -140,7 +140,7 @@ def make_env_batch(backend="isaac_friction", n=1, **kwargs):
     """n half-fold envs sharing one Isaac scene (milestone V): -> (batch, [HalfFoldEnv over sub-env i]).
 
     Each env is built exactly as make_env(backend, **kwargs) builds one, except that its base env is
-    sub-env i of an isaac.isaac_env.IsaacClothFoldBatch; physics advances only through the batch (see
+    sub-env i of an isaac.sim.isaac_env.IsaacClothFoldBatch; physics advances only through the batch (see
     imitation/lockstep.py). Only the GPU-pipeline backends (GPU_BACKENDS) are vectorised."""
     if backend not in GPU_BACKENDS:
         raise ValueError(f"only {GPU_BACKENDS} run several envs per process, got {backend!r}")

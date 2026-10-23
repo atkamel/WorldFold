@@ -4,7 +4,7 @@
 #
 #   sbatch --gres=shard:<gpu>:<MiB>,tmpdisk:61440 isaac/watcloud.sbatch scripts/f4_retrain.py --no-vision --episodes 200
 #   sbatch --gres=shard:<gpu>:<MiB>,tmpdisk:61440 isaac/watcloud.sbatch -m imitation.evaluate --backend isaac_friction ...
-#   sbatch --gres=shard:<gpu>:<MiB>,tmpdisk:61440 isaac/watcloud.sbatch isaac/smoke_test.py --mode state
+#   sbatch --gres=shard:<gpu>:<MiB>,tmpdisk:61440 isaac/watcloud.sbatch isaac/tools/smoke_test.py --mode state
 #
 # GPU: Isaac Sim 5.1 needs RT cores and lists an RTX 4080 with 16 GB as its minimum; the 2080 Ti nodes (11 GB) used
 # for Isaac Sim 4.5 are below it. Pick an RTX node with >= 16 GB in --gres. Driver: on Modal, Isaac Sim 5.1 ran on

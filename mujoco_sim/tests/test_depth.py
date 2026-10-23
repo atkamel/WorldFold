@@ -1,7 +1,7 @@
 import numpy as np
 
-import mujuco.sim_main as sm
-from mujuco.sim_main import ClothFoldEnv, DEPTH_MAX, DEPTH_MIN, TABLE_TOP_Z, CAMERA_POS, CAMERA_TARGET
+import mujoco_sim.sim_main as sm
+from mujoco_sim.sim_main import ClothFoldEnv, DEPTH_MAX, DEPTH_MIN, TABLE_TOP_Z, CAMERA_POS, CAMERA_TARGET
 
 
 def test_move_camera_points_at_target():

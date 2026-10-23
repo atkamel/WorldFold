@@ -5,7 +5,7 @@ its own.
 A wrapper around ClothFoldEnv in the style of fold_env.SingleCornerFoldEnv,
 with two stages. Corner positions at reset: cloth_0 (-h, -h), cloth_10
 (-h, +h), cloth_110 (+h, -h), cloth_120 (+h, +h), h = 0.15 m. Both arms sit
-side-by-side south of the cloth (see mujuco/sim_main.py's ARM_BASE_LEFT/RIGHT),
+side-by-side south of the cloth (see mujoco_sim/sim_main.py's ARM_BASE_LEFT/RIGHT),
 each reaching its own near south corner -- unlike the old diagonal placement,
 where the two arms sat at opposite corners.
 
@@ -114,7 +114,7 @@ class QuarterFoldEnv(gym.Wrapper):
 
     def __init__(self, max_episode_steps=MAX_STEPS, seed=None, cloth_jitter=CLOTH_JITTER, base_env=None,
                  stages=None):
-        # base_env: any ClothFoldEnv drop-in (e.g. isaac.isaac_env.IsaacClothFoldEnv) built in joint_delta
+        # base_env: any ClothFoldEnv drop-in (e.g. isaac.sim.isaac_env.IsaacClothFoldEnv) built in joint_delta
         # mode with grasp_corners=GRASP_CORNERS and grasp_radius=GRASP_RADIUS; the wrapper reads it through
         # cloth_positions / gripper_position / grasp_active, plus _get_obs, the goal fields and
         # _domain_params for the 139-D observation. max_episode_steps only reaches the default env; a

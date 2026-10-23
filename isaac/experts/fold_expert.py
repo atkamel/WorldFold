@@ -2,7 +2,7 @@
 
 A drop-in for cloth_fold_rl.expert.FoldExpert inside QuarterFoldExpert (same constructor, phase machine fields,
 act / reset / infer_phase), so the imitation pipeline's ScriptedTeacher, release gate, retry-on-measured-miss and
-resync work unchanged. The motion is isaac/half_fold_demo.py's plan, unchanged (no grasp tuning in this pass): a
+resync work unchanged. The motion is isaac/experts/half_fold_demo.py's plan, unchanged (no grasp tuning in this pass): a
 top-down pinch solved by PinchIK on the corner's live position, the jaw across the corner; close and dwell; an IK
 waypoint arc over the fold line onto the goal; open and dwell; back off. Every pose is held until the joints get
 there (the env moves each joint at most JOINT_DELTA_SCALE per step and the joints lag), with a step budget as the
@@ -16,9 +16,9 @@ import math
 
 import numpy as np
 
-from isaac.half_fold_demo import (ARC_HEIGHT, ARC_WAYPOINTS, PLACE_HEIGHT, POSE_SETTLE_STEPS, SEED_Q, TRACK_TOL,
+from isaac.experts.half_fold_demo import (ARC_HEIGHT, ARC_WAYPOINTS, PLACE_HEIGHT, POSE_SETTLE_STEPS, SEED_Q, TRACK_TOL,
                                   WAYPOINT_TOL)
-from mujuco.cloth_params import GRIPPER_OPEN, JOINT_DELTA_SCALE, TABLE_TOP_Z
+from mujoco_sim.cloth_params import GRIPPER_OPEN, JOINT_DELTA_SCALE, TABLE_TOP_Z
 
 SUCCESS_DIST = 0.05          # = cloth_fold_rl.fold_env.SUCCESS_DIST (placed)
 CLOSE_DWELL = 8              # half_fold_demo SCHEDULE: ("pinch", -1.0, 8)
@@ -39,7 +39,7 @@ OVERSHOOT_FRICTION_PROFILE = {key: v.copy() for key, v in OVERSHOOT_FRICTION.ite
 OVERSHOOTS = {"lehome": OVERSHOOT_FRICTION, "friction": OVERSHOOT_FRICTION_PROFILE}
 
 
-ORIENTATION_WEIGHT = 0.1     # = isaac.pinch.ORIENTATION_WEIGHT (not imported: isaac.pinch needs LeHome)
+ORIENTATION_WEIGHT = 0.1     # = isaac.sim.pinch.ORIENTATION_WEIGHT (not imported: isaac.sim.pinch needs LeHome)
 TILT_WEIGHT = 0.03            # REGRASP_TILT's IK orientation weight
 CORNER_REST_DZ = 0.004       # a flat corner's height above the table top (the particle rest offset)
 JAW_SHUT_TOL = 0.05          # = isaac_env.JAW_SETTLED_TOL
@@ -75,7 +75,7 @@ class IsaacArmExpert:
     ALIGN_TOL = 0.008        # F2 L / M: every acquired right-arm corner held (40/40; 93% over n = 300 without it)
     ALIGN_TRIES = 2
     OVERSHOOT_SCALE = 1.0    # scales the profile's placement overshoot table (0: none, Adam's as-built expert)
-    SERVO = 0                # 1: ScriptedTeacher uses isaac.servo_expert.IsaacServoExpert (closed-loop, Phase F3b)
+    SERVO = 0                # 1: ScriptedTeacher uses isaac.experts.servo_expert.IsaacServoExpert (closed-loop, Phase F3b)
     # F3b drop traces: descends parked 1-2 cm from the corner (the fingertip meets the table / cloth there) for 30-60
     # steps because the joint-space arrival test (TRACK_TOL) never fires with the arm folded near its base; then the
     # retry knobs sent it back up. 1: a descend has arrived when the gripper site is within CART_XY of the pinch point,
@@ -113,7 +113,7 @@ class IsaacArmExpert:
     # IK orientation weight at the pinch and the pose above it (m per rad). 0.1 keeps the jaw near vertical, which caps
     # reach at ~32 cm; Roy's grasp runs at 0.005 and tilts 30-46 deg (docs/superpowers/plans/2026-10-19-roy-grasp-port.md)
     PINCH_ORIENTATION_WEIGHT = ORIENTATION_WEIGHT
-    # firm weight on which way the jaw opens (isaac.pinch.PinchIK.solve jaw_weight) for the slide grasp's poses: with
+    # firm weight on which way the jaw opens (isaac.sim.pinch.PinchIK.solve jaw_weight) for the slide grasp's poses: with
     # only the soft PINCH_ORIENTATION_WEIGHT the jaw came out turned half a round (bench roy_s3b, side video)
     JAW_WEIGHT = 0.1
     # GRASP "slide", Roy's grasp (origin/ROY-vla-teacher, teacher/oracle/fold_plans.py pick_place): the open jaws land
@@ -134,7 +134,7 @@ class IsaacArmExpert:
     # jaw angle (rad) while a slide grasp approaches, presses and slides: Roy opens to 0.55 (GRIP_OPEN); at our 1.0 the
     # open jaw met the table 0.7 cm up and held the pads off the cloth (2026-10-19 bench roy_s3: the jaws closed empty)
     GRASP_OPEN = 0.55
-    # lift gate (isaac.precision_env.coordinate): an arm that has closed waits until every arm of its fold has (lifting
+    # lift gate (isaac.rl.precision_env.coordinate): an arm that has closed waits until every arm of its fold has (lifting
     # one grasp point drags the other away)
     lift_allowed = True
     # a position-mode gripper opens this many rad per control step at release (None: at once); release lasts until open
@@ -158,7 +158,7 @@ class IsaacArmExpert:
             self.OPEN_PHASES = self.OPEN_PHASES + ("slide",)
         self.release_allowed = True
         if IsaacArmExpert._ik is None:
-            from isaac.pinch import PinchIK
+            from isaac.sim.pinch import PinchIK
             IsaacArmExpert._ik = PinchIK()
         IsaacArmExpert._ik.root = self.base.arm_bases       # the env's layout (quarter profile: its own)
         self.reset()

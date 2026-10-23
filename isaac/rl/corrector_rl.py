@@ -1,11 +1,11 @@
-"""Train and demo the RL corrector (isaac/corrector_env.py) on WATcloud, one Isaac process with B copies.
+"""Train and demo the RL corrector (isaac/rl/corrector_env.py) on WATcloud, one Isaac process with B copies.
 
-    python isaac/corrector_rl.py train --run outputs/isaac/rl/c1 --copies 8 --hours 8
-    python isaac/corrector_rl.py demo --run outputs/isaac/rl/c1 --ckpt best.pt --seeds 950000:950064 --video
+    python isaac/rl/corrector_rl.py train --run outputs/isaac/rl/c1 --copies 8 --hours 8
+    python isaac/rl/corrector_rl.py demo --run outputs/isaac/rl/c1 --ckpt best.pt --seeds 950000:950064 --video
 
 Run with WORLDFOLD_PLACE_PARAMS for the base (latch + g-fold 1.2). `train` builds settled-fold libraries (train from
 seed 960000, eval from 970000), scores the no-op and the scripted push on the eval library, collects PRIOR_EPISODES of
-the scripted push with noise and of random pushes, then trains SAC with RLPD settings (isaac/rlpd.py), evaluating the
+the scripted push with noise and of random pushes, then trains SAC with RLPD settings (isaac/rl/rlpd.py), evaluating the
 deterministic policy every EVAL_EVERY transitions; learner.jsonl, best.pt (most passes, then lowest mean), agent.pt.
 """
 
@@ -18,9 +18,9 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from isaac.precision_rl import summarize  # noqa: E402
+from isaac.rl.precision_rl import summarize  # noqa: E402
 
 TRAIN_SEED, EVAL_SEED = 960000, 970000
 N_TRAIN, N_EVAL = 160, 32
@@ -43,7 +43,7 @@ def library(cb, path, seed0, count):
 
 def run(cb, snaps, policy, on_step=None, ends=None):
     """One corrector episode per copy; ends[i] gets len(pb.frames[i]) when copy i finishes (demo video)."""
-    from isaac.corrector_env import ACT_DIM
+    from isaac.rl.corrector_env import ACT_DIM
     obs = cb.reset(snaps)
     finals = [None] * cb.n
     while cb.alive.any():
@@ -69,14 +69,14 @@ def evaluate(cb, snaps, policy):
 
 
 def scripted_policy(cb):
-    from isaac.corrector_env import scripted_action
+    from isaac.rl.corrector_env import scripted_action
     return lambda obs: np.stack([scripted_action(cb._cloth(i)) for i in range(cb.n)])
 
 
 def train(args):
     import torch
-    from isaac.corrector_env import ACT_DIM, OBS_DIM, CorrectorBatch
-    from isaac.rlpd import ReplayBuffer, RLPDAgent
+    from isaac.rl.corrector_env import ACT_DIM, OBS_DIM, CorrectorBatch
+    from isaac.rl.rlpd import ReplayBuffer, RLPDAgent
     run_dir = Path(args.run)
     run_dir.mkdir(parents=True, exist_ok=True)
     log = open(run_dir / "learner.jsonl", "a")
@@ -152,8 +152,8 @@ def train(args):
 def demo(args):
     """Full folds from cloth seeds: the base fold, its settle, then the corrector (or the scripted push, --scripted),
     as one continuous video per seed (each stage restores the state the previous one ended on)."""
-    from isaac.corrector_env import ACT_DIM, OBS_DIM, CorrectorBatch
-    from isaac.rlpd import RLPDAgent
+    from isaac.rl.corrector_env import ACT_DIM, OBS_DIM, CorrectorBatch
+    from isaac.rl.rlpd import RLPDAgent
     run_dir = Path(args.run)
     out = run_dir / ("demo_scripted" if args.scripted else "demo")
     out.mkdir(parents=True, exist_ok=True)

@@ -2,7 +2,7 @@
 
 The weld expert (expert.py) descends vertically onto the corner and waits for
 the weld to engage. A real jaw cannot pick flat cloth off a table that way, so
-this expert ports the routine that mujuco/prove_grabber.py showed to work:
+this expert ports the routine that mujoco_sim/prove_grabber.py showed to work:
 
   hover -> down -> slide -> close -> lift -> carry -> place -> hold
 

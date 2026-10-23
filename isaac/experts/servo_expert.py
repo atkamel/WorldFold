@@ -10,7 +10,7 @@ Each step in approach / descend / close / lift / carry / place:
   target   recomputed from the corner as it lies now (approach: 4 cm above the pinch point; descend / close: the pinch
            point; lift: straight up from where the jaw closed; carry / place: the GRIPPER target that moves the CORNER
            toward its next waypoint -- the corner is steered, so cloth spring-back and lag need no overshoot table)
-  motion   one warm-started IK solve (isaac.pinch.PinchIK) from the current joints, joints moved toward it at the speed
+  motion   one warm-started IK solve (isaac.sim.pinch.PinchIK) from the current joints, joints moved toward it at the speed
            limit; if the upright pinch is out of reach the jaw is re-aimed along the arm and then allowed to tilt
   arrival  Cartesian (gripper site within ARRIVE_XY / ARRIVE_Z of the pinch point), not joint-space
   grasp    verified, not assumed: after the close, the corner must rise with the jaw; otherwise open and servo again
@@ -24,9 +24,9 @@ import math
 
 import numpy as np
 
-from isaac.fold_expert import (ABOVE, ARC_HEIGHT, CORNER_REST_DZ, JAW_SHUT_TOL, ORIENTATION_WEIGHT, RETREAT,
+from isaac.experts.fold_expert import (ABOVE, ARC_HEIGHT, CORNER_REST_DZ, JAW_SHUT_TOL, ORIENTATION_WEIGHT, RETREAT,
                                TILT_WEIGHT, IsaacArmExpert)
-from mujuco.cloth_params import ARM_BASE_LEFT, ARM_BASE_RIGHT, JOINT_DELTA_SCALE, TABLE_TOP_Z
+from mujoco_sim.cloth_params import ARM_BASE_LEFT, ARM_BASE_RIGHT, JOINT_DELTA_SCALE, TABLE_TOP_Z
 
 SERVO_PHASES = ("approach", "descend", "close", "lift", "carry", "place")
 
@@ -55,7 +55,7 @@ class IsaacServoExpert(IsaacArmExpert):
     PLACE_TOL = 0.012
     PLACE_PATIENCE = 40
     SLIP_STEPS = 3
-    HOLD_DIST = 0.05         # = isaac.isaac_env.HOLD_DIST
+    HOLD_DIST = 0.05         # = isaac.sim.isaac_env.HOLD_DIST
 
     PHASE_FIELDS = IsaacArmExpert.PHASE_FIELDS + ("sv",)
 

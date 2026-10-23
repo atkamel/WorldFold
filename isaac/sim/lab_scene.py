@@ -6,7 +6,7 @@ link gravity off, self-collision on); the cloth, which is WorldFold's square mes
 particle_garment_cfg.yaml; and its simulation setup: IsaacLab on the CPU device with PhysX GPU dynamics forced on
 by LeHome's IsaacLab fork. The particle cloth needs GPU dynamics, and on the CUDA device the grippers pass through
 it (LeHome issue #36). From WorldFold: the table, the cloth's size and resolution, the arm base poses and the
-"main" camera (mujuco/cloth_params.py).
+"main" camera (mujoco_sim/cloth_params.py).
 
 Import only after isaac_env.start_app(): IsaacLab modules need the running app.
 """
@@ -33,11 +33,11 @@ import lehome
 from lehome.assets.object.Garment import GarmentObject
 from lehome.assets.robots.lerobot import SO101_FOLLOWER_CFG
 
-from mujuco.cloth_params import (
+from mujoco_sim.cloth_params import (
     ARM_BASE_LEFT, ARM_BASE_RIGHT, ARM_BASE_QUAT, ARM_JOINTS, CAMERA_FOVY_DEG, CAMERA_POS, CAMERA_TARGET,
     CLOTH_COUNT, CLOTH_MASS, CLOTH_SPACING, GRIPPER_OPEN, TABLE_TOP_Z, camera_axes,
 )
-from isaac.isaac_env import (
+from isaac.sim.isaac_env import (
     CAMERA_CLIP, CLOTH_ADHESION, CLOTH_GRAVITY_SCALE, CLOTH_SUBDIV, FLOOR_COLOR, FLOOR_SIZE, GRIPPER_JOINT,
     GRIPPERFRAME_POS, GRIPPERFRAME_QUAT,
     HEADLIGHT_AMBIENT, HEADLIGHT_DIFFUSE, LIGHT_INTENSITY, LIGHTS, TABLE_SIZE, PAD_LINING_FRICTION,

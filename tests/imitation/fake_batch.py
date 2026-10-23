@@ -1,4 +1,4 @@
-"""A pure-numpy stand-in for isaac.isaac_env.IsaacClothFoldBatch (milestone V tests): B copies whose state moves
+"""A pure-numpy stand-in for isaac.sim.isaac_env.IsaacClothFoldBatch (milestone V tests): B copies whose state moves
 only in `advance()`, which steps EVERY copy -- idle ones too, as the real shared physics does. A copy stepped while
 its episode waits for the driver would drift, so an episode's trajectory depends only on its seed iff the lockstep
 barrier is right."""

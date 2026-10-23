@@ -3,9 +3,9 @@ hold cap, and a slip ends the carry."""
 
 import numpy as np
 
-from isaac.fold_expert import IsaacArmExpert
-from isaac.place_servo import IsaacPlaceServoExpert
-from mujuco.cloth_params import TABLE_TOP_Z
+from isaac.experts.fold_expert import IsaacArmExpert
+from isaac.experts.place_servo import IsaacPlaceServoExpert
+from mujoco_sim.cloth_params import TABLE_TOP_Z
 
 
 class _IK:

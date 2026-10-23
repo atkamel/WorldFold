@@ -1,6 +1,6 @@
 """Scripted two-arm half fold on Isaac with friction grasps (cloth_fold_rl.quarter_fold_env.HalfFoldEnv).
 
-Each arm pinches its far corner top-down (isaac.pinch, on the corner's actual position after the reset drop), then
+Each arm pinches its far corner top-down (isaac.sim.pinch, on the corner's actual position after the reset drop), then
 carries it along an arc over the fold line onto the start of the near corner on the same side, through IK waypoints
 about 2 cm apart, each seeded from the last so the arm keeps one configuration. It releases, backs off, and both arms
 hold still for HalfFoldEnv's settle window. Joint targets are servoed through HalfFoldEnv's 12-dim action (per arm:
@@ -24,9 +24,9 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from mujuco.cloth_params import CLOTH_COUNT, JOINT_DELTA_SCALE, TABLE_TOP_Z   # noqa: E402
+from mujoco_sim.cloth_params import CLOTH_COUNT, JOINT_DELTA_SCALE, TABLE_TOP_Z   # noqa: E402
 
 PINCH_HEIGHT = 0.010   # fixed fingertip above the table at the pinch: its pad rests on the table
 PLACE_HEIGHT = 0.011
@@ -141,7 +141,7 @@ def run_episode(env, ik, seed, frames=None):
 
 
 def make_env(video):
-    from isaac.isaac_env import CLOTH_JITTER, IsaacClothFoldEnv
+    from isaac.sim.isaac_env import CLOTH_JITTER, IsaacClothFoldEnv
     from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS, HalfFoldEnv
     base = IsaacClothFoldEnv(observation_mode="hybrid" if video else "state", image_size=(360, 360),
                              max_episode_steps=MAX_STEPS, grasp_corners=GRASP_CORNERS,
@@ -155,7 +155,7 @@ def main():
     ap.add_argument("--video-dir", default=None, help="write half_fold_seed<k>.mp4 here")
     args = ap.parse_args()
     env = make_env(video=args.video_dir is not None)
-    from isaac.pinch import PinchIK
+    from isaac.sim.pinch import PinchIK
     ik = PinchIK()
     for seed in range(args.episodes):
         frames = [] if args.video_dir else None

@@ -1,6 +1,6 @@
 """Lockstep scheduler for B envs that share one physics step (milestone V, vectorised Isaac env). No Isaac imports.
 
-A batch (e.g. isaac.isaac_env.IsaacClothFoldBatch) owns B sub-envs whose physics advances together in one
+A batch (e.g. isaac.sim.isaac_env.IsaacClothFoldBatch) owns B sub-envs whose physics advances together in one
 `batch.advance()`. A rollout worker serves each sub-env from its own *slot thread* (one per driver pipe) running
 the ordinary synchronous env code; each control step inside it calls `batch.sync(i)`. With a `Lockstep`
 attached, `sync` parks the slot thread, and the scheduler -- on the main thread -- calls `advance()` once every

@@ -6,7 +6,7 @@ pulls the west short edge's middle (cloth_2 under cloth_8), the right arm the ea
 flat and low. Then the right arm alone carries the west middle onto the east middle (fold 2) while the left arm
 parks at home. Offline (scratchpad/drag_search.py): with DRAG (0.12, 0.04) fold 2's pinch is near vertical at 0.29 m.
 
-    python isaac/quarter_batch.py --copies 8 --seeds 0:8 --video --out outputs/isaac/quarter/drag1
+    python isaac/tools/quarter_batch.py --copies 8 --seeds 0:8 --video --out outputs/isaac/quarter/drag1
 
 Run with WORLDFOLD_PLACE_PARAMS for fold 1's base (latch + g-fold 1.2). One row per seed in <out>/episodes.jsonl
 (fold-1 alignment, the sheet's move in the drag, the final quarter-fold alignment), a top video per seed with --video.
@@ -21,9 +21,9 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from isaac.precision_env import ARMS, SETTLE_STEPS, PrecisionBatch, coordinate, gate  # noqa: E402
+from isaac.rl.precision_env import ARMS, SETTLE_STEPS, PrecisionBatch, coordinate, gate  # noqa: E402
 
 WEST, EAST = (2, 8), (112, 118)          # the short edges' middles after fold 1 (bottom vertex, top vertex)
 # fold 2's grasp -> its target: "mid" the west edge's middle (two free layers; dropped 5/8 in run drag1) onto the
@@ -75,7 +75,7 @@ class QuarterBatch(PrecisionBatch):
 
     def _park(self, i, p):
         """The parked arm: straight up PARK_LIFT for LIFT_STEPS steps (IK from where it parked), then home."""
-        from mujuco.cloth_params import JOINT_DELTA_SCALE
+        from mujoco_sim.cloth_params import JOINT_DELTA_SCALE
         sub, e = self.subs[i], self.experts[i][p]
         q = sub.joint_positions(p)[:5]
         self.park_steps[i] += 1
@@ -149,7 +149,7 @@ class QuarterBatch(PrecisionBatch):
     def run(self, seeds):
         """Fold 1, drag, fold 2 for copy i from seeds[i]; returns one record per copy."""
         from cloth_fold_rl.fold_alignment import QUARTER_FOLDS, score
-        from isaac.precision_env import FOLDS
+        from isaac.rl.precision_env import FOLDS
         recs = [{"seed": int(s)} for s in seeds]
         for i, seed in enumerate(seeds):
             self.tasks[i].reset(seed=int(seed))

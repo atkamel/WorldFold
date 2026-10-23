@@ -1,6 +1,6 @@
 """Runnable check for IsaacClothFoldEnv on Isaac Sim 5.1; on Modal: modal run isaac/modal_isaac.py::main
 
-Exits non-zero if the observation contract drifts, the scripted friction half fold (isaac/half_fold_demo.py) leaves
+Exits non-zero if the observation contract drifts, the scripted friction half fold (isaac/experts/half_fold_demo.py) leaves
 the cloth mostly unfolded, or the fold / half-fold wrappers cannot run on the env. State mode runs
 the physics checks; hybrid mode checks the contract, throughput and the RGB/depth frame.
 """
@@ -12,19 +12,19 @@ from pathlib import Path
 
 import numpy as np
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from isaac.isaac_env import CLOTH_JITTER, IsaacClothFoldEnv   # noqa: E402
-from mujuco.cloth_params import check_contract   # noqa: E402
+from isaac.sim.isaac_env import CLOTH_JITTER, IsaacClothFoldEnv   # noqa: E402
+from mujoco_sim.cloth_params import check_contract   # noqa: E402
 
 
 def half_fold_episode(env):
     # the scripted friction half fold must get the cloth part of the way to an ideal half fold (whole-cloth
     # fold_score, see half_fold_demo.fold_error): it scores 0.40 to 0.61, an untouched cloth 0
     from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS, HalfFoldEnv
-    from isaac.half_fold_demo import MAX_STEPS, run_episode
-    from isaac.pinch import PinchIK
+    from isaac.experts.half_fold_demo import MAX_STEPS, run_episode
+    from isaac.sim.pinch import PinchIK
     env.grasp_corners = dict(GRASP_CORNERS)
     env.grasp_radius = GRASP_RADIUS
     env.max_episode_steps = MAX_STEPS

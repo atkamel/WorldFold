@@ -3,7 +3,7 @@ tipped over; a scripted push is close to a coin flip and once broke a fold that 
 
 An episode starts from a settled scripted fold (latch + g-fold base, both arms retreated) and makes up to K decisions.
 Each decision is, per arm, a push of the top corner (xy, PUSH_SCALE m per unit) at a press depth (PRESS_RANGE), done
-by isaac.place_servo.IsaacPlaceServoExpert.start_touchup, or stop. After the pushes the fold resettles and is scored:
+by isaac.experts.place_servo.IsaacPlaceServoExpert.start_touchup, or stop. After the pushes the fold resettles and is scored:
 the reward is the change in `score_s` (log mean and edge against the bar), plus PASS_BONUS for ending on a passing
 fold; a push that drags the bottom layer DRAG_FAIL or blows the cloth up ends the episode with -FAIL.
 
@@ -17,7 +17,7 @@ import math
 
 import numpy as np
 
-from isaac.precision_env import ARMS, FOLDS, PAIRS, SETTLE_STEPS, gate
+from isaac.rl.precision_env import ARMS, FOLDS, PAIRS, SETTLE_STEPS, gate
 
 K = 3                          # decisions per episode
 PUSH_SCALE = 0.03              # m of push per unit action (x, y)
@@ -87,10 +87,10 @@ def scripted_action(cloth, tol=0.008, press=-0.002):
 
 
 class CorrectorBatch:
-    """B copies (isaac.precision_env.PrecisionBatch): settled-fold snapshots, then corrector episodes."""
+    """B copies (isaac.rl.precision_env.PrecisionBatch): settled-fold snapshots, then corrector episodes."""
 
     def __init__(self, n, cameras=None):
-        import isaac.precision_env as pe
+        import isaac.rl.precision_env as pe
         pe.TOUCH_TOL = 0.0                   # the window's own touch-up is off: the corrector does the pushing
         self.pe = pe
         self.pb = pe.PrecisionBatch(n, cameras=cameras)

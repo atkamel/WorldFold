@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from isaac.fold_expert import IsaacArmExpert
-from mujuco.cloth_params import TABLE_TOP_Z
+from isaac.experts.fold_expert import IsaacArmExpert
+from mujoco_sim.cloth_params import TABLE_TOP_Z
 
 
 class _IK:

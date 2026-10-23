@@ -14,8 +14,8 @@ import numpy as np
 
 from lehome.utils.constant import ASSETS_ROOT
 
-from mujuco.cloth_params import ARM_BASE_LEFT, ARM_BASE_RIGHT, ARM_BASE_QUAT, ARM_JOINTS
-from isaac.isaac_env import _matrix_from_quat
+from mujoco_sim.cloth_params import ARM_BASE_LEFT, ARM_BASE_RIGHT, ARM_BASE_QUAT, ARM_JOINTS
+from isaac.sim.isaac_env import _matrix_from_quat
 
 URDF = os.path.join(ASSETS_ROOT, "robots", "so101_new_calib.urdf")
 SITE_LINK = "gripper_frame_link"

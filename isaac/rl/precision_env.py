@@ -1,7 +1,7 @@
 """The residual-RL learning window on Isaac (docs/superpowers/plans/2026-10-20-closed-loop-rl.md, R1-R2).
 
 B copies of the half fold on the GPU `friction` profile (isaac_env.IsaacClothFoldBatch), each driven by two
-isaac.place_servo.IsaacPlaceServoExpert arms. `scripted_to_window` runs the scripted fold from a seed to the start
+isaac.experts.place_servo.IsaacPlaceServoExpert arms. `scripted_to_window` runs the scripted fold from a seed to the start
 of the carry (both arms steering, both corners in the jaws) and snapshots the copy; `reset_window` restores
 snapshots and `step` runs the window: every control step the policy's action sets each arm's residual target
 (RES_SCALE m per unit, so bounded; the residual follows it with RES_SMOOTH) and its release vote, the base does the
@@ -53,13 +53,13 @@ TOUCH_ROUNDS = int(os.environ.get("WORLDFOLD_TOUCH_ROUNDS") or 1)   # touch-up r
 # "k=v,..." friction-grasp knobs on top of the profile's (isaac_env.FRICTION_GRASP), e.g. particle_friction=0.6: the
 # cloth's friction against every rigid body, table and jaws alike (PhysX PBD has no table-only coefficient)
 GRASP_KNOBS = os.environ.get("WORLDFOLD_GRASP_KNOBS", "")
-HOLD_DIST = 0.05             # = isaac.isaac_env.HOLD_DIST
+HOLD_DIST = 0.05             # = isaac.sim.isaac_env.HOLD_DIST
 # Validity gate on every score (re-evaluation 2026-10-22: a cloth hanging from a gripper scores 0.0 cm on
 # fold_alignment, which is how carried-off sheets looked like near-successes): every grid vertex within GATE_Z of the
 # table and on it, both jaws open and both gripper sites at least GATE_CLEAR from the cloth, the cloth moving less
 # than GATE_STILL per step
 # m above the table top: catches a lifted or hanging cloth (carried-off sheets sat ~30 cm up) but not ridges: stored
-# settled half folds peak at a median 2.2-2.8 cm with a tail to ~5 cm (isaac/rescore_gate.py, 2026-10-22); a cloth
+# settled half folds peak at a median 2.2-2.8 cm with a tail to ~5 cm (isaac/tools/rescore_gate.py, 2026-10-22); a cloth
 # still on a finger is the clearance / jaw checks' job
 GATE_Z = 0.05
 GATE_CLEAR = 0.03
@@ -116,7 +116,7 @@ def terminal_reward(cloth, start):
 
 def instability(sub):
     """Which of IsaacClothFoldEnv._failed's checks fire, and by how much (particles in the copy's frame)."""
-    from isaac.isaac_env import CLOTH_SPEED_LIMIT, WORKSPACE_XY
+    from isaac.sim.isaac_env import CLOTH_SPEED_LIMIT, WORKSPACE_XY
     pos, vel = sub._particle_positions(), sub._particle_vel
     finite = np.all(np.isfinite(pos), axis=1)
     speed = np.linalg.norm(np.nan_to_num(vel), axis=1)
@@ -127,7 +127,7 @@ def instability(sub):
 
 def gate(cloth, prev_cloth, sites, jaws):
     """Is this final cloth state scoreable? dict(valid, z_max_cm, on_table, clear_cm, jaws_open, still_mm)."""
-    from mujuco.cloth_params import TABLE_TOP_Z
+    from mujoco_sim.cloth_params import TABLE_TOP_Z
     cloth, prev = np.asarray(cloth, float), np.asarray(prev_cloth, float)
     z_max = float(cloth[:, 2].max() - TABLE_TOP_Z)
     on_table = bool(np.all(np.abs(cloth[:, :2]) <= TABLE_HALF))
@@ -163,9 +163,9 @@ class PrecisionBatch:
 
     def __init__(self, n, profile="friction", cameras=None):
         from cloth_fold_rl.quarter_fold_env import CLOTH_10, CLOTH_120, GRASP_RADIUS, STAGES, QuarterFoldEnv
-        from isaac.grasp_bench import parse_kv
-        from isaac.isaac_env import CLOTH_JITTER, IsaacClothFoldBatch
-        from isaac.place_servo import IsaacPlaceServoExpert
+        from isaac.tools.grasp_bench import parse_kv
+        from isaac.sim.isaac_env import CLOTH_JITTER, IsaacClothFoldBatch
+        from isaac.experts.place_servo import IsaacPlaceServoExpert
         self.n = n
         self.batch = IsaacClothFoldBatch(n, profile=profile, observation_mode="state", max_episode_steps=10 ** 6,
                                          grasp_corners={"left_": (CLOTH_10,), "right_": (CLOTH_120,)},

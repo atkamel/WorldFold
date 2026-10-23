@@ -17,7 +17,7 @@ from imitation.lockstep import Lockstep
 from imitation.rollout import (ExpertController, Perturbation, PolicyController, _rollout, _serve_slots,
                                envs_per_proc)
 
-# loaded by path: `tests` can resolve to mujuco/tests during a full collection (status.md defect 13)
+# loaded by path: `tests` can resolve to mujoco_sim/tests during a full collection (status.md defect 13)
 _spec = importlib.util.spec_from_file_location("worldfold_fake_batch", Path(__file__).with_name("fake_batch.py"))
 _fake = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_fake)

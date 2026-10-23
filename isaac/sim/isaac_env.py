@@ -1,9 +1,9 @@
-"""WorldFold's cloth-fold env on LeHome's Isaac stack: a drop-in for mujuco.sim_main.ClothFoldEnv in joint_delta mode.
+"""WorldFold's cloth-fold env on LeHome's Isaac stack: a drop-in for mujoco_sim.sim_main.ClothFoldEnv in joint_delta mode.
 
 Same 14-dim action and observation dict as ClothFoldEnv, so cloth_fold_rl's wrappers (SingleCornerFoldEnv,
-HalfFoldEnv) run on it unchanged. The scene (isaac/lab_scene.py) is IsaacLab with LeHome's SO101 arms, particle
+HalfFoldEnv) run on it unchanged. The scene (isaac/sim/lab_scene.py) is IsaacLab with LeHome's SO101 arms, particle
 cloth parameters and simulation setup (lehome-challenge a805ad2); the table, cloth size, arm base poses and
-camera come from mujuco/cloth_params.py. Nothing attaches the cloth: the jaws hold it by friction and adhesion.
+camera come from mujoco_sim/cloth_params.py. Nothing attaches the cloth: the jaws hold it by friction and adhesion.
 
 Call start_app() (or construct the env, which does it) before importing anything else from Isaac Sim or IsaacLab.
 """
@@ -15,7 +15,7 @@ import gymnasium as gym
 
 from imitation.lockstep import BatchBase
 
-from mujuco.cloth_params import (
+from mujoco_sim.cloth_params import (
     CLOTH_COUNT, CLOTH_SPACING, ARM_JOINTS, GRIPPER_OPEN, GRIPPER_CLOSED, JOINT_DELTA_SCALE,
     GRASP_CORNERS, GRASP_RADIUS, HOLD_STEPS, SETTLE_STEPS, ARM_TIMESTEP, WORKSPACE_XY, SUCCESS_FOLD_SCORE,
     CORNER_PLACED_DIST, TASK_NAMES, DEPTH_MAX, CAMERA_FOVY_DEG, sensor_depth, ARM_BASE_LEFT, ARM_BASE_RIGHT,
@@ -113,7 +113,7 @@ def _quarter_bases(left_xy, right_xy):
 
 # At HOME (all zero) each arm reaches 38 cm out at 29 cm: facing the cloth from two sides the arms cross over it and
 # jam (2026-10-14 run q1, seed 1). QUARTER_HOME stands each arm up over its own base, on the elbow-down branch the
-# plans use (isaac.pinch.ELBOW_DOWN): every link within 7.7 cm of the base horizontally, >= 12 cm above the table.
+# plans use (isaac.sim.pinch.ELBOW_DOWN): every link within 7.7 cm of the base horizontally, >= 12 cm above the table.
 QUARTER_HOME = (0.0, -0.2, -1.34, -1.2, 0.0)
 # "quarter2" (re-evaluation 2026-10-22, the audit's corrected layout search): a two-armed fold 2 with
 # the left arm north of the cloth (fold 1's west corner A0, fold 2's crease end C) and the right arm south-east (B0,
@@ -124,12 +124,12 @@ PROFILES["quarter2"] = dict(PROFILES["friction"], arm_bases=_quarter_bases((-0.1
 # friction grasp_active (Phase F): a closed jaw within this of its target counts as settled (track G traces: 0.14-0.21
 # rad mid-close, exactly the target once shut); the held corner rides 1-4 cm from the gripper frame during the carry
 JAW_SETTLED_TOL         = 0.05
-HOLD_DIST               = 0.05                # = isaac.grasp_metrics.HOLD_DIST
+HOLD_DIST               = 0.05                # = isaac.tools.grasp_metrics.HOLD_DIST
 # gripper_mode "position": a jaw target below JAW_CLOSED_BELOW counts as commanded closed; a squeeze past contact
 # stalls the jaw on the cloth short of its target, so settled there is "shut and still" (JAW_STILL_SPEED, rad/s)
 JAW_CLOSED_BELOW        = 0.2
 JAW_STILL_SPEED         = 0.2
-DR_RANGE                = (0.7, 1.3)          # mujuco/sim_main.py reset
+DR_RANGE                = (0.7, 1.3)          # mujoco_sim/sim_main.py reset
 CLOTH_SPEED_LIMIT       = 20.0                # m/s; replaces MuJoCo's qacc explosion check
 KIT_TICK_PERIOD_S       = 30.0                # state mode ticks Kit this often; its hang detector allows 120 s
 CAMERA_CLIP             = (0.05, 10.0)
@@ -247,7 +247,7 @@ class IsaacClothFoldEnv(gym.Env):
         self._attach(self._build_scene(1), 0)
 
     def _build_scene(self, n_copies):
-        from isaac.lab_scene import SceneEnv, make_cfg
+        from isaac.sim.lab_scene import SceneEnv, make_cfg
         cfg = make_cfg(self.physics_dt, self.n_substeps, self.image_size if self._use_image else None, rig=self.rig,
                        device=self.sim_device, arm_drive=self._prof["arm_drive"], n_copies=n_copies,
                        gripper_drive=self.grasp_knobs.get("gripper_drive"),
@@ -354,7 +354,7 @@ class IsaacClothFoldEnv(gym.Env):
         self._joint_targets = {p: self._home() for p in self.prefixes}
         self._gripper_closed = {p: False for p in self.prefixes}
         # the binary gripper's open target per arm, None: GRIPPER_OPEN (a gentle release opens part way first:
-        # isaac.place_servo RELEASE_JAW)
+        # isaac.experts.place_servo RELEASE_JAW)
         self.jaw_open = {p: None for p in self.prefixes}
         self._step_count = 0
         self._task_id = 0
@@ -825,7 +825,7 @@ def make_half_fold_env(observation_mode="state", seed=None, headless=True):
     """cloth_fold_rl.quarter_fold_env.HalfFoldEnv on Isaac Sim; see HalfFoldEnv for the success state."""
     import sys
     from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from cloth_fold_rl.quarter_fold_env import GRASP_CORNERS, GRASP_RADIUS, HALF_FOLD_MAX_STEPS, HalfFoldEnv
     base = IsaacClothFoldEnv(observation_mode=observation_mode, max_episode_steps=HALF_FOLD_MAX_STEPS,
                              grasp_corners=GRASP_CORNERS, grasp_radius=GRASP_RADIUS, headless=headless)

@@ -1,7 +1,7 @@
 """Per-arm friction-grasp metrics from a per-step trace (track G, roadmap IG.1-IG.2). Numpy only, so the bench's
 summaries can be recomputed and tested outside the Isaac venv.
 
-A trace is what isaac/grasp_bench.py records for one arm over one episode, one row per control step (read before
+A trace is what isaac/tools/grasp_bench.py records for one arm over one episode, one row per control step (read before
 the step's action): the expert's phase, the gripperframe site, the carried corner, the jaw (gripper joint) angle,
 and the arm's anchor vertex (the corner that must not be dragged). From it:
 

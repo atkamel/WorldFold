@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from isaac.grasp_metrics import arm_metrics, meets_ig2, summarize, wilson
+from isaac.tools.grasp_metrics import arm_metrics, meets_ig2, summarize, wilson
 
 GOAL = np.array([0.0, -0.3, 0.42])
 REST = 0.42
