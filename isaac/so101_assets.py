@@ -29,6 +29,15 @@ def merge_top_level_defaults(src, dst):
         for child in list(extra):
             first.append(child)
         root.remove(extra)
+    # The Isaac 4.5 importer segfaults while converting SO101 mesh/material
+    # geoms on headless cloud workers. The env authors simple USD visuals and
+    # collision proxies itself; retain the MJCF links, joints, limits, inertias,
+    # actuators, and sites that define the arm's kinematics and controls.
+    for body in root.iter("body"):
+        for geom in list(body.findall("geom")):
+            body.remove(geom)
+    for asset in root.findall("asset"):
+        root.remove(asset)
     tree.write(dst)
 
 

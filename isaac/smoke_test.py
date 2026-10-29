@@ -32,11 +32,10 @@ def teleport_and_measure(env, q5, target):
     arm.set_joint_positions(_dev(q[None, :]))
     arm.set_joint_velocities(_dev(np.zeros((1, 6))))
     arm.set_joint_position_targets(_dev(q[None, :]))
-    env.world.step(render=False)
     return float(np.linalg.norm(env.gripper_position("left_") - target))
 
 
-def search_joint_config(env, target, rng, n_random=300, n_refine=300):
+def search_joint_config(env, target, rng, n_random=80, n_refine=80):
     """Random search + hill climb over the 5 arm joints for a config that reaches target."""
     limits = env._dof_limits[:5]
     best_q = None
@@ -48,7 +47,9 @@ def search_joint_config(env, target, rng, n_random=300, n_refine=300):
             best_d = d
             best_q = q
     for _ in range(n_refine):
-        q = np.clip(best_q + rng.normal(0.0, 0.08, size=5), limits[:, 0], limits[:, 1])
+        candidate = best_q + rng.normal(0.0, 0.08, size=5)
+        q = np.asarray([min(float(hi), max(float(lo), float(v)))
+                        for v, lo, hi in zip(candidate, limits[:, 0], limits[:, 1])], dtype=np.float32)
         d = teleport_and_measure(env, q, target)
         if d < best_d:
             best_d = d
@@ -62,7 +63,8 @@ def drive_to(env, q_goal, grip, n_steps):
     action[13] = 1.0
     for _ in range(n_steps):
         q = env.joint_positions("left_")[:5]
-        action[0:5] = np.clip((q_goal - q) / JOINT_DELTA_SCALE, -1.0, 1.0)
+        delta = (q_goal - q) / JOINT_DELTA_SCALE
+        action[0:5] = [min(1.0, max(-1.0, float(v))) for v in delta]
         env.step(action)
 
 

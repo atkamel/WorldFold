@@ -9,6 +9,11 @@ Call start_app() (or construct the env, which does it) before importing
 anything else from Isaac Sim in the same process.
 """
 
+import os
+import math
+from pathlib import Path
+import xml.etree.ElementTree as ET
+
 import numpy as np
 import gymnasium as gym
 
@@ -45,7 +50,7 @@ HEADLIGHT_DIFFUSE       = 0.4
 HEADLIGHT_AMBIENT       = 0.1
 FLOOR_SIZE              = 4.0                 # MJCF floor plane size="2 2", half-extents
 FLOOR_COLOR             = (0.3, 0.3, 0.35)
-DEVICE                  = "cuda:0"            # particle cloth only exists on the GPU pipeline
+DEVICE                  = "cpu"               # kinematic proxies and the fallback cloth solver use NumPy
 
 ARM_PRIMS = {"left_": "/World/left_arm", "right_": "/World/right_arm"}
 GRIPPER_JOINT = "gripper"
@@ -55,23 +60,40 @@ _app = None
 
 def start_app(headless=True):
     """Creates the SimulationApp once and pulls in the Isaac modules this file uses."""
-    global _app, torch, omni, World, FixedCuboid, GroundPlane, ParticleMaterial
-    global ClothPrim, SingleClothPrim, SingleParticleSystem, Articulation, RigidPrim, SingleXFormPrim, Camera
-    global Gf, UsdGeom, UsdLux, UsdPhysics
+    global _app, get_stage_context
+    global Camera
+    global Gf, Vt, UsdGeom, UsdLux, UsdPhysics
     if _app is not None:
         return _app
     from isaacsim import SimulationApp
-    _app = SimulationApp({"headless": headless})
-    import torch
-    import omni.kit.commands
-    from isaacsim.core.utils.extensions import enable_extension
-    enable_extension("isaacsim.asset.importer.mjcf")
-    from isaacsim.core.api import World
-    from isaacsim.core.api.objects import FixedCuboid, GroundPlane
-    from isaacsim.core.api.materials import ParticleMaterial
-    from isaacsim.core.prims import ClothPrim, SingleClothPrim, SingleParticleSystem, Articulation, RigidPrim, SingleXFormPrim
+    launch_config = {"headless": os.environ.get("ISAAC_HEADLESS", "1" if headless else "0") != "0"}
+    if os.environ.get("ISAAC_DISABLE_RENDERER") == "1":
+        # Physics-only Modal workers have no usable RTX display. Disable the
+        # renderer and window at the Kit level instead of initializing RTX in
+        # minimal mode (which still creates an RTX scene database on startup).
+        launch_config.update(renderer="MinimalRendering", minimal_shading_mode=4,
+                             disable_viewport_updates=True,
+                             extra_args=["--/app/renderer/enabled=false",
+                                         "--/app/window/enabled=false"])
+    if os.environ.get("ISAAC_SKIP_VIEWPORT_WAIT") == "1":
+        SimulationApp._wait_for_viewport = lambda self: None
+    if os.environ.get("ISAAC_RENDERER"):
+        launch_config["renderer"] = os.environ["ISAAC_RENDERER"]
+    if os.environ.get("ISAAC_MULTI_GPU") == "0":
+        launch_config["multi_gpu"] = False
+    # Isaac Sim 4.5 may ship a physics-only Kit experience alongside the
+    # general Python app. Prefer it on Modal to keep RTX and viewport plugins
+    # out of state-only jobs; fall back for local installs without that app.
+    import isaacsim
+    headless_experience = (Path(isaacsim.__file__).resolve().parent / "apps" /
+                           "isaacsim.exp.base.python.physics.headless.kit")
+    if os.environ.get("ISAAC_DISABLE_RENDERER") == "1" and headless_experience.is_file():
+        _app = SimulationApp(launch_config, experience=str(headless_experience))
+    else:
+        _app = SimulationApp(launch_config)
     from isaacsim.sensors.camera import Camera
-    from pxr import Gf, UsdGeom, UsdLux, UsdPhysics
+    from omni.usd import get_context as get_stage_context
+    from pxr import Gf, Vt, UsdGeom, UsdLux, UsdPhysics
     return _app
 
 
@@ -82,7 +104,7 @@ def _npy(x):
 
 
 def _dev(x):
-    return torch.as_tensor(np.asarray(x), device=DEVICE, dtype=torch.float32)
+    return np.asarray(x, dtype=np.float32)
 
 
 def _quat_from_matrix(R):
@@ -110,6 +132,36 @@ def _matrix_from_quat(q):
     ])
 
 
+def _quat_rotate(q, v):
+    """Rotate a 3-vector by a wxyz quaternion without a temporary matrix."""
+    w, x, y, z = [float(value) for value in q]
+    vx, vy, vz = [float(value) for value in v]
+    tx, ty, tz = 2.0 * (y * vz - z * vy), 2.0 * (z * vx - x * vz), 2.0 * (x * vy - y * vx)
+    return np.asarray((vx + w * tx + (y * tz - z * ty),
+                       vy + w * ty + (z * tx - x * tz),
+                       vz + w * tz + (x * ty - y * tx)), dtype=np.float32)
+
+
+def _quat_rotate_tuple(q, v):
+    w, x, y, z = [float(value) for value in q]
+    vx, vy, vz = [float(value) for value in v]
+    tx, ty, tz = 2.0 * (y * vz - z * vy), 2.0 * (z * vx - x * vz), 2.0 * (x * vy - y * vx)
+    return (vx + w * tx + y * tz - z * ty,
+            vy + w * ty + z * tx - x * tz,
+            vz + w * tz + x * ty - y * tx)
+
+
+def _quat_mul_tuple(a, b):
+    aw, ax, ay, az = [float(value) for value in a]
+    bw, bx, by, bz = [float(value) for value in b]
+    return (aw*bw-ax*bx-ay*by-az*bz, aw*bx+ax*bw+ay*bz-az*by,
+            aw*by-ax*bz+ay*bw+az*bx, aw*bz+ax*by-ay*bx+az*bw)
+
+
+def _quat_conjugate(q):
+    return np.asarray((q[0], -q[1], -q[2], -q[3]), dtype=np.float32)
+
+
 def _quat_facing(direction):
     # wxyz rotation whose local -Z points along direction (USD lights and cameras look down -Z)
     z = -np.asarray(direction, dtype=float)
@@ -118,6 +170,210 @@ def _quat_facing(direction):
     x = np.cross(helper, z)
     x = x / np.linalg.norm(x)
     return _quat_from_matrix(np.column_stack([x, np.cross(z, x), z]))
+
+
+def _quat_mul(a, b):
+    aw, ax, ay, az = a
+    bw, bx, by, bz = b
+    return np.array([aw*bw-ax*bx-ay*by-az*bz, aw*bx+ax*bw+ay*bz-az*by,
+                     aw*by-ax*bz+ay*bw+az*bx, aw*bz+ax*by-ay*bx+az*bw])
+
+
+class _KinematicArm:
+    """URDF-driven kinematic SO101 chain used when Kit's importers are unavailable."""
+
+    def __init__(self, env, prefix, specs, limits):
+        self.env, self.prefix, self.specs = env, prefix, specs
+        self.dof_names = ARM_JOINTS + [GRIPPER_JOINT]
+        self.limits = np.asarray(limits, dtype=np.float32)
+        self.q = np.zeros(6, dtype=np.float32)
+        self.qd = np.zeros(6, dtype=np.float32)
+
+    def set_joint_position_targets(self, targets):
+        q = _npy(targets).reshape(-1, 6)[0].astype(np.float32)
+        dt = max(float(self.env.control_dt), 1e-6)
+        old = self.q.copy()
+        self.q = q
+        self.qd = (q - old) / dt
+        # State-only headless jobs use the FK below for all robot state and do
+        # not need to mutate USD Xforms every control tick. This avoids Kit's
+        # threaded USD authoring path in Modal's no-viewport renderer.
+        if not self.env._use_image:
+            return
+        for link_name in self.specs["walk_order"]:
+            spec = self.specs["links"][link_name]
+            angle = q[self.dof_names.index(spec["joint_name"])] if spec["joint_name"] in self.dof_names else 0.0
+            half = angle / 2.0
+            rot = np.concatenate([[np.cos(half)], spec["axis"] * np.sin(half)])
+            quat = _quat_mul(spec["quat"], rot)
+            spec["translate_op"].Set(Gf.Vec3d(*spec["xyz"]))
+            spec["orient_op"].Set(Gf.Quatf(float(quat[0]), Gf.Vec3f(*map(float, quat[1:]))))
+
+    def get_joint_positions(self):
+        return self.q[None, :].copy()
+
+    def set_joint_positions(self, positions):
+        self.set_joint_position_targets(positions)
+        self.qd.fill(0.0)
+
+    def set_joint_velocities(self, velocities):
+        self.qd = _npy(velocities).reshape(-1, 6)[0].astype(np.float32).copy()
+
+    def get_joint_velocities(self):
+        return self.qd[None, :].copy()
+
+    def get_dof_limits(self):
+        return self.limits[None, :, :].copy()
+
+
+class _KinematicLink:
+    def __init__(self, env, prefix, link_name):
+        self.env, self.prefix, self.link_name = env, prefix, link_name
+
+    def get_world_poses(self):
+        specs = self.env._arm_specs[self.prefix]
+        arm = self.env.arms[self.prefix]
+        poses = {}
+        root_pos = tuple(float(value) for value in specs["root_pos"])
+        root_quat = tuple(float(value) for value in specs["root_quat"])
+        for name in ["base_link", *specs["walk_order"]]:
+            spec = specs["links"][name]
+            angle = arm.q[arm.dof_names.index(spec["joint_name"])] if spec["joint_name"] in arm.dof_names else 0.0
+            half = angle / 2.0
+            # Python's scalar trig avoids frequent NumPy ufunc dispatch in
+            # Kit's embedded interpreter during long IK searches/rollouts.
+            s, c = math.sin(float(half)), math.cos(float(half))
+            axis = spec["axis"]
+            joint_rot = (c, float(axis[0]) * s, float(axis[1]) * s, float(axis[2]) * s)
+            local_quat = _quat_mul_tuple(spec["quat"], joint_rot)
+            parent = spec["parent"]
+            if parent is None:
+                pos, quat = root_pos, root_quat
+            else:
+                parent_pos, parent_quat = poses[parent]
+                rotated = _quat_rotate_tuple(parent_quat, spec["xyz"])
+                pos = tuple(parent_pos[i] + rotated[i] for i in range(3))
+                quat = _quat_mul_tuple(parent_quat, local_quat)
+            poses[name] = (pos, quat)
+        pos, quat = poses[self.link_name]
+        return [list(pos)], [list(quat)]
+
+    def get_linear_velocities(self):
+        return np.zeros((1, 3), dtype=np.float32)
+
+    def get_angular_velocities(self):
+        return np.zeros((1, 3), dtype=np.float32)
+
+    def get_coms(self):
+        return np.zeros((1, 3), dtype=np.float32)
+
+
+class _NumpyParticleView:
+    """Small compatibility surface for the environment's particle mass calls."""
+
+    def __init__(self, count, mass):
+        self.masses = np.full((1, count), mass, dtype=np.float32)
+
+    def get_masses(self):
+        return self.masses.copy()
+
+    def set_masses(self, masses, indices=None):
+        self.masses[...] = np.asarray(masses, dtype=np.float32)
+
+
+class _PositionBasedCloth:
+    """NumPy PBD cloth used because Isaac 4.5's deprecated GPU cloth view crashes headless."""
+
+    def __init__(self, mesh, points, translate_z, spacing, mass, sync_mesh=False):
+        self.mesh = mesh
+        self.sync_mesh = bool(sync_mesh)
+        self.translate_z = float(translate_z)
+        self.count = len(points)
+        self.positions = np.asarray(points, dtype=np.float32).copy()
+        self.positions[:, 2] += self.translate_z
+        self._rest_positions = self.positions.copy()
+        self.velocities = np.zeros_like(self.positions)
+        self._physics_view = _NumpyParticleView(self.count, mass)
+        self._constraints = []
+        n = CLOTH_COUNT
+        for ix in range(n):
+            for iy in range(n):
+                i = ix * n + iy
+                for dx, dy, stiffness in ((1, 0, 0.18), (0, 1, 0.18),
+                                          (1, 1, 0.12), (1, -1, 0.12),
+                                          (2, 0, 0.025), (0, 2, 0.025)):
+                    jx, jy = ix + dx, iy + dy
+                    if 0 <= jx < n and 0 <= jy < n:
+                        j = jx * n + jy
+                        self._constraints.append((i, j, spacing * np.hypot(dx, dy), stiffness))
+        constraints = np.asarray(self._constraints, dtype=np.float32)
+        self._constraint_indices = constraints[:, :2].astype(np.int32)
+        self._constraint_rest = constraints[:, 2]
+        self._constraint_stiffness = constraints[:, 3]
+        if self.sync_mesh:
+            self._sync_mesh()
+
+    def _sync_mesh(self):
+        if not self.sync_mesh:
+            return
+        local = self.positions.copy()
+        local[:, 2] -= self.translate_z
+        self.mesh.GetPointsAttr().Set(Vt.Vec3fArray([Gf.Vec3f(*map(float, p)) for p in local]))
+
+    def get_world_positions(self):
+        return self.positions[None, :, :].copy()
+
+    def get_velocities(self):
+        return self.velocities[None, :, :].copy()
+
+    def set_world_positions(self, positions):
+        self.positions[:] = np.asarray(positions, dtype=np.float32).reshape(1, self.count, 3)[0]
+        self._sync_mesh()
+
+    def set_velocities(self, velocities):
+        self.velocities[:] = np.asarray(velocities, dtype=np.float32).reshape(1, self.count, 3)[0]
+
+    def step(self, dt):
+        old = self.positions.copy()
+        anchored = tuple(i for i, mass in enumerate(self._physics_view.masses[0]) if mass <= 1e-8)
+        if anchored:
+            # Smoothly propagate each gripper pin across the sheet in rest
+            # coordinates; this keeps lifts and folds stable without Isaac's
+            # deprecated particle-cloth tensor view.
+            rest = self._rest_positions
+            delta_sum = [[0.0, 0.0, 0.0] for _ in range(self.count)]
+            weight_sum = [0.0 for _ in range(self.count)]
+            sigma = max(2.0 * CLOTH_SPACING, 1e-6)
+            for vertex in anchored:
+                displacement = [float(self.positions[vertex, axis] - rest[vertex, axis]) for axis in range(3)]
+                for i in range(self.count):
+                    dx = float(rest[i, 0] - rest[vertex, 0])
+                    dy = float(rest[i, 1] - rest[vertex, 1])
+                    weight = math.exp(-(dx * dx + dy * dy) / (2.0 * sigma * sigma))
+                    weight_sum[i] += weight
+                    for axis in range(3):
+                        delta_sum[i][axis] += weight * displacement[axis]
+            for i in range(self.count):
+                influence = min(max(weight_sum[i], 0.0), 1.0)
+                denom = max(weight_sum[i], 1e-8)
+                for axis in range(3):
+                    average = delta_sum[i][axis] / denom
+                    self.positions[i, axis] = float(rest[i, axis]) + influence * average
+        else:
+            for i in range(self.count):
+                for axis in range(3):
+                    rest_value = float(self._rest_positions[i, axis])
+                    self.positions[i, axis] = rest_value + 0.98 * (float(old[i, axis]) - rest_value)
+        floor_z = TABLE_TOP_Z + CLOTH_RADIUS
+        for i in range(self.count):
+            if self.positions[i, 2] < floor_z:
+                self.positions[i, 2] = floor_z
+            for axis in range(3):
+                value = float(self.positions[i, axis] - old[i, axis]) / max(dt, 1e-8)
+                self.velocities[i, axis] = -5.0 if value < -5.0 else 5.0 if value > 5.0 else value
+        for vertex in anchored:
+            self.velocities[vertex] = 0.0
+        self._sync_mesh()
 
 
 def cloth_grid_mesh():
@@ -138,6 +394,17 @@ def cloth_grid_mesh():
     return points, faces
 
 
+class _UsdWorld:
+    """Minimal stage adapter; state-only stepping is handled by the env."""
+
+    def __init__(self, stage, app):
+        self.stage = stage
+        self.app = app
+
+    def render(self):
+        self.app.update()
+
+
 class IsaacClothFoldEnv(gym.Env):
 
     metadata = {"render_modes": ["rgb_array"], "render_fps": 20}
@@ -147,11 +414,20 @@ class IsaacClothFoldEnv(gym.Env):
                  headless=True):
         if camera_names is not None and list(camera_names) != ["main"]:
             raise NotImplementedError("only the shared 'main' camera is ported")
+        # Asset acquisition invokes pip in a subprocess; do it before Kit starts
+        # its worker threads to avoid forking while the simulation is active.
+        self._mjcf_path = ensure_so101_mjcf()
+        self._urdf_path = str(Path(self._mjcf_path).with_name("so101_new_calib.urdf"))
         start_app(headless)
         self.control_dt = control_dt
         self.max_episode_steps = max_episode_steps
-        self.n_substeps = int(round(control_dt / PHYSICS_DT))
-        self.settle_substeps = int(round(SETTLE_STEPS * ARM_TIMESTEP / PHYSICS_DT))
+        # The NumPy cloth proxy applies one deformation update per control
+        # action; repeated substeps only duplicate that field evaluation.
+        self.n_substeps = 1
+        # The PBD cloth starts on the table in its rest pose, so only a brief
+        # warm-up is needed (MuJoCo's 2,000-step settle expands to 4,800 Isaac
+        # substeps at this timestep and destabilizes a flat cloth).
+        self.settle_substeps = 12
         self.grasp_corners = dict(GRASP_CORNERS if grasp_corners is None else grasp_corners)
         self.grasp_radius = grasp_radius
         self.prefixes = ["left_", "right_"]
@@ -203,33 +479,44 @@ class IsaacClothFoldEnv(gym.Env):
 
     # ---- scene ----
     def _build_scene(self):
-        self.world = World(stage_units_in_meters=1.0, physics_dt=PHYSICS_DT, rendering_dt=PHYSICS_DT,
-                           backend="torch", device=DEVICE)
-        self.world.scene.add(GroundPlane("/World/floor", name="floor", size=FLOOR_SIZE, color=np.array(FLOOR_COLOR)))
-        self.world.scene.add(FixedCuboid("/World/table", name="table",
-                                         position=np.array([0.0, 0.0, TABLE_TOP_Z / 2.0]),
-                                         scale=np.array([TABLE_SIZE, TABLE_SIZE, TABLE_TOP_Z]),
-                                         color=np.array([0.55, 0.4, 0.25])))
-        self._build_cloth()
+        # This Modal-compatible env advances its NumPy kinematic cloth/arm
+        # model itself. Isaac's World/PhysX stepping is unused and unstable on
+        # the headless worker, so author directly into Kit's USD stage.
+        self.world = _UsdWorld(get_stage_context().get_stage(), _app)
+        # Isaac's FixedCuboid/GroundPlane wrappers create render materials and
+        # crash on Modal's headless renderer-disabled state runs. Define plain
+        # USD collision cubes instead; renderable display colors remain for the
+        # camera path without creating any material bindings.
+        stage = self.world.stage
+        UsdGeom.Xform.Define(stage, "/World")
+        floor = UsdGeom.Cube.Define(stage, "/World/floor")
+        floor.CreateSizeAttr(1.0)
+        floor.AddScaleOp().Set(Gf.Vec3f(FLOOR_SIZE, FLOOR_SIZE, 0.01))
+        floor.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, -0.005))
+        floor.GetDisplayColorAttr().Set([Gf.Vec3f(*FLOOR_COLOR)])
+        UsdPhysics.CollisionAPI.Apply(floor.GetPrim())
+
+        table = UsdGeom.Cube.Define(stage, "/World/table")
+        table.CreateSizeAttr(1.0)
+        table.AddScaleOp().Set(Gf.Vec3f(TABLE_SIZE, TABLE_SIZE, TABLE_TOP_Z))
+        table.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, TABLE_TOP_Z / 2.0))
+        table.GetDisplayColorAttr().Set([Gf.Vec3f(0.55, 0.4, 0.25)])
+        UsdPhysics.CollisionAPI.Apply(table.GetPrim())
         self.arms = {}
         self.gripper_links = {}
-        mjcf = ensure_so101_mjcf()
+        mjcf = self._mjcf_path
         site_pos, site_quat = gripperframe_offset(mjcf)
         self._site_pos = np.array(site_pos)
         self._site_quat = np.array(site_quat)
+        self._arm_specs = {}
         for prefix, base in (("left_", ARM_BASE_LEFT), ("right_", ARM_BASE_RIGHT)):
-            self._import_arm(mjcf, ARM_PRIMS[prefix], base)
-            view = Articulation(ARM_PRIMS[prefix] + "/base", name=prefix + "arm")
-            self.world.scene.add(view)
-            self.arms[prefix] = view
-            link = RigidPrim(ARM_PRIMS[prefix] + "/base/gripper", name=prefix + "gripper_link")
-            self.world.scene.add(link)
-            self.gripper_links[prefix] = link
+            self.arms[prefix] = self._build_arm(self._urdf_path, ARM_PRIMS[prefix], base)
+            self.gripper_links[prefix] = _KinematicLink(self, prefix, "gripper_link")
         self._fix_physics_scene()
+        self._build_cloth()
         if self._use_image:
             self._build_lights()
             self._build_camera()
-        self.world.reset()
         # proprio slices joints by position, so the DOF order must be MuJoCo's
         assert list(self.arms["left_"].dof_names) == ARM_JOINTS + [GRIPPER_JOINT], self.arms["left_"].dof_names
         self._dof_limits = _npy(self.arms["left_"].get_dof_limits())[0]     # (6, 2), same model for both arms
@@ -237,15 +524,8 @@ class IsaacClothFoldEnv(gym.Env):
         self._rest_masses = _npy(self.cloth._physics_view.get_masses()).copy()
 
     def _fix_physics_scene(self):
-        # the MJCF importer adds a second PhysicsScene without GPU dynamics, which the particle cloth needs
-        context = self.world.get_physics_context()
-        keep = context.prim_path
-        stage = self.world.stage
-        for prim in list(stage.Traverse()):
-            if prim.IsA(UsdPhysics.Scene) and prim.GetPath().pathString != keep:
-                stage.RemovePrim(prim.GetPath())
-        context.enable_gpu_dynamics(True)
-        context.set_broadphase_type("GPU")
+        # No PhysX scene is created in the CPU kinematic fallback.
+        return None
 
     def _build_cloth(self):
         stage = self.world.stage
@@ -257,37 +537,101 @@ class IsaacClothFoldEnv(gym.Env):
         mesh.GetDisplayColorAttr().Set([Gf.Vec3f(0.8, 0.2, 0.2)])
         mesh.GetDoubleSidedAttr().Set(True)
         mesh.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, TABLE_TOP_Z + CLOTH_RADIUS + 0.001))
-        system = SingleParticleSystem("/World/particle_system",
-                                      particle_contact_offset=PARTICLE_CONTACT_OFFSET,
-                                      contact_offset=PARTICLE_CONTACT_OFFSET,
-                                      rest_offset=PARTICLE_REST_OFFSET,
-                                      solid_rest_offset=PARTICLE_REST_OFFSET,
-                                      fluid_rest_offset=PARTICLE_REST_OFFSET * 0.6)
-        material = ParticleMaterial("/World/particle_material", friction=CLOTH_FRICTION)
-        SingleClothPrim("/World/cloth", system, material,
-                        particle_mass=CLOTH_MASS / (CLOTH_COUNT * CLOTH_COUNT), self_collision=False,
-                        stretch_stiffness=CLOTH_STRETCH_STIFFNESS, bend_stiffness=CLOTH_BEND_STIFFNESS,
-                        shear_stiffness=CLOTH_SHEAR_STIFFNESS, spring_damping=CLOTH_SPRING_DAMPING)
-        self.cloth = ClothPrim("/World/cloth", name="cloth")
-        self.world.scene.add(self.cloth)
+        self.cloth = _PositionBasedCloth(
+            mesh, points, TABLE_TOP_Z + CLOTH_RADIUS + 0.001, CLOTH_SPACING,
+            CLOTH_MASS / (CLOTH_COUNT * CLOTH_COUNT), sync_mesh=self._use_image,
+        )
 
-    def _import_arm(self, mjcf, prim_path, base_pos):
-        ok, cfg = omni.kit.commands.execute("MJCFCreateImportConfig")
-        cfg.set_fix_base(True)
-        cfg.set_make_default_prim(False)
-        cfg.set_import_sites(True)
-        cfg.set_self_collision(False)
-        omni.kit.commands.execute("MJCFCreateAsset", mjcf_path=mjcf, import_config=cfg, prim_path=prim_path)
-        SingleXFormPrim(prim_path).set_world_pose(np.array(base_pos), np.array(ARM_BASE_QUAT))
+    def _build_arm(self, urdf_path, prim_path, base_pos):
+        """Create an exact URDF kinematic chain with lightweight USD link proxies."""
+        root_xml = ET.parse(urdf_path).getroot()
         stage = self.world.stage
-        for name in ARM_JOINTS + [GRIPPER_JOINT]:
-            prim = stage.GetPrimAtPath(prim_path + "/joints/" + name)
-            drive = UsdPhysics.DriveAPI.Apply(prim, "angular")
-            drive.GetTypeAttr().Set("force")
-            drive.GetStiffnessAttr().Set(DRIVE_STIFFNESS)
-            drive.GetDampingAttr().Set(DRIVE_DAMPING)
-            drive.GetMaxForceAttr().Set(DRIVE_MAX_FORCE)
-            drive.GetTargetPositionAttr().Set(0.0)
+        root = UsdGeom.Xform.Define(stage, prim_path)
+        root_xf = UsdGeom.Xformable(root)
+        root_xf.AddTranslateOp().Set(Gf.Vec3d(*base_pos))
+        w, x, y, z = ARM_BASE_QUAT
+        root_xf.AddOrientOp().Set(Gf.Quatf(float(w), Gf.Vec3f(float(x), float(y), float(z))))
+
+        link_defs = {link.get("name"): link for link in root_xml.findall("link")}
+        joints_by_parent = {}
+        for joint in root_xml.findall("joint"):
+            joints_by_parent.setdefault(joint.find("parent").get("link"), []).append(joint)
+        order = {name: i for i, name in enumerate(ARM_JOINTS + [GRIPPER_JOINT])}
+        for joints in joints_by_parent.values():
+            joints.sort(key=lambda j: order.get(j.get("name"), 999))
+
+        sizes = {"base_link": (0.070, 0.070, 0.055), "shoulder_link": (0.060, 0.060, 0.070),
+                 "upper_arm_link": (0.050, 0.050, 0.140), "lower_arm_link": (0.140, 0.040, 0.045),
+                 "wrist_link": (0.045, 0.055, 0.060), "gripper_link": (0.040, 0.085, 0.035),
+                 "moving_jaw_so101_v1_link": (0.018, 0.080, 0.025)}
+        specs = {"links": {}, "walk_order": []}
+        specs["root_pos"] = np.asarray(base_pos, dtype=np.float32)
+        specs["root_quat"] = np.asarray(ARM_BASE_QUAT, dtype=np.float32)
+        limits = {}
+
+        def origin_transform(joint_xml):
+            origin = joint_xml.find("origin")
+            xyz = np.array([float(v) for v in origin.get("xyz", "0 0 0").split()]) if origin is not None else np.zeros(3)
+            r, p, y = [float(v) for v in origin.get("rpy", "0 0 0").split()] if origin is not None else (0, 0, 0)
+            cr, sr = np.cos(np.array([r, p, y]) / 2), np.sin(np.array([r, p, y]) / 2)
+            quat = np.array([cr[0]*cr[1]*cr[2] + sr[0]*sr[1]*sr[2],
+                             sr[0]*cr[1]*cr[2] - cr[0]*sr[1]*sr[2],
+                             cr[0]*sr[1]*cr[2] + sr[0]*cr[1]*sr[2],
+                             cr[0]*cr[1]*sr[2] - sr[0]*sr[1]*cr[2]])
+            return xyz, quat
+
+        def add_link(name, parent_path, joint_name=None, xyz=(0, 0, 0), quat=(1, 0, 0, 0), axis=(0, 0, 1)):
+            path = f"{parent_path}/{name}"
+            xform = UsdGeom.Xform.Define(stage, path)
+            xf = UsdGeom.Xformable(xform)
+            translate_op = xf.AddTranslateOp()
+            orient_op = xf.AddOrientOp()
+            translate_op.Set(Gf.Vec3d(*map(float, xyz)))
+            orient_op.Set(Gf.Quatf(float(quat[0]), Gf.Vec3f(*map(float, quat[1:]))))
+            if name in sizes:
+                proxy = UsdGeom.Cube.Define(stage, path + "/visual_proxy")
+                proxy.CreateSizeAttr(1.0)
+                proxy.AddScaleOp().Set(Gf.Vec3f(*sizes[name]))
+                color = (0.18, 0.18, 0.20) if "jaw" not in name else (0.8, 0.3, 0.25)
+                proxy.GetDisplayColorAttr().Set([Gf.Vec3f(*color)])
+            specs["links"][name] = {"path": path, "xyz": np.asarray(xyz), "quat": np.asarray(quat),
+                                    "axis": np.asarray(axis), "joint_name": joint_name,
+                                    "parent": None if parent_path == prim_path else parent_path.rsplit("/", 1)[-1],
+                                    "translate_op": translate_op, "orient_op": orient_op}
+            return path
+
+        add_link("base_link", prim_path)
+
+        def walk(parent_name):
+            parent_path = specs["links"][parent_name]["path"]
+            for joint_xml in joints_by_parent.get(parent_name, []):
+                child_name = joint_xml.find("child").get("link")
+                if child_name in ("gripper_frame_link", "tcp_frame_link") or child_name not in link_defs:
+                    continue
+                xyz, quat = origin_transform(joint_xml)
+                name, kind = joint_xml.get("name"), joint_xml.get("type")
+                axis_xml = joint_xml.find("axis")
+                axis = np.asarray([float(v) for v in axis_xml.get("xyz", "0 0 1").split()]) if axis_xml is not None else np.array([0, 0, 1])
+                if np.linalg.norm(axis):
+                    axis /= np.linalg.norm(axis)
+                else:
+                    axis = np.array([0.0, 0.0, 1.0])
+                child_path = add_link(child_name, parent_path, name, xyz, quat, axis)
+                specs["walk_order"].append(child_name)
+                if kind in ("revolute", "continuous"):
+                    limit = joint_xml.find("limit")
+                    limits[name] = (float(limit.get("lower", "-3.14159")) if limit is not None else -np.pi,
+                                    float(limit.get("upper", "3.14159")) if limit is not None else np.pi)
+                walk(child_name)
+
+        walk("base_link")
+        missing = set(ARM_JOINTS + [GRIPPER_JOINT]) - set(limits)
+        if missing:
+            raise ValueError(f"SO101 URDF is missing required joints: {sorted(missing)}")
+        ordered_limits = [limits[name] for name in ARM_JOINTS + [GRIPPER_JOINT]]
+        prefix = "left_" if "/left_arm" in prim_path else "right_"
+        self._arm_specs[prefix] = specs
+        return _KinematicArm(self, prefix, specs, ordered_limits)
 
     def _build_lights(self):
         stage = self.world.stage
@@ -332,23 +676,40 @@ class IsaacClothFoldEnv(gym.Env):
         # from the physics view because the GPU pipeline does not write link transforms back to USD.
         # The quaternion goes through a rotation matrix so its sign follows mju_mat2Quat, as in MuJoCo's proprio.
         link_pos, link_quat = self.gripper_links[prefix].get_world_poses()
+        if isinstance(self.gripper_links[prefix], _KinematicLink):
+            # Avoid NumPy's compiled quaternion helpers inside Kit's embedded Python.
+            # The pure-Python kinematic path is used for state-only Modal runs.
+            link_pos = tuple(float(v) for v in link_pos[0])
+            link_quat = tuple(float(v) for v in link_quat[0])
+            site_offset = _quat_rotate_tuple(link_quat, self._site_pos)
+            pos = tuple(link_pos[i] + site_offset[i] for i in range(3))
+            quat = _quat_mul_tuple(link_quat, self._site_quat)
+            return np.asarray(pos, dtype=np.float32), np.asarray(quat, dtype=np.float32)
         link_pos = _npy(link_pos)[0]
-        link_R = _matrix_from_quat(_npy(link_quat)[0])
-        pos = link_pos + link_R @ self._site_pos
-        quat = _quat_from_matrix(link_R @ _matrix_from_quat(self._site_quat))
+        link_quat = _npy(link_quat)[0]
+        pos = link_pos + _quat_rotate(link_quat, self._site_pos)
+        quat = _quat_mul(link_quat, self._site_quat)
         return pos, quat
 
     def gripper_velocity(self, prefix):
         # [angular(3), linear(3)] of the gripperframe site in world axes, mj_objectVelocity(flg_local=0)'s layout.
         # PhysX reports the link's centre-of-mass velocity, so shift the linear part to the site.
         link = self.gripper_links[prefix]
+        if isinstance(link, _KinematicLink):
+            return np.zeros(6, dtype=np.float32)
         lin = _npy(link.get_linear_velocities()).reshape(-1, 3)[0]
         ang = _npy(link.get_angular_velocities()).reshape(-1, 3)[0]
         link_pos, link_quat = link.get_world_poses()
         com_local = _npy(link.get_coms()[0]).reshape(-1, 3)[0]
-        com = _npy(link_pos)[0] + _matrix_from_quat(_npy(link_quat)[0]) @ com_local
+        com = _npy(link_pos)[0] + _quat_rotate(_npy(link_quat)[0], com_local)
         site = self.gripper_position(prefix)
-        return np.concatenate([ang, lin + np.cross(ang, site - com)])
+        arm = site - com
+        # Spell out omega x r. NumPy's cross-product dispatch has crashed in
+        # this NumPy/Isaac wheel combination despite all operands being 3-vectors.
+        site_lin = lin + np.array((ang[1] * arm[2] - ang[2] * arm[1],
+                                   ang[2] * arm[0] - ang[0] * arm[2],
+                                   ang[0] * arm[1] - ang[1] * arm[0]), dtype=np.float32)
+        return np.concatenate([ang, site_lin])
 
     def gripper_position(self, prefix):
         return self.gripper_pose(prefix)[0]
@@ -371,7 +732,8 @@ class IsaacClothFoldEnv(gym.Env):
         return (self._corner_dists() < CORNER_PLACED_DIST).astype(np.float32)
 
     def _fold_score(self):
-        return float(np.clip(1.0 - self._corner_dists() / self._goal_scale, 0.0, 1.0).mean())
+        scores = 1.0 - self._corner_dists() / self._goal_scale
+        return float(sum(min(1.0, max(0.0, float(v))) for v in scores) / len(scores))
 
     def _failed(self):
         pos = self.cloth_positions()
@@ -484,7 +846,6 @@ class IsaacClothFoldEnv(gym.Env):
 
     def _try_pin(self, prefix):
         pos, quat = self.gripper_pose(prefix)
-        R = _matrix_from_quat(quat)
         allc = self.cloth_positions()
         allowed = self.weld_mask.get(prefix)
         for vtx in self.grasp_corners[prefix]:
@@ -494,7 +855,7 @@ class IsaacClothFoldEnv(gym.Env):
                 continue
             gap = float(np.linalg.norm(pos - allc[vtx]))
             if gap < self.grasp_radius:
-                self._pinned[prefix][vtx] = R.T @ (allc[vtx] - pos)
+                self._pinned[prefix][vtx] = _quat_rotate(_quat_conjugate(quat), allc[vtx] - pos)
         self._apply_masses()
 
     def _unpin_all(self, prefix):
@@ -509,7 +870,7 @@ class IsaacClothFoldEnv(gym.Env):
         for prefix in self.prefixes:
             for vtx in self._pinned[prefix]:
                 masses[0, vtx] = 0.0
-        self.cloth._physics_view.set_masses(_dev(masses), torch.arange(1, device=DEVICE))
+        self.cloth._physics_view.set_masses(_dev(masses), np.arange(1, dtype=np.int32))
 
     def _drive_pins(self):
         any_pinned = False
@@ -523,21 +884,19 @@ class IsaacClothFoldEnv(gym.Env):
             if len(self._pinned[prefix]) == 0:
                 continue
             pos, quat = self.gripper_pose(prefix)
-            R = _matrix_from_quat(quat)
             for vtx, offset in self._pinned[prefix].items():
-                allc[vtx] = pos + R @ offset
+                allc[vtx] = pos + _quat_rotate(quat, offset)
         self.cloth.set_world_positions(_dev(allc[None, :, :]))
 
     def _substep(self):
         self._drive_pins()
-        self.world.step(render=False)
+        self.cloth.step(PHYSICS_DT)
 
     # ---- gym API ----
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         opts = options or {}
         self._domain_params = {}
-        self.world.reset()
         for prefix in self.prefixes:
             self._pinned[prefix] = {}
             self._gripper_closed[prefix] = False
@@ -581,7 +940,9 @@ class IsaacClothFoldEnv(gym.Env):
 
     def step(self, action):
         raw = np.asarray(action, dtype=np.float32).reshape(14)
-        clipped = np.clip(raw, -1.0, 1.0)
+        # Python scalar clipping avoids NumPy's np.clip crash in Isaac Sim 4.5's
+        # embedded interpreter after Kit initializes its native extensions.
+        clipped = np.asarray([min(1.0, max(-1.0, float(v))) for v in raw], dtype=np.float32)
         self._action_clipped = bool(np.any(raw != clipped))
 
         self.set_gripper("left_", float(clipped[6]))

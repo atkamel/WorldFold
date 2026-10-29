@@ -13,14 +13,49 @@ physical grabber, mass/friction/damping randomisation, the viewer.
 
 ```bash
 pip install modal && modal setup          # once
-modal run isaac/modal_isaac.py            # smoke test, state then hybrid, on an L40S
+modal run isaac/modal_isaac.py            # state-only physics smoke test on an L40S
+modal run isaac/modal_isaac.py --modes hybrid  # optional RTX camera path
 modal volume get worldfold-isaac smoke/<stamp> .
 ```
 
-Isaac Sim 4.5.0 is installed from NVIDIA's pip index, the same version as the
-WATcloud container. The image build happens once and doesn't use a GPU. Each
-run prints its logs and saves them, plus the hybrid RGB/depth frames, to the
-`worldfold-isaac` volume.
+Isaac Sim 4.5.0 is installed from NVIDIA's pip index for the Modal L40S runtime.
+The WATcloud instructions below also use Isaac Sim 4.5.0. The Modal image
+build happens once and doesn't use a GPU. Each
+run prints its logs and saves them, plus any captured frames, to the
+`worldfold-isaac` volume. The current Modal L40S environment fails before the
+simulation starts: state-only launch hangs waiting for a headless viewport,
+and hybrid launch segfaults during RTX scene startup. Modal run success also
+requires the smoke script's `SMOKE OK` marker, because Kit can log a startup
+exception and exit with status zero. State-only launches use
+`MinimalRendering` mode 4 with viewport updates disabled; hybrid launches use
+`RayTracedLighting` for camera capture.
+
+## Isaac world model
+
+The predictor architecture is shared with the MuJoCo world model, but a
+MuJoCo checkpoint is not an Isaac-trained model and should not be treated as
+one. Collect Isaac transitions, train the existing full-state predictor, then
+run that checkpoint in the live Isaac control loop:
+
+```bash
+python isaac/collect_world_model_data.py --output outputs/cloth_angles/isaac_state
+python scripts/benchmark_state_predictor.py --data outputs/cloth_angles/isaac_state \
+  --output outputs/cloth_angles/isaac_benchmark --variants state_l1 --seeds 0 --steps 10000
+python isaac/run_world_model.py \
+  --checkpoint outputs/cloth_angles/isaac_benchmark/state_l1_seed0.pt --steps 200
+```
+
+The collector and live runner target Isaac Sim 4.5, matching the Modal image.
+The live runner makes a one-step prediction before each action is advanced by Isaac,
+then reports prediction error, inference latency and control-loop rate.
+It defaults to zero actions; pass an NPZ with an `actions[T, 6]` array to
+replay controls. The collector currently uses randomized controls to establish
+an Isaac-domain dataset; task-quality predictions require broader, task-driven
+coverage. The repository currently has no saved world-model checkpoint or
+Isaac episode dataset, so these steps train a fresh Isaac model rather than
+resume a missing artifact. Isaac Sim 5.1 was also tried on Modal, but its RTX
+scene initialization segfaults on the current L40S runtime, so Isaac Sim 4.5
+remains configured pending a working Modal headless startup.
 
 ## Running on WATcloud
 
