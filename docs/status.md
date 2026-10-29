@@ -30,6 +30,10 @@ released, still), user 2026-10-22.
 - **Isaac branch sync** (2026-10-29): branch `isaac` includes `origin/main` at `24515e0`. It now uses the Isaac Sim
   5.1 / IsaacLab environment under `isaac/sim`; the failed Isaac 4.5 Modal prototype was retired upstream. The
   branch's full-state predictor collector and runner remain, with imports updated to the current environment path.
+- **Online world-model path** (2026-10-29, user request): added a trainer for Isaac-collected 378-state episodes
+  and changed the Isaac runner to predict before each action, then score the observed transition. This is online
+  evaluation only; it does not select robot actions. The synthetic train-load-predict integration check passes,
+  but there is no Isaac dataset/checkpoint and no Isaac runtime available here, so a real simulator run is not verified.
 
 The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Best policies: DAgger diffusion at replan 4
 (privileged, 99.5 / 77.0 / 79.5 on id_easy / id_hard / recovery) and the vision student at replan 2 (sensor-only,
@@ -51,7 +55,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-10-29: fast 226 passed, 1 failed (#15), 5 skipped; slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-10-29: fast 227 passed, 1 failed (#15), 5 skipped; slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -88,6 +92,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
+| 17 | Online Isaac predictor has only synthetic integration coverage; local Isaac runtime is absent, `watcloud` DNS does not resolve, and no Isaac episode dataset/checkpoint exists | real Isaac Sim world-model run | user request |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujoco_sim/` first on `sys.path`; `mujoco_sim/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
@@ -109,6 +114,7 @@ Ordered by what they block. Each is a roadmap milestone.
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
 - 2026-10-29 · **Sync Isaac branch with main:** merged `origin/main` (`24515e0`), retained the branch's world-model tools and updated them for `isaac.sim`; fast 226 passed / 1 known float failure / 5 skipped, slow 12 passed / 8 skipped · `24515e0`
+- 2026-10-29 · **Online world-model integration:** added Isaac dataset trainer and pre-step predictor/scorer, plus a synthetic train-load-predict check; focused check passed, fast 227 passed / 1 known float failure / 5 skipped. Real Isaac execution remains blocked by missing runtime/data and unreachable WATcloud · (this commit)
 - 2026-10-23 · **Cleanup check (WATcloud 712165):** new layout runs in Isaac end to end; first `quarter2` folds, n = 2: fold 1 broke in 1/2, fold-2 grasps held 1/4, both endings invalid (results.md) · (this commit)
 - 2026-10-23 · **Repo cleanup:** run outputs and videos untracked (17 showcase videos kept), retired code deleted (weld, once-per-fold RL, Roy profiles, old quarter profiles, one-off probes, IQL, verifier, early PPO/MolmoAct), `isaac/` split into subpackages, `mujuco/` → `mujoco_sim/`, docs rewritten; fast suite 226 passed + #15, slow 12 passed · (this commit)
 - 2026-10-22 · **Gentle release:** jaw opens slowly part way, slow straight lift, full open above (env `jaw_open` cap for the binary gripper); isaac tests 72, fast suite 273 passed + #15 · (this commit)

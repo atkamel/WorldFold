@@ -53,11 +53,14 @@ def main() -> None:
         latencies, errors, loop_times = [], [], []
         for t in range(args.steps):
             action = np.zeros(6, dtype=np.float32) if actions is None else actions[t % len(actions)]
+            # Predict from the current observation before Isaac advances. This
+            # keeps inference on the live control path without leaking the next state.
             tick = time.perf_counter()
+            prediction, predictor_ms = world_model.predict(action)
             _, _, terminated, truncated, info = env.step(action)
             observed = observe_state(base)
-            metrics = world_model.observe_transition(action, observed)
-            latencies.append(metrics["latency_ms"])
+            metrics = world_model.observe_prediction(prediction, observed, predictor_ms)
+            latencies.append(predictor_ms)
             errors.append(metrics["vertex_mae_m"])
             loop_times.append((time.perf_counter() - tick) * 1000.0)
             if (t + 1) % 25 == 0 or terminated or truncated:

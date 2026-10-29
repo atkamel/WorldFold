@@ -55,8 +55,10 @@ class IsaacWorldModel:
         if variant not in ("state_l1", "state_mse"):
             raise ValueError(f"checkpoint variant must predict full state, got {variant!r}")
         if "state_dict" not in saved:
-            raise ValueError("checkpoint must contain a state_dict from benchmark_state_predictor.py")
-        self.model = ResidualStatePredictor(STATE_DIM, ACTION_DIM,
+            raise ValueError("checkpoint must contain a ResidualStatePredictor state_dict")
+        if saved.get("state_dim", STATE_DIM) != STATE_DIM or saved.get("action_dim", ACTION_DIM) != ACTION_DIM:
+            raise ValueError("checkpoint state/action dimensions do not match the Isaac environment")
+        self.model = ResidualStatePredictor(STATE_DIM, ACTION_DIM, hidden_dim=int(saved.get("hidden_dim", 256)),
                                             loss="mse" if variant.endswith("mse") else "l1")
         self.model.load_state_dict(saved["state_dict"])
         self.model.to(self.device).eval()
@@ -78,25 +80,36 @@ class IsaacWorldModel:
         if action.shape != (ACTION_DIM,):
             raise ValueError(f"expected action shape {(ACTION_DIM,)}, got {action.shape}")
         started = time.perf_counter()
-        cur = torch.as_tensor(self.current, device=self.device).unsqueeze(0)
-        prev = torch.as_tensor(self.previous, device=self.device).unsqueeze(0)
-        act = torch.as_tensor(action, device=self.device).unsqueeze(0)
+        cur = self.torch.as_tensor(self.current, device=self.device).unsqueeze(0)
+        prev = self.torch.as_tensor(self.previous, device=self.device).unsqueeze(0)
+        act = self.torch.as_tensor(action, device=self.device).unsqueeze(0)
         with self.torch.inference_mode():
             prediction = self.model(cur, prev, act)[0].cpu().numpy().astype(np.float32, copy=False)
         return prediction, (time.perf_counter() - started) * 1000.0
 
-    def observe_transition(self, action: np.ndarray, next_state: np.ndarray) -> dict:
-        """Predict before accepting the observed next state, then return errors."""
-        prediction, latency_ms = self.predict(action)
+    def observe_prediction(self, prediction: np.ndarray, next_state: np.ndarray,
+                           latency_ms: float | None = None) -> dict:
+        """Score a prediction made before a live action and advance the state history."""
+        if self.current is None or self.previous is None:
+            raise RuntimeError("call reset(state) before observing a transition")
+        prediction = np.asarray(prediction, dtype=np.float32)
         next_state = np.asarray(next_state, dtype=np.float32)
+        if prediction.shape != (STATE_DIM,):
+            raise ValueError(f"expected prediction shape {(STATE_DIM,)}, got {prediction.shape}")
         if next_state.shape != (STATE_DIM,):
             raise ValueError(f"expected state shape {(STATE_DIM,)}, got {next_state.shape}")
         vertex_error = np.abs(prediction[:VERTEX_DIM] - next_state[:VERTEX_DIM]).reshape(-1, 3)
         corner_error = float(np.linalg.norm(
             prediction[VERTEX_DIM:VERTEX_DIM + 3] - next_state[VERTEX_DIM:VERTEX_DIM + 3]))
-        result = {"latency_ms": latency_ms,
-                  "vertex_mae_m": float(vertex_error.mean()),
+        result = {"vertex_mae_m": float(vertex_error.mean()),
                   "moving_corner_error_m": corner_error}
+        if latency_ms is not None:
+            result["latency_ms"] = float(latency_ms)
         self.previous, self.current = self.current, next_state.copy()
         return result
+
+    def observe_transition(self, action: np.ndarray, next_state: np.ndarray) -> dict:
+        """Convenience path for callers that already have the observed next state."""
+        prediction, latency_ms = self.predict(action)
+        return self.observe_prediction(prediction, next_state, latency_ms)
 
