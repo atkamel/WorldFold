@@ -1,0 +1,91 @@
+{
+ "git_commit": "0cccd91c1301da1f99b9a954066111b54ab7132b-dirty",
+ "dataset": {
+  "root": "outputs/imitation/datasets",
+  "version": "v1_dagger_diff_r2_dagger_shift_r1",
+  "content_hash": "6fb649e243f84a7a5a1317f374a029705daab489d5418ecfe7c56353d9f0dc63",
+  "n_episodes": 768,
+  "n_train_samples": 37978,
+  "n_dagger_labels": 4950,
+  "clamped_fraction": 0.00021321687381714582,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "diffusion",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "cond_dim": 256,
+   "channels": [
+    128,
+    256
+   ],
+   "train_steps": 100,
+   "infer_steps": 10
+  },
+  "n_params": 7348748
+ },
+ "train": {
+  "steps": 15000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 4.0,
+  "obs_subset": null,
+  "init_from": "outputs\\imitation\\runs\\dagger_diff\\round_1\\final.pt",
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 624.8
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\dagger_shift\\round_1\\final.pt",
+  "sha256": "7069c667bd4bc5696a86ac4fdc4d08a62b9b0c122efa4d7163c8026438d765d7"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.011977413494605571,
+   "val_loss": 0.043869316286007216
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.008266692818142473,
+   "val_loss": 0.03980714172630622
+  },
+  {
+   "step": 6000,
+   "train_loss": 0.006828421098180115,
+   "val_loss": 0.043632000107173774
+  },
+  {
+   "step": 8000,
+   "train_loss": 0.005316601059166715,
+   "val_loss": 0.05191652252005752
+  },
+  {
+   "step": 10000,
+   "train_loss": 0.003838788834400475,
+   "val_loss": 0.06484542218564368
+  },
+  {
+   "step": 12000,
+   "train_loss": 0.0023774767760187387,
+   "val_loss": 0.07866496806771106
+  },
+  {
+   "step": 14000,
+   "train_loss": 0.0016710693744244054,
+   "val_loss": 0.08898068103129925
+  },
+  {
+   "step": 15000,
+   "train_loss": 0.0007065490150125697,
+   "val_loss": 0.08933416460386093
+  }
+ ]
+}

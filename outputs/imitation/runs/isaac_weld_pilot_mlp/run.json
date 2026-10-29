@@ -1,0 +1,62 @@
+{
+ "git_commit": "3d02cfa26b69759802d7ecf57032883b149b1747-dirty",
+ "dataset": {
+  "root": "outputs\\imitation\\datasets",
+  "version": "isaac_weld_pilot",
+  "content_hash": "667f621587db41586267841f82f55c55dff734f0b226bf510bfce16ae2df97e5",
+  "n_episodes": 76,
+  "n_train_samples": 6195,
+  "n_dagger_labels": 0,
+  "clamped_fraction": 0.00012162809434812516,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "chunk_mlp",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "width": 512,
+   "depth": 4,
+   "dropout": 0.1
+  },
+  "n_params": 8645312
+ },
+ "train": {
+  "steps": 5000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 1.0,
+  "obs_subset": null,
+  "init_from": null,
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 70.2
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\isaac_weld_pilot_mlp\\final.pt",
+  "sha256": "f96fcfbd7e7f9ee988368be69061aae2880da84080c3eaf14cff0bd84e6e939d"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.06211168835870921,
+   "val_loss": 0.09126221388578415
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.018650745251215996,
+   "val_loss": 0.06220084801316261
+  },
+  {
+   "step": 5000,
+   "train_loss": 0.006596190365962684,
+   "val_loss": 0.06012306362390518
+  }
+ ]
+}

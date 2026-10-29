@@ -21,7 +21,7 @@ import imageio
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mujuco"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mujoco_sim"))
 
 from cloth_angles.collect_episodes import EPISODE_KINDS, fold_action, recovery_action, still_action
 
@@ -39,7 +39,7 @@ def parse_args():
 
 
 def make_render_env(max_episode_steps: int, image_size: int):
-    from sim_main import ClothFoldEnv  # noqa: PLC0415 -- mujuco/ only importable once sys.path is set above
+    from sim_main import ClothFoldEnv  # noqa: PLC0415 -- mujoco_sim/ only importable once sys.path is set above
     return ClothFoldEnv(max_episode_steps=max_episode_steps, observation_mode="state",
                          image_size=(image_size, image_size))
 

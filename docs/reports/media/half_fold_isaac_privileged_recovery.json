@@ -1,0 +1,27 @@
+{
+ "ckpt": "outputs\\imitation\\runs\\isaac_v1_weld_dagger\\round_1\\final.pt",
+ "backend": "isaac_weld",
+ "episodes": [
+  {
+   "seed": 300000,
+   "steps": 109,
+   "success": true,
+   "fold_score": 0.9428565376746927,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 300001,
+   "steps": 146,
+   "success": true,
+   "fold_score": 0.9417549117420645,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 300002,
+   "steps": 250,
+   "success": false,
+   "fold_score": 0.648305975684889,
+   "termination_reason": null
+  }
+ ]
+}

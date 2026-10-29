@@ -30,7 +30,7 @@ from pathlib import Path
 import gymnasium as gym
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mujuco"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mujoco_sim"))
 
 from cloth_params import StateOnlyWrapper, TABLE_TOP_Z  # noqa: E402
 

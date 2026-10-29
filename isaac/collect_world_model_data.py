@@ -1,6 +1,6 @@
 """Collect Isaac-domain transitions for the full-state residual predictor.
 
-Run from an Isaac Sim 4.5 Python environment. Episodes use bounded random
+Run from an Isaac Sim 5.1 Python environment. Episodes use bounded random
 joint deltas with occasional gripper open/close commands; split assignment is
 by episode, so the existing predictor benchmark can evaluate held-out runs.
 """
@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 
 from cloth_angles.data.state_episode import StateEpisode, StateEpisodeStore
 from cloth_fold_rl.fold_env import SingleCornerFoldEnv
-from isaac.isaac_env import IsaacClothFoldEnv
+from isaac.sim.isaac_env import IsaacClothFoldEnv
 from isaac.world_model import observe_state
 
 

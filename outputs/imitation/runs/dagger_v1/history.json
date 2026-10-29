@@ -1,0 +1,156 @@
+[
+ {
+  "round": 0,
+  "checkpoint": "outputs\\imitation\\runs\\bc_v1_s0\\final.pt",
+  "dataset": "v1",
+  "eval": {
+   "id_easy": {
+    "n": 200,
+    "success_rate": 0.975,
+    "mean_fold_score": 0.9067429193062563,
+    "grasp_success": 1.0,
+    "mean_steps_success": 90.51794871794871,
+    "termination": {
+     "success": 195,
+     "truncated": 5
+    },
+    "failure_codes": {
+     "F1": 5
+    },
+    "perturbed_failures": 0,
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 2.7592999977059662,
+     "mean_batch": 1.0750658472344161
+    }
+   },
+   "id_hard": {
+    "n": 200,
+    "success_rate": 0.67,
+    "mean_fold_score": 0.8080117556295913,
+    "grasp_success": 0.91,
+    "mean_steps_success": 106.71641791044776,
+    "termination": {
+     "truncated": 66,
+     "success": 134
+    },
+    "failure_codes": {
+     "S1": 17,
+     "F1": 22,
+     "G1": 27
+    },
+    "perturbed_failures": 0,
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 2.8056500013917685,
+     "mean_batch": 1.067043618739903
+    }
+   },
+   "recovery": {
+    "n": 200,
+    "success_rate": 0.385,
+    "mean_fold_score": 0.7465322641508885,
+    "grasp_success": 0.975,
+    "mean_steps_success": 125.2987012987013,
+    "termination": {
+     "success": 77,
+     "truncated": 123
+    },
+    "failure_codes": {
+     "F1": 54,
+     "G1": 65,
+     "S1": 4
+    },
+    "perturbed_failures": 123,
+    "perturbed_steps": 2301,
+    "policy_infer_ms": {
+     "ms_per_call": 2.8183999966131523,
+     "mean_batch": 1.0732449467507064
+    }
+   }
+  },
+  "kept": true
+ },
+ {
+  "round": 1,
+  "checkpoint": "outputs\\imitation\\runs\\dagger_v1\\round_1\\final.pt",
+  "dataset": "v1_dagger_v1_r1",
+  "beta": 0.3,
+  "n_labels": 2174,
+  "eval": {
+   "id_easy": {
+    "n": 200,
+    "success_rate": 0.88,
+    "mean_fold_score": 0.8837236246899954,
+    "grasp_success": 1.0,
+    "mean_steps_success": 90.5625,
+    "termination": {
+     "success": 176,
+     "truncated": 24
+    },
+    "failure_codes": {
+     "G1": 2,
+     "S1": 16,
+     "F1": 6
+    },
+    "perturbed_failures": 0,
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 2.769499995338265,
+     "mean_batch": 1.0873898045228056
+    }
+   },
+   "id_hard": {
+    "n": 200,
+    "success_rate": 0.43,
+    "mean_fold_score": 0.7175089895909313,
+    "grasp_success": 0.93,
+    "mean_steps_success": 101.18604651162791,
+    "termination": {
+     "truncated": 109,
+     "success": 86,
+     "unstable": 5
+    },
+    "failure_codes": {
+     "S1": 66,
+     "G1": 29,
+     "F1": 14,
+     "M1": 5
+    },
+    "perturbed_failures": 0,
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 2.8091999993193895,
+     "mean_batch": 1.1039476757766877
+    }
+   },
+   "recovery": {
+    "n": 200,
+    "success_rate": 0.41,
+    "mean_fold_score": 0.749238023934638,
+    "grasp_success": 0.995,
+    "mean_steps_success": 137.47560975609755,
+    "termination": {
+     "success": 82,
+     "truncated": 117,
+     "unstable": 1
+    },
+    "failure_codes": {
+     "F1": 29,
+     "S1": 59,
+     "G1": 29,
+     "M1": 1
+    },
+    "perturbed_failures": 118,
+    "perturbed_steps": 2301,
+    "policy_infer_ms": {
+     "ms_per_call": 2.767100006167311,
+     "mean_batch": 1.096319153625744
+    }
+   }
+  },
+  "gain": -0.06999999999999984,
+  "gain_se": -1.2689053388873899,
+  "kept": false
+ }
+]

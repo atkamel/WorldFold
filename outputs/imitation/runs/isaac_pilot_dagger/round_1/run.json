@@ -1,0 +1,66 @@
+{
+ "git_commit": "b310675cf6c281dfa0fc06ed99b94727fa28cf06-dirty",
+ "dataset": {
+  "root": "outputs\\imitation\\datasets",
+  "version": "isaac_pilot_isaac_pilot_dagger_r1",
+  "content_hash": "ca8513db3d507e9e9f5348d22f254f131ee060cf5be9727ede1aae1fb72d24de",
+  "n_episodes": 18,
+  "n_train_samples": 718,
+  "n_dagger_labels": 195,
+  "clamped_fraction": 0.00583167327567935,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "diffusion",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "cond_dim": 256,
+   "channels": [
+    128,
+    256
+   ],
+   "train_steps": 100,
+   "infer_steps": 10
+  },
+  "n_params": 7348748
+ },
+ "train": {
+  "steps": 5000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 4.0,
+  "obs_subset": null,
+  "init_from": "outputs\\imitation\\runs\\isaac_pilot_diff\\final.pt",
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 258.2
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\isaac_pilot_dagger\\round_1\\final.pt",
+  "sha256": "3c1682f0db79f9890050d8affd09a6cad5443769064d97928ed2fdfe94b76840"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.023090282187331466,
+   "val_loss": 0.22089926898479462
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.003880384986405261,
+   "val_loss": 0.41310957074165344
+  },
+  {
+   "step": 5000,
+   "train_loss": 0.00046277547226054595,
+   "val_loss": 0.7549000978469849
+  }
+ ]
+}

@@ -1,0 +1,22 @@
+{
+ "milestone": "I3.2",
+ "status": "PASS",
+ "evidence": [
+  "eval_mlp_id_easy: id_easy 0/20 ok=True",
+  "eval_mlp_recovery: recovery 0/10 ok=True",
+  "eval_diff_id_easy: id_easy 0/20 ok=True",
+  "eval_diff_id_hard: id_hard 0/10 ok=True",
+  "eval_diff_recovery: recovery 0/10 ok=True",
+  "eval_vision_id_easy: id_easy 0/10 ok=True",
+  "isaac_pilot_mlp: train loss 0.0323 -> 0.0031 fits=True",
+  "isaac_pilot_diff: train loss 0.0366 -> 0.0003 fits=True",
+  "isaac_pilot_vision: train loss 0.0305 -> 0.0056 fits=True",
+  "dagger history: 2 entries; tracked=True",
+  "detector agreement 79/80 = 98.8%",
+  "demo isaac_pilot_expert.mp4: exists=True tracked=True",
+  "demo isaac_pilot_diffusion.mp4: exists=True tracked=True",
+  "demo isaac_pilot_vision.mp4: exists=True tracked=True"
+ ],
+ "commit": "bf8cd140bc1306f7d308b170b0758d61a48549eb",
+ "time": "2026-10-03T13:45:53-0400"
+}

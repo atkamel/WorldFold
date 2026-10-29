@@ -22,7 +22,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from isaac.isaac_env import IsaacClothFoldEnv
+from isaac.sim.isaac_env import IsaacClothFoldEnv
 from isaac.world_model import IsaacWorldModel, observe_state
 from cloth_fold_rl.fold_env import SingleCornerFoldEnv
 

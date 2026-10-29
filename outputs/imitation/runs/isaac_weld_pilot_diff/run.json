@@ -1,0 +1,66 @@
+{
+ "git_commit": "3d02cfa26b69759802d7ecf57032883b149b1747-dirty",
+ "dataset": {
+  "root": "outputs\\imitation\\datasets",
+  "version": "isaac_weld_pilot",
+  "content_hash": "667f621587db41586267841f82f55c55dff734f0b226bf510bfce16ae2df97e5",
+  "n_episodes": 76,
+  "n_train_samples": 6195,
+  "n_dagger_labels": 0,
+  "clamped_fraction": 0.00012162809434812516,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "diffusion",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "cond_dim": 256,
+   "channels": [
+    128,
+    256
+   ],
+   "train_steps": 100,
+   "infer_steps": 10
+  },
+  "n_params": 7348748
+ },
+ "train": {
+  "steps": 5000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 1.0,
+  "obs_subset": null,
+  "init_from": null,
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 305.1
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\isaac_weld_pilot_diff\\final.pt",
+  "sha256": "2eab2430f20610eb62a6d9564ae82abbedebdb3edbbb9aec20c67e14b2a6c3f1"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.06153777099680156,
+   "val_loss": 0.0867040753364563
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.00896634820383042,
+   "val_loss": 0.07331839203834534
+  },
+  {
+   "step": 5000,
+   "train_loss": 0.001764347730204463,
+   "val_loss": 0.1013227179646492
+  }
+ ]
+}

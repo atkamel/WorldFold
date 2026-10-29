@@ -1,0 +1,10 @@
+{
+ "milestone": "F1",
+ "status": "PASS",
+ "evidence": [
+  "friction: n 20, honest True, violations {'pins': 0, 'attachments': 0, 'jaw_target': 0, 'lifted_shut': 0}, lifted steps 3667, successes 18",
+  "weld: n 5, honest False, violations {'pins': 251, 'attachments': 0, 'jaw_target': 496, 'lifted_shut': 3}, lifted steps 120, successes 5"
+ ],
+ "commit": "2363c1e7da0219f775e7f2af9c14001504d2595a",
+ "time": "2026-10-07T17:23:10-0400"
+}

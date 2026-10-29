@@ -1,0 +1,33 @@
+{
+ "ckpt": "outputs/imitation/runs/dagger_v2/round_3/final.pt",
+ "episodes": [
+  {
+   "seed": 100000,
+   "steps": 125,
+   "success": true,
+   "fold_score": 0.9350572032837062,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 100001,
+   "steps": 98,
+   "success": true,
+   "fold_score": 0.9090339383483628,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 100002,
+   "steps": 88,
+   "success": true,
+   "fold_score": 0.9049955829895355,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 100003,
+   "steps": 86,
+   "success": true,
+   "fold_score": 0.8988614918807213,
+   "termination_reason": "success"
+  }
+ ]
+}

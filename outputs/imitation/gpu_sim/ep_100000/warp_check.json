@@ -1,0 +1,51 @@
+{
+ "meta": {
+  "seed": 100000,
+  "steps": 172,
+  "success": true,
+  "fold_score": 0.8665822132822857,
+  "n_substeps": 100,
+  "timestep": 0.0005,
+  "nq": 375,
+  "nv": 375,
+  "nu": 12,
+  "neq": 6,
+  "nflex": 1,
+  "nflexvert": 121,
+  "nbody": 136,
+  "ngeom": 66,
+  "mujoco": "3.10.0"
+ },
+ "mujoco": "3.10.0",
+ "cpu_replay_max_abs_qpos_err": 0.0,
+ "warp": "1.14.0",
+ "load": "ok",
+ "match": {
+  "steps": 172,
+  "max_abs_qpos_err_first_step": 0.0005988278840530648,
+  "max_abs_qpos_err_step10": 0.002817786809996884,
+  "max_abs_qpos_err_final": 0.04568592477605791,
+  "max_abs_qpos_err_any": 0.09665844575958082,
+  "first_step_over_1cm": 15,
+  "seconds": 943.5
+ },
+ "cpu_steps_per_s_1thread": 576.5,
+ "gpu_speed": {
+  "1": {
+   "world_steps_per_s": 21.4,
+   "ms_per_batched_step": 46.77
+  },
+  "16": {
+   "world_steps_per_s": 164.4,
+   "ms_per_batched_step": 97.32
+  },
+  "64": {
+   "world_steps_per_s": 273.6,
+   "ms_per_batched_step": 233.88
+  },
+  "256": {
+   "world_steps_per_s": 198.0,
+   "ms_per_batched_step": 1293.2
+  }
+ }
+}

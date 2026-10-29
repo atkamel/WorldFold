@@ -1,0 +1,62 @@
+{
+ "git_commit": "b310675cf6c281dfa0fc06ed99b94727fa28cf06-dirty",
+ "dataset": {
+  "root": "outputs\\imitation\\datasets",
+  "version": "isaac_pilot",
+  "content_hash": "a0bbd40bf051d7df490f59153fd84ea581a93597e4861ba8f7d46719fde06141",
+  "n_episodes": 2,
+  "n_train_samples": 272,
+  "n_dagger_labels": 0,
+  "clamped_fraction": 0.00015869656635913998,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "chunk_mlp",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "width": 512,
+   "depth": 4,
+   "dropout": 0.1
+  },
+  "n_params": 8645312
+ },
+ "train": {
+  "steps": 5000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 1.0,
+  "obs_subset": null,
+  "init_from": null,
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 55.2
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\isaac_pilot_mlp\\final.pt",
+  "sha256": "5a06cfdf0e57b11f9fb1dc7905b1f1508c51a267e1248fb33a0843a3b9168409"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.03230908000841737,
+   "val_loss": 0.38625314831733704
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.009507844236213713,
+   "val_loss": 0.388630211353302
+  },
+  {
+   "step": 5000,
+   "train_loss": 0.003114258614368737,
+   "val_loss": 0.3953549861907959
+  }
+ ]
+}

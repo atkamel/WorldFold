@@ -1,0 +1,33 @@
+{
+ "ckpt": "outputs/imitation/runs/distill_v1/round_2/final.pt",
+ "episodes": [
+  {
+   "seed": 100000,
+   "steps": 176,
+   "success": true,
+   "fold_score": 0.9015674810929978,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 100001,
+   "steps": 96,
+   "success": true,
+   "fold_score": 0.935562975284059,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 200000,
+   "steps": 84,
+   "success": true,
+   "fold_score": 0.9232021365101418,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 200001,
+   "steps": 79,
+   "success": true,
+   "fold_score": 0.9149659970256224,
+   "termination_reason": "success"
+  }
+ ]
+}

@@ -1,0 +1,27 @@
+{
+ "ckpt": "outputs\\imitation\\runs\\isaac_v1_weld_vision_t0\\final.pt",
+ "backend": "isaac_weld",
+ "episodes": [
+  {
+   "seed": 100000,
+   "steps": 82,
+   "success": true,
+   "fold_score": 0.9848020595638126,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 100001,
+   "steps": 96,
+   "success": true,
+   "fold_score": 0.9329274900943378,
+   "termination_reason": "success"
+  },
+  {
+   "seed": 100002,
+   "steps": 91,
+   "success": true,
+   "fold_score": 0.9555460045295786,
+   "termination_reason": "success"
+  }
+ ]
+}

@@ -1,0 +1,4 @@
+  id_easy   success 96% (192/200)  fold 0.908  grasp 100%  failures {'F1': 7, 'S1': 1}  606s
+  id_hard   success 93% (186/200)  fold 0.895  grasp 100%  failures {'S1': 2, 'F1': 10, 'G1': 2}  611s
+  recovery  success 36% (73/200)  fold 0.725  grasp 96%  failures {'F1': 48, 'G1': 74, 'S1': 5}  1141s
+wrote outputs\imitation\runs\vision_t0_128\eval_r4.json

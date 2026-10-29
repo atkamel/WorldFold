@@ -1,0 +1,56 @@
+[
+ {
+  "round": 0,
+  "checkpoint": "outputs\\imitation\\runs\\isaac_weld_pilot_diff\\final.pt",
+  "dataset": "isaac_weld_pilot",
+  "eval": {
+   "id_easy": {
+    "n": 20,
+    "success_rate": 1.0,
+    "mean_fold_score": 0.9670228927610915,
+    "grasp_success": 1.0,
+    "mean_steps_success": 87.65,
+    "termination": {
+     "success": 20
+    },
+    "failure_codes": {},
+    "perturbed_failures": 0,
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 11.973400018177927,
+     "mean_batch": 16.0
+    }
+   }
+  },
+  "kept": true
+ },
+ {
+  "round": 1,
+  "checkpoint": "outputs\\imitation\\runs\\isaac_weld_pilot_dagger\\round_1\\final.pt",
+  "dataset": "isaac_weld_pilot_isaac_weld_pilot_dagger_r1",
+  "beta": 0.3,
+  "n_labels": 56,
+  "eval": {
+   "id_easy": {
+    "n": 20,
+    "success_rate": 1.0,
+    "mean_fold_score": 0.9709906888275288,
+    "grasp_success": 1.0,
+    "mean_steps_success": 87.4,
+    "termination": {
+     "success": 20
+    },
+    "failure_codes": {},
+    "perturbed_failures": 0,
+    "perturbed_steps": 0,
+    "policy_infer_ms": {
+     "ms_per_call": 11.830999981611967,
+     "mean_batch": 16.0
+    }
+   }
+  },
+  "gain": 0.0,
+  "gain_se": 0.0,
+  "kept": false
+ }
+]

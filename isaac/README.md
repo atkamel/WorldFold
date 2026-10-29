@@ -1,146 +1,69 @@
-# isaac: WorldFold in Isaac Sim
+# isaac
 
-`IsaacClothFoldEnv` is a drop-in for `mujuco.sim_main.ClothFoldEnv` in
-`joint_delta` mode: same action, observations, reward, and termination, so
-`cloth_fold_rl.fold_env.SingleCornerFoldEnv(base_env=IsaacClothFoldEnv())`
-runs the SB3 pipeline unchanged. Scene constants are shared through
-`mujuco/cloth_params.py`. Design: `docs/superpowers/specs/2026-09-24-isaac-sim-port-design.md`.
+WorldFold's cloth-fold env on LeHome's Isaac Sim stack (lehome-challenge `a805ad2`, Isaac Sim 5.1, PhysX particle
+cloth, LeHome's SO-101 arms), and the scripted experts, RL and tools that run on it. `IsaacClothFoldEnv` is a drop-in
+for `mujoco_sim.sim_main.ClothFoldEnv` in `joint_delta` mode (same 14-dim action, observation dict, reward and
+termination), so the `cloth_fold_rl` wrappers run on it unchanged. Stay on Isaac Sim 5.1, the last release with
+particle cloth.
 
-Milestone 1 covers the environment only. Not ported: `ee_delta` mode, the
-physical grabber, mass/friction/damping randomisation, the viewer.
+| folder | what it holds |
+|---|---|
+| `sim/` | `isaac_env.py` (the env, `PROFILES`, `IsaacClothFoldBatch` for several copies in one scene, snapshot and restore), `lab_scene.py` (the IsaacLab scene), `pinch.py` (IK on LeHome's URDF) |
+| `experts/` | `fold_expert.py` (`IsaacArmExpert`, the open-loop pinch or slide grasp), `servo_expert.py` (closed-loop corner steering), `place_servo.py` (the RL base with a residual, a release vote and the gentle release), `half_fold_demo.py` (shared constants and a scripted demo) |
+| `rl/` | `precision_env.py` (residual-RL window env over B copies, the validity gate), `precision_rl.py` (train, demo, sweep), `corrector_env.py` and `corrector_rl.py` (push-or-stop corrector on settled folds), `rlpd.py` (the SAC learner) |
+| `tools/` | `quarter_batch.py` (scripted quarter fold over B copies), `grasp_bench.py` and `grasp_metrics.py` (grasp tuning), `rescore_gate.py`, `smoke_test.py` (install check) |
+| `tests/` | sim-free tests, part of `pytest -m "not slow"` |
 
-## Running on Modal
+## Profiles
 
-```bash
-pip install modal && modal setup          # once
-modal run isaac/modal_isaac.py            # state-only physics smoke test on an L40S
-modal run isaac/modal_isaac.py --modes hybrid  # optional RTX camera path
-modal volume get worldfold-isaac smoke/<stamp> .
-```
+- **`lehome`** is the env as ported from LeHome, on the CPU device with LeHome's drop and drives.
+- **`friction`** is the working profile. It runs on the GPU pipeline (scene copies, dynamics randomization, snapshots)
+  with MuJoCo's stiff arm drives, LeHome's gripper drive, a closed jaw at +0.05 rad, adhesion 0.1 and pad friction
+  2.0. The cloth sits 13.5 cm toward the arms (`CLOTH_CENTER`) so the pinch can reach both ends of the half fold.
+- **`quarter2`** is `friction` with the left arm north of the cloth and the right arm south-east, the two-arm layout
+  for the quarter fold's second fold.
 
-Isaac Sim 4.5.0 is installed from NVIDIA's pip index for the Modal L40S runtime.
-The WATcloud instructions below also use Isaac Sim 4.5.0. The Modal image
-build happens once and doesn't use a GPU. Each
-run prints its logs and saves them, plus any captured frames, to the
-`worldfold-isaac` volume. The current Modal L40S environment fails before the
-simulation starts: state-only launch hangs waiting for a headless viewport,
-and hybrid launch segfaults during RTX scene startup. Modal run success also
-requires the smoke script's `SMOKE OK` marker, because Kit can log a startup
-exception and exit with status zero. State-only launches use
-`MinimalRendering` mode 4 with viewport updates disabled; hybrid launches use
-`RayTracedLighting` for camera capture.
-
-## Isaac world model
-
-The predictor architecture is shared with the MuJoCo world model, but a
-MuJoCo checkpoint is not an Isaac-trained model and should not be treated as
-one. Collect Isaac transitions, train the existing full-state predictor, then
-run that checkpoint in the live Isaac control loop:
-
-```bash
-python isaac/collect_world_model_data.py --output outputs/cloth_angles/isaac_state
-python scripts/benchmark_state_predictor.py --data outputs/cloth_angles/isaac_state \
-  --output outputs/cloth_angles/isaac_benchmark --variants state_l1 --seeds 0 --steps 10000
-python isaac/run_world_model.py \
-  --checkpoint outputs/cloth_angles/isaac_benchmark/state_l1_seed0.pt --steps 200
-```
-
-The collector and live runner target Isaac Sim 4.5, matching the Modal image.
-The live runner makes a one-step prediction before each action is advanced by Isaac,
-then reports prediction error, inference latency and control-loop rate.
-It defaults to zero actions; pass an NPZ with an `actions[T, 6]` array to
-replay controls. The collector currently uses randomized controls to establish
-an Isaac-domain dataset; task-quality predictions require broader, task-driven
-coverage. The repository currently has no saved world-model checkpoint or
-Isaac episode dataset, so these steps train a fresh Isaac model rather than
-resume a missing artifact. Isaac Sim 5.1 was also tried on Modal, but its RTX
-scene initialization segfaults on the current L40S runtime, so Isaac Sim 4.5
-remains configured pending a working Modal headless startup.
+Nothing attaches the cloth. The jaws hold it by friction and adhesion, through a high-friction lining on each finger.
 
 ## Running on WATcloud
 
-Isaac Sim needs an RTX GPU. The 2080 Ti nodes run Isaac Sim 4.5.0.
+`watcloud.sbatch` builds `isaac/Dockerfile` in the job (about 10 minutes on trpro, 30 on thor) and runs the command
+in the container with the repo mounted. It passes the `WORLDFOLD_*` tuning variables through (`WORLDFOLD_EXPERT_PARAMS`
+and `WORLDFOLD_PLACE_PARAMS` override expert class attributes for a run).
 
 ```bash
-# login node
-srun --gres shard:rtx_2080_ti:10240,tmpdisk:40960 --cpus-per-task 4 --mem 16G --time 4:00:00 --pty bash
-
-# compute node
-slurm-start-dockerd.sh
-docker login nvcr.io            # user: $oauthtoken, password: NGC API key
-docker pull nvcr.io/nvidia/isaac-sim:4.5.0
-docker run --name isaac-sim --entrypoint bash -it --gpus all --rm --network=host \
-  -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y \
-  -v ~/WorldFold:/workspace/WorldFold \
-  -v ~/docker/isaac-sim/cache/kit:/isaac-sim/kit/cache:rw \
-  -v ~/docker/isaac-sim/cache/computecache:/isaac-sim/.nv/ComputeCache:rw \
-  nvcr.io/nvidia/isaac-sim:4.5.0
-
-# inside the container
-./python.sh -m pip install gymnasium
-./python.sh /workspace/WorldFold/isaac/smoke_test.py --mode state
-./python.sh /workspace/WorldFold/isaac/smoke_test.py --mode hybrid
+sbatch --time=2:00:00 --cpus-per-task=6 --mem=32G --gres=gpu:rtx_3090:1,tmpdisk:200000 \
+    isaac/watcloud.sbatch isaac/tools/quarter_batch.py --copies 8 --seeds 0:8 --profile quarter2 --fold2 two \
+    --drag none --video --out outputs/isaac/quarter/q2
 ```
 
-The first run downloads the `so101-nexus` wheel and unpacks the SO101 MJCF
-and meshes into `isaac/assets/` (gitignored). The container cannot install
-`mujoco` or `so101-nexus` (they need Python 3.12), which is why nothing in
-`isaac/` imports `sim_main`.
+Sync code with `tar czf - <files> | ssh watcloud 'cd ~/WorldFold && tar xzf -'` (rsync fails mid-protocol there).
+Isaac scripts end with `os._exit` because Kit can hang on shutdown.
+
+Natively on Windows, `setup_windows.ps1` builds `.venv-isaac` from the hashed locks here and `env_windows.ps1` sets
+up the shell. `INSTALL_REVIEW.md` is the security review of that install.
 
 ## Using the env
 
 ```python
-from isaac.isaac_env import IsaacClothFoldEnv
-from cloth_fold_rl.fold_env import SingleCornerFoldEnv
+from isaac.sim.isaac_env import IsaacClothFoldBatch, IsaacClothFoldEnv, make_half_fold_env
 
-env = SingleCornerFoldEnv(base_env=IsaacClothFoldEnv(observation_mode="state"))
+env = IsaacClothFoldEnv(profile="friction")         # one env, one scene
+batch = IsaacClothFoldBatch(8, profile="friction")  # 8 copies in one scene, batch.envs[i]
+half = make_half_fold_env()                          # cloth_fold_rl.quarter_fold_env.HalfFoldEnv on Isaac
 ```
 
-Only one env per process: Isaac Sim's `World` is a singleton. Use
-`observation_mode="hybrid"` for RGB and depth from the shared camera pose.
+IsaacLab's simulation context is a singleton, so build one scene per process. The GPU sim is not deterministic
+(two restores of one snapshot differ by 0.1 to 1.8 cm), so every comparison is statistical over paired seeds.
 
-## Half fold
+## Scoring
 
-```python
-from isaac.isaac_env import make_half_fold_env
+`cloth_fold_rl/fold_alignment.py` scores how well the layers line up (mean and edge spread, bar 1.0 / 1.5 cm for the
+half fold, 2.0 / 3.0 cm for the quarter fold). A score only counts when `rl/precision_env.gate` passes it, meaning
+the cloth is flat on the table, still, and both jaws are open and clear of it.
 
-env = make_half_fold_env()          # cloth_fold_rl.quarter_fold_env.HalfFoldEnv on Isaac
-```
+## Full-state predictor tools
 
-Stage 0 of the quarter fold on its own, with the same wrapper code MuJoCo
-runs. Both arms work: the left carries cloth_10 onto cloth_0's start, the right
-carries cloth_120 onto cloth_110's start. **Success:** both carried corners
-are within 5 cm of their targets with both grippers open, and that holds for
-20 consecutive control steps (1.0 s). The episode fails first if cloth_0 or
-cloth_110 is dragged more than 0.20 m or the cloth goes unstable, and it runs
-for at most 250 steps. In MuJoCo the scripted expert completes it on 8/8 seeds
-in 77-214 steps (`python -m cloth_fold_rl.quarter_fold_expert --half`).
-
-## Sensors
-
-Each item matches MuJoCo's `ClothFoldEnv`:
-
-- Camera `main`: `CAMERA_POS` aimed at `CAMERA_TARGET`, vertical FOV
-  `CAMERA_FOVY_DEG`, `image_size` resolution. Depth is distance to the image
-  plane (MuJoCo's depth buffer), run through the shared `sensor_depth` noise
-  model. Other `camera_names` raise.
-- Proprio: joints in MuJoCo order (checked at build time), commanded gripper,
-  gripperframe site pose with `mju_mat2Quat`'s quaternion sign, and
-  instantaneous site velocity `[angular, linear]` in world axes, as
-  `mj_objectVelocity` returns it.
-- Scene look: the same two light directions and strengths as the MJCF, plus
-  the camera headlight, floor colour and size. `LIGHT_INTENSITY` sets the
-  overall brightness, which is not calibrated against MuJoCo.
-
-## Knobs
-
-Isaac-only tuning constants sit at the top of `isaac_env.py`: physics dt,
-cloth stiffness and damping, particle offsets, joint drive gains, the cloth
-speed limit used for the failure check. Everything geometric (table, cloth
-size, arm bases, camera, grasp radius) lives in `mujuco/cloth_params.py`.
-
-## Grasp
-
-Same cheat as MuJoCo's weld: when a gripper closes within `GRASP_RADIUS` of
-its corner particle, that particle's mass is set to zero and its position is
-written to the gripper frame every substep. Opening restores the mass.
+`collect_world_model_data.py` records Isaac Sim 5.1 transitions for the 121 cloth vertices and left-arm state.
+`run_world_model.py` evaluates a compatible `ResidualStatePredictor` checkpoint alongside a live env. These tools
+use the current `isaac.sim.isaac_env` implementation; they do not include a trained Isaac checkpoint or a trainer.

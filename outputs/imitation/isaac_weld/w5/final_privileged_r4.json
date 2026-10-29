@@ -1,0 +1,78 @@
+{
+ "checkpoint": "outputs\\imitation\\runs\\isaac_v1_weld_dagger\\round_1\\final.pt",
+ "replan_every": 4,
+ "results": {
+  "id_easy": {
+   "n": 200,
+   "success_rate": 0.99,
+   "mean_fold_score": 0.9666246655522417,
+   "grasp_success": 1.0,
+   "mean_steps_success": 85.22222222222223,
+   "termination": {
+    "success": 198,
+    "truncated": 2
+   },
+   "failure_codes": {
+    "G1": 1,
+    "S1": 1
+   },
+   "perturbed_failures": 0,
+   "perturbed_steps": 0,
+   "policy_infer_ms": {
+    "ms_per_call": 11.615299998084083,
+    "mean_batch": 16.0
+   }
+  },
+  "id_hard": {
+   "n": 200,
+   "success_rate": 0.975,
+   "mean_fold_score": 0.9396261534070767,
+   "grasp_success": 1.0,
+   "mean_steps_success": 90.48717948717949,
+   "termination": {
+    "success": 195,
+    "truncated": 5
+   },
+   "failure_codes": {
+    "S1": 3,
+    "F1": 2
+   },
+   "perturbed_failures": 0,
+   "perturbed_steps": 0,
+   "policy_infer_ms": {
+    "ms_per_call": 11.63740000629332,
+    "mean_batch": 16.0
+   }
+  },
+  "recovery": {
+   "n": 200,
+   "success_rate": 0.545,
+   "mean_fold_score": 0.7657813752357697,
+   "grasp_success": 0.965,
+   "mean_steps_success": 113.0091743119266,
+   "termination": {
+    "success": 109,
+    "truncated": 86,
+    "cloth_dragged": 5
+   },
+   "failure_codes": {
+    "S1": 18,
+    "G1": 50,
+    "F1": 18,
+    "M1": 5
+   },
+   "perturbed_failures": 91,
+   "perturbed_steps": 2301,
+   "policy_infer_ms": {
+    "ms_per_call": 11.282599996775389,
+    "mean_batch": 16.0
+   }
+  }
+ },
+ "failure_codes": {
+  "G1": "missed or unstable grasp (an arm never grasped, or dropped its unplaced corner)",
+  "M1": "motion error: anchor corner dragged or sim unstable",
+  "F1": "fold placed with poor alignment (released off target)",
+  "S1": "stalled: timed out still holding / hovering"
+ }
+}

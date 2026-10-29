@@ -9,8 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import pytest  # noqa: E402
 
-from isaac.isaac_env import LIGHTS, _matrix_from_quat, _quat_facing, _quat_from_matrix  # noqa: E402
-from mujuco.cloth_params import CAMERA_POS, CAMERA_TARGET, camera_axes  # noqa: E402
+from isaac.sim.isaac_env import LIGHTS, _matrix_from_quat, _quat_facing, _quat_from_matrix  # noqa: E402
+from mujoco_sim.cloth_params import CAMERA_POS, CAMERA_TARGET, camera_axes  # noqa: E402
 
 
 def random_rotation(rng):

@@ -1,0 +1,33 @@
+{
+ "checkpoint": "outputs\\imitation\\runs\\isaac_weld_pilot_diff\\final.pt",
+ "replan_every": 8,
+ "results": {
+  "id_hard": {
+   "n": 10,
+   "success_rate": 0.8,
+   "mean_fold_score": 0.9001314794216089,
+   "grasp_success": 0.9,
+   "mean_steps_success": 88.875,
+   "termination": {
+    "success": 8,
+    "truncated": 2
+   },
+   "failure_codes": {
+    "G1": 1,
+    "F1": 1
+   },
+   "perturbed_failures": 0,
+   "perturbed_steps": 0,
+   "policy_infer_ms": {
+    "ms_per_call": 11.615750001510605,
+    "mean_batch": 16.0
+   }
+  }
+ },
+ "failure_codes": {
+  "G1": "missed or unstable grasp (an arm never grasped, or dropped its unplaced corner)",
+  "M1": "motion error: anchor corner dragged or sim unstable",
+  "F1": "fold placed with poor alignment (released off target)",
+  "S1": "stalled: timed out still holding / hovering"
+ }
+}

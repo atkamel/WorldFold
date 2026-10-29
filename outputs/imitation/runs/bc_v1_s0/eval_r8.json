@@ -1,0 +1,77 @@
+{
+ "checkpoint": "outputs/imitation/runs/bc_v1_s0/final.pt",
+ "replan_every": 8,
+ "results": {
+  "id_easy": {
+   "n": 200,
+   "success_rate": 0.975,
+   "mean_fold_score": 0.9071076081659761,
+   "grasp_success": 1.0,
+   "mean_steps_success": 90.32820512820513,
+   "termination": {
+    "success": 195,
+    "truncated": 5
+   },
+   "failure_codes": {
+    "F1": 4,
+    "S1": 1
+   },
+   "perturbed_failures": 0,
+   "perturbed_steps": 0,
+   "policy_infer_ms": {
+    "ms_per_call": 3.847149997454835,
+    "mean_batch": 1.0814880425155005
+   }
+  },
+  "id_hard": {
+   "n": 200,
+   "success_rate": 0.725,
+   "mean_fold_score": 0.8059004687483988,
+   "grasp_success": 0.905,
+   "mean_steps_success": 107.37931034482759,
+   "termination": {
+    "truncated": 55,
+    "success": 145
+   },
+   "failure_codes": {
+    "S1": 8,
+    "F1": 17,
+    "G1": 30
+   },
+   "perturbed_failures": 0,
+   "perturbed_steps": 0,
+   "policy_infer_ms": {
+    "ms_per_call": 3.5978000014438294,
+    "mean_batch": 1.085033036483769
+   }
+  },
+  "recovery": {
+   "n": 200,
+   "success_rate": 0.37,
+   "mean_fold_score": 0.7350123098098513,
+   "grasp_success": 0.975,
+   "mean_steps_success": 127.5945945945946,
+   "termination": {
+    "success": 74,
+    "truncated": 126
+   },
+   "failure_codes": {
+    "F1": 53,
+    "G1": 69,
+    "S1": 4
+   },
+   "perturbed_failures": 126,
+   "perturbed_steps": 2301,
+   "policy_infer_ms": {
+    "ms_per_call": 4.254400002537295,
+    "mean_batch": 1.0944262295081968
+   }
+  }
+ },
+ "failure_codes": {
+  "G1": "missed or unstable grasp (an arm never grasped, or dropped its unplaced corner)",
+  "M1": "motion error: anchor corner dragged or sim unstable",
+  "F1": "fold placed with poor alignment (released off target)",
+  "S1": "stalled: timed out still holding / hovering"
+ }
+}

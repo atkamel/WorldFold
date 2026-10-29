@@ -1,0 +1,137 @@
+{
+ "git_commit": "4153e198cfef324f690cba0e2db873306184a215-dirty",
+ "dataset": {
+  "root": "outputs\\imitation\\datasets",
+  "version": "isaac_v1_weld",
+  "content_hash": "468089355dd79e00957dbcd0b66dc5bd5a8bcbe685146cc0f0a57608b5b0785a",
+  "n_episodes": 384,
+  "n_train_samples": 31060,
+  "n_dagger_labels": 0,
+  "clamped_fraction": 8.778553456068039e-05,
+  "teacher": "outputs\\imitation\\runs\\isaac_v1_weld_dagger\\round_1\\final.pt"
+ },
+ "policy": {
+  "kind": "vision",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "width": 512,
+   "depth": 3,
+   "dropout": 0.1,
+   "cameras": [
+    [
+     "main",
+     128
+    ],
+    [
+     "left_wrist_cam",
+     64
+    ],
+    [
+     "right_wrist_cam",
+     64
+    ]
+   ],
+   "feat": 256
+  },
+  "n_params": 8611712
+ },
+ "train": {
+  "steps": 30000,
+  "batch": 256,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 1.0,
+  "obs_subset": null,
+  "init_from": null,
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 1099.0
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\isaac_v1_weld_vision_t0\\final.pt",
+  "sha256": "a2820d96431fe4b681ad50926f32a5450f20481f0626926439fc0fe6e7f37f92"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.10626670271158219,
+   "val_loss": 0.09413208765287544
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.06306504793465137,
+   "val_loss": 0.05712569699284139
+  },
+  {
+   "step": 6000,
+   "train_loss": 0.05174453444778919,
+   "val_loss": 0.046800129878968665
+  },
+  {
+   "step": 8000,
+   "train_loss": 0.043337732646614315,
+   "val_loss": 0.043373674680755515
+  },
+  {
+   "step": 10000,
+   "train_loss": 0.03614077465608716,
+   "val_loss": 0.041478444422646144
+  },
+  {
+   "step": 12000,
+   "train_loss": 0.03124864837154746,
+   "val_loss": 0.04048078645823108
+  },
+  {
+   "step": 14000,
+   "train_loss": 0.027311410242691635,
+   "val_loss": 0.04003391474304056
+  },
+  {
+   "step": 16000,
+   "train_loss": 0.0232490838970989,
+   "val_loss": 0.03971914933042372
+  },
+  {
+   "step": 18000,
+   "train_loss": 0.02033394854515791,
+   "val_loss": 0.039773881842436604
+  },
+  {
+   "step": 20000,
+   "train_loss": 0.018052174896001815,
+   "val_loss": 0.039572183395697166
+  },
+  {
+   "step": 22000,
+   "train_loss": 0.01583056538365781,
+   "val_loss": 0.03925596569021064
+  },
+  {
+   "step": 24000,
+   "train_loss": 0.014264476415701211,
+   "val_loss": 0.03907865560858529
+  },
+  {
+   "step": 26000,
+   "train_loss": 0.013692510849796235,
+   "val_loss": 0.039030911891802356
+  },
+  {
+   "step": 28000,
+   "train_loss": 0.012597784539684654,
+   "val_loss": 0.03884227665760807
+  },
+  {
+   "step": 30000,
+   "train_loss": 0.01249501567799598,
+   "val_loss": 0.038759204752312315
+  }
+ ]
+}

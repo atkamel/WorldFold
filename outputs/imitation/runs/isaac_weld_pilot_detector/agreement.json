@@ -1,0 +1,13 @@
+{
+ "n": 80,
+ "agree": 80,
+ "rate": 1.0,
+ "wilson": [
+  0.954180263735425,
+  1.0
+ ],
+ "true_pos": 76,
+ "false_pos": 0,
+ "false_neg": 0,
+ "sim_success": 76
+}

@@ -1,0 +1,63 @@
+{
+ "layout": "obs_layout.json",
+ "heatmap": {
+  "rows": 139,
+  "cols": 80,
+  "cell": [
+   3,
+   3
+  ],
+  "boundaries": [
+   25,
+   50,
+   119,
+   137
+  ],
+  "seed": 0
+ },
+ "cams": {
+  "moments": [
+   {
+    "name": "start",
+    "step": 0
+   },
+   {
+    "name": "grasp",
+    "step": 14
+   },
+   {
+    "name": "carry",
+    "step": 36
+   },
+   {
+    "name": "settled",
+    "step": 79
+   }
+  ],
+  "cameras": [
+   "main",
+   "left_wrist_cam",
+   "right_wrist_cam"
+  ],
+  "native": {
+   "main": 128,
+   "left_wrist_cam": 64,
+   "right_wrist_cam": 64
+  },
+  "tile": 192,
+  "seed": 0,
+  "version": "v1_img128"
+ },
+ "dr": {
+  "seeds": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "version": "v1_img128",
+  "hash": "532f8a9c08b6"
+ }
+}

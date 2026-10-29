@@ -1,0 +1,102 @@
+{
+ "git_commit": "a17e6d751c0f7db091a90697fccbbbb6c8c2ffe0-dirty",
+ "dataset": {
+  "root": "outputs/imitation/datasets",
+  "version": "v1_img_distill_v1_r1",
+  "content_hash": "e5eae323ac8203298660c6f1378b925c6cf4dc0238a4a70b036ceba79bc14f53",
+  "n_episodes": 512,
+  "n_train_samples": 48666,
+  "n_dagger_labels": 14698,
+  "clamped_fraction": 0.0001938776986207813,
+  "teacher": "outputs\\imitation\\runs\\dagger_v2\\round_3\\final.pt"
+ },
+ "policy": {
+  "kind": "vision",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "width": 512,
+   "depth": 3,
+   "dropout": 0.1,
+   "cameras": [
+    [
+     "main",
+     96
+    ],
+    [
+     "left_wrist_cam",
+     64
+    ],
+    [
+     "right_wrist_cam",
+     64
+    ]
+   ],
+   "feat": 256
+  },
+  "n_params": 8611712
+ },
+ "train": {
+  "steps": 15000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 2.0,
+  "obs_subset": null,
+  "init_from": "outputs\\imitation\\runs\\distill_v1\\round_0\\final.pt",
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 1035.0
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\distill_v1\\round_1\\final.pt",
+  "sha256": "9c807a35b414ec7ce86288e8c11c926f391601be02c03495fa1d52c40d446111"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.03847300242632627,
+   "val_loss": 0.0715198294727212
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.02773441788740456,
+   "val_loss": 0.07254474123056476
+  },
+  {
+   "step": 6000,
+   "train_loss": 0.024047880433499813,
+   "val_loss": 0.0730105631923891
+  },
+  {
+   "step": 8000,
+   "train_loss": 0.02139283372089267,
+   "val_loss": 0.07303185864080972
+  },
+  {
+   "step": 10000,
+   "train_loss": 0.019259742554277183,
+   "val_loss": 0.07302767297405859
+  },
+  {
+   "step": 12000,
+   "train_loss": 0.01749948605429381,
+   "val_loss": 0.07292070424233425
+  },
+  {
+   "step": 14000,
+   "train_loss": 0.016382059175521137,
+   "val_loss": 0.07290484144848478
+  },
+  {
+   "step": 15000,
+   "train_loss": 0.008189143775962294,
+   "val_loss": 0.07287404422488929
+  }
+ ]
+}

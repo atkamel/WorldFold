@@ -1,0 +1,4 @@
+  id_easy   success 94% (189/200)  fold 0.906  grasp 100%  failures {'F1': 11}  661s
+  id_hard   success 91% (182/200)  fold 0.890  grasp 100%  failures {'G1': 5, 'F1': 13}  660s
+  recovery  success 26% (53/200)  fold 0.646  grasp 98%  failures {'F1': 39, 'G1': 106, 'S1': 2}  1328s
+wrote outputs\imitation\runs\vision_bc_128\eval_r8.json

@@ -1,0 +1,9 @@
+trained bc_v1_s0
+trained bc_v1_s1
+trained abl_proprio_s0
+trained abl_proprio_corners_s0
+evaluated bc_v1_s0:  id_easy success 98% (195/200) fold 0.907 grasp 100% failure| id_hard success 72% (145/200) fold 0.806 grasp 90% failures| recovery success 37% (74/200) fold 0.735 grasp 98% failures|
+evaluated bc_v1_s1:  id_easy success 96% (193/200) fold 0.907 grasp 100% failure| id_hard success 68% (137/200) fold 0.770 grasp 92% failures| recovery success 30% (61/200) fold 0.710 grasp 100% failure|
+evaluated abl_proprio_s0:  id_easy success 92% (184/200) fold 0.919 grasp 100% failure| id_hard success 48% (97/200) fold 0.656 grasp 68% failures | recovery success 26% (52/200) fold 0.644 grasp 98% failures|
+evaluated abl_proprio_corners_s0:  id_easy success 96% (192/200) fold 0.906 grasp 100% failure| id_hard success 45% (90/200) fold 0.661 grasp 80% failures | recovery success 27% (54/200) fold 0.644 grasp 98% failures|
+PHASE2_DONE

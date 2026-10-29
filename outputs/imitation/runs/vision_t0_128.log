@@ -1,0 +1,17 @@
+normalizer clamp: 0.0069% of train obs entries at +-10
+device cuda | 340 train / 44 val episodes | 33968 samples (0 DAgger labels) | vision 8.61M params
+  step   2000  train 0.1171  val(ema) 0.1076  160s
+  step   4000  train 0.0693  val(ema) 0.0736  321s
+  step   6000  train 0.0549  val(ema) 0.0668  483s
+  step   8000  train 0.0449  val(ema) 0.0647  648s
+  step  10000  train 0.0373  val(ema) 0.0643  812s
+  step  12000  train 0.0330  val(ema) 0.0634  970s
+  step  14000  train 0.0287  val(ema) 0.0632  1068s
+  step  16000  train 0.0251  val(ema) 0.0630  1156s
+  step  18000  train 0.0227  val(ema) 0.0626  1245s
+  step  20000  train 0.0207  val(ema) 0.0622  1347s
+  step  22000  train 0.0184  val(ema) 0.0621  1438s
+  step  24000  train 0.0171  val(ema) 0.0620  1521s
+  step  26000  train 0.0159  val(ema) 0.0621  1618s
+  step  28000  train 0.0156  val(ema) 0.0620  1715s
+  step  30000  train 0.0154  val(ema) 0.0620  1811s

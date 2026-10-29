@@ -9,7 +9,7 @@ and a fixed number of control steps per segment:
 
 The only feedback is the arm's own joint angles (proprio), used to servo toward
 the current waypoint through joint_delta actions. So the same numbers run on
-MuJoCo and on Isaac (isaac.isaac_env.make_half_fold_env).
+MuJoCo and on Isaac (isaac.sim.isaac_env.make_half_fold_env).
 
 WAYPOINTS below are hardcoded. They were solved once, offline, by `--solve`:
 damped-least-squares IK on the nominal scene (cloth un-jittered, no domain

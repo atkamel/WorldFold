@@ -1,5 +1,0 @@
-so101-nexus[molmoact]
-torch
-einops
-torchvision
-requests

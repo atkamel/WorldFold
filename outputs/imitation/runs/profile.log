@@ -1,0 +1,30 @@
+{'loop': 'eval_state', 'episodes': 20, 'steps': 1886, 'wall_s': 67.2, 'ms_per_step_wall': 35.65, 'physics_share': 0.534, 'render_share': 0.0, 'teacher_share': 0.0, 'label_share': 0.0, 'plan_share_main': 0.06, 'wait_share_main': 0.931, 'ms_per_step_physics': 190.28, 'ms_per_step_render': 0.0}
+{'loop': 'eval_vision', 'episodes': 20, 'steps': 2061, 'wall_s': 84.7, 'ms_per_step_wall': 41.1, 'physics_share': 0.5, 'render_share': 0.075, 'teacher_share': 0.0, 'label_share': 0.0, 'plan_share_main': 0.027, 'wait_share_main': 0.961, 'ms_per_step_physics': 205.51, 'ms_per_step_render': 30.66}
+{'loop': 'dagger_expert', 'episodes': 20, 'steps': 2115, 'wall_s': 182.2, 'ms_per_step_wall': 86.14, 'physics_share': 0.219, 'render_share': 0.0, 'teacher_share': 0.01, 'label_share': 0.43, 'plan_share_main': 0.017, 'wait_share_main': 0.978, 'ms_per_step_physics': 188.36, 'ms_per_step_render': 0.0}
+{'loop': 'dagger_policy', 'episodes': 20, 'steps': 1970, 'wall_s': 90.3, 'ms_per_step_wall': 45.83, 'physics_share': 0.495, 'render_share': 0.144, 'teacher_share': 0.0, 'label_share': 0.0, 'plan_share_main': 0.048, 'wait_share_main': 0.942, 'ms_per_step_physics': 226.81, 'ms_per_step_render': 66.2}
+{'run': 'abl_proprio_corners_s0', 'kind': 'chunk_mlp', 'steps': 30000, 'seconds': 355.8, 'steps_per_s': 84.3, 'teacher': False}
+{'run': 'abl_proprio_s0', 'kind': 'chunk_mlp', 'steps': 30000, 'seconds': 347.6, 'steps_per_s': 86.3, 'teacher': False}
+{'run': 'bc_v1_s0', 'kind': 'chunk_mlp', 'steps': 30000, 'seconds': 281.1, 'steps_per_s': 106.7, 'teacher': False}
+{'run': 'bc_v1_s1', 'kind': 'chunk_mlp', 'steps': 30000, 'seconds': 303.7, 'steps_per_s': 98.8, 'teacher': False}
+{'run': 'diff_v1_s0', 'kind': 'diffusion', 'steps': 30000, 'seconds': 3262.8, 'steps_per_s': 9.2, 'teacher': False}
+{'run': 'diff_v1_s1', 'kind': 'diffusion', 'steps': 30000, 'seconds': 2151.6, 'steps_per_s': 13.9, 'teacher': False}
+{'run': 'diff_v1_s2', 'kind': 'diffusion', 'steps': 30000, 'seconds': 2171.4, 'steps_per_s': 13.8, 'teacher': False}
+{'run': 'vision_bc_128', 'kind': 'vision', 'steps': 30000, 'seconds': 999.9, 'steps_per_s': 30.0, 'teacher': False}
+{'run': 'vision_bc_v1', 'kind': 'vision', 'steps': 30000, 'seconds': 1599.0, 'steps_per_s': 18.8, 'teacher': False}
+{'run': 'vision_t0_128', 'kind': 'vision', 'steps': 30000, 'seconds': 1811.6, 'steps_per_s': 16.6, 'teacher': True}
+{'run': 'vision_t0_128_s1', 'kind': 'vision', 'steps': 30000, 'seconds': 1289.6, 'steps_per_s': 23.3, 'teacher': True}
+{'run': 'dagger_diff\\round_1', 'kind': 'diffusion', 'steps': 15000, 'seconds': 838.9, 'steps_per_s': 17.9, 'teacher': False}
+{'run': 'dagger_diff\\round_2', 'kind': 'diffusion', 'steps': 15000, 'seconds': 873.6, 'steps_per_s': 17.2, 'teacher': False}
+{'run': 'dagger_r4\\round_1', 'kind': 'diffusion', 'steps': 15000, 'seconds': 750.6, 'steps_per_s': 20.0, 'teacher': False}
+{'run': 'dagger_shift\\round_1', 'kind': 'diffusion', 'steps': 15000, 'seconds': 624.8, 'steps_per_s': 24.0, 'teacher': False}
+{'run': 'dagger_shift\\round_2', 'kind': 'diffusion', 'steps': 15000, 'seconds': 666.1, 'steps_per_s': 22.5, 'teacher': False}
+{'run': 'dagger_v1\\round_1', 'kind': 'chunk_mlp', 'steps': 15000, 'seconds': 169.4, 'steps_per_s': 88.5, 'teacher': False}
+{'run': 'dagger_v1\\round_2', 'kind': 'chunk_mlp', 'steps': 15000, 'seconds': 168.1, 'steps_per_s': 89.2, 'teacher': False}
+{'run': 'dagger_v2\\round_1', 'kind': 'chunk_mlp', 'steps': 15000, 'seconds': 120.0, 'steps_per_s': 125.0, 'teacher': False}
+{'run': 'dagger_v2\\round_2', 'kind': 'chunk_mlp', 'steps': 15000, 'seconds': 122.5, 'steps_per_s': 122.4, 'teacher': False}
+{'run': 'dagger_v2\\round_3', 'kind': 'chunk_mlp', 'steps': 15000, 'seconds': 119.4, 'steps_per_s': 125.6, 'teacher': False}
+{'run': 'distill_v1\\round_0', 'kind': 'vision', 'steps': 30000, 'seconds': 2110.5, 'steps_per_s': 14.2, 'teacher': True}
+{'run': 'distill_v1\\round_1', 'kind': 'vision', 'steps': 15000, 'seconds': 1035.0, 'steps_per_s': 14.5, 'teacher': True}
+{'run': 'distill_v1\\round_2', 'kind': 'vision', 'steps': 15000, 'seconds': 1037.0, 'steps_per_s': 14.5, 'teacher': True}
+{'run': 'distill_v2\\round_1', 'kind': 'vision', 'steps': 15000, 'seconds': 1566.8, 'steps_per_s': 9.6, 'teacher': True}
+{'run': 'distill_v2\\round_2', 'kind': 'vision', 'steps': 15000, 'seconds': 1862.4, 'steps_per_s': 8.1, 'teacher': True}

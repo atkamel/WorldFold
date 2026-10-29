@@ -1,0 +1,5 @@
+{'seed': 100000, 'steps': 96, 'success': True, 'fold_score': 0.8704963093789408, 'termination_reason': 'success'}
+{'seed': 100001, 'steps': 250, 'success': False, 'fold_score': 0.8144709909544497, 'termination_reason': None}
+{'seed': 100002, 'steps': 82, 'success': True, 'fold_score': 0.9075328962011018, 'termination_reason': 'success'}
+{'seed': 100003, 'steps': 100, 'success': True, 'fold_score': 0.8681601464368418, 'termination_reason': 'success'}
+wrote docs\reports\media\half_fold_sensor.mp4 (608 frames), success 3/4

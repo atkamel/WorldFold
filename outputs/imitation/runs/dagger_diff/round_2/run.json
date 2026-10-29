@@ -1,0 +1,91 @@
+{
+ "git_commit": "68666e4321e4f038b9384fbfbd3f23c04b88b485-dirty",
+ "dataset": {
+  "root": "outputs/imitation/datasets",
+  "version": "v1_dagger_diff_r2",
+  "content_hash": "aac732c40b20137f5b0efcac5ad762dd3f2d1215423bec87e00f419776411f1b",
+  "n_episodes": 640,
+  "n_train_samples": 36020,
+  "n_dagger_labels": 2992,
+  "clamped_fraction": 0.00010297690459992737,
+  "teacher": null
+ },
+ "policy": {
+  "kind": "diffusion",
+  "config": {
+   "obs_dim": 139,
+   "action_dim": 12,
+   "obs_horizon": 2,
+   "chunk": 16,
+   "cond_dim": 256,
+   "channels": [
+    128,
+    256
+   ],
+   "train_steps": 100,
+   "infer_steps": 10
+  },
+  "n_params": 7348748
+ },
+ "train": {
+  "steps": 15000,
+  "batch": 1024,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "warmup": 500,
+  "ema": 0.999,
+  "seed": 0,
+  "dagger_weight": 4.0,
+  "obs_subset": null,
+  "init_from": "outputs\\imitation\\runs\\dagger_diff\\round_1\\final.pt",
+  "device": "cuda",
+  "amp_bf16": true,
+  "seconds": 873.6
+ },
+ "checkpoint": {
+  "path": "outputs\\imitation\\runs\\dagger_diff\\round_2\\final.pt",
+  "sha256": "ae8937080d5e9d1f1169d4cb7c11a84bce815195a7157253b57f64411e9c7209"
+ },
+ "history": [
+  {
+   "step": 2000,
+   "train_loss": 0.008484873513225466,
+   "val_loss": 0.047391811309159065
+  },
+  {
+   "step": 4000,
+   "train_loss": 0.007128590741194785,
+   "val_loss": 0.042449937079000764
+  },
+  {
+   "step": 6000,
+   "train_loss": 0.005889519152697175,
+   "val_loss": 0.04700897847834326
+  },
+  {
+   "step": 8000,
+   "train_loss": 0.004517306439811364,
+   "val_loss": 0.054207298458144
+  },
+  {
+   "step": 10000,
+   "train_loss": 0.0032134882872924208,
+   "val_loss": 0.06533048314320238
+  },
+  {
+   "step": 12000,
+   "train_loss": 0.002098072718945332,
+   "val_loss": 0.0810534625411138
+  },
+  {
+   "step": 14000,
+   "train_loss": 0.0014351135643664748,
+   "val_loss": 0.0892871516452791
+  },
+  {
+   "step": 15000,
+   "train_loss": 0.0005781158048193902,
+   "val_loss": 0.09113362720945063
+  }
+ ]
+}
