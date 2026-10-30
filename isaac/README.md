@@ -61,3 +61,19 @@ IsaacLab's simulation context is a singleton, so build one scene per process. Th
 `cloth_fold_rl/fold_alignment.py` scores how well the layers line up (mean and edge spread, bar 1.0 / 1.5 cm for the
 half fold, 2.0 / 3.0 cm for the quarter fold). A score only counts when `rl/precision_env.gate` passes it, meaning
 the cloth is flat on the table, still, and both jaws are open and clear of it.
+
+## Full-state predictor tools
+
+Collect, train, then evaluate the predictor inside a live Isaac Sim 5.1 episode:
+
+```bash
+python isaac/collect_world_model_data.py --output outputs/cloth_angles/isaac_state --episodes 20 --steps 200
+python isaac/train_world_model.py --data-dir outputs/cloth_angles/isaac_state \
+  --output outputs/isaac/state_predictor.pt --epochs 100
+python isaac/run_world_model.py --checkpoint outputs/isaac/state_predictor.pt --steps 200
+```
+
+The live runner predicts the next state **before** each Isaac step, then scores it against the observed state and
+reports prediction latency and control-loop rate. It evaluates predictions online; the predictor does not control
+the robot. Pass `--actions` with an NPZ containing `actions[T,6]` to replay a control sequence. No Isaac dataset or
+checkpoint is bundled, so collect episodes in the Isaac 5.1 environment before training.
