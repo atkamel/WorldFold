@@ -1,0 +1,314 @@
+{
+ "schema": "so101_params/v2",
+ "variant": "anchor_fit_rl",
+ "actuator": "position",
+ "source": "CMA-ES fit to nvidia/Anchor-Lab rev 647edd57 (36 FIT train motions, VAL 6 for model choice), started from NVIDIA Isaac Sim 6.1 so101_new_calib_SysID; anchor_fit.py | RL copy: same parameters as the frozen so101_fitted.json (sha256 a767743f...), ranges revised after independent verification",
+ "units": "kp N*m/rad, kv/damping N*m*s/rad, frictionloss N*m, armature kg*m^2, forcerange N*m, delay_s s",
+ "sim": {
+  "dt": 0.004,
+  "integrator": "implicitfast",
+  "noslip_iterations": 0,
+  "iterations": 10,
+  "ls_iterations": 20,
+  "solimpfriction": [
+   0.995,
+   0.995,
+   0.001,
+   0.5,
+   2.0
+  ],
+  "solreffriction": [
+   0.008,
+   1.0
+  ],
+  "friction_setting": "F4_imp995_ref008"
+ },
+ "delay_s": 8.219240959901435e-06,
+ "delay_steps": {
+  "50Hz": 0,
+  "100Hz": 0,
+  "125Hz": 0,
+  "250Hz": 0
+ },
+ "bodies": {
+  "camera_mount": {
+   "mass": 0.023100000000000002,
+   "ipos": [
+    -0.003913,
+    0.05241,
+    -0.042
+   ],
+   "inertia": [
+    5.913600000000001e-07,
+    5.913600000000001e-07,
+    5.913600000000001e-07
+   ]
+  }
+ },
+ "jaw_map": {
+  "offset_deg": -10.0,
+  "span_deg": 127.08984375,
+  "note": "theta_rad = radians(offset_deg + span_deg * x), x = LeRobot/Anchor 0..1 jaw value"
+ },
+ "joints": {
+  "shoulder_pan": {
+   "kp": 39.18194805033064,
+   "kv": 1.4327134086128555,
+   "damping": 0.6834503479665732,
+   "frictionloss": 0.5090173935068583,
+   "armature": 0.03170381679270365,
+   "forcerange": 2.464571264076564,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -1.91986,
+    1.91986
+   ]
+  },
+  "shoulder_lift": {
+   "kp": 25.609383720943573,
+   "kv": 1.1939464791259267,
+   "damping": 0.261517070561308,
+   "frictionloss": 0.37704534499551073,
+   "armature": 0.033920877311587674,
+   "forcerange": 2.464571264076564,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -1.7453293,
+    1.7453293
+   ]
+  },
+  "elbow_flex": {
+   "kp": 15.987280155610728,
+   "kv": 0.24156223412989786,
+   "damping": 0.5606348042435312,
+   "frictionloss": 0.4841160707775517,
+   "armature": 0.014917310846659943,
+   "forcerange": 2.464571264076564,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -1.69,
+    1.69
+   ]
+  },
+  "wrist_flex": {
+   "kp": 19.728714607003628,
+   "kv": 0.9406051015684536,
+   "damping": 0.2435728780183801,
+   "frictionloss": 0.2455646245661672,
+   "armature": 0.02459673693983378,
+   "forcerange": 2.464571264076564,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -1.658063,
+    1.658063
+   ]
+  },
+  "wrist_roll": {
+   "kp": 58.54995339425445,
+   "kv": 2.286375341638512,
+   "damping": 1.2614003101657503,
+   "frictionloss": 0.5567252675592261,
+   "armature": 0.03782720542881152,
+   "forcerange": 2.464571264076564,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -2.7438473,
+    2.8412063
+   ]
+  },
+  "gripper": {
+   "kp": 68.79201876623641,
+   "kv": 3.6874815084507198,
+   "damping": 1.2540011652585488,
+   "frictionloss": 0.3788564809645333,
+   "armature": 0.03350636735877368,
+   "forcerange": 4.020962904367436,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -0.174533,
+    2.0943951023931953
+   ]
+  }
+ },
+ "randomization": {
+  "mode": "absolute ranges, sample uniformly per episode",
+  "joints": {
+   "shoulder_pan": {
+    "kp": [
+     31.345558,
+     58.103879
+    ],
+    "kv": [
+     1.146171,
+     4.001514
+    ],
+    "damping": [
+     0.54676,
+     1.908851
+    ],
+    "frictionloss": [
+     0.277946,
+     0.610821
+    ],
+    "armature": [
+     0.025363,
+     0.081144
+    ],
+    "forcerange": [
+     1.9717,
+     2.9575
+    ]
+   },
+   "shoulder_lift": {
+    "kp": [
+     20.487507,
+     57.339162
+    ],
+    "kv": [
+     0.955157,
+     3.075798
+    ],
+    "damping": [
+     0.209214,
+     0.67371
+    ],
+    "frictionloss": [
+     0.275834,
+     0.452454
+    ],
+    "armature": [
+     0.022116,
+     0.040705
+    ],
+    "forcerange": [
+     1.9717,
+     2.9575
+    ]
+   },
+   "elbow_flex": {
+    "kp": [
+     11.772397,
+     19.184736
+    ],
+    "kv": [
+     0.19325,
+     0.4119
+    ],
+    "damping": [
+     0.448508,
+     0.955967
+    ],
+    "frictionloss": [
+     0.328952,
+     0.580939
+    ],
+    "armature": [
+     0.011934,
+     0.045264
+    ],
+    "forcerange": [
+     1.9717,
+     2.9575
+    ]
+   },
+   "wrist_flex": {
+    "kp": [
+     15.782972,
+     52.328599
+    ],
+    "kv": [
+     0.752484,
+     4.967092
+    ],
+    "damping": [
+     0.194858,
+     1.286245
+    ],
+    "frictionloss": [
+     0.196452,
+     0.29788
+    ],
+    "armature": [
+     0.019677,
+     0.060857
+    ],
+    "forcerange": [
+     1.9717,
+     2.9575
+    ]
+   },
+   "wrist_roll": {
+    "kp": [
+     43.899134,
+     70.259944
+    ],
+    "kv": [
+     1.8291,
+     3.56207
+    ],
+    "damping": [
+     1.00912,
+     1.965205
+    ],
+    "frictionloss": [
+     0.177409,
+     0.66807
+    ],
+    "armature": [
+     0.030262,
+     0.065878
+    ],
+    "forcerange": [
+     1.9717,
+     2.9575
+    ]
+   },
+   "gripper": {
+    "kp": [
+     54.600634,
+     82.550423
+    ],
+    "kv": [
+     2.254984,
+     4.424978
+    ],
+    "damping": [
+     0.766852,
+     1.504801
+    ],
+    "frictionloss": [
+     0.148097,
+     0.454628
+    ],
+    "armature": [
+     0.026805,
+     0.09315
+    ],
+    "forcerange": null
+   }
+  },
+  "delay_s": [
+   0.0,
+   0.03
+  ],
+  "camera_mount_mass_kg": [
+   0.015,
+   0.031
+  ],
+  "why": "Envelope of the two identifications of this arm design (ours and NVIDIA AnchorBench) widened by 20 % (OmniReset uses x0.8-1.2). Wider than x0.8-1.2 around our fit because some values differ a lot between fits and do not all transfer to other arms (verification: our wrist_roll friction is 2.5x NVIDIA and worse on 4/6 public teleop arms). Delay 0-30 ms: the fit put delay at its 0 ms bound; real step onset is 24 ms vs 12 ms in the fitted sim, so latency is partly absorbed into slower dynamics."
+ },
+ "rl_requirements": [
+  "MuJoCo/Newton solver iterations >= 10 and ls_iterations >= 20 (at 5/2 the fitted model loses its advantage: held-out 0.484 vs 0.284 deg). Newton SolverMuJoCo default is 100/50.",
+  "friction softness per joint: mujoco:solimpfriction = sim.solimpfriction, mujoco:solreffriction = sim.solreffriction (set through the Newton builder; not imported from MJCF). noslip is not available on GPU.",
+  "command delay is not a model property in Newton: delay commands in the env (hold each command from send time + delay).",
+  "gripper forcerange (4.02 N*m) is a free-air fit, above the 12 V servo stall (~2.94 N*m): do NOT use it as the grasp-force limit; take grasp force from the interaction step.",
+  "known residual: sim joints creep 0.2-0.6 deg over a 36 s hold toward the target (real arm ~0); negligible for holds <= 3 s.",
+  "GPU path (MuJoCo-Warp on CUDA) not yet checked against the CPU path: check on the L4 before RL."
+ ]
+}

@@ -103,7 +103,14 @@ PY
   uv venv --python 3.11 .venv && uv lock && uv sync
   uv pip install nvidia-cudnn-cu12==9.5.1.17 nvidia-cublas-cu12==12.6.4.1 nvidia-cuda-runtime-cu12==12.6.77 nvidia-cuda-nvcc-cu12==12.9.41
   python3 "$WF_DIR/teacher/fast_server_patch.py" "$SRC"
+  # his eval imports lehome (no deps: they are the Isaac venv's) and toml from the main venv (as the Modal image)
+  uv pip install toml && uv pip install --no-deps -e lehome-challenge/source/lehome/
+  .venv/bin/python -c "import jax, openpi, lehome_solution.eval; print('TEACHER_IMPORT_OK jax', jax.__version__)"
   touch "$SRC/.teacher_ok"
+fi
+if [ "${WITH_TEACHER:-0}" = 1 ] && [ ! -f "$WS/checkpoints/lehome_sim/params/manifest.ocdbt" ]; then
+  log "teacher checkpoint (IliaLarchenko/lehome_sim, ~10 GB)"
+  HF_HUB_DISABLE_XET=1 uvx --from 'huggingface_hub[cli]' hf download IliaLarchenko/lehome_sim --local-dir "$WS/checkpoints/lehome_sim"
 fi
 
 # ---- 7. our code where the scripts expect it (same paths as the Modal image) ----

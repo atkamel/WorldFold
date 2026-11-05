@@ -23,6 +23,8 @@ from .tuning import Tuning
 ARMS = ("L", "R")
 CARRY_DEFAULT = 0.03
 TANDEM = ["off", "parallel", "mirror"]
+MOUSE_GAIN = 1.2e-4   # metres of aim travel per raw mouse count (+/- change it live, x1.25 per press); was 8e-5
+AIM_FROZEN = ("down", "closing", "drop_after_close", "opening")   # grab/release running: mouse moves ignored
 
 
 class Game:
@@ -188,7 +190,7 @@ class Game:
                     if not is_external(h):
                         self.msg = "that was the touchpad - click one of the USB mice"; continue
                     self.devmap[h] = "L" if not self.devmap else "R"
-                    self.gain.setdefault(h, 8e-5)
+                    self.gain.setdefault(h, MOUSE_GAIN)
                     self.write({"assign": {str(k): v for k, v in self.devmap.items()}})
                     if len(self.devmap) == 1:
                         self.msg = "now click the OTHER mouse for the RIGHT (green) arm   (Enter = one mouse)"
@@ -208,7 +210,7 @@ class Game:
             a = self.devmap.get(h)
             if a is None:
                 continue
-            g = self.gain.get(h, 8e-5)
+            g = self.gain.get(h, MOUSE_GAIN)
             d = np.array([dx * g, -dy * g])
             if self.tandem == 0:
                 moves[a] += d
@@ -225,6 +227,8 @@ class Game:
             if "left_up" in ev or "right_up" in ev or "middle_up" in ev:
                 releases += list(ARMS if self.tandem else (a,))
         for a in ARMS:
+            if self.phase[a] in AIM_FROZEN:  # a grab is running: the mouse can't drag the grab spot away
+                continue
             c = self.cursor[a]
             c[0] = np.clip(c[0] + moves[a][0], *self.xlim)
             c[1] = np.clip(c[1] + moves[a][1], *self.ylim)
@@ -426,5 +430,5 @@ class Game:
         return dict(msg=self.msg, tandem=TANDEM[self.tandem], assigning=self.assigning, arms=arms, episode=self.episode,
                     flowback=self.last_flowback, score={k: v for k, v in self.score.items() if not isinstance(v, (list, dict))},
                     tune=self.tune.values(), cloth_pending=self.tune.cloth_pending(),
-                    mice={str(h): [a, self.gain.get(h, 8e-5)] for h, a in self.devmap.items()},
+                    mice={str(h): [a, self.gain.get(h, MOUSE_GAIN)] for h, a in self.devmap.items()},
                     lim=[list(self.xlim), list(self.ylim)])

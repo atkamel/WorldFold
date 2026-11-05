@@ -1,0 +1,166 @@
+{
+ "schema": "so101_params/v2",
+ "variant": "anchor_fit",
+ "actuator": "position",
+ "source": "NVIDIA so101_new_calib_SysID (jaw friction/effort x2.218 to physical rad), same sim options",
+ "units": "kp N*m/rad, kv/damping N*m*s/rad, frictionloss N*m, armature kg*m^2, forcerange N*m, delay_s s",
+ "sim": {
+  "dt": 0.004,
+  "integrator": "implicitfast",
+  "noslip_iterations": 0,
+  "iterations": 10,
+  "ls_iterations": 20,
+  "solimpfriction": [
+   0.995,
+   0.995,
+   0.001,
+   0.5,
+   2.0
+  ],
+  "solreffriction": [
+   0.008,
+   1.0
+  ],
+  "friction_setting": "F4_imp995_ref008"
+ },
+ "delay_s": 8.219240959901435e-06,
+ "delay_steps": {
+  "50Hz": 0,
+  "100Hz": 0,
+  "125Hz": 0,
+  "250Hz": 0
+ },
+ "bodies": {
+  "camera_mount": {
+   "mass": 0.023100000000000002,
+   "ipos": [
+    -0.003913,
+    0.05241,
+    -0.042
+   ],
+   "inertia": [
+    5.913600000000001e-07,
+    5.913600000000001e-07,
+    5.913600000000001e-07
+   ]
+  }
+ },
+ "jaw_map": {
+  "offset_deg": -10.0,
+  "span_deg": 127.08984375,
+  "note": "theta_rad = radians(offset_deg + span_deg * x), x = LeRobot/Anchor 0..1 jaw value"
+ },
+ "joints": {
+  "shoulder_pan": {
+   "kp": 48.419898998102944,
+   "kv": 3.334595001687916,
+   "damping": 1.5907090005095612,
+   "frictionloss": 0.347432,
+   "armature": 0.06762,
+   "forcerange": 3.35,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -1.91986,
+    1.91986
+   ]
+  },
+  "shoulder_lift": {
+   "kp": 47.78263499835672,
+   "kv": 2.563164998746342,
+   "damping": 0.5614249998275875,
+   "frictionloss": 0.344793,
+   "armature": 0.027645,
+   "forcerange": 3.35,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -1.7453293,
+    1.7453293
+   ]
+  },
+  "elbow_flex": {
+   "kp": 14.715495984870737,
+   "kv": 0.34325000014492757,
+   "damping": 0.7966390000117395,
+   "frictionloss": 0.41119,
+   "armature": 0.03772,
+   "forcerange": 3.35,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -1.69,
+    1.69
+   ]
+  },
+  "wrist_flex": {
+   "kp": 43.607165990619215,
+   "kv": 4.139243000565644,
+   "damping": 1.0718709996193188,
+   "frictionloss": 0.248233,
+   "armature": 0.050714,
+   "forcerange": 3.35,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -1.658063,
+    1.658063
+   ]
+  },
+  "wrist_roll": {
+   "kp": 54.87391699334858,
+   "kv": 2.9683920005810065,
+   "damping": 1.6376709991733334,
+   "frictionloss": 0.221761,
+   "armature": 0.054898,
+   "forcerange": 3.35,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -2.7438473,
+    2.8412063
+   ]
+  },
+  "gripper": {
+   "kp": 68.25079271655216,
+   "kv": 2.818729998582516,
+   "damping": 0.9585649974572452,
+   "frictionloss": 0.18512121258889036,
+   "armature": 0.077625,
+   "forcerange": 7.430756334596835,
+   "delay_s": 8.219240959901435e-06,
+   "deadband_rad": 0.0,
+   "range_rad": [
+    -0.174533,
+    2.0943951023931953
+   ]
+  }
+ },
+ "randomization": {
+  "kp": [
+   0.8,
+   1.2
+  ],
+  "kv_and_damping": [
+   0.8,
+   1.2
+  ],
+  "frictionloss": [
+   0.8,
+   1.2
+  ],
+  "armature": [
+   0.8,
+   1.2
+  ],
+  "delay_s": [
+   0.0,
+   0.020008219240959902
+  ],
+  "camera_mount_mass_kg": [
+   0.015,
+   0.031
+  ],
+  "note": "multipliers on the fitted values; OmniReset-style (arXiv 2603.15789: gains x0.8-1.2, delay 0-2 control steps). Fitted to ONE arm (NVIDIA's) in one session; the arm-to-arm spread is not measured. Camera range = Fermi estimate for the team's Yahboom 2MP wrist camera + mount."
+ }
+}

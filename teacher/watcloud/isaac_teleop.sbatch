@@ -26,7 +26,7 @@ echo "[wc] image pulled in $(( $(date +%s) - t0 )) s"
 mkdir -p ~/wf/results
 # run_isaac.sh as on RunPod; the image's own entrypoint (sshd for RunPod) is skipped, its Vulkan fallback kept
 docker run --rm --gpus all --network host -e NVIDIA_DRIVER_CAPABILITIES=all \
-  -e KEEP_POD=1 -e MAX_S="${MAX_S:-1500}" -e IDLE_S="${IDLE_S:-600}" -e N_GRABS="${N_GRABS:-20}" -e PRESETS="${PRESETS:-}" -e ORACLE_GRAB="${ORACLE_GRAB:-assist}" -e ORACLE_APP_PUMP_TICKS="${ORACLE_APP_PUMP_TICKS:-1500}" \
+  -e KEEP_POD=1 -e MAX_S="${MAX_S:-1500}" -e IDLE_S="${IDLE_S:-600}" -e N_GRABS="${N_GRABS:-20}" -e PRESETS="${PRESETS:-}" -e ORACLE_GRAB="${ORACLE_GRAB:-assist}" -e CLOTH="${CLOTH:-real_noadh}" -e ORACLE_APP_PUMP_TICKS="${ORACLE_APP_PUMP_TICKS:-1500}" \
   -v ~/wf/WorldFold:/workspace/WorldFold -v ~/wf/results:/workspace/results \
   --entrypoint bash "$IMAGE" -c '
     [ -f /etc/vulkan/icd.d/nvidia_icd.json ] || { mkdir -p /etc/vulkan/icd.d; echo "{\"file_format_version\": \"1.0.0\", \"ICD\": {\"library_path\": \"libGLX_nvidia.so.0\", \"api_version\": \"1.3\"}}" > /etc/vulkan/icd.d/nvidia_icd.json; }

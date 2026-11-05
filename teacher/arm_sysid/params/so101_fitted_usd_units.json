@@ -1,0 +1,120 @@
+{
+ "units": "per degree (USD DriveAPI / NewtonJointAPI)",
+ "delay_s_apply_to_commands": 8.219240959901435e-06,
+ "joints": {
+  "shoulder_pan": {
+   "drive:angular:physics:stiffness": 0.6838540008236426,
+   "drive:angular:physics:damping": 0.025005566217765212,
+   "drive:angular:physics:maxForce": 2.464571264076564,
+   "newton:damping": 0.011928458845917636,
+   "newton:friction": 0.5090173935068583,
+   "newton:armature": 0.03170381679270365,
+   "mujoco:solimpfriction": [
+    0.995,
+    0.995,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "mujoco:solreffriction": [
+    0.008,
+    1.0
+   ]
+  },
+  "shoulder_lift": {
+   "drive:angular:physics:stiffness": 0.44696806533710204,
+   "drive:angular:physics:damping": 0.02083829715334117,
+   "drive:angular:physics:maxForce": 2.464571264076564,
+   "newton:damping": 0.0045643339314651605,
+   "newton:friction": 0.37704534499551073,
+   "newton:armature": 0.033920877311587674,
+   "mujoco:solimpfriction": [
+    0.995,
+    0.995,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "mujoco:solreffriction": [
+    0.008,
+    1.0
+   ]
+  },
+  "elbow_flex": {
+   "drive:angular:physics:stiffness": 0.2790306771541586,
+   "drive:angular:physics:damping": 0.004216056334040138,
+   "drive:angular:physics:maxForce": 2.464571264076564,
+   "newton:damping": 0.009784923235323496,
+   "newton:friction": 0.4841160707775517,
+   "newton:armature": 0.014917310846659943,
+   "mujoco:solimpfriction": [
+    0.995,
+    0.995,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "mujoco:solreffriction": [
+    0.008,
+    1.0
+   ]
+  },
+  "wrist_flex": {
+   "drive:angular:physics:stiffness": 0.34433102707851243,
+   "drive:angular:physics:damping": 0.016416655983425194,
+   "drive:angular:physics:maxForce": 2.464571264076564,
+   "newton:damping": 0.004251148689979254,
+   "newton:friction": 0.2455646245661672,
+   "newton:armature": 0.02459673693983378,
+   "mujoco:solimpfriction": [
+    0.995,
+    0.995,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "mujoco:solreffriction": [
+    0.008,
+    1.0
+   ]
+  },
+  "wrist_roll": {
+   "drive:angular:physics:stiffness": 1.0218894636189697,
+   "drive:angular:physics:damping": 0.039904777648002245,
+   "drive:angular:physics:maxForce": 2.464571264076564,
+   "newton:damping": 0.02201558859807004,
+   "newton:friction": 0.5567252675592261,
+   "newton:armature": 0.03782720542881152,
+   "mujoco:solimpfriction": [
+    0.995,
+    0.995,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "mujoco:solreffriction": [
+    0.008,
+    1.0
+   ]
+  },
+  "gripper": {
+   "drive:angular:physics:stiffness": 1.2006472265645527,
+   "drive:angular:physics:damping": 0.06435869342887217,
+   "drive:angular:physics:maxForce": 4.020962904367436,
+   "newton:damping": 0.021886449157607204,
+   "newton:friction": 0.3788564809645333,
+   "newton:armature": 0.03350636735877368,
+   "mujoco:solimpfriction": [
+    0.995,
+    0.995,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "mujoco:solreffriction": [
+    0.008,
+    1.0
+   ]
+  }
+ }
+}

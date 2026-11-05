@@ -1,0 +1,323 @@
+{
+ "what": "Newton 1.6.1 SolverVBD cloth parameters for the RL env, fitted to real cloth (Coltraro IJRR 2025 free-hanging mocap, two corners scripted), plus a knit T-shirt prior. Woven numbers are validated on held-out recordings; knit numbers are a prior.",
+ "solver": {
+  "full": {
+   "sub_steps": 10,
+   "iterations": 10,
+   "refine": 2,
+   "hz": 100.0
+  },
+  "stripped": {
+   "sub_steps": 2,
+   "iterations": 5,
+   "refine": 2,
+   "hz": 100.0
+  },
+  "particle_enable_self_contact": "True in the RL env (off in the fit: free hanging)",
+  "edge_rest_angle": 0.0
+ },
+ "air_model": "clothilde's air model as an external force per free particle (newton_cloth.k_air): f = m*g*(1 - air_gravity_scale)*z_up - air_drag_rate_per_s*m*v, so gravity acts as air_gravity_scale*g plus linear drag; VBD has no air drag of its own",
+ "mesh_scaling": {
+  "tri_ke, tri_ka, tri_kd": "mesh-independent (per area)",
+  "edge_ke": "per hinge: edge_ke = 3*B*L/A_pair (L rest length, A_pair area of its two triangles); edge_kd = bending_tau_s * edge_ke",
+  "fit_mesh_mean_L_m": 0.08155906815786158,
+  "fit_mesh_mean_A_pair_m2": 0.005003519441209695
+ },
+ "fabrics_full": {
+  "polyester": {
+   "density_kg_m2": 0.1042,
+   "tri_ke": 508039.47813881433,
+   "tri_ka": 437823.0994777298,
+   "tri_kd": 2.54152820457355,
+   "edge_ke_fit_mesh": 0.00010880062145121696,
+   "edge_kd_fit_mesh": 6.218825332042383e-08,
+   "bending_B_equiv_Nm": 2.224915172699026e-06,
+   "bending_tau_s": 0.0005715799458765705,
+   "air_drag_rate_per_s": 3.199145823821214,
+   "air_gravity_scale": 0.3925651499268297,
+   "tag": "fitted on Coltraro mocap (woven, ~1 mm markers)"
+  },
+  "cotton": {
+   "density_kg_m2": 0.3046,
+   "tri_ke": 14792.407411288264,
+   "tri_ka": 9520.670077952765,
+   "tri_kd": 0.49616404002089565,
+   "edge_ke_fit_mesh": 0.00019829854291734353,
+   "edge_kd_fit_mesh": 1.1815754004872577e-07,
+   "bending_B_equiv_Nm": 4.055100338362742e-06,
+   "bending_tau_s": 0.000595856824313516,
+   "air_drag_rate_per_s": 2.519594163925184,
+   "air_gravity_scale": 0.6221414143695178,
+   "tag": "fitted on Coltraro mocap (woven, ~1 mm markers)"
+  },
+  "denim": {
+   "density_kg_m2": 0.3046,
+   "tri_ke": 861.0899818579935,
+   "tri_ka": 823.172466470818,
+   "tri_kd": 0.0015941529626903365,
+   "edge_ke_fit_mesh": 0.0007048428307397983,
+   "edge_kd_fit_mesh": 0.0006816295903939828,
+   "bending_B_equiv_Nm": 1.4413663153424639e-05,
+   "bending_tau_s": 0.9670660758208309,
+   "air_drag_rate_per_s": 2.537939908580879,
+   "air_gravity_scale": 0.5856498916330992,
+   "tag": "fitted on Coltraro mocap (woven, ~1 mm markers)"
+  },
+  "wool": {
+   "density_kg_m2": 0.1804,
+   "tri_ke": 10340.657188246985,
+   "tri_ka": 567.1544118243474,
+   "tri_kd": 0.10923499556593824,
+   "edge_ke_fit_mesh": 0.0001544101483388456,
+   "edge_kd_fit_mesh": 1.692832212435806e-06,
+   "bending_B_equiv_Nm": 3.157605878306885e-06,
+   "bending_tau_s": 0.010963218613850221,
+   "air_drag_rate_per_s": 3.24027964524701,
+   "air_gravity_scale": 0.5417726506279814,
+   "tag": "fitted on Coltraro mocap (woven, ~1 mm markers)"
+  }
+ },
+ "fabrics_stripped": {
+  "polyester": {
+   "density_kg_m2": 0.1042,
+   "tri_ke": 690653.4384926439,
+   "tri_ka": 27498.528651366785,
+   "tri_kd": 0.6915076579192349,
+   "edge_ke_fit_mesh": 0.00015167868350237596,
+   "edge_kd_fit_mesh": 8.008472015580338e-08,
+   "bending_B_equiv_Nm": 3.1017488668551622e-06,
+   "bending_tau_s": 0.0005279892883204573,
+   "air_drag_rate_per_s": 3.7167315558223493,
+   "air_gravity_scale": 0.40972721618445906,
+   "tag": "refit at rung sub2_it5"
+  },
+  "cotton": {
+   "density_kg_m2": 0.3046,
+   "tri_ke": 30793.269533082475,
+   "tri_ka": 55591.33001494015,
+   "tri_kd": 0.6665419929099197,
+   "edge_ke_fit_mesh": 0.00019478294331888685,
+   "edge_kd_fit_mesh": 2.2067767577007023e-07,
+   "bending_B_equiv_Nm": 3.983208185694773e-06,
+   "bending_tau_s": 0.0011329414783962377,
+   "air_drag_rate_per_s": 2.389832791976887,
+   "air_gravity_scale": 0.6824424045957977,
+   "tag": "refit at rung sub2_it5"
+  },
+  "denim": {
+   "density_kg_m2": 0.3046,
+   "tri_ke": 267.49572598413494,
+   "tri_ka": 224.93442873747918,
+   "tri_kd": 0.00036157418077733,
+   "edge_ke_fit_mesh": 0.0018676055721094883,
+   "edge_kd_fit_mesh": 0.0016397232325625272,
+   "bending_B_equiv_Nm": 3.8191546321881486e-05,
+   "bending_tau_s": 0.8779815487005832,
+   "air_drag_rate_per_s": 2.4697457758665093,
+   "air_gravity_scale": 0.588143656122498,
+   "tag": "refit at rung sub2_it5"
+  },
+  "wool": {
+   "density_kg_m2": 0.1804,
+   "tri_ke": 4412.16592236069,
+   "tri_ka": 195.6168912269129,
+   "tri_kd": 0.01815985559828871,
+   "edge_ke_fit_mesh": 0.00018967974258743666,
+   "edge_kd_fit_mesh": 2.913864755305719e-06,
+   "bending_B_equiv_Nm": 3.878850429412809e-06,
+   "bending_tau_s": 0.015362023986101283,
+   "air_drag_rate_per_s": 3.2122846297025833,
+   "air_gravity_scale": 0.5416272027563171,
+   "tag": "refit at rung sub2_it5"
+  },
+  "mesh_mean_L_m": 0.08155906815786158,
+  "mesh_mean_A_pair_m2": 0.005003519441209695
+ },
+ "knit_tshirt_prior": {
+  "density_kg_m2": 0.19,
+  "tri_ke": 1121.6898291746395,
+  "tri_ka": 721.9405534502439,
+  "tri_kd": 0.03762350115295861,
+  "edge_ke_fit_mesh": 3.16720729858814e-05,
+  "edge_kd_fit_mesh": 1.887202082879319e-08,
+  "bending_B_equiv_Nm": 6.476771437258208e-07,
+  "bending_tau_s": 0.000595856824313516,
+  "air_drag_rate_per_s": 2.519594163925184,
+  "air_gravity_scale": 0.6221414143695178,
+  "tag": "prior: fitted cotton x RGBench lab-measured knit/cotton ratios (geometric mean of knit class and their T-shirt); not validated on knit motion (none exists online)",
+  "randomize": {
+   "stretch_x_cotton": [
+    0.025,
+    0.23
+   ],
+   "bending_x_cotton": [
+    0.07142857142857142,
+    0.35714285714285715
+   ],
+   "density_kg_m2": [
+    0.161,
+    0.22
+   ]
+  }
+ },
+ "friction": {
+  "cloth_cloth": {
+   "nominal": 0.6,
+   "range": [
+    0.4,
+    0.8
+   ]
+  },
+  "cloth_table": {
+   "nominal": 0.5,
+   "range": [
+    0.25,
+    0.8
+   ]
+  },
+  "source": "measured: Coltraro 0.48-0.80, Cloth-Var 0.40-0.68; RGBench T-shirt 0.6 cloth, 0.266 ground (tuned). VBD mixes pair friction as sqrt(mu_cloth*mu_shape)",
+  "tag": "measured ranges, not fitted (contact recordings cut from this step)"
+ },
+ "validation": {
+  "held_out_recordings": 32,
+  "metric": "lit_marker (Coltraro eq. 10, cm) mean; rms_mm median",
+  "rigid_null": {
+   "lit_marker": 1.1828911466475691,
+   "rms_mm": 20.40894471848246
+  },
+  "clothilde_paper_per_fabric": {
+   "lit_marker": 0.7779992460766338,
+   "rms_mm": 15.707241947677122
+  },
+  "newton_defaults": {
+   "lit_marker": 1.7852459665113825,
+   "rms_mm": 27.641353472770177
+  },
+  "newton_fitted": {
+   "lit_marker": 0.5841780730068717,
+   "rms_mm": 13.196197199593147
+  },
+  "newton_physbend": {
+   "lit_marker": 0.615095836240271,
+   "rms_mm": 13.777395489095724
+  },
+  "handoff_model": "physbend (bending limited to published woven range)",
+  "newton_stripped": {
+   "lit_marker": 0.6701288979313518,
+   "rms_mm": 15.820116547815548,
+   "copy_sim_s_per_wall_s_L4": 2777.1438576274404
+  },
+  "gate1a_le_1p5x_clothilde": true,
+  "gate1b_half_of_clothilde_gain": true,
+  "frozen_sha256": "7d94cb70fccdd07ae66e5f8bafc5fc6ec0aac5d42743647d78fd4d6e57498716"
+ },
+ "caveats": [
+  "air model is the paper's isotropic one: gravity acts as air_gravity_scale*g (0.4-0.7) in every direction of motion. Equivalent to real weight + added mass for hanging/flinging, but on a table the friction load is also scaled, so in-plane sliding stops ~1/air_gravity_scale too late. For table phases use full gravity (air terms only matter in flings/drops) or refit a normal-direction air model (one ~20 min L4 fit)",
+  "membrane stiffness is VBD-effective, not physical: denim fits soft (tri_ke ~0.3-0.9e3 N/m) while polyester fits ~5e5; check stretch under a grasp in the interaction step",
+  "corners are point pins in the fit; real hands/hangers clamp the corner angle (both sims share this)",
+  "fitted stiffness is VBD-effective at the stated iterations/substeps: refit if those change",
+  "free-hanging motion only; bending and friction are not identified by contact recordings",
+  "Coltraro data is research-only (CC BY-NC-SA); these numbers are for our research env",
+  "contact: the stripped 2x5 setting is invalid once the gripper drags cloth; contact phases need 10x10 (~10x slower), and cloth-on-cloth in VBD is not robust (see contact.cloth_cloth)"
+ ],
+ "contact": {
+  "what": "Contact for the RL env (2026-10-17 bench, newton_contact.py / contact_grasp.py, results/contact/). Newton 1.6.1 VBD; same on 1.7.0.",
+  "solver_setting_for_contact_phases": {
+   "sub_steps": 10,
+   "iterations": 10,
+   "hz": 100,
+   "friction_epsilon": 0.001,
+   "tag": "measured: drag within ~13% of a 50-iteration reference; 5x2 / 2x5 / 5x5 / 10x5 fail (cloth does not follow the gripper, 34-44% off). The stripped 2x5 setting in fabrics_stripped is for free-hanging phases only."
+  },
+  "contact_model": {
+   "soft_contact_ke": 10000.0,
+   "shape_ke": 10000.0,
+   "soft_contact_kd": 0.01,
+   "soft_contact_gap": 0.002,
+   "full_surface_contact": true,
+   "self_contact_margin": 0.003,
+   "self_contact_gap": 0.001,
+   "rest_shape_contact_exclusion_radius": 0.001,
+   "note": "exclusion must stay below the layer spacing: at 3 mm two stacked sheets merged and moved as one"
+  },
+  "table_friction_correction": {
+   "kappa": {
+    "full_10x10": 2.31,
+    "10x5": 2.48,
+    "10x50": 2.1
+   },
+   "rule": "set the pair mu to target / kappa (shape mu = (target/kappa)^2 / soft_contact_mu); kappa is constant across mu 0.1-0.2",
+   "tag": "measured (incline sliding test)"
+  },
+  "cloth_cloth": {
+   "mu_set": 0.6,
+   "tag": "prior (JTATM 2015 / Aliouche: 0.62-0.97); VBD self-contact friction could not be calibrated (test unstable)",
+   "layers_check_vs_zozo": {
+    "10x10": {
+     "bottom_mm": -1.8,
+     "top_mm": -48.9
+    },
+    "zozo": {
+     "bottom_mm": -5.9,
+     "top_mm": -50.1
+    },
+    "10x50": {
+     "bottom_mm": -49.5,
+     "top_mm": -50.1
+    }
+   },
+   "status": "passes at 10x10 but not robust (at 50 iterations the layers move together again) - open"
+  },
+  "self_contact_speed_cap_m_s": {
+   "formula": "0.425 * (margin + gap) / substep_dt",
+   "10x10_margin3mm": 1.7,
+   "tag": "measured; penetration-free truncation by design. Keep RL cloth/gripper speeds below it"
+  },
+  "grasp": {
+   "model": "attach: cloth vertices inside the jaw box (pad 9 x 8 mm x jaw gap) get mass 0 and move with the jaw; release when estimated load > 2 * mu_jaw * N",
+   "squeeze_N": {
+    "range": [
+     2.52,
+     16.3
+    ],
+    "overload_capped_p90": 9.22,
+    "tag": "derived: 31 public SO-101 cloth datasets (command vs measured jaw) + BAM STS3215 12 V model; contact_params.json"
+   },
+   "mu_jaw": {
+    "cotton": [
+     0.07,
+     0.25
+    ],
+    "polyester": [
+     0.06,
+     0.2
+    ],
+    "jersey": [
+     0.08,
+     0.28
+    ],
+    "terry": [
+     0.1,
+     0.35
+    ],
+    "tag": "prior: pressure law (n~0.8) on 3 public plastic-fabric measurements"
+   },
+   "checks": {
+    "hold_test": "4/4 (releases below 2 mu N, holds above; load estimate = hanging weight to 0.1%)",
+    "geometry": "single layer caught only when the jaw bottom is within ~1 mm of the table; fold edge gives single or double layers by depth"
+   },
+   "outcome_rates": "prior until real SO-101 grasps calibrate them"
+  },
+  "throughput_L4": {
+   "towel_961_vertices_64_copies_10x10": {
+    "self_on_full_surface": 2.5,
+    "self_off_full_surface": 4.1,
+    "self_on_particles_only": 5.2,
+    "self_off_particles_only": 13.9
+   },
+   "units": "copy-sim-seconds per wall-second",
+   "256_copies": "out of memory (self-contact, full surface)",
+   "tag": "measured; the bottleneck for RL at scale"
+  }
+ }
+}

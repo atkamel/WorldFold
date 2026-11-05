@@ -17,3 +17,31 @@ teacher/oracle/assets/
 
 # laptop game client: recorded sessions stay local (hundreds of MB)
 teacher/mujoco_live/demos/
+
+# teacher work: never in this public repo
+teacher/cloth_sysid/data/
+teacher/cloth_sysid/vendor/
+teacher/arm_sysid/data/
+teacher/arm_sysid/vendor/
+teacher/arm_sysid/results/anchor_cache/
+teacher/arm_sysid/results/windows.csv
+teacher/cloth_sysid/results/contact/
+teacher/cloth_sysid/results/archive_run1_floorbug_labelswap/
+teacher/results/dream/
+teacher/results/isaac/contact_oct19/
+teacher/results/neat/
+teacher/results/teachergrasp/
+teacher/mujoco_live/.polyscope.ini
+teacher/mujoco_live/imgui.ini
+teacher/mujoco_live/tuning_last.json
+teacher/arm_sysid/results/*
+!teacher/arm_sysid/results/anchor_table.md
+!teacher/arm_sysid/results/so101_fitted*.json
+teacher/cloth_sysid/results/*
+!teacher/cloth_sysid/results/newton/
+teacher/cloth_sysid/results/newton/*
+!teacher/cloth_sysid/results/newton/cloth_fitted_rl.json
+!teacher/cloth_sysid/results/newton/cloth_table.md
+teacher/PLAN.md
+teacher/arm_sysid/models_selftest.json
+teacher/arm_sysid/validate_bam_actuator.json

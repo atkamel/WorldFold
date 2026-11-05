@@ -45,19 +45,17 @@ def cloth_verts(env):
     import numpy as np
     o = env.object
     try:
-        # the garment's own pose (not its particles) only changes when the garment is (re)built or reset: cache it per
-        # garment object (IsaacWorld.reset drops the cache). Two USD queries per call before: ~0.8 ms on an L40S host
-        cache = getattr(env, "_cloth_pose_cache", None)
-        if cache is None or cache[0] is not o:
-            pos, ori = o.get_world_pose()
-            sc = o.get_world_scale()
-            from isaacsim.core.utils.rotations import quat_to_rot_matrix
-            A = (quat_to_rot_matrix(_np(ori)) * _np(sc)[None, :]).T        # points @ A + pos == transform_points
-            cache = env._cloth_pose_cache = (o, np.ascontiguousarray(A, dtype=np.float64), np.asarray(_np(pos), np.float64))
+        # the garment's pose is read live every call (~0.8 ms): it is NOT constant between resets. After env.reset()
+        # the prim sits at the spawn height (z 0.63) and its xform follows the cloth down ~9 cm as it falls onto the
+        # table; a pose cached right after a reset put every later read 9 cm too high (the 2026-10-19 "floating shirt")
+        pos, ori = o.get_world_pose()
+        sc = o.get_world_scale()
+        from isaacsim.core.utils.rotations import quat_to_rot_matrix
+        A = (quat_to_rot_matrix(_np(ori)) * _np(sc)[None, :]).T            # points @ A + pos == transform_points
         # same USD attribute _get_points_pose reads, but via the buffer protocol: 0.003 ms instead of ~160 ms
         # (Isaac Sim 5.1 builds a torch tensor element by element; audit 2026-10-05)
         pts = np.array(o._prim.GetAttribute("points").Get(), dtype=np.float64)
-        return pts @ cache[1] + cache[2]
+        return pts @ np.ascontiguousarray(A, dtype=np.float64) + np.asarray(_np(pos), np.float64)
     except Exception as e:  # GPU path / API drift
         log("cloth_verts fallback:", repr(e))
         return np.asarray(o.get_current_mesh_points()[0], dtype=np.float64)
@@ -648,7 +646,21 @@ CLOTH_VARIANTS = {
              "particle_material.gravity_scale": 1.0},               # normal gravity instead of x2
     "real_noadh": {"garment_config.particle_mass": "total:0.05", "particle_material.gravity_scale": 1.0,
                    "particle_material.adhesion": 0.0},              # same, no cloth-to-gripper stickiness
+    # real_noadh with the springs and spring damping scaled down by the same factor as the mass: their units carry
+    # mass (N/m, N*s/m; PhysX schema), so lightening the shirt ~2,950x without them made it ~2,950x stiffer for its
+    # weight. "x_mass" = LeHome's value times (new particle mass / LeHome's particle mass)
+    "scaled": {"garment_config.particle_mass": "total:0.05", "particle_material.gravity_scale": 1.0,
+               "particle_material.adhesion": 0.0, "garment_config.stretch_stiffness": "x_mass",
+               "garment_config.bend_stiffness": "x_mass", "garment_config.shear_stiffness": "x_mass",
+               "garment_config.spring_damping": "x_mass"},
 }
+
+
+try:                                        # v2 / v2_lowmu: the accurate settings shared with the teacher runs
+    import isaac_physics as _ip
+    CLOTH_VARIANTS.update({k: _ip.overrides(k) for k in ("v2", "v2_lowmu")})
+except ImportError:
+    pass
 
 
 def set_cloth(env, name, variant):
@@ -666,7 +678,14 @@ def set_cloth(env, name, variant):
             if npts is None:
                 npts = len(env.object._prim.GetAttribute("points").Get())
             v = float(v[6:]) / npts
-        pc.objects[sec][key] = v
+        if v != "x_mass":
+            pc.objects[sec][key] = v
+    orig = env._orig_particle_config.objects
+    ratio = float(pc.objects["garment_config"]["particle_mass"]) / float(orig["garment_config"]["particle_mass"])
+    for k, v in overrides.items():          # "x_mass": scale LeHome's value with the particle mass (see CLOTH_VARIANTS)
+        if v == "x_mass":
+            sec, key = k.split(".")
+            pc.objects[sec][key] = float(orig[sec][key]) * ratio
     env.particle_config = pc
     env.switch_garment(name)
     log(f"cloth variant {variant if isinstance(variant, str) else 'tuned'}: " +
@@ -694,6 +713,7 @@ class Stepper:
 
     def __init__(self, env):
         self.env, self.fast, self.t = env, True, 0
+        self.hook = None                    # called after every physics step (contact check: pass-through monitor)
 
     def step(self, a):
         import numpy as np
@@ -708,6 +728,8 @@ class Stepper:
                 e.sim.step(render=False)
                 e.scene.update(dt=e.physics_dt)
                 self.t += 1
+                if self.hook:
+                    self.hook()
                 if self.t % 50 == 0:          # pump Kit's event loop: ~9k un-rendered steps ended in an abort (mech1 run)
                     try:
                         e.sim.render()
@@ -717,6 +739,8 @@ class Stepper:
             except Exception as ex:
                 log("fast step unavailable, using env.step:", repr(ex)); self.fast = False
         self.env.step(act); self.t += 1
+        if self.hook:
+            self.hook()
 
     def state(self):
         import numpy as np
@@ -734,10 +758,27 @@ class Stepper:
             self.step(np.concatenate([tk["q"]["left"], [tk["g"]["left"]], tk["q"]["right"], [tk["g"]["right"]]]))
 
 
-def assay_trial(env, S, keys, speed, side="L"):
+def stacked_pairs(v, xy_tol=0.0015, dz_min=0.002, dz_max=0.010):
+    """(top, bottom) index arrays of particles lying one above the other (the shirt's two layers where it is flat)."""
+    import numpy as np
+    from scipy.spatial import cKDTree
+    p = np.array(sorted(cKDTree(v[:, :2]).query_pairs(xy_tol)), dtype=np.int64).reshape(-1, 2)
+    if not len(p):
+        return p[:, 0], p[:, 1]
+    dz = v[p[:, 0], 2] - v[p[:, 1], 2]
+    keep = (np.abs(dz) > dz_min) & (np.abs(dz) < dz_max)
+    p, dz = p[keep], dz[keep]
+    top = np.where(dz > 0, p[:, 0], p[:, 1]); bot = np.where(dz > 0, p[:, 1], p[:, 0])
+    return top, bot
+
+
+def assay_trial(env, S, keys, speed, side="L", close=None, extra=False, slip=False, settle_s=None):
+    """The Oct 2 sleeve grip test. close: jaw target (default the closed limit). extra (roadmap 7a): also whether
+    the bottom layer came along, what stays on the fingers after letting go, and how many layer pairs swapped sides."""
     import numpy as np
     import fold_plans as fp
     from so101_kin import HOME, GRIP_CLOSED, GRIP_OPEN
+    gc = GRIP_CLOSED if close is None else float(close)
     env.reset()
     home = np.concatenate([HOME["left"], [GRIP_CLOSED], HOME["right"], [GRIP_CLOSED]])
     for i in range(110):
@@ -747,6 +788,14 @@ def assay_trial(env, S, keys, speed, side="L"):
     v1 = cloth_verts(env)
     dt = float(getattr(env, "physics_dt", 1 / 90))
     out = dict(speed_mm_step=round(speed * 1000, 2), creep_mm_s=round(float(np.linalg.norm(v1 - v0, axis=1).mean() * 1000 / (60 * dt)), 2))
+    if settle_s:                                   # keep settling (0.5 s windows) until the cloth moves < 3 mm/s
+        trace, n = [out["creep_mm_s"]], 0
+        while trace[-1] > 3.0 and n * 45 * dt < settle_s:
+            for _ in range(45):
+                S.step(home)
+            v0, v1, n = v1, cloth_verts(env), n + 1
+            trace.append(round(float(np.linalg.norm(v1 - v0, axis=1).mean() * 1000 / (45 * dt)), 2))
+        out.update(creep_mm_s=trace[-1], settle_trace=trace, settle_extra_s=round(n * 45 * dt, 2))
     if not np.isfinite(v1).all():
         out["error"] = "nan at settle"; return out
     table_z = float(np.percentile(v1[:, 2], 1)) - 0.002
@@ -767,15 +816,25 @@ def assay_trial(env, S, keys, speed, side="L"):
     qn, _ = S.state()
     out["tip_z_landed"] = round(float(fp.K.tip(qn[arm], arm)[0][2]), 4)
     for i in range(1, 17):
-        plan.hold(1, "close", g={arm: GRIP_OPEN + (GRIP_CLOSED - GRIP_OPEN) * i / 16})
+        plan.hold(1, "close", g={arm: GRIP_OPEN + (gc - GRIP_OPEN) * i / 16})
     plan.hold(25, "close")
     S.run(plan.ticks); plan.ticks = []
     qn, gn = S.state()
     tip = fp.K.tip(qn[arm], arm)[0]
     vc = cloth_verts(env)
     pinched = np.nonzero(np.linalg.norm(vc - tip, axis=1) < 0.02)[0]
+    if extra:                                      # the two layers around the grasp spot, from the settled shirt
+        top, bot = stacked_pairs(v1)
+        near = np.linalg.norm(v1[top, :2] - target, axis=1) < 0.025
+        ltop, lbot = top[near], bot[near]
+        out["layer_pairs_near_grasp"] = int(near.sum())
     out["n_pinched"] = int(len(pinched))
     out["jaw_deg_closed"] = round(float(np.degrees(gn[arm])), 2)
+    out["tip_at_close"] = [round(float(x), 4) for x in tip]          # where the jaw actually is vs where it was sent
+    out["target_xy"] = [round(float(x), 4) for x in target]
+    out["nearest_cloth_mm"] = round(float(np.linalg.norm(vc - tip, axis=1).min() * 1000), 1)
+    out["cloth_z_near_target"] = round(float(np.median(vc[np.linalg.norm(vc[:, :2] - target, axis=1) < 0.02, 2])), 4)         if (np.linalg.norm(vc[:, :2] - target, axis=1) < 0.02).any() else None
+    out["arm"] = arm
     if len(pinched) == 0:
         out["error"] = "nothing pinched"; return out
 
@@ -795,8 +854,15 @@ def assay_trial(env, S, keys, speed, side="L"):
     plan._emit({arm: qs}, "lift"); S.run(plan.ticks); plan.ticks = []
     if not measure("after_lift"):
         return out
+    if extra and len(ltop):                        # did the bottom layer come up with the top one?
+        vz = cloth_verts(env)[:, 2]
+        out["lifted_top"] = round(float((vz[ltop] > table_z + 0.02).mean()), 3)
+        out["lifted_bottom"] = round(float((vz[lbot] > table_z + 0.02).mean()), 3)
     plan.hold(135, "hold"); S.run(plan.ticks); plan.ticks = []
     if not measure("after_hold"):
+        return out
+    if slip:                                       # contact check 4: load the held cloth until it slips, then stop
+        out["slip"] = slip_ramp(env, S, plan, arm, roll, pinched, table_z)
         return out
     p1 = fp.K.tip(plan.q[arm], arm)[0]
     dx = 0.15 if arm == "left" else -0.15
@@ -805,7 +871,401 @@ def assay_trial(env, S, keys, speed, side="L"):
     if not measure("after_carry"):
         return out
     plan.hold(15, "open", g={arm: GRIP_OPEN}); plan.home(sides=[arm]); S.run(plan.ticks)
+    if extra:
+        qq, _ = S.state()
+        t = fp.K.tip(qq[arm], arm)[0]
+        v = cloth_verts(env)
+        out["stuck_after_release"] = int((np.linalg.norm(v - t, axis=1) < 0.03).sum())   # went home with the fingers
+        for _ in range(90):                        # 1 s to settle, then: layer pairs now on the wrong side
+            S.step(np.concatenate([HOME["left"], [GRIP_CLOSED], HOME["right"], [GRIP_CLOSED]]))
+        v = cloth_verts(env)
+        out["hanging_after_release"] = int((v[:, 2] > table_z + 0.05).sum())
+        if len(top):
+            out["layer_swaps_pct"] = round(float((v[top, 2] < v[bot, 2] - 0.001).mean() * 100), 2)
     return out
+
+
+# ---- contact check (2026-10-19): is Isaac's own jaw-cloth contact good enough for the teacher grasp test? ---------
+# Real targets: jaw stops 1.0-2.2 deg short of an empty close on cloth (Oct 17 bench), cloth slips out at
+# ~2 x mu x squeeze = 1.3-4.5 N (PLA-cotton mu 0.07-0.25, SO-101 squeeze ~9 N; contact_params.json), no pass-through.
+CONTACT_TARGET = dict(stop_short_deg=(1.0, 2.2), slip_N=(1.3, 4.5))
+
+
+class PadMonitor:
+    """Stepper hook: every `every` steps while a jaw is closed (< 0.05 rad), where the cloth sits relative to that
+    arm's two flat pads (jaw_geometry / pads.py boxes; local units: pad half-sizes are 0.5). Counts vertices whose
+    centre is inside a pad, and vertices once seen between the pads that later sit behind one (went through it)."""
+
+    def __init__(self, env, S, every=3):
+        self.env, self.S, self.every = env, S, every
+        self.st = {a: dict(gap=set(), crossed=set(), inside_max=0, gap_max=0, samples=0) for a in ("left", "right")}
+
+    def __call__(self):
+        if self.S.t % self.every:
+            return
+        import numpy as np
+        import jaw_geometry as jg
+        import pads
+        q, g = self.S.state()
+        v = None
+        for a in ("left", "right"):
+            if g[a] > 0.05:
+                continue
+            if v is None:
+                v = cloth_verts(self.env)
+                if not np.isfinite(v).all():
+                    return
+            T_link = jg.K.fk(q[a], a) @ np.linalg.inv(jg.T_LINK_TIP)
+            Tf = T_link @ jg.T_G_FIXEDPAD
+            Tm = T_link @ pads.jaw_in_gripper(jg._st, np.degrees(g[a])) @ jg.T_J_MOVINGPAD
+            vh = np.c_[v, np.ones(len(v))].T
+            lf = (np.linalg.inv(Tf) @ vh).T[:, :3]
+            lm = (np.linalg.inv(Tm) @ vh).T[:, :3]
+            yz_f = (np.abs(lf[:, 1]) < 0.5) & (np.abs(lf[:, 2]) < 0.5)
+            yz_m = (np.abs(lm[:, 1]) < 0.5) & (np.abs(lm[:, 2]) < 0.5)
+            inside = (np.abs(lf) < 0.5).all(1) | (np.abs(lm) < 0.5).all(1)
+            gap = yz_f & yz_m & (lf[:, 0] > 0.5) & (lm[:, 0] < -0.5)       # fixed pad's inner face is +x, moving's -x
+            behind = (yz_f & (lf[:, 0] < -0.5) & (lf[:, 0] > -4.0)) | (yz_m & (lm[:, 0] > 0.5) & (lm[:, 0] < 4.0))
+            s = self.st[a]
+            s["samples"] += 1
+            s["gap"].update(np.nonzero(gap)[0].tolist())
+            s["crossed"].update(set(np.nonzero(behind)[0].tolist()) & s["gap"])
+            s["inside_max"] = max(s["inside_max"], int(inside.sum()))
+            s["gap_max"] = max(s["gap_max"], int(gap.sum()))
+
+    def result(self):
+        a = max(self.st, key=lambda k: len(self.st[k]["gap"]))
+        s = self.st[a]
+        return dict(pt_arm=a, pt_samples=s["samples"], pt_gap_seen=len(s["gap"]), pt_gap_max=s["gap_max"],
+                    pt_crossed=len(s["crossed"]), pt_inside_max=s["inside_max"])
+
+
+def slip_ramp(env, S, plan, arm, roll, pinched, table_z):
+    """Contact check 4: lift the held cloth higher, then raise the cloth's gravity scale step by step (0.5 s each)
+    until the pinched vertices leave the jaw. Load = weight of the cloth off the table at that scale."""
+    import numpy as np
+    import fold_plans as fp
+    mat = env.object.particle_material
+    pc = env.particle_config.objects
+    g0, m_pt = float(pc["particle_material"]["gravity_scale"]), float(pc["garment_config"]["particle_mass"])
+    robot = env.left_arm if arm == "left" else env.right_arm
+    jg_idx = robot.find_joints("gripper")[0][0]
+    out = dict(levels=[])
+    p0 = fp.K.tip(plan.q[arm], arm)[0]
+    try:
+        qs, _ = fp._path(arm, [p0, (p0[0], p0[1], 0.70)], plan.q[arm], roll, ds=0.0007)
+        plan._emit({arm: qs}, "lift_more"); plan.hold(45, "settle"); S.run(plan.ticks)
+    except Exception as e:
+        out["lift_more_error"] = repr(e)[:150]
+    plan.ticks = []
+    try:
+        for k in (1, 2, 4, 8, 16, 32, 64, 128, 256):
+            mat.set_gravity_scale(g0 * k)
+            if getattr(env, "_attach", None) is not None:
+                env._attach.gravity_scale = g0 * k
+            plan.hold(45, "load"); S.run(plan.ticks); plan.ticks = []
+            v = cloth_verts(env)
+            if not np.isfinite(v).all():
+                out["nan_at_scale"] = g0 * k; break
+            q, g = S.state()
+            t = fp.K.tip(q[arm], arm)[0]
+            held = float((np.linalg.norm(v[pinched] - t, axis=1) < 0.03).mean())
+            hang = v[:, 2] > table_z + 0.02                # off the table (a flat two-layer shirt is < 1 cm)
+            load = m_pt * int(hang.sum()) * 9.81 * g0 * k
+            try:
+                tq = float(_np(robot.data.applied_torque)[0, jg_idx])
+            except Exception:
+                tq = None
+            lvl = dict(gscale=g0 * k, held=round(held, 3), load_N=round(load, 3), n_hanging=int(hang.sum()),
+                       low_cm=round(float((v[hang, 2].min() - table_z) * 100), 1) if hang.any() else None,
+                       jaw_deg=round(float(np.degrees(g[arm])), 2), grip_torque_Nm=None if tq is None else round(tq, 4))
+            out["levels"].append(lvl); log("CONTACT_SLIP " + json.dumps(lvl))
+            if held < 0.5:
+                out["slip_N"] = round(load, 3); break
+            out["held_N"] = round(load, 3)
+    finally:
+        mat.set_gravity_scale(g0)
+        if getattr(env, "_attach", None) is not None:
+            env._attach.gravity_scale = None
+    return out
+
+
+def contact_check(env, args, job, name, out_dir):
+    """The 5 contact checks on Isaac's own jaw-cloth contact (scripted sleeve grasp, flat pads, fitted arm):
+    1 pass-through, 2 jaw stop angle vs an empty close, 3 hold through lift/hold/carry, 4 slip load, 5 layers."""
+    import numpy as np
+    import garment_keys as gk
+    import jaw_geometry as jg
+    import pads
+    from so101_kin import HOME, GRIP_CLOSED, GRIP_OPEN
+    S = Stepper(env)
+    gfile = os.path.join(os.path.dirname(os.path.abspath(gk.__file__)), "garments", f"{name}.npz")
+    keys = gk.top_keys(np.load(gfile)["points"].astype(float), list(env.object.check_points))
+    rows, t0 = [], time.time()
+    J = pads.joint_frame(jg._st)                   # moving-pad lever arm about the jaw axis -> squeeze from torque
+    c = np.array([pads.PAD["x_face"] + pads.PAD["thick"] / 2, 0.0, pads.PAD["z_center"]]) - J[:3, 3]
+    ax = J[:3, 2]
+    lever = float(np.linalg.norm(c - c.dot(ax) * ax))
+    env.reset()                                    # empty close in the air (arms at home, far from the cloth)
+    hp = lambda gv: np.concatenate([HOME["left"], [gv], HOME["right"], [gv]])
+    for _ in range(40):
+        S.step(hp(GRIP_OPEN))
+    for i in range(1, 17):
+        S.step(hp(GRIP_OPEN + (GRIP_CLOSED - GRIP_OPEN) * i / 16))
+    for _ in range(25):
+        S.step(hp(GRIP_CLOSED))
+    _, ge = S.state()
+    empty_deg = {a: round(float(np.degrees(ge[a])), 2) for a in ge}
+    log("CONTACT_EMPTY " + json.dumps(dict(jaw_deg_empty=empty_deg, lever_m=round(lever, 4))))
+    try:                                           # frames check: our cloth read vs Isaac's, table top, sim jaw tip
+        from pxr import Usd, UsdGeom
+        ours = cloth_verts(env)
+        isaac = np.asarray(_np(env.object.get_current_mesh_points()[0]), dtype=np.float64)
+        stage = env.object._prim.GetStage()
+        bb = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default", "render"])
+        tables = {str(p.GetPath()): round(float(bb.ComputeWorldBound(p).ComputeAlignedRange().GetMax()[2]), 4)
+                  for p in stage.Traverse() if "table" in p.GetName().lower() and p.GetPath().pathElementCount <= 5}
+        names = list(env.left_arm.body_names)
+        bp = _np(env.left_arm.data.body_pos_w)[0]
+        q, _ = S.state()
+        log("CONTACT_FRAMES " + json.dumps(dict(
+            ours_z_pct=np.percentile(ours[:, 2], [1, 50, 99]).round(4).tolist(),
+            isaac_z_pct=np.percentile(isaac[:, 2], [1, 50, 99]).round(4).tolist(),
+            ours_vs_isaac_max_mm=round(float(np.abs(ours - isaac).max() * 1000), 2) if ours.shape == isaac.shape else "shape",
+            table_top_z=tables, sim_bodies_z={n: round(float(bp[i][2]), 4) for i, n in enumerate(names)},
+            fk_tip_left=[round(float(x), 4) for x in __import__("fold_plans").K.tip(q["left"], "left")[0]],
+            garment_pose=[round(float(x), 4) for x in _np(env.object.get_world_pose()[0])])))
+    except Exception as e:
+        log("CONTACT_FRAMES failed: " + repr(e)[:300])
+    for variant in job.get("variants", ["v2", "v2_lowmu"]):
+        if isinstance(variant, dict):              # {"label": .., "section.key": value, ..}
+            variant = dict(variant); label = variant.pop("label", "custom")
+        else:
+            label = variant
+        if variant == "as_built":                  # the yaml's settings, as Isaac started (fresh start per setting; the
+            label = os.environ.get("CT_PHYSICS", "as_built")   # 2026-10-19 "floating rebuilt shirt" was cloth_verts' stale pose cache)
+        else:
+            set_cloth(env, name, variant)
+        try:                                       # after the (re)build: does the cloth fall onto the table?
+            from pxr import UsdPhysics
+            env.reset()
+            zs = []
+            for i in range(31):
+                if i in (0, 5, 10, 20, 30):
+                    zs.append(np.percentile(cloth_verts(env)[:, 2], [1, 50]).round(4).tolist())
+                S.step(hp(GRIP_CLOSED))
+            log("CONTACT_FALL_Z " + json.dumps(dict(variant=label, z_pct_steps_0_5_10_20_30=zs)))
+            st = env.object._prim.GetStage()
+            scenes = {str(p.GetPath()): [UsdPhysics.Scene(p).GetGravityMagnitudeAttr().Get(),
+                                         list(UsdPhysics.Scene(p).GetGravityDirectionAttr().Get() or [])]
+                      for p in st.Traverse() if p.IsA(UsdPhysics.Scene)}
+            mp = env.object.particle_material.prim
+            gattr = {a.GetName(): a.Get() for a in mp.GetAttributes() if "ravity" in a.GetName() or "damping" in a.GetName()}
+            log("CONTACT_FALL " + json.dumps(dict(variant=label, z_pct_steps_0_5_10_20_30=zs, scenes=scenes,
+                                                  material=str(mp.GetPath()), material_attrs=gattr,
+                                                  garment_pose=[round(float(x), 4) for x in _np(env.object.get_world_pose()[0])]),
+                                             default=str))
+        except Exception as e:
+            log("CONTACT_FALL failed: " + repr(e)[:300])
+        mu = float(env.particle_config.objects["particle_material"]["friction"])
+        vrows = []
+        for rep in range(int(job.get("reps", 2))):
+            for kind in ("hold", "slip"):
+                t1 = time.time()
+                mon = PadMonitor(env, S); S.hook = mon
+                try:
+                    r = assay_trial(env, S, keys, float(job.get("speed", 0.0015)), extra=True, slip=(kind == "slip"),
+                                     settle_s=float(job.get("settle_s", 8.0)))
+                except Exception as e:
+                    traceback.print_exc(); r = dict(error=repr(e)[:300])
+                finally:
+                    S.hook = None
+                r.update(mon.result())
+                if getattr(env, "_attach", None) is not None:
+                    r["attach_events"] = env._attach.events[-6:]; env._attach.events.clear()
+                if "jaw_deg_closed" in r:
+                    r["stop_short_deg"] = round(r["jaw_deg_closed"] - empty_deg[r["pt_arm"]], 2)
+                tq = [l["grip_torque_Nm"] for l in r.get("slip", {}).get("levels", []) if l.get("grip_torque_Nm") is not None]
+                if tq:
+                    r["squeeze_N_est"] = round(abs(tq[0]) / lever, 2)
+                    r["sim_2muN"] = round(2 * mu * r["squeeze_N_est"], 2)
+                r.update(variant=label, check=kind, rep=rep, mu_jaw=mu, wall_s=round(time.time() - t1, 1))
+                rows.append(r); vrows.append(r); log("CONTACT_ROW " + json.dumps(r))
+                if "error" in r or "nan" in json.dumps(r):
+                    set_cloth(env, name, variant)
+        hold = [r for r in vrows if r["check"] == "hold" and "error" not in r]
+        slip = [r["slip"] for r in vrows if isinstance(r.get("slip"), dict)]
+        g = lambda r, k: r[k]["held"] if isinstance(r.get(k), dict) else 0.0
+        verdict = dict(
+            variant=label,
+            c1_crossed=[r.get("pt_crossed") for r in vrows], c1_inside_max=[r.get("pt_inside_max") for r in vrows],
+            c2_stop_short_deg=[r.get("stop_short_deg") for r in vrows], c2_target=CONTACT_TARGET["stop_short_deg"],
+            c3_held_after_lift=[g(r, "after_lift") for r in hold], c3_held_after_hold=[g(r, "after_hold") for r in hold],
+            c3_held_after_carry=[g(r, "after_carry") for r in hold],
+            c4_slip_N=[s.get("slip_N") for s in slip], c4_held_up_to_N=[s.get("held_N") for s in slip],
+            c4_target=CONTACT_TARGET["slip_N"], c4_sim_2muN=[r.get("sim_2muN") for r in vrows if r.get("sim_2muN")],
+            c5_lifted_top=[r.get("lifted_top") for r in hold], c5_lifted_bottom=[r.get("lifted_bottom") for r in hold],
+            c5_stuck_after_release=[r.get("stuck_after_release") for r in hold],
+            c5_layer_swaps_pct=[r.get("layer_swaps_pct") for r in hold],
+            errors=[r["error"] for r in vrows if "error" in r])
+        log("CONTACT_VERDICT " + json.dumps(verdict))
+    log(f"CONTACT_DONE {len(rows)} rows in {time.time() - t0:.0f}s, fast_step={S.fast}")
+    json.dump(dict(empty_deg=empty_deg, lever_m=lever, rows=rows), open(os.path.join(out_dir, "contact_check.json"), "w"),
+              indent=1, default=str)
+    if os.environ.get("ORACLE_HARD_EXIT") == "1":      # results are written: don't wait on Isaac's shutdown
+        sys.stdout.flush(); os._exit(0)
+    return rows
+
+
+def flatten_dump(env, args, job, name, out_dir):
+    """Flatten step 1 (2026-10-19): let the shirt, built from the yaml's cloth settings (meant to be the soft
+    v2_prelock, which lies flat), settle on the table, then save its vertex positions in the mesh's own frame as the
+    new built-in shape; flatten_garment.py writes them into a copy of the asset USD. LeHome's shirts are modelled
+    as worn (~10 cm thick); with the measured-stiff bend/shear that shape fights gravity and the shirt tumbles."""
+    import numpy as np
+    from so101_kin import HOME, GRIP_CLOSED
+    S = Stepper(env)
+    env.reset()
+    park = np.concatenate([HOME["left"], [GRIP_CLOSED], HOME["right"], [GRIP_CLOSED]])
+    dt = float(getattr(env, "physics_dt", 1 / 90))
+    k = max(1, int(round(0.5 / dt)))
+    prev, trace, t0 = cloth_verts(env), [], time.time()
+    n = int(round(float(job.get("settle_s", 6.0)) / dt))
+    for i in range(1, n + 1):
+        S.step(park)
+        if i % k == 0:
+            v = cloth_verts(env)
+            trace.append(round(float(np.linalg.norm(v - prev, axis=1).mean() * 1000 / (k * dt)), 2)); prev = v
+            if i * dt >= 3.0 and len(trace) >= 3 and max(trace[-3:]) < 1.0:     # still (< 1 mm/s) for 1.5 s
+                break
+    v = cloth_verts(env)
+    o = env.object
+    local = np.array(o._prim.GetAttribute("points").Get(), dtype=np.float64)
+    table_z = float(np.percentile(v[:, 2], 1)) - 0.002
+    top, bot = stacked_pairs(v)
+    gap = (v[top, 2] - v[bot, 2]) * 1000 if len(top) else np.array([np.nan])
+    try:                                           # the saved local points must reproduce what we measured
+        pos, ori = o.get_world_pose()
+        back = o.transform_points(local, _np(pos), _np(ori), _np(o.get_world_scale()))
+        err = round(float(np.abs(back - v).max() * 1000), 3)
+    except Exception as e:
+        err = repr(e)[:80]
+    try:
+        asset = str(o.garment_config.asset_path)
+    except Exception:
+        asset = None
+    info = dict(garment=name, asset_path=asset, settle_trace_mm_s=trace, settle_s=round(len(trace) * k * dt, 2),
+                finite=bool(np.isfinite(v).all()),
+                height_spread_mm=round(float((np.percentile(v[:, 2], 95) - np.percentile(v[:, 2], 5)) * 1000), 1),
+                lifted_over_15mm_pct=round(float((v[:, 2] > table_z + 0.015).mean() * 100), 2),
+                layer_gap_mm_median=round(float(np.median(gap)), 2), layer_pairs=int(len(top)),
+                local_z_range=[round(float(local[:, 2].min()), 4), round(float(local[:, 2].max()), 4)],
+                local_roundtrip_err_mm=err, n_points=int(len(local)), wall_s=round(time.time() - t0, 1))
+    npz = os.path.join(out_dir, f"flat_{name}.npz")
+    np.savez_compressed(npz, local_points=local, world_points=v, faces=cloth_faces(env), info=json.dumps(info))
+    log("FLATTEN_DONE " + json.dumps(info))
+    if os.environ.get("FLAT_WRITE", "1") == "1":   # pxr only exists inside the Isaac process: write the USD copy here
+        try:
+            import flatten_garment as fg
+            info["usd"] = fg.write(npz, os.getcwd(), os.environ.get("FLAT_KEEP"))
+        except Exception as e:
+            log("FLATTEN_WRITE_FAILED " + repr(e)[:300]); traceback.print_exc()
+    if os.environ.get("ORACLE_HARD_EXIT") == "1" and job.get("last", True):   # several garments in one session: exit after the last
+        sys.stdout.flush(); os._exit(0)
+    return info
+
+
+def footprint_m2(v, cell=0.005):
+    """Area the cloth covers seen from above (5 mm grid): curling up shrinks it."""
+    import numpy as np
+    return float(len(np.unique(np.floor(v[:, :2] / cell).astype(np.int64), axis=0)) * cell * cell)
+
+
+def cloth_settle(env, S, seconds=10.0, every_s=0.5):
+    """The shirt left alone (arms parked away): how much it still moves, whether it curls, how far apart the layers
+    sit. Returns (metrics, frames: cloth points every `every_s` seconds, world frame)."""
+    import numpy as np
+    from so101_kin import HOME, GRIP_CLOSED
+    env.reset()
+    park = np.concatenate([HOME["left"], [GRIP_CLOSED], HOME["right"], [GRIP_CLOSED]])
+    dt = float(getattr(env, "physics_dt", 1 / 90))
+    n, k = int(round(seconds / dt)), max(1, int(round(every_s / dt)))
+    frames, t1s = [], None
+    for i in range(n + 1):
+        if i % k == 0:
+            frames.append(cloth_verts(env))
+        if i == int(round(1.0 / dt)):
+            t1s = cloth_verts(env)
+        if i < n:
+            S.step(park)
+    v = frames[-1]
+    if not np.isfinite(v).all():
+        return dict(error="nan while settling"), frames
+    prev = frames[-1 - max(1, int(round(1.0 / every_s)))]       # one second earlier
+    sp = np.linalg.norm(v - prev, axis=1) * 1000                  # mm moved in the last second
+    table_z = float(np.percentile(v[:, 2], 1)) - 0.002
+    top, bot = stacked_pairs(v)
+    gap = (v[top, 2] - v[bot, 2]) * 1000 if len(top) else np.array([np.nan])
+    a1, a2 = footprint_m2(t1s), footprint_m2(v)
+    return dict(jitter_mm_s=round(float(sp.mean()), 3), jitter_p95_mm_s=round(float(np.percentile(sp, 95)), 3),
+                footprint_change_pct=round((a2 - a1) / a1 * 100, 2), footprint_m2=round(a2, 4),
+                height_spread_mm=round(float((np.percentile(v[:, 2], 95) - np.percentile(v[:, 2], 5)) * 1000), 2),
+                lifted_over_15mm_pct=round(float((v[:, 2] > table_z + 0.015).mean() * 100), 2),
+                layer_gap_mm_median=round(float(np.median(gap)), 2), layer_pairs=int(len(top))), frames
+
+
+def set_gripper(env, stiffness=None, effort=None):
+    """Both grippers' joint drive (LeHome: stiffness 17.8, effort limit 10), live."""
+    import torch
+    for robot in (env.left_arm, env.right_arm):
+        j = robot.find_joints("gripper")[0]
+        if stiffness is not None:
+            robot.write_joint_stiffness_to_sim(torch.full((1, len(j)), float(stiffness), device=robot.device), joint_ids=j)
+        if effort is not None:
+            robot.write_joint_effort_limit_to_sim(torch.full((1, len(j)), float(effort), device=robot.device), joint_ids=j)
+
+
+def cloth_test(env, args, job, name, out_dir):
+    """Roadmap 7a: for each setting in job["variants"] (a CLOTH_VARIANTS name, or {"label": .., cloth "section.key":
+    value.., "grip.stiffness", "grip.effort", "grip.close"}), rebuild the shirt in place (Isaac stays up), then
+    (1) leave it alone `settle_s` s and record how it moves, (2) run the sleeve grip test `reps` times with the extra
+    measurements. Rows go to the log (CLOTHTEST_ROW) and cloth_test.json; the recorded movement to cloth_<label>.npz."""
+    import numpy as np
+    S = Stepper(env)
+    import garment_keys as gk
+    gfile = os.path.join(os.path.dirname(os.path.abspath(gk.__file__)), "garments", f"{name}.npz")
+    keys = gk.top_keys(np.load(gfile)["points"].astype(float), list(env.object.check_points))
+    rows, t0 = [], time.time()
+    for var in job.get("variants", ["asis", "real_noadh", "scaled"]):
+        spec = {"label": var} if isinstance(var, str) else dict(var)
+        label = spec.pop("label", "custom")
+        grip = {k[5:]: spec.pop(k) for k in list(spec) if k.startswith("grip.")}
+        t1 = time.time()
+        try:
+            if var == "as_built":                  # the yaml's settings as Isaac started (fresh start per setting)
+                label = os.environ.get("CT_PHYSICS", "as_built") + ("_flat" if os.environ.get("FLAT") == "1" else "")
+            else:
+                set_cloth(env, name, var if isinstance(var, str) else spec)
+            if "stiffness" in grip or "effort" in grip or getattr(env, "_grip_changed", False):
+                set_gripper(env, grip.get("stiffness", 17.8), grip.get("effort", 10.0))     # LeHome's values back
+                env._grip_changed = "stiffness" in grip or "effort" in grip
+            m, frames = cloth_settle(env, S, float(job.get("settle_s", 10)))
+            o = frames[0].mean(axis=0)
+            np.savez_compressed(os.path.join(out_dir, f"cloth_{label}.npz"), origin=o, scale=1e-4,
+                                frames=np.clip(np.round((np.stack(frames) - o) / 1e-4), -32767, 32767).astype(np.int16))
+            row = dict(variant=label, test="settle", **m, wall_s=round(time.time() - t1, 1))
+            rows.append(row); log("CLOTHTEST_ROW " + json.dumps(row))
+            for rep in range(int(job.get("reps", 2))):
+                t2 = time.time()
+                r = assay_trial(env, S, keys, float(job.get("speed", 0.0015)), close=grip.get("close"), extra=True)
+                r.update(variant=label, test="grip", rep=rep, wall_s=round(time.time() - t2, 1))
+                rows.append(r); log("CLOTHTEST_ROW " + json.dumps(r))
+        except Exception as e:
+            traceback.print_exc()
+            rows.append(dict(variant=label, error=repr(e)[:300])); log("CLOTHTEST_ROW " + json.dumps(rows[-1]))
+    log(f"CLOTHTEST_DONE {len(rows)} rows in {time.time() - t0:.0f}s, fast_step={S.fast}")
+    json.dump(rows, open(os.path.join(out_dir, "cloth_test.json"), "w"), indent=1)
+    return rows
 
 
 def grip_assay(env, args, job, name, out_dir):
@@ -1354,6 +1814,17 @@ def run(args, simulation_app):
     env = gym.make(args.task, cfg=env_cfg).unwrapped
     env.initialize_obs()
     log(f"env ready in {time.time() - t0:.1f}s; device={env.device} dt={env.cfg.sim.dt} max_ep_len={env.max_episode_length}")
+    if os.environ.get("LEHOME_NO_CAMERAS") == "1":
+        # without cameras IsaacLab's headless app turns PhysX's write-back to USD off, so the cloth points we read stay
+        # frozen at spawn (the Oct 14 cloth tests' "nothing pinched"); same fix as _teleop_world
+        import carb
+        st = carb.settings.get_settings()
+        st.set_bool("/physics/updateToUsd", True)
+        st.set_bool("/physics/updateParticlesToUsd", True)
+        log("physics->USD write-back on (no-camera run)")
+    if os.environ.get("ORACLE_ATTACH") == "1":     # attach + slip grasp model (attach_grasp.py) on every jaw close
+        import attach_grasp
+        attach_grasp.install(env, log=log)
     if probe_mode:
         try:
             gpu_probe.probe(env, log, cloth_verts, set_cloth, jobs[0]["garment"])
@@ -1384,6 +1855,24 @@ def run(args, simulation_app):
                     results.append(dict(garment=name, mode=job["mode"], n=len(fn(env, args, job, name, OUT))))
                 except Exception as e:
                     log("MECH FAILED", name, repr(e)); traceback.print_exc()
+                continue
+            if job.get("mode") == "flatten":
+                try:
+                    results.append(dict(garment=name, flatten=flatten_dump(env, args, job, name, OUT)))
+                except Exception as e:
+                    log("FLATTEN FAILED", name, repr(e)); traceback.print_exc()
+                continue
+            if job.get("mode") == "contact_check":
+                try:
+                    results.append(dict(garment=name, contact_check=len(contact_check(env, args, job, name, OUT))))
+                except Exception as e:
+                    log("CONTACT CHECK FAILED", name, repr(e)); traceback.print_exc()
+                continue
+            if job.get("mode") == "cloth_test":
+                try:
+                    results.append(dict(garment=name, cloth_test=len(cloth_test(env, args, job, name, OUT))))
+                except Exception as e:
+                    log("CLOTH TEST FAILED", name, repr(e)); traceback.print_exc()
                 continue
             if job.get("mode") == "grip_assay":
                 try:

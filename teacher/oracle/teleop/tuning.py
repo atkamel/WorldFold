@@ -12,7 +12,7 @@ import numpy as np
 # key: (default, lo, hi, step, kind, label, unit, scale)   step < 0 means multiply/divide by |step| per press
 SPECS = {
     # ---- control (controller.py)
-    "arm_speed":    (0.40, 0.10, 1.00, 0.05, "control", "arm speed (sideways)", "cm/s", 100),
+    "arm_speed":    (0.60, 0.10, 1.00, 0.05, "control", "arm speed (sideways)", "cm/s", 100),
     "vz_fast":      (0.25, 0.05, 0.60, 0.05, "control", "speed down / place / rise", "cm/s", 100),
     "vz_carry":     (0.15, 0.05, 0.50, 0.05, "control", "speed up to carry height", "cm/s", 100),
     "wheel_deg":    (15.0, 5.0, 45.0, 5.0, "control", "jaw turn per wheel notch", "deg", 1),
@@ -34,7 +34,7 @@ SPECS = {
     # ---- cloth (PhysX particle cloth; defaults = the "real" variant: 50 g shirt, gravity x1)
     "mass_g":       (50.0, 5.0, 500.0, -1.25, "cloth", "shirt mass", "g", 1),
     "gravity":      (1.0, 0.25, 3.0, 0.25, "cloth", "gravity scale", "x", 1),
-    "adhesion":     (0.1, 0.0, 1.0, 0.05, "cloth", "stickiness (adhesion)", "", 1),
+    "adhesion":     (0.0, 0.0, 1.0, 0.05, "cloth", "stickiness (adhesion)", "", 1),
     "friction":     (0.5, 0.0, 2.0, 0.1, "cloth", "friction", "", 1),
     "damping":      (0.05, 0.0, 2.0, 0.05, "cloth", "damping (floatiness)", "", 1),
     "bend":         (5000.0, 10.0, 1e6, -2.0, "cloth", "bend stiffness", "", 1),

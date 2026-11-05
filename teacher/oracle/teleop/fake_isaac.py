@@ -37,7 +37,8 @@ class FakeEnv:
     step_dt = 1 / 30
 
     def __init__(self):
-        self.verts0, self.faces = tshirt()
+        import os           # FAKE_CLOTH_H=0.0022 gives ~14k points, about Isaac's shirt (laptop drawing load)
+        self.verts0, self.faces = tshirt(float(os.environ.get("FAKE_CLOTH_H", "0.01")))
         self.reset()
 
     def reset(self):

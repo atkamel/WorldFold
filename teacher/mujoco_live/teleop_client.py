@@ -15,11 +15,77 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "oracle"))
 from teleop import protocol  # noqa: E402
 
+AIM_FROZEN = ("down", "closing", "drop_after_close", "opening")   # as oracle/teleop/controller.py
 FORWARD = {"t": "T", "z": "Z", "r": "R", "a": "A", "return": "ENTER", "keypad enter": "ENTER", "s": "S",
            "=": "+", "+": "+", "[+]": "+", "-": "-", "[-]": "-", "[": "[", "]": "]", "v": "V"}
 
 
 TUNE_FILE = os.path.join(HERE, "tuning_last.json")
+INPUT_HZ = 125              # mouse messages per second, from their own thread: a slow or stalled frame never holds them
+
+
+class Timing:
+    """The yardstick (roadmap A1): when each stream frame arrives and how long the laptop takes to draw, summed up at
+    the end in the target table's terms (freezes over 100 ms, new frames per second, delay, draw time), next to the
+    demo log as .timing.json (summary) and .frames.csv (every frame)."""
+
+    def __init__(self):
+        self.t0 = time.perf_counter()
+        self.recv = []              # (s since start, server tick or -1, gap since the previous frame ms, lag ms or -1, bytes)
+        self.draws = []             # (s since start, draw ms, a new frame was drawn)
+        self.freezes, self.inputs, self._last, self.started = 0, 0, None, False
+
+    def frame(self, tick, lag, nbytes):
+        now = time.perf_counter()
+        gap = (now - self._last) * 1000 if self._last is not None else 0.0
+        self._last = now
+        self.started = self.started or lag is not None     # our input reaches the server: before, the window is opening
+        self.freezes += self.started and gap > 100
+        self.recv.append((now - self.t0, -1 if tick is None else tick, gap, -1.0 if lag is None else lag * 1000, nbytes))
+
+    def drew(self, ms, new):
+        self.draws.append((time.perf_counter() - self.t0, ms, bool(new)))
+
+    def live(self):
+        """(frames received in the last second, freezes so far, median draw ms lately) for the HUD."""
+        now = time.perf_counter() - self.t0
+        nf = sum(1 for x in self.recv[-400:] if x[0] > now - 1.0)
+        d = [x[1] for x in self.draws[-120:]]
+        return nf, self.freezes, (float(np.median(d)) if d else 0.0)
+
+    def report(self, log_path):
+        if len(self.recv) < 2:
+            return None
+        r = np.array(self.recv, float)
+        if (r[:, 3] >= 0).any():                # from the first frame that echoes our input: before that the window is
+            r = r[int(np.argmax(r[:, 3] >= 0)):]     # still opening and the server waits for our first confirmation
+        d = np.array(self.draws, float) if self.draws else np.zeros((0, 3))
+        d = d[d[:, 0] >= r[0, 0]] if len(d) else d
+        gaps, lag = r[1:, 2], r[r[:, 3] >= 0, 3]
+        per_s = np.bincount((r[:, 0] - r[0, 0]).astype(int))[:-1]         # frames in each whole second
+        fz = gaps[gaps > 100]
+        tk = r[r[:, 1] >= 0, 1]
+        pct = lambda a, q: round(float(np.percentile(a, q)), 1) if len(a) else None
+        s = dict(seconds=round(float(r[-1, 0] - r[0, 0]), 1), frames=len(r),
+                 frames_per_s_median=float(np.median(per_s)) if len(per_s) else None,
+                 seconds_under_30_frames=int((per_s < 30).sum()), whole_seconds=len(per_s),
+                 freezes_over_100ms=len(fz), freeze_total_s=round(float(fz.sum()) / 1000, 2),
+                 longest_freeze_ms=round(float(fz.max()), 0) if len(fz) else 0,
+                 gap_ms_p50=pct(gaps, 50), gap_ms_p95=pct(gaps, 95), gap_ms_p99=pct(gaps, 99),
+                 lag_ms_p50=pct(lag, 50), lag_ms_p95=pct(lag, 95), lag_ms_p99=pct(lag, 99),
+                 draw_ms_p50=pct(d[:, 1], 50), draw_ms_p95=pct(d[:, 1], 95),
+                 draw_ms_max=round(float(d[:, 1].max()), 1) if len(d) else None,
+                 draws_per_s=round(len(d) / max(float(r[-1, 0] - r[0, 0]), 1e-6), 1),
+                 server_ticks_not_shown=int(np.clip(np.diff(tk) - 1, 0, None).sum()) if len(tk) > 1 else None,
+                 input_msgs_per_s=round(self.inputs / max(time.perf_counter() - self.t0, 1e-6), 1))
+        base = log_path[:-len(".jsonl")] if log_path.endswith(".jsonl") else log_path
+        json.dump(s, open(base + ".timing.json", "w"), indent=1)
+        np.savetxt(base + ".frames.csv", r, delimiter=",", fmt=["%.4f", "%d", "%.2f", "%.1f", "%d"],
+                   header="t_s,server_tick,gap_ms,lag_ms,bytes", comments="")
+        print(f"timing: {s['seconds']} s, {s['frames_per_s_median']} frames/s (median), freezes over 100 ms: "
+              f"{s['freezes_over_100ms']} (longest {s['longest_freeze_ms']:.0f} ms), lag p50 {s['lag_ms_p50']} / p95 "
+              f"{s['lag_ms_p95']} ms, laptop draw p50 {s['draw_ms_p50']} / p95 {s['draw_ms_p95']} ms -> {base}.timing.json")
+        return s
 
 
 class Client:
@@ -54,6 +120,10 @@ class Client:
         self.log_path = os.path.join(HERE, "demos", time.strftime("%Y%m%d_%H%M%S") + f"_remote_{self.hello.get('backend')}.jsonl")
         self.scoreq = queue.Queue()
         self.lock = threading.Lock()
+        self.ilock = threading.Lock()       # keys + tuning ops queued by the window for the input thread
+        self.slock = threading.Lock()       # one writer at a time on the socket
+        self.keyq = []
+        self.timing = Timing()
         # live tuning
         self.tspec = self.hello.get("tune") or []
         self.tune_open, self.tune_sel, self.tune_ops = False, 0, []
@@ -62,6 +132,7 @@ class Client:
         self._init_ui(fullscreen)
         threading.Thread(target=self._reader, daemon=True).start()
         threading.Thread(target=self._scorer, daemon=True).start()
+        threading.Thread(target=self._input_loop, daemon=True).start()
 
     @staticmethod
     def _connect(host, port, wait_s=900):
@@ -131,12 +202,17 @@ class Client:
                     self.echo = h.get("echo") or self.echo
                     if h.get("echo"):
                         self.lag = time.time() - h["echo"]
+                self.timing.frame(h.get("tk"), self.lag if h.get("echo") else None, len(p))
             elif t == "log":
                 with open(self.log_path, "a") as f:
                     for r in h["recs"]:
+                        if r.get("cloth_cm") == "local":   # the server kept its copy; ours is the state stream's cloth
+                            c = self.local_cloth_cm()
+                            r = dict(r, cloth_cm=protocol.pack_cloth(c)) if c is not None else \
+                                {k: v for k, v in r.items() if k != "cloth_cm"}
                         f.write(json.dumps(r) + "\n")
                         if r.get("event") == "drop" and "cloth_cm" in r:
-                            self.scoreq.put(r["cloth_cm"])
+                            self.scoreq.put(protocol.cloth_cm(r))
             elif t == "end":
                 self.ended = h.get("why", "server ended")
 
@@ -154,6 +230,35 @@ class Client:
             except Exception as e:
                 print("scoring failed:", repr(e))
 
+    def local_cloth_cm(self):
+        """The newest cloth we have, in cm (table frame), or None (the JPEG view has no cloth)."""
+        return None
+
+    def queue_keys(self, keys):
+        """Keys from the window, sent by the input thread on its next beat."""
+        if keys:
+            with self.ilock:
+                self.keyq += keys
+
+    def _input_loop(self):
+        """Both mice + queued keys INPUT_HZ times a second on their own thread. GeForce NOW sends input as it happens,
+        apart from the video; before, the mouse went out once per drawn frame, so slow drawing slowed the mouse."""
+        period, t_next = 1 / INPUT_HZ, time.perf_counter()
+        while not self.ended:
+            with self.ilock:
+                keys, self.keyq = self.keyq, []
+            try:
+                self.send_input(self.mice.take() if self.playing else {}, keys)
+            except OSError:
+                self.ended = self.ended or "connection lost"
+                return
+            t_next += period
+            slack = t_next - time.perf_counter()
+            if slack > 0:
+                time.sleep(slack)
+            elif slack < -0.1:
+                t_next = time.perf_counter()
+
     def send_input(self, mice, keys):
         ext = {}
         for h in mice:
@@ -165,10 +270,13 @@ class Client:
         if moved:
             with self.lock:
                 self.pending.append((msg["ct"], moved))
-                del self.pending[:-240]
-        if self.tune_ops:
-            msg["tune"], self.tune_ops = self.tune_ops, []
-        protocol.send(self.sock, msg)
+                del self.pending[:-1000]
+        with self.ilock:
+            if self.tune_ops:
+                msg["tune"], self.tune_ops = self.tune_ops, []
+        with self.slock:
+            protocol.send(self.sock, msg)
+        self.timing.inputs += 1
 
     # ---------------- live tuning
     def _restore_tuning(self):
@@ -200,12 +308,11 @@ class Client:
         k = self.tspec[self.tune_sel]["key"]
         if act in ("up", "down"):
             self.tune_sel = (self.tune_sel + (-1 if act == "up" else 1)) % n
-        elif act in ("left", "right"):
-            self.tune_ops.append(["adjust", k, 1 if act == "right" else -1])
-        elif act == "reset":
-            self.tune_ops.append(["reset", k])
-        elif act == "apply":
-            self.tune_ops.append(["apply_cloth"])
+            return
+        op = {"left": ["adjust", k, -1], "right": ["adjust", k, 1], "reset": ["reset", k], "apply": ["apply_cloth"]}.get(act)
+        if op:
+            with self.ilock:                # the input thread takes the list
+                self.tune_ops.append(op)
 
     def tune_key(self, e):
         """pygame keys while the panel is open. Returns True if the key was used."""
@@ -273,11 +380,9 @@ class Client:
                     continue
                 a, g = mice[h]
                 d = np.array([dx * g, -dy * g])
-                if tandem == "off":
-                    cur[a] = cur[a] + d
-                else:
-                    cur["L"] = cur["L"] + d
-                    cur["R"] = cur["R"] + d * (np.array([-1, 1]) if tandem == "mirror" else 1)
+                for b, s in ((a, 1),) if tandem == "off" else (("L", 1), ("R", np.array([-1, 1]) if tandem == "mirror" else 1)):
+                    if arms.get(b, {}).get("phase") not in AIM_FROZEN:   # the server ignores the mouse during a grab
+                        cur[b] = cur[b] + d * s
         lim = hud.get("lim")
         if lim:
             for a in cur:
@@ -306,12 +411,14 @@ class Client:
             self.pg.draw.line(self.screen, col, (c[0], c[1] - 13), (c[0], c[1] + 13), 1)
 
     def draw(self):
+        t0 = time.perf_counter()
         with self.lock:
             frame, hud, new = self.frame, dict(self.hud), self.new
             self.new = False
         self.draw_scene(frame if new else None, hud)
         self.draw_hud(hud)
         self.present()
+        self.timing.drew((time.perf_counter() - t0) * 1000, new)
 
     def draw_scene(self, frame, hud):
         """pygame view: the server's JPEG, then the locally predicted cursors on top."""
@@ -339,6 +446,8 @@ class Client:
                         f"carry {st.get('carry_cm')} cm jaws {st.get('jaw_deg')}{lim}")
         lag = f"{self.lag * 1000:.0f} ms" if self.lag is not None else "-"
         rows.append(f"tandem {hud.get('tandem')}   server {self.srv_fps:.0f} fps   lag {lag}   {self.hello.get('backend')}")
+        nf, fz, dm = self.timing.live()
+        rows.append(f"stream {nf} frames/s   freezes over 100 ms: {fz}   laptop draw {dm:.1f} ms")
         self.text("\n".join(rows), (self.FW - 540, 6))
         fb = hud.get("flowback")
         if fb:
@@ -381,12 +490,7 @@ class Client:
                     self.set_play(False)
                 if e.type == pg.MOUSEBUTTONDOWN and not self.playing:
                     self.set_play(True)
-            mice = self.mice.take() if self.playing else {}
-            if not self.ended:
-                try:
-                    self.send_input(mice, keys)
-                except OSError:
-                    self.ended = "connection lost"
+            self.queue_keys(keys)          # the mice go out from the input thread
             self.draw()
             t_next += 1 / 60
             slack = t_next - time.perf_counter()
@@ -395,11 +499,21 @@ class Client:
             elif slack < -0.2:
                 t_next = time.perf_counter()
 
-    def close(self):
+    def say_bye(self):
+        """Stop the input thread, tell the server, and save the timing summary."""
+        self.ended = self.ended or "quit"
         try:
-            protocol.send(self.sock, dict(t="bye"))
+            with self.slock:
+                protocol.send(self.sock, dict(t="bye"))
         except OSError:
             pass
+        try:
+            self.timing.report(self.log_path)
+        except Exception as e:              # the summary must never lose the demo log
+            print("timing summary failed:", repr(e))
+
+    def close(self):
+        self.say_bye()
         self.pg.quit()
         print("demo log:", self.log_path)
 

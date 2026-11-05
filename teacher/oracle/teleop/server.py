@@ -168,22 +168,36 @@ class TeleopServer:
         self.outbox.append(rec)          # the sender thread writes it to log_path and sends it (_send_logs)
 
     def _send_logs(self, conn, h):
-        """Demo-log records: turned into JSON once (a record with a cloth snapshot is ~340 kB of text), appended to
-        log_path and sent to the client with that same text."""
-        js = [json.dumps(r, default=protocol._default) for r in h["recs"]]
+        """Demo-log records: appended to log_path as JSON lines and sent to the client. A grab/drop record's cloth
+        snapshot (all 14,746 points) is stored compactly (protocol.pack_cloth, well under 1 ms; as a JSON float list
+        it took ~10-24 ms with Python's lock held, so the physics loop waited) and is NOT sent to a laptop that draws
+        from the state stream: it already has the cloth, and the ~100 kB would hold up the next frames."""
+        import numpy as np
+        disk, net = [], []
+        for r in h["recs"]:
+            if isinstance(r.get("cloth_cm"), np.ndarray):
+                r = dict(r, cloth_cm=protocol.pack_cloth(r["cloth_cm"]))
+                disk.append(json.dumps(r, default=protocol._default))
+                net.append(json.dumps(dict(r, cloth_cm="local"), default=protocol._default) if self.state else disk[-1])
+            else:
+                disk.append(json.dumps(r, default=protocol._default))
+                net.append(disk[-1])
         if self.log_path:
             with open(self.log_path, "a") as f:
-                f.write("\n".join(js) + "\n")
-        protocol.send_json(conn, '{"t":"log","recs":[' + ",".join(js) + "]}")
+                f.write("\n".join(disk) + "\n")
+        protocol.send_json(conn, '{"t":"log","recs":[' + ",".join(net) + "]}")
 
     def _reader(self, conn):
+        inbox = self.inbox                   # this connection's queue (a reconnect gets a new one)
         while True:
             try:
                 m = protocol.recv(conn)
             except OSError:
                 m = None
             if m is None or m[0].get("t") == "bye":
-                self.inbox.put(None)
+                inbox.put(None)
+                return
+            if getattr(self, "_conn", conn) is not conn:   # an old connection still draining: ignore it
                 return
             if "got" in m[0]:                # client confirms frames: compressed stream + flow control
                 with self._cv:
@@ -191,25 +205,24 @@ class TeleopServer:
                         self._enc = protocol.StateEncoder(window=self.window)
                     self._enc.ack(m[0]["got"])
                     self._cv.notify()
-            self.inbox.put(m[0])
+            inbox.put(m[0])
 
-    def serve(self):
-        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        srv.bind(("0.0.0.0", self.port))
-        srv.listen(1)
-        self.log(f"TELEOP listening on port {self.port}")
-        t_start = time.time()
-        srv.settimeout(1.0 if self.keepalive else self.idle_s)
+    def _serve_client(self, srv, t_start, n_total):
+        """Wait for one client and play until it leaves. Returns (why, ticks so far)."""
+        t_wait = time.time()
         while True:
             try:
                 conn, addr = srv.accept()
                 break
             except socket.timeout:
-                if time.time() - t_start > self.idle_s:
-                    self.log("TELEOP nobody connected"); return "nobody connected"
+                if time.time() - t_wait > self.idle_s or time.time() - t_start > self.max_s:
+                    self.log("TELEOP nobody connected"); return "nobody connected", n_total
                 self._keepalive()
         conn.settimeout(None)
+        self.inbox = queue.Queue()            # fresh per-connection stream state (a client may reconnect)
+        self._conn = conn
+        with self._cv:
+            self._enc, self._send_err, self._frame, self._logs = None, None, None, []
         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.log(f"TELEOP client {addr}")
         protocol.send(conn, dict(t="hello", **self.hello))
@@ -218,10 +231,11 @@ class TeleopServer:
         sender.start()
         why, last_input, echo = "client left", time.time(), None
         t_next = time.perf_counter()
-        n, fps_t, fps_n, fps = 0, time.time(), 0, 0.0
-        perf = dict(tick=0.0, sim=0.0, render=0.0, encode=0.0, n=0, t=time.time())   # where each tick's time goes
+        n, fps_t, fps_n, fps = n_total, time.time(), 0, 0.0
+        perf = dict(tick=0.0, sim=0.0, render=0.0, encode=0.0, n=0, t=time.time(), stalls=0, worst=0.0)  # where time goes
         try:
             while True:
+                t_it = time.perf_counter()
                 msgs, closed = [], False
                 while not self.inbox.empty():
                     m = self.inbox.get()
@@ -282,13 +296,26 @@ class TeleopServer:
                     if time.time() - fps_t > 1.0:
                         fps, fps_n, fps_t = fps_n / (time.time() - fps_t), 0, time.time()
                     self._post(frame=(dict(t=kind, hud=self.g.hud(), echo=echo, sim_t=round(self.g.time, 3),
-                                           fps=round(fps, 1)), payload))
+                                           fps=round(fps, 1), tk=n), payload))
                 perf["n"] += 1
+                t_ka = time.perf_counter()
                 if self.keepalive and self.keepalive_every and n % self.keepalive_every == 0:
                     self._keepalive()
+                # a tick over 100 ms is a freeze on the laptop: say right away where its time went
+                t_end = time.perf_counter()
+                it = t_end - t_it
+                perf["worst"] = max(perf["worst"], it)
+                if it > 0.1:
+                    perf["stalls"] += 1
+                    sim_it = getattr(self.g.w, "t_sim", 0.0) - sim0
+                    self.log(f"TELEOP stall {it * 1000:.0f} ms at tick {n}: input/keys {(t0 - t_it) * 1000:.0f} ms, "
+                             f"sim {sim_it * 1000:.0f}, controller {(t1 - t0 - sim_it) * 1000:.0f}, "
+                             f"frame {(t_ka - t1) * 1000:.0f}, app keepalive {(t_end - t_ka) * 1000:.0f}"
+                             f"{f', keys {keys}' if keys else ''}")
                 if time.time() - perf["t"] > 5.0:
                     k = 1000 / perf["n"]
-                    self.log(f"TELEOP perf: {perf['n'] / (time.time() - perf['t']):.1f} ticks/s | per tick: sim {perf['sim'] * k:.0f} ms, "
+                    self.log(f"TELEOP perf: {perf['n'] / (time.time() - perf['t']):.1f} ticks/s, slowest tick "
+                             f"{perf['worst'] * 1000:.0f} ms, {perf['stalls']} over 100 ms | per tick: sim {perf['sim'] * k:.0f} ms, "
                              f"controller {(perf['tick'] - perf['sim']) * k:.0f} ms, frame {perf['render'] * k:.0f} ms, "
                              f"jpeg {perf['encode'] * k:.0f} ms | sender thread {self._send_s * k:.0f} ms (overlapped)"
                              f" | sent {self._sent_n / (time.time() - perf['t']):.1f} frames/s, "
@@ -296,7 +323,7 @@ class TeleopServer:
                              f"{f' (compressed, window {self._enc.window})' if self._enc else ''}"
                              f"{f' | app keepalive {self._ka_s / max(self._ka_n, 1) * 1000:.1f} ms x {self._ka_n}' if self._ka_n else ''}")
                     self._send_s, self._sent_n, self._sent_bytes, self._ka_s, self._ka_n = 0.0, 0, 0, 0.0, 0
-                    perf.update(tick=0.0, sim=0.0, render=0.0, encode=0.0, n=0, t=time.time())
+                    perf.update(tick=0.0, sim=0.0, render=0.0, encode=0.0, n=0, t=time.time(), stalls=0, worst=0.0)
                 t_next += self.dt
                 slack = t_next - time.perf_counter()
                 if slack > 0:
@@ -314,6 +341,24 @@ class TeleopServer:
                 protocol.send(conn, dict(t="end", why=why))
             except OSError:
                 pass
-            conn.close(); srv.close()
+            conn.close()
+        return why, n
+
+
+    def serve(self):
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("0.0.0.0", self.port))
+        srv.listen(1)
+        self.log(f"TELEOP listening on port {self.port}")
+        t_start = time.time()
+        srv.settimeout(1.0 if self.keepalive else self.idle_s)
+        n = 0
+        while True:   # the world stays up between clients: closing / restarting the window doesn't end the session
+            why, n = self._serve_client(srv, t_start, n)
+            if why != "client left" and not why.startswith("connection error"):
+                break
+            self.log(f"TELEOP {why}; waiting for the client to reconnect (session continues)")
+        srv.close()
         self.log(f"TELEOP end: {why} after {n} ticks")
         return why

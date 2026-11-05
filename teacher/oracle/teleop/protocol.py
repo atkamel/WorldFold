@@ -16,7 +16,9 @@ Every message = 8-byte header (json length, payload length, big-endian uint32) +
                      Compressed state (when the client's inputs carry "got"): header also has "fid" (frame number),
                      "base" (frame it is a difference from, -1 = full frame), "codec" ("blosc2" | "raw"); payload =
                      codec(payload int16 lanes - base frame's lanes). See StateEncoder / StateDecoder.
-                    {"t": "log", "recs": [demo-log records]}      (the laptop keeps its own copy of the demo log)
+                    {"t": "log", "recs": [demo-log records]}      (the laptop keeps its own copy of the demo log; a
+                     grab/drop record's cloth is pack_cloth's compact form, or "local" when the laptop draws from the
+                     state stream: it already has the cloth and fills in its own)
                     {"t": "end", "why": ...}
 """
 import json
@@ -46,6 +48,27 @@ def send_json(sock, header_json, payload=b""):
     """send() for a header that is already JSON text."""
     h = header_json.encode()
     sock.sendall(HDR.pack(len(h), len(payload)) + h + payload)
+
+
+def pack_cloth(cloth_cm):
+    """Cloth points in cm (N x 3, rounded to 0.01 cm by the controller) -> a small JSON-able dict, exact at that
+    rounding (int16 in 0.01 cm, +-327 cm). Well under 1 ms, where a JSON list of 44k floats took ~10-24 ms with
+    Python's lock held (the physics loop waited)."""
+    import base64
+    import numpy as np
+    q = np.clip(np.round(np.asarray(cloth_cm, float) * 100), -32767, 32767).astype("<i2")
+    return {"i16": base64.b64encode(q.tobytes()).decode("ascii"), "scale": 0.01}
+
+
+def cloth_cm(rec):
+    """A demo-log record's cloth as an (N, 3) array in cm, from either form (a JSON list in older logs, or
+    pack_cloth's dict). None when the record has none."""
+    import base64
+    import numpy as np
+    c = rec.get("cloth_cm")
+    if isinstance(c, dict):
+        return np.frombuffer(base64.b64decode(c["i16"]), "<i2").reshape(-1, 3) * c["scale"]
+    return None if c is None or isinstance(c, str) else np.asarray(c, float)
 
 
 def _recvall(sock, n):
