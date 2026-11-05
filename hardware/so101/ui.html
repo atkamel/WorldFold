@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SO-101 Control</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66;
+    --line: #e2e0da; --accent: #d9632b; --accent-soft: #fbe9df; --ok: #2f8f5b; --stop: #b8442a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9892;
+            --line: #33322f; --accent: #ef7a42; --accent-soft: #3a2519; --ok: #4cb37b; --stop: #e0674a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
+         display: grid; grid-template-columns: 1fr 380px; height: 100vh; }
+  #view { position: relative; min-height: 320px; touch-action: none; }
+  #view canvas { display: block; }
+  .overlay { position: absolute; left: 16px; right: 16px; font-size: 12px; color: var(--muted); pointer-events: none; }
+  #status { top: 12px; }
+  #help { bottom: 12px; }
+  #toast { top: 36px; color: var(--stop); font-weight: 600; opacity: 0; transition: opacity .2s; }
+  #toast.show { opacity: 1; }
+  aside { background: var(--panel); border-left: 1px solid var(--line); padding: 16px;
+          overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 16px; margin: 0; }
+  .buttons { display: flex; gap: 8px; }
+  button { flex: 1; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--ink); font: inherit; cursor: pointer; }
+  button.on { background: var(--ok); color: #fff; border-color: var(--ok); }
+  button.stop { background: var(--stop); color: #fff; border-color: var(--stop); font-weight: 600; }
+  .hint { color: var(--muted); font-size: 12px; margin: 0; }
+  .banner { background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+  .joint { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px;
+           border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
+  .joint.selected { border-color: var(--accent); background: var(--accent-soft); }
+  .joint .name { font-weight: 600; }
+  .joint .nums { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; text-align: right; }
+  .joint input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); margin: 4px 0 0; }
+  .joint input[type=range]:disabled { opacity: .5; }
+  .ends { grid-column: 1 / -1; display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+  .flip { grid-column: 1 / -1; font-size: 11px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .grid button, #mine button { font-size: 12px; padding: 7px 6px; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.playing { border-color: var(--accent); background: var(--accent-soft); }
+  #mine { display: flex; flex-direction: column; gap: 6px; }
+  #mine .row { display: flex; gap: 6px; }
+  #mine .del { flex: 0 0 34px; color: var(--muted); }
+  section { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  ol { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+  kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  @media (max-width: 760px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 50vh auto; height: auto; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<div id="view">
+  <div class="overlay" id="status">connecting…</div>
+  <div class="overlay" id="toast"></div>
+  <div class="overlay" id="help">Drag a part of the arm to turn its joint · drag empty space to orbit ·
+    solid = real arm, ghost = where you're sending it · orange arrow = the robot's front</div>
+</div>
+<aside>
+  <h1>SO-101 follower</h1>
+  <div class="buttons">
+    <button id="torque">Torque: off</button>
+    <button id="idle">Go to idle</button>
+    <button id="stop" class="stop">Stop <kbd>Esc</kbd></button>
+  </div>
+  <p class="hint" id="mode-hint"></p>
+  <div class="joint" id="speed-row">
+    <span class="name">Speed</span><span class="nums" id="speed-value"></span>
+    <input type="range" id="speed" min="5" max="180" step="5">
+    <div class="ends"><span>slow</span><span>fast</span></div>
+  </div>
+  <div class="banner" id="uncalibrated" hidden>Twin not calibrated yet, so on-screen angles won't
+    match the real arm. See "Twin calibration" below.</div>
+  <section>
+    <strong>Poses</strong>
+    <div class="grid" id="poses"></div>
+    <strong>Moves</strong>
+    <div class="grid" id="moves"></div>
+    <strong>My poses</strong>
+    <div id="mine"><p class="hint">None yet. Pose the arm, then save it.</p></div>
+    <button id="save-pose">Save current pose…</button>
+  </section>
+  <div id="joints"></div>
+  <p class="hint">Click a joint (here or on the arm), then <kbd>←</kbd> <kbd>→</kbd> to nudge 1°,
+    <kbd>Shift</kbd> for 5°.</p>
+  <section>
+    <strong>Twin calibration</strong>
+    <ol>
+      <li>Torque off. Pose the arm pointing <b>straight up</b>, gripper <b>closed</b>.</li>
+      <li>Click the button below.</li>
+      <li>Move each joint by hand. If the screen moves the opposite way, tick its <b>flip</b>.
+        Forward = toward the orange arrow; pan right = clockwise seen from above.</li>
+    </ol>
+    <button id="reference">Set current pose as straight-up reference</button>
+  </section>
+</aside>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const IDS = [1, 2, 3, 4, 5, 6];
+// Every joint uses one convention: a POSITIVE angle means the right-hand end of
+// its slider (right, forward, clockwise, open). The flip box fixes a joint whose
+// motor happens to count the other way.
+const JOINTS = {
+  1: { name: "shoulder pan",  axis: "y", ends: ["◀ left", "right ▶"] },
+  2: { name: "shoulder lift", axis: "z", ends: ["◀ back", "forward ▶"] },
+  3: { name: "elbow",         axis: "z", ends: ["◀ back", "forward ▶"] },
+  4: { name: "wrist flex",    axis: "z", ends: ["◀ back", "forward ▶"] },
+  5: { name: "wrist roll",    axis: "y", ends: ["⟲ counter", "clockwise ⟳"] },
+  6: { name: "gripper",       axis: "z", ends: ["closed", "open"] },
+};
+const RAD_PER_STEP = 2 * Math.PI / 4096;
+const DEG = 180 / Math.PI;
+
+let state = null;
+let twin = { zero: {}, flip: {} };
+const local = {};        // id -> { pos, until }: targets set here that the server hasn't echoed yet
+let selected = null, hovered = null, drag = null, sliderHeld = null;
+
+// ---------- encoder <-> angle ----------
+// angle = sign * (encoder - zero) in radians, zero = encoder value at "straight up".
+const zero = id => twin.zero[id] ?? 2047;
+const sign = id => (twin.flip[id] ? -1 : 1);
+const toAngle = (id, pos) => sign(id) * (pos - zero(id)) * RAD_PER_STEP;
+const toPos = (id, a) => Math.round(zero(id) + sign(id) * a / RAD_PER_STEP);
+function angleRange(id) {
+  const [lo, hi] = state.limits[id].map(p => toAngle(id, p));
+  return [Math.min(lo, hi), Math.max(lo, hi)];
+}
+function targetPos(id) {
+  const l = local[id];
+  return l && (drag?.id === id || performance.now() < l.until) ? l.pos : state.target[id];
+}
+
+// ---------- 3D model ----------
+// Each joint is a THREE.Group nested inside the previous one, so turning a
+// joint carries everything after it, like the real arm. All angles 0 = straight up.
+const view = document.getElementById("view");
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 50);
+camera.position.set(5.2, 3.6, 3.4);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(devicePixelRatio);
+view.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.5, 0);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(3, 6, 4); scene.add(sun);
+scene.add(new THREE.GridHelper(6, 12, 0x999999, 0xcccccc));
+const front = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0.6, 0.01, 0), 1.1, 0xd9632b, 0.25, 0.18);
+scene.add(front);
+
+const BODY = 0xf2f0ea, MOTOR = 0x2a2a28, JAW = 0xd9632b;
+
+function buildArm(ghost) {
+  const meshes = [];
+  const material = color => new THREE.MeshStandardMaterial({
+    color: ghost ? 0x4a90d9 : color, roughness: 0.55,
+    transparent: ghost, opacity: ghost ? 0.25 : 1, depthWrite: !ghost });
+  function box(parent, joint, w, h, d, color, y = h / 2, x = 0) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material(color));
+    m.position.set(x, y, 0); m.userData.joint = joint; parent.add(m); meshes.push(m);
+  }
+  function group(parent, joint, x, y) {
+    const g = new THREE.Group(); g.position.set(x, y, 0); parent.add(g);
+    if (JOINTS[joint].axis === "z" && joint !== 6) {      // motor hub drawn along the pivot axis
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.34, 24), material(MOTOR));
+      hub.rotation.x = Math.PI / 2; hub.userData.joint = joint; g.add(hub); meshes.push(hub);
+    }
+    return g;
+  }
+  // Rough SO-101 proportions (1 unit ~ 10 cm)
+  const root = new THREE.Group(); scene.add(root);
+  if (!ghost) box(root, 0, 0.9, 0.35, 0.9, BODY);
+  const g = {};
+  g[1] = group(root, 1, 0, 0.35);  box(g[1], 1, 0.5, 0.65, 0.5, MOTOR);
+  g[2] = group(g[1], 2, 0, 0.85);  box(g[2], 2, 0.28, 1.16, 0.3, BODY);
+  g[3] = group(g[2], 3, 0, 1.16);  box(g[3], 3, 0.26, 1.35, 0.28, BODY);
+  g[4] = group(g[3], 4, 0, 1.35);  box(g[4], 4, 0.24, 0.45, 0.26, BODY);
+  g[5] = group(g[4], 5, 0, 0.45);  box(g[5], 5, 0.36, 0.25, 0.3, MOTOR);
+                                   box(g[5], 5, 0.08, 0.8, 0.22, JAW, 0.65, -0.12);
+  g[6] = group(g[5], 6, 0.12, 0.25); box(g[6], 6, 0.08, 0.8, 0.22, JAW, 0.4);
+  return { root, g, meshes };
+}
+const real = buildArm(false);
+const ghost = buildArm(true);
+
+function poseArm(arm, posOf) {
+  for (const id of IDS) {
+    let a = toAngle(id, posOf(id));
+    if (id === 6) a = Math.max(0, a);          // the jaw only opens outward
+    // Negative rotation: tilts +Y toward +X (forward) and turns clockwise seen from above.
+    arm.g[id].rotation[JOINTS[id].axis] = -a;
+  }
+}
+
+function highlight() {
+  for (const m of real.meshes) {
+    const j = m.userData.joint;
+    m.material.emissive.setHex(j && j === drag?.id ? 0x6a2a0a : j && (j === hovered || j === selected) ? 0x3a1a08 : 0);
+  }
+}
+
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize); resize();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+
+// ---------- dragging the arm ----------
+// To turn a joint, intersect the mouse ray with the plane that the joint spins
+// in (perpendicular to its axis, through its pivot), then measure how far the
+// hit point swept around the pivot. That's literally "grab and turn".
+const raycaster = new THREE.Raycaster();
+function setRay(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1,
+                                            -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+}
+function pick(e) {
+  setRay(e);
+  const hit = raycaster.intersectObjects(real.meshes)[0];
+  return hit?.object.userData.joint || null;
+}
+function spinPlaneVector(id) {
+  // Measured on the ghost: it shows the target, which is what we're turning.
+  const g = ghost.g[id];
+  const axis = new THREE.Vector3(...(JOINTS[id].axis === "y" ? [0, 1, 0] : [0, 0, 1]))
+    .applyQuaternion(g.parent.getWorldQuaternion(new THREE.Quaternion()));
+  const pivot = g.getWorldPosition(new THREE.Vector3());
+  if (Math.abs(axis.dot(raycaster.ray.direction)) < 0.12) return null;   // plane seen edge-on
+  const hit = raycaster.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(axis, pivot), new THREE.Vector3());
+  if (!hit) return null;
+  const v = hit.sub(pivot);
+  return v.length() > 0.05 ? { v, axis } : null;
+}
+
+const canvas = renderer.domElement;
+canvas.addEventListener("pointerdown", e => {
+  const id = pick(e);
+  if (!id) return;                       // empty space: let OrbitControls orbit
+  select(id);
+  if (!state?.torque) { toast("Torque is off. Turn it on to drive the arm."); return; }
+  controls.enabled = false;
+  canvas.setPointerCapture(e.pointerId);
+  setRay(e);
+  drag = { id, angle: toAngle(id, targetPos(id)), last: spinPlaneVector(id), x: e.clientX };
+  highlight();
+});
+canvas.addEventListener("pointermove", e => {
+  if (!drag) {
+    const id = pick(e);
+    if (id !== hovered) { hovered = id; canvas.style.cursor = id ? "grab" : ""; highlight(); }
+    return;
+  }
+  canvas.style.cursor = "grabbing";
+  setRay(e);
+  const now = spinPlaneVector(drag.id);
+  let turned;
+  if (now && drag.last) {
+    // Signed angle swept around the axis (right-hand rule); rotation = -angle, so negate.
+    turned = -Math.atan2(now.axis.dot(drag.last.v.clone().cross(now.v)), drag.last.v.dot(now.v));
+  } else {
+    turned = (e.clientX - drag.x) * 0.01;  // edge-on fallback: drag right = positive
+  }
+  drag.last = now; drag.x = e.clientX;
+  drag.angle += turned;
+  const [lo, hi] = angleRange(drag.id);
+  drag.angle = Math.min(hi, Math.max(lo, drag.angle));
+  setTarget(drag.id, drag.angle);
+});
+function endDrag() {
+  if (!drag) return;
+  drag = null; controls.enabled = true; canvas.style.cursor = hovered ? "grab" : ""; highlight();
+}
+canvas.addEventListener("pointerup", endDrag);
+canvas.addEventListener("pointercancel", endDrag);
+
+// ---------- sending targets ----------
+// Goals are batched and sent at most every 30 ms; the latest value always goes out.
+let queued = {}, timer = null;
+function setTarget(id, angle) {
+  const [lo, hi] = angleRange(id);
+  const pos = toPos(id, Math.min(hi, Math.max(lo, angle)));
+  local[id] = { pos, until: performance.now() + 600 };
+  queued[id] = pos;
+  if (!timer) timer = setTimeout(flush, 30);
+  render();
+}
+function flush() {
+  timer = null;
+  for (const [id, pos] of Object.entries(queued)) post("/goal", { id: +id, pos });
+  queued = {};
+}
+function post(path, body) {
+  return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                       body: JSON.stringify(body ?? {}) });
+}
+function stop() {
+  playing++;
+  for (const id of IDS) delete local[id];
+  queued = {};
+  post("/hold");
+  toast("Stopped.");
+}
+
+// ---------- presets ----------
+// Built-ins are written in degrees from the straight-up reference, so they only
+// make sense once the twin is calibrated. Joints a preset doesn't list stay put.
+const POSES = [
+  { name: "Straight up",   deg: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } },
+  { name: "Reach forward", deg: { 2: 60, 3: 30, 4: 0, 5: 0 } },
+  { name: "Look down",     deg: { 2: 20, 3: 70, 4: 90 } },
+  { name: "Turn left",     deg: { 1: -60 } },
+  { name: "Center",        deg: { 1: 0 } },
+  { name: "Turn right",    deg: { 1: 60 } },
+  { name: "Gripper open",  deg: { 6: 45 } },
+  { name: "Gripper close", deg: { 6: 0 } },
+];
+// A move is a list of poses (keyframes) played one after another.
+const MOVES = {
+  "Wave 👋":    [{ 2: 0, 3: 40, 4: 0, 5: 0 }, { 4: 35 }, { 4: -35 }, { 4: 35 }, { 4: -35 }, { 4: 0 }],
+  "Nod":        [{ 2: 15, 3: 30, 4: 0 }, { 4: 40 }, { 4: 0 }, { 4: 40 }, { 4: 0 }],
+  "Shake no":   [{ 1: 0, 2: 15, 3: 30, 4: 20 }, { 1: -25 }, { 1: 25 }, { 1: -25 }, { 1: 25 }, { 1: 0 }],
+  "Dance 🕺":   [{ 1: -30, 2: 20, 3: 40, 4: -20 }, { 1: 30, 4: 20, 6: 40 }, { 1: -30, 4: -20, 6: 0 },
+                 { 1: 30, 4: 20, 6: 40 }, { 1: 0, 2: 0, 3: 0, 4: 0, 6: 0 }],
+};
+
+function degreesToPose(deg) {
+  const pose = {};
+  for (const [k, d] of Object.entries(deg)) {
+    const id = +k, [lo, hi] = angleRange(id);
+    pose[id] = toPos(id, Math.min(hi, Math.max(lo, d / DEG)));
+  }
+  return pose;
+}
+// Send a pose; returns roughly how long (ms) the slowest joint needs to get there.
+function goTo(pose) {
+  let longest = 0;
+  for (const [k, pos] of Object.entries(pose)) {
+    const id = +k;
+    longest = Math.max(longest, Math.abs(pos - targetPos(id)) * RAD_PER_STEP * DEG);
+    local[id] = { pos, until: performance.now() + 600 };
+  }
+  post("/pose", { pose });
+  render();
+  return longest / (state?.speed ?? 50) * 1000 + 250;   // ui.py moves at most state.speed deg/s
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+let playing = 0;   // bumped by every new preset or Stop, which cancels a running move
+async function play(name, btn) {
+  const run = ++playing;
+  btn.classList.add("playing");
+  for (const frame of MOVES[name]) {
+    if (run !== playing) break;
+    await sleep(goTo(degreesToPose(frame)));
+  }
+  btn.classList.remove("playing");
+}
+
+function button(parent, label, onclick) {
+  const b = document.createElement("button");
+  b.textContent = label; b.onclick = onclick; parent.appendChild(b);
+  return b;
+}
+const calibratedOnly = [];
+for (const p of POSES)
+  calibratedOnly.push(button(document.getElementById("poses"), p.name, () => { playing++; goTo(degreesToPose(p.deg)); }));
+for (const name of Object.keys(MOVES)) {
+  const b = button(document.getElementById("moves"), name, () => play(name, b));
+  calibratedOnly.push(b);
+}
+
+let shownPresets = "";
+function renderMine(presets) {
+  const key = JSON.stringify(presets);
+  if (key === shownPresets) return;
+  shownPresets = key;
+  const el = document.getElementById("mine");
+  el.innerHTML = Object.keys(presets).length ? "" : '<p class="hint">None yet. Pose the arm, then save it.</p>';
+  for (const [name, pose] of Object.entries(presets)) {
+    const row = document.createElement("div"); row.className = "row";
+    button(row, name, () => { playing++; goTo(pose); });
+    button(row, "✕", () => confirm(`Delete "${name}"?`) && post("/preset/delete", { name })).className = "del";
+    el.appendChild(row);
+  }
+}
+document.getElementById("save-pose").onclick = () => {
+  if (!state) return;
+  const name = prompt("Name this pose:");
+  if (name?.trim()) post("/preset/save", { name: name.trim(), pose: state.present });
+};
+
+// ---------- speed ----------
+const speedSlider = document.getElementById("speed");
+let speedHeld = false;
+speedSlider.addEventListener("pointerdown", () => speedHeld = true);
+addEventListener("pointerup", () => speedHeld = false);
+speedSlider.addEventListener("input", () => {
+  document.getElementById("speed-value").textContent = `${speedSlider.value}°/s`;
+  post("/speed", { speed: +speedSlider.value });
+});
+
+// ---------- panel ----------
+const rows = {};
+const jointsEl = document.getElementById("joints");
+for (const id of IDS) {
+  const row = document.createElement("div");
+  row.className = "joint";
+  row.innerHTML = `<span class="name">${id} · ${JOINTS[id].name}</span><span class="nums"></span>
+    <input type="range" step="0.5">
+    <div class="ends"><span>${JOINTS[id].ends[0]}</span><span>${JOINTS[id].ends[1]}</span></div>
+    <label class="flip"><input type="checkbox"> flip (screen moves opposite to the real arm)</label>`;
+  const slider = row.querySelector("input[type=range]");
+  const flip = row.querySelector("input[type=checkbox]");
+  slider.addEventListener("input", () => setTarget(id, slider.value / DEG));
+  slider.addEventListener("pointerdown", () => sliderHeld = id);
+  addEventListener("pointerup", () => { if (sliderHeld === id) sliderHeld = null; });
+  flip.addEventListener("change", () => { twin.flip[id] = flip.checked; post("/twin", twin); });
+  row.addEventListener("pointerdown", () => select(id));
+  rows[id] = { row, slider, flip, nums: row.querySelector(".nums") };
+  jointsEl.appendChild(row);
+}
+function select(id) {
+  selected = id;
+  for (const j of IDS) rows[j].row.classList.toggle("selected", j === id);
+  highlight();
+}
+
+document.getElementById("torque").onclick = () => post("/torque", { on: !state?.torque });
+document.getElementById("idle").onclick = () => post("/idle");
+document.getElementById("stop").onclick = stop;
+document.getElementById("reference").onclick = () => {
+  if (!state) return;
+  twin.zero = { ...state.present };
+  post("/twin", twin);
+  toast("Reference saved. Now check each joint's direction.");
+};
+
+addEventListener("keydown", e => {
+  if (e.key === "Escape") { stop(); return; }
+  if (e.target.matches?.("input")) return;   // a focused slider handles its own arrows
+  if (!selected || !state?.torque || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+  e.preventDefault();
+  const step = (e.shiftKey ? 5 : 1) / DEG * (e.key === "ArrowRight" ? 1 : -1);
+  setTarget(selected, toAngle(selected, targetPos(selected)) + step);
+});
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg; el.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+function render() {
+  if (!state) return;
+  const on = state.torque;
+  const btn = document.getElementById("torque");
+  btn.textContent = `Torque: ${on ? "on" : "off"}`;
+  btn.classList.toggle("on", on);
+  document.getElementById("mode-hint").textContent = on
+    ? "Holding. Drag the arm or a slider to move it."
+    : "Limp. Move the arm by hand; the screen follows it.";
+  document.getElementById("uncalibrated").hidden = Object.keys(twin.zero).length > 0;
+  let far = false;
+  for (const id of IDS) {
+    const r = rows[id], [lo, hi] = angleRange(id), t = targetPos(id), p = state.present[id];
+    r.slider.min = (lo * DEG).toFixed(1); r.slider.max = (hi * DEG).toFixed(1);
+    r.slider.disabled = !on;
+    if (sliderHeld !== id) r.slider.value = toAngle(id, on ? t : p) * DEG;
+    r.nums.textContent = `${(toAngle(id, p) * DEG).toFixed(0)}°` + (on ? ` → ${(toAngle(id, t) * DEG).toFixed(0)}°` : "");
+    r.flip.checked = !!twin.flip[id];
+    if (Math.abs(t - p) > 20) far = true;
+  }
+  poseArm(real, id => state.present[id]);
+  poseArm(ghost, targetPos);
+  ghost.root.visible = on && (far || !!drag);
+  const calibrated = Object.keys(twin.zero).length > 0;
+  for (const b of calibratedOnly) {
+    b.disabled = !calibrated;
+    b.title = calibrated ? "" : "Calibrate the twin first: these are defined relative to straight up";
+  }
+  renderMine(state.presets ?? {});
+  if (!speedHeld && state.speed != null) {
+    speedSlider.value = state.speed;
+    document.getElementById("speed-value").textContent = `${Math.round(state.speed)}°/s`;
+  }
+}
+
+// Poll the server ~30 times a second; skip a beat if the last request is still out.
+let inFlight = false, frames = 0, lastFpsAt = performance.now();
+setInterval(async () => {
+  if (inFlight) return;
+  inFlight = true;
+  try {
+    state = await (await fetch("/state")).json();
+    if (state.twin) twin = { zero: state.twin.zero ?? {}, flip: state.twin.flip ?? {} };
+    if (!state.torque) for (const id of IDS) delete local[id];
+    render();
+    frames++;
+    const now = performance.now();
+    if (now - lastFpsAt > 1000) {
+      document.getElementById("status").textContent = `live · ${frames} updates/s`;
+      frames = 0; lastFpsAt = now;
+    }
+  } catch {
+    document.getElementById("status").textContent = "lost connection to ui.py";
+  } finally { inFlight = false; }
+}, 33);
+</script>
+</body>
+</html>
