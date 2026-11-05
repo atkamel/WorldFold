@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-23 · **Branch:** `chore/cleanup` (to be merged into `main`) · **Phase:** Q, the quarter fold on
+**Updated:** 2026-11-05 · **Branch:** `chore/cleanup` (to be merged into `main`) · **Phase:** Q, the quarter fold on
 Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -106,6 +106,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-05 · **SO-101 two-arm teleop:** `hardware/so101/` drives one or two arms (`arms.json`, calibration per arm in `arms/<name>/`), mirror mode (the other arm copies the leader, pan and roll flipped), laptop page moves the gripper by IK (WASD/R/F camera-relative, arrows tilt/roll, drag the fingertip ball), phone page picks its arm; checked against a fake servo bus in headless Chrome, not yet on hardware; fast suite 226 passed + #15 · (this commit)
 - 2026-11-05 · **SO-101 hardware:** real-arm scripts from `lerobot-env` into `hardware/so101/` (servo limit calibration, idle pose, web control panel with 3D twin, phone teleop); no tests touched · (this commit)
 - 2026-10-23 · **Cleanup check (WATcloud 712165):** new layout runs in Isaac end to end; first `quarter2` folds, n = 2: fold 1 broke in 1/2, fold-2 grasps held 1/4, both endings invalid (results.md) · (this commit)
 - 2026-10-23 · **Repo cleanup:** run outputs and videos untracked (17 showcase videos kept), retired code deleted (weld, once-per-fold RL, Roy profiles, old quarter profiles, one-off probes, IQL, verifier, early PPO/MolmoAct), `isaac/` split into subpackages, `mujuco/` → `mujoco_sim/`, docs rewritten; fast suite 226 passed + #15, slow 12 passed · (this commit)

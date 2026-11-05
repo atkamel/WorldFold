@@ -32,6 +32,7 @@
            background: var(--bg); color: var(--ink); font: inherit; cursor: pointer; }
   button.on { background: var(--ok); color: #fff; border-color: var(--ok); }
   button.stop { background: var(--stop); color: #fff; border-color: var(--stop); font-weight: 600; }
+  #tabs button.active { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
   .hint { color: var(--muted); font-size: 12px; margin: 0; }
   .banner { background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
   .joint { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px;
@@ -51,6 +52,8 @@
   #mine .row { display: flex; gap: 6px; }
   #mine .del { flex: 0 0 34px; color: var(--muted); }
   section { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; font-size: 12px; color: var(--muted); align-items: center; }
+  .keys > span:nth-child(odd) { white-space: nowrap; }
   ol { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
   kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
   @media (max-width: 760px) {
@@ -63,16 +66,19 @@
 <div id="view">
   <div class="overlay" id="status">connecting…</div>
   <div class="overlay" id="toast"></div>
-  <div class="overlay" id="help">Drag a part of the arm to turn its joint · drag empty space to orbit ·
-    solid = real arm, ghost = where you're sending it · orange arrow = the robot's front</div>
+  <div class="overlay" id="help">Keys move the gripper as seen from this view · drag the orange ball to move it
+    (Shift-drag: up/down) · drag another part to turn its joint · drag empty space to orbit ·
+    solid = real arm, ghost = where you're sending it</div>
 </div>
 <aside>
   <h1>SO-101 follower</h1>
+  <div class="buttons" id="tabs" hidden></div>
   <div class="buttons">
     <button id="torque">Torque: off</button>
     <button id="idle">Go to idle</button>
     <button id="stop" class="stop">Stop <kbd>Esc</kbd></button>
   </div>
+  <button id="mirror" hidden>Mirror: off</button>
   <p class="hint" id="mode-hint"></p>
   <div class="joint" id="speed-row">
     <span class="name">Speed</span><span class="nums" id="speed-value"></span>
@@ -80,7 +86,20 @@
     <div class="ends"><span>slow</span><span>fast</span></div>
   </div>
   <div class="banner" id="uncalibrated" hidden>Twin not calibrated yet, so on-screen angles won't
-    match the real arm. See "Twin calibration" below.</div>
+    match the real arm and the keys can't move the gripper. See "Twin calibration" below.</div>
+  <section>
+    <strong>Keyboard</strong>
+    <div class="keys">
+      <span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></span><span>move over the table, as seen on screen</span>
+      <span><kbd>R</kbd> <kbd>F</kbd></span><span>up / down</span>
+      <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>tilt the gripper; its fingertips stay put</span>
+      <span><kbd>←</kbd> <kbd>→</kbd></span><span>roll the gripper</span>
+      <span><kbd>Space</kbd></span><span>open / close</span>
+      <span>hold <kbd>Shift</kbd></span><span>slow, for fine moves</span>
+      <span data-two hidden><kbd>Tab</kbd></span><span data-two hidden>switch arm (or click it)</span>
+      <span data-two hidden><kbd>M</kbd></span><span data-two hidden>mirror: the other arm copies this one</span>
+    </div>
+  </section>
   <section>
     <strong>Poses</strong>
     <div class="grid" id="poses"></div>
@@ -91,8 +110,7 @@
     <button id="save-pose">Save current pose…</button>
   </section>
   <div id="joints"></div>
-  <p class="hint">Click a joint (here or on the arm), then <kbd>←</kbd> <kbd>→</kbd> to nudge 1°,
-    <kbd>Shift</kbd> for 5°.</p>
+  <p class="hint">Sliders turn one joint at a time, for fine adjustments.</p>
   <section>
     <strong>Twin calibration</strong>
     <ol>
@@ -130,93 +148,140 @@ const JOINTS = {
 const RAD_PER_STEP = 2 * Math.PI / 4096;
 const DEG = 180 / Math.PI;
 
+// Arm geometry in cm, shared by the 3D model and the gripper IK (SO-101 URDF, rounded).
+const SHOULDER_H = 12;          // table to the shoulder-lift axis
+const L1 = 11.6, L2 = 13.5;     // shoulder -> elbow, elbow -> wrist flex
+const WRIST_TO_ROLL = 6.1;      // wrist flex axis -> wrist roll motor
+const L3 = 15.9;                // wrist flex axis -> the point between the fingertips
+
+// Keyboard speeds; Shift multiplies them by SLOW.
+const MOVE_CM_S = 10, TILT_DEG_S = 60, ROLL_DEG_S = 90, SLOW = 0.25;
+const MAX_JUMP = 30;            // deg; an IK step that swings a joint further is refused
+const NEAR_AXIS = 2;            // cm; fingertips this close above the pan axis keep the current pan
+const GRIP_OPEN = 45;           // deg, same as the "Gripper open" pose
+
 let state = null;
-let twin = { zero: {}, flip: {} };
-const local = {};        // id -> { pos, until }: targets set here that the server hasn't echoed yet
+let names = [];                 // arm names, in arms.json order
+let active = null;              // the arm the keys, panel and gripper drag act on
+const twins = {};               // arm -> { zero, flip }
+const local = {};               // arm -> id -> { pos, until }: targets set here that the server hasn't echoed yet
 let selected = null, hovered = null, drag = null, sliderHeld = null;
 
 // ---------- encoder <-> angle ----------
 // angle = sign * (encoder - zero) in radians, zero = encoder value at "straight up".
-const zero = id => twin.zero[id] ?? 2047;
-const sign = id => (twin.flip[id] ? -1 : 1);
-const toAngle = (id, pos) => sign(id) * (pos - zero(id)) * RAD_PER_STEP;
-const toPos = (id, a) => Math.round(zero(id) + sign(id) * a / RAD_PER_STEP);
-function angleRange(id) {
-  const [lo, hi] = state.limits[id].map(p => toAngle(id, p));
+const twinOf = arm => twins[arm] ?? { zero: {}, flip: {} };
+const calibrated = arm => Object.keys(twinOf(arm).zero).length > 0;
+const zero = (arm, id) => twinOf(arm).zero[id] ?? 2047;
+const sign = (arm, id) => (twinOf(arm).flip[id] ? -1 : 1);
+const toAngle = (arm, id, pos) => sign(arm, id) * (pos - zero(arm, id)) * RAD_PER_STEP;
+const toPos = (arm, id, a) => Math.round(zero(arm, id) + sign(arm, id) * a / RAD_PER_STEP);
+function angleRange(arm, id) {
+  const [lo, hi] = state.arms[arm].limits[id].map(p => toAngle(arm, id, p));
   return [Math.min(lo, hi), Math.max(lo, hi)];
 }
-function targetPos(id) {
-  const l = local[id];
-  return l && (drag?.id === id || performance.now() < l.until) ? l.pos : state.target[id];
+function targetPos(arm, id) {
+  const l = local[arm]?.[id];
+  return l && (drag?.arm === arm || performance.now() < l.until) ? l.pos : state.arms[arm].target[id];
 }
+const targetDeg = (arm, id) => toAngle(arm, id, targetPos(arm, id)) * DEG;
 
 // ---------- 3D model ----------
 // Each joint is a THREE.Group nested inside the previous one, so turning a
 // joint carries everything after it, like the real arm. All angles 0 = straight up.
+// Model sizes are in cm; the world group scales them to scene units of 10 cm.
 const view = document.getElementById("view");
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 50);
-camera.position.set(5.2, 3.6, 3.4);
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(devicePixelRatio);
 view.appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 1.5, 0);
 controls.enableDamping = true;
 scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 2.2));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(3, 6, 4); scene.add(sun);
-scene.add(new THREE.GridHelper(6, 12, 0x999999, 0xcccccc));
-const front = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0.6, 0.01, 0), 1.1, 0xd9632b, 0.25, 0.18);
-scene.add(front);
+scene.add(new THREE.GridHelper(10, 20, 0x999999, 0xcccccc));
+const world = new THREE.Group(); world.scale.setScalar(0.1); scene.add(world);
 
 const BODY = 0xf2f0ea, MOTOR = 0x2a2a28, JAW = 0xd9632b;
 
-function buildArm(ghost) {
+function buildArm(name, ghost) {
   const meshes = [];
   const material = color => new THREE.MeshStandardMaterial({
     color: ghost ? 0x4a90d9 : color, roughness: 0.55,
     transparent: ghost, opacity: ghost ? 0.25 : 1, depthWrite: !ghost });
-  function box(parent, joint, w, h, d, color, y = h / 2, x = 0) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material(color));
-    m.position.set(x, y, 0); m.userData.joint = joint; parent.add(m); meshes.push(m);
+  function add(parent, joint, geometry, color, x, y) {
+    const m = new THREE.Mesh(geometry, material(color));
+    m.position.set(x, y, 0); m.userData = { arm: name, joint }; parent.add(m); meshes.push(m);
+    return m;
   }
+  const box = (parent, joint, w, h, d, color, y = h / 2, x = 0) =>
+    add(parent, joint, new THREE.BoxGeometry(w, h, d), color, x, y);
   function group(parent, joint, x, y) {
     const g = new THREE.Group(); g.position.set(x, y, 0); parent.add(g);
-    if (JOINTS[joint].axis === "z" && joint !== 6) {      // motor hub drawn along the pivot axis
-      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.34, 24), material(MOTOR));
-      hub.rotation.x = Math.PI / 2; hub.userData.joint = joint; g.add(hub); meshes.push(hub);
-    }
+    if (JOINTS[joint].axis === "z" && joint !== 6)        // motor hub drawn along the pivot axis
+      add(g, joint, new THREE.CylinderGeometry(1.6, 1.6, 3.4, 24), MOTOR, 0, 0).rotation.x = Math.PI / 2;
     return g;
   }
-  // Rough SO-101 proportions (1 unit ~ 10 cm)
-  const root = new THREE.Group(); scene.add(root);
-  if (!ghost) box(root, 0, 0.9, 0.35, 0.9, BODY);
+  // Base frame: x = the arm's front, y = up, z = its right. The layout places it.
+  const base = new THREE.Group(); world.add(base);
+  if (!ghost) {
+    box(base, 0, 9, 3.5, 9, BODY);
+    base.add(new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(6, 0.1, 0), 11, JAW, 2.5, 1.8));
+  }
+  const fingers = L3 - WRIST_TO_ROLL;
   const g = {};
-  g[1] = group(root, 1, 0, 0.35);  box(g[1], 1, 0.5, 0.65, 0.5, MOTOR);
-  g[2] = group(g[1], 2, 0, 0.85);  box(g[2], 2, 0.28, 1.16, 0.3, BODY);
-  g[3] = group(g[2], 3, 0, 1.16);  box(g[3], 3, 0.26, 1.35, 0.28, BODY);
-  g[4] = group(g[3], 4, 0, 1.35);  box(g[4], 4, 0.24, 0.45, 0.26, BODY);
-  g[5] = group(g[4], 5, 0, 0.45);  box(g[5], 5, 0.36, 0.25, 0.3, MOTOR);
-                                   box(g[5], 5, 0.08, 0.8, 0.22, JAW, 0.65, -0.12);
-  g[6] = group(g[5], 6, 0.12, 0.25); box(g[6], 6, 0.08, 0.8, 0.22, JAW, 0.4);
-  return { root, g, meshes };
+  g[1] = group(base, 1, 0, 3.5);              box(g[1], 1, 5, 6.5, 5, MOTOR);
+  g[2] = group(g[1], 2, 0, SHOULDER_H - 3.5); box(g[2], 2, 2.8, L1, 3, BODY);
+  g[3] = group(g[2], 3, 0, L1);               box(g[3], 3, 2.6, L2, 2.8, BODY);
+  g[4] = group(g[3], 4, 0, L2);               box(g[4], 4, 2.4, WRIST_TO_ROLL, 2.6, BODY);
+  g[5] = group(g[4], 5, 0, WRIST_TO_ROLL);    box(g[5], 5, 3.6, 2.5, 3, MOTOR);
+                                              box(g[5], 5, 0.8, fingers - 1.8, 2.2, JAW, (fingers + 1.8) / 2, -1.2);
+  g[6] = group(g[5], 6, 1.2, 2.5);            box(g[6], 6, 0.8, fingers - 2.5, 2.2, JAW);
+  // The handle for dragging the gripper: the point between the fingertips.
+  const tip = add(g[5], "tip", new THREE.SphereGeometry(1.1, 20, 14), JAW, 0, fingers);
+  return { base, g, meshes, tip };
 }
-const real = buildArm(false);
-const ghost = buildArm(true);
 
-function poseArm(arm, posOf) {
+let models = null;              // arm -> { real, ghost }
+const ring = new THREE.Mesh(new THREE.RingGeometry(7.5, 8.5, 48),
+  new THREE.MeshBasicMaterial({ color: JAW, side: THREE.DoubleSide }));
+ring.rotation.x = -Math.PI / 2; ring.position.y = 0.05;
+
+// Side by side: both face +x, "left" at -z. Facing: they face each other across z = 0.
+function buildModels() {
+  models = {};
+  const half = (state.spacing_cm ?? 40) / 2, facing = state.layout === "facing";
+  names.forEach((name, i) => {
+    const side = names.length === 1 ? 0 : i === 0 ? -1 : 1;
+    models[name] = { real: buildArm(name, false), ghost: buildArm(name, true) };
+    for (const m of Object.values(models[name])) {
+      m.base.position.set(0, 0, side * half);
+      if (facing) m.base.rotation.y = side * Math.PI / 2;
+    }
+  });
+  ring.visible = names.length > 1;
+  // Default view: from behind and above the arms, so W on the keyboard is their forward.
+  camera.position.set(...(names.length > 1 ? [-7.5, 7.5, 0] : [-6.5, 7.2, 1.5]));
+  controls.target.set(1.2, names.length > 1 ? 0.6 : 1.6, 0);
+}
+
+function poseArm(model, arm, posOf) {
   for (const id of IDS) {
-    let a = toAngle(id, posOf(id));
+    let a = toAngle(arm, id, posOf(id));
     if (id === 6) a = Math.max(0, a);          // the jaw only opens outward
     // Negative rotation: tilts +Y toward +X (forward) and turns clockwise seen from above.
-    arm.g[id].rotation[JOINTS[id].axis] = -a;
+    model.g[id].rotation[JOINTS[id].axis] = -a;
   }
 }
 
+const isGripper = joint => joint === 5 || joint === 6 || joint === "tip";
 function highlight() {
-  for (const m of real.meshes) {
-    const j = m.userData.joint;
-    m.material.emissive.setHex(j && j === drag?.id ? 0x6a2a0a : j && (j === hovered || j === selected) ? 0x3a1a08 : 0);
+  if (!models) return;
+  const same = (a, b) => a && b && a.arm === b.arm && (a.joint === b.joint || isGripper(a.joint) && isGripper(b.joint));
+  for (const { real } of Object.values(models)) for (const m of real.meshes) {
+    const u = m.userData;
+    m.material.emissive.setHex(!u.joint ? 0 : same(u, drag) ? 0x6a2a0a
+      : same(u, hovered) || (u.arm === active && u.joint === selected) ? 0x3a1a08 : 0);
   }
 }
 
@@ -225,12 +290,141 @@ function resize() {
   renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
 }
 addEventListener("resize", resize); resize();
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+renderer.setAnimationLoop(now => { keyStep(now); controls.update(); renderer.render(scene, camera); });
+
+// ---------- gripper kinematics ----------
+// In an arm's base frame, in cm: x forward, y up, z right. Angles in degrees,
+// 0 = straight up, positive = right / forward / clockwise. pitch = the gripper's
+// angle from vertical (a2 + a3 + a4): 90 = level, 180 = pointing straight down.
+function fk(deg) {
+  const [pan, a2, a23, pitch] = [deg[1], deg[2], deg[2] + deg[3], deg[2] + deg[3] + deg[4]].map(d => d / DEG);
+  const reach = L1 * Math.sin(a2) + L2 * Math.sin(a23) + L3 * Math.sin(pitch);
+  const height = SHOULDER_H + L1 * Math.cos(a2) + L2 * Math.cos(a23) + L3 * Math.cos(pitch);
+  return { p: new THREE.Vector3(reach * Math.cos(pan), height, reach * Math.sin(pan)), pitch: pitch * DEG };
+}
+// Inverse: the pan aims the arm's plane at the point; in that plane the wrist
+// sits L3 back from the fingertips along the gripper, and the shoulder and elbow
+// form a 2-link arm to it (law of cosines). Every point has two answers (elbow
+// bent forward or back); prev keeps the one the arm is in. null = out of reach.
+function ik(p, pitch, prev) {
+  let pan = Math.atan2(p.z, p.x) * DEG, r = Math.hypot(p.x, p.z);
+  if (r < NEAR_AXIS) {
+    // Right above the base any pan fits, so keep it and move within the arm's plane.
+    pan = prev[1];
+    r = p.x * Math.cos(pan / DEG) + p.z * Math.sin(pan / DEG);
+  } else if (Math.abs(wrap180(pan - prev[1])) > 90) {
+    pan = wrap180(pan + 180); r = -r;      // leaning back over the base
+  }
+  const reach = r - L3 * Math.sin(pitch / DEG), height = p.y - SHOULDER_H - L3 * Math.cos(pitch / DEG);
+  const d = Math.hypot(reach, height);
+  if (d > L1 + L2 || d < Math.abs(L1 - L2)) return null;
+  const a3 = (prev[3] < 0 ? -1 : 1) * Math.acos(Math.max(-1, Math.min(1, (d * d - L1 * L1 - L2 * L2) / (2 * L1 * L2))));
+  const a2 = Math.atan2(reach, height) - Math.atan2(L2 * Math.sin(a3), L1 + L2 * Math.cos(a3));
+  return { 1: pan, 2: a2 * DEG, 3: a3 * DEG, 4: pitch - (a2 + a3) * DEG };
+}
+const wrap180 = d => ((d % 360) + 540) % 360 - 180;
+
+// The gripper pose being driven ({ arm, p, pitch, deg }), anchored at the arm's targets.
+function anchor(arm) {
+  const deg = Object.fromEntries([1, 2, 3, 4, 5].map(id => [id, targetDeg(arm, id)]));
+  return { arm, ...fk(deg), deg };
+}
+// Move the gripper to (p, pitch) if the arm can get there smoothly; true if it moved.
+function moveGripper(c, p, pitch) {
+  const deg = ik(p, pitch, c.deg);
+  if (!deg) return false;
+  for (const id of [1, 2, 3, 4]) {
+    // Refuse a step past a joint limit (unless it backs away from one) or a sudden swing.
+    const [lo, hi] = angleRange(c.arm, id).map(a => a * DEG);
+    const past = d => Math.max(lo - d, d - hi, 0);
+    if (past(deg[id]) > past(c.deg[id]) + 0.01 || Math.abs(deg[id] - c.deg[id]) > MAX_JUMP) return false;
+  }
+  Object.assign(c.deg, deg);
+  c.p = fk(c.deg).p; c.pitch = pitch;      // where it really went (near the axis, only the in-plane part)
+  setTargets(c.arm, deg);
+  return true;
+}
+function canDrive(arm, needsTwin = true) {
+  if (!state.arms[arm].torque) { toast("Torque is off. Turn it on to drive the arm."); return false; }
+  if (needsTwin && !calibrated(arm)) { toast("Calibrate the twin first: the gripper moves are worked out from it."); return false; }
+  return true;
+}
+
+// ---------- keyboard ----------
+// Held keys move the gripper a little every frame. Directions on the table are
+// the camera's: W = away from you on screen, D = to the right on screen.
+const held = new Set();
+let keyDrive = null, lastFrame = 0, blockedToast = 0;
+const MOVE_KEYS = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyR", "KeyF", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+const UP = new THREE.Vector3(0, 1, 0);
+function keyStep(now) {
+  const dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
+  const on = code => held.has(code) ? 1 : 0;
+  if (!state || !active || !MOVE_KEYS.some(k => held.has(k)) || !state.arms[active].torque || !calibrated(active)) {
+    keyDrive = null;
+    return;
+  }
+  if (keyDrive?.arm !== active) keyDrive = anchor(active);
+  const k = (held.has("ShiftLeft") || held.has("ShiftRight") ? SLOW : 1) * dt;
+
+  const fwd = camera.getWorldDirection(new THREE.Vector3()).setY(0);
+  if (fwd.lengthSq() < 1e-4) fwd.copy(UP).applyQuaternion(camera.quaternion).setY(0);   // looking straight down
+  fwd.normalize();
+  const move = new THREE.Vector3()
+    .addScaledVector(fwd, on("KeyW") - on("KeyS"))
+    .addScaledVector(fwd.clone().cross(UP), on("KeyD") - on("KeyA"))
+    .applyQuaternion(models[active].real.base.quaternion.clone().invert());   // into the arm's frame
+  move.y = on("KeyR") - on("KeyF");
+  const tilt = on("ArrowDown") - on("ArrowUp");   // down = point the gripper further down
+  if (move.lengthSq() || tilt) {
+    const p = keyDrive.p.clone().addScaledVector(move.normalize(), MOVE_CM_S * k);
+    if (!moveGripper(keyDrive, p, keyDrive.pitch + tilt * TILT_DEG_S * k) && now - blockedToast > 1500) {
+      blockedToast = now;
+      toast("The arm can't go further that way.");
+    }
+  }
+  const roll = on("ArrowRight") - on("ArrowLeft");
+  if (roll) {
+    const [lo, hi] = angleRange(active, 5).map(a => a * DEG);
+    keyDrive.deg[5] = Math.min(hi, Math.max(lo, keyDrive.deg[5] + roll * ROLL_DEG_S * k));
+    setTargets(active, { 5: keyDrive.deg[5] });
+  }
+}
+function toggleGripper() {
+  if (!canDrive(active)) return;
+  const [lo, hi] = angleRange(active, 6).map(a => a * DEG);
+  const open = Math.min(hi, GRIP_OPEN), closed = Math.max(0, lo);
+  setTargets(active, { 6: targetDeg(active, 6) > (open + closed) / 2 ? closed : open });
+}
+addEventListener("keydown", e => {
+  if (e.key === "Escape") { stop(); return; }
+  if (!state || e.metaKey || e.ctrlKey || e.altKey) return;   // leave browser shortcuts alone
+  if (e.repeat && !held.has(e.code)) return;                   // a key still down from before Stop
+  if (MOVE_KEYS.includes(e.code)) {
+    e.preventDefault();
+    if (!e.repeat) canDrive(active);
+  } else if (e.code === "Space") {
+    e.preventDefault();
+    if (!e.repeat) toggleGripper();
+  } else if (e.code === "Tab") {
+    e.preventDefault();
+    if (!e.repeat) setActive(names[(names.indexOf(active) + 1) % names.length]);
+  } else if (e.code === "KeyM") {
+    if (!e.repeat) toggleMirror();
+  }
+  held.add(e.code);
+});
+addEventListener("keyup", e => held.delete(e.code));
+addEventListener("blur", () => held.clear());   // the window lost focus: let go of everything
+// The keys drive the arm, so never leave a button or slider focused (Space would press it).
+addEventListener("pointerup", () => document.activeElement?.blur?.());
 
 // ---------- dragging the arm ----------
-// To turn a joint, intersect the mouse ray with the plane that the joint spins
-// in (perpendicular to its axis, through its pivot), then measure how far the
-// hit point swept around the pivot. That's literally "grab and turn".
+// The gripper (or the ball between its fingertips): drag it over the table, or
+// with Shift up and down. Any other part: turn its joint. To turn a joint,
+// intersect the mouse ray with the plane that the joint spins in (perpendicular
+// to its axis, through its pivot), then measure how far the hit point swept
+// around the pivot. That's literally "grab and turn".
 const raycaster = new THREE.Raycaster();
 function setRay(e) {
   const r = renderer.domElement.getBoundingClientRect();
@@ -238,13 +432,14 @@ function setRay(e) {
                                             -((e.clientY - r.top) / r.height) * 2 + 1), camera);
 }
 function pick(e) {
+  if (!models) return null;
   setRay(e);
-  const hit = raycaster.intersectObjects(real.meshes)[0];
-  return hit?.object.userData.joint || null;
+  const hit = raycaster.intersectObjects(Object.values(models).flatMap(m => m.real.meshes))[0];
+  return hit?.object.userData.joint ? hit.object.userData : null;
 }
-function spinPlaneVector(id) {
+function spinPlaneVector(arm, id) {
   // Measured on the ghost: it shows the target, which is what we're turning.
-  const g = ghost.g[id];
+  const g = models[arm].ghost.g[id];
   const axis = new THREE.Vector3(...(JOINTS[id].axis === "y" ? [0, 1, 0] : [0, 0, 1]))
     .applyQuaternion(g.parent.getWorldQuaternion(new THREE.Quaternion()));
   const pivot = g.getWorldPosition(new THREE.Vector3());
@@ -254,28 +449,54 @@ function spinPlaneVector(id) {
   const v = hit.sub(pivot);
   return v.length() > 0.05 ? { v, axis } : null;
 }
+// Where the mouse ray meets the gripper drag's plane, in the arm's frame (cm).
+function tipHit(d) {
+  const hit = raycaster.ray.intersectPlane(d.plane, new THREE.Vector3());
+  return hit && models[d.arm].real.base.worldToLocal(hit);
+}
 
 const canvas = renderer.domElement;
 canvas.addEventListener("pointerdown", e => {
-  const id = pick(e);
-  if (!id) return;                       // empty space: let OrbitControls orbit
-  select(id);
-  if (!state?.torque) { toast("Torque is off. Turn it on to drive the arm."); return; }
+  const part = pick(e);
+  if (!part) return;                     // empty space: let OrbitControls orbit
+  setActive(part.arm);
+  if (!isGripper(part.joint)) select(part.joint);
+  if (!canDrive(part.arm, isGripper(part.joint))) return;   // turning one joint works uncalibrated
   controls.enabled = false;
   canvas.setPointerCapture(e.pointerId);
-  setRay(e);
-  drag = { id, angle: toAngle(id, targetPos(id)), last: spinPlaneVector(id), x: e.clientX };
+  if (isGripper(part.joint)) {
+    // A horizontal plane through the ghost's fingertips; with Shift, an upright one facing the camera.
+    const at = models[part.arm].ghost.tip.getWorldPosition(new THREE.Vector3());
+    const normal = e.shiftKey ? camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize() : UP;
+    drag = { arm: part.arm, joint: "tip", gripper: anchor(part.arm), vertical: e.shiftKey,
+             plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, at) };
+    drag.start = tipHit(drag);
+    drag.p0 = drag.gripper.p.clone();
+  } else {
+    drag = { arm: part.arm, joint: part.joint, angle: targetDeg(part.arm, part.joint) / DEG,
+             last: spinPlaneVector(part.arm, part.joint), x: e.clientX };
+  }
   highlight();
 });
 canvas.addEventListener("pointermove", e => {
   if (!drag) {
-    const id = pick(e);
-    if (id !== hovered) { hovered = id; canvas.style.cursor = id ? "grab" : ""; highlight(); }
+    const part = pick(e);
+    if (part?.arm !== hovered?.arm || part?.joint !== hovered?.joint) {
+      hovered = part; canvas.style.cursor = part ? "grab" : ""; highlight();
+    }
     return;
   }
   canvas.style.cursor = "grabbing";
   setRay(e);
-  const now = spinPlaneVector(drag.id);
+  if (drag.joint === "tip") {
+    const hit = drag.start && tipHit(drag);
+    if (!hit) return;
+    const shift = hit.sub(drag.start);
+    if (drag.vertical) shift.setX(0).setZ(0);
+    moveGripper(drag.gripper, drag.p0.clone().add(shift), drag.gripper.pitch);
+    return;
+  }
+  const now = spinPlaneVector(drag.arm, drag.joint);
   let turned;
   if (now && drag.last) {
     // Signed angle swept around the axis (right-hand rule); rotation = -angle, so negate.
@@ -285,9 +506,9 @@ canvas.addEventListener("pointermove", e => {
   }
   drag.last = now; drag.x = e.clientX;
   drag.angle += turned;
-  const [lo, hi] = angleRange(drag.id);
+  const [lo, hi] = angleRange(drag.arm, drag.joint);
   drag.angle = Math.min(hi, Math.max(lo, drag.angle));
-  setTarget(drag.id, drag.angle);
+  setTargets(drag.arm, { [drag.joint]: drag.angle * DEG });
 });
 function endDrag() {
   if (!drag) return;
@@ -297,19 +518,21 @@ canvas.addEventListener("pointerup", endDrag);
 canvas.addEventListener("pointercancel", endDrag);
 
 // ---------- sending targets ----------
-// Goals are batched and sent at most every 30 ms; the latest value always goes out.
+// Goals are batched and sent at most every 30 ms, one request per arm; the latest value always goes out.
 let queued = {}, timer = null;
-function setTarget(id, angle) {
-  const [lo, hi] = angleRange(id);
-  const pos = toPos(id, Math.min(hi, Math.max(lo, angle)));
-  local[id] = { pos, until: performance.now() + 600 };
-  queued[id] = pos;
+function setTargets(arm, deg) {          // deg: { id: degrees }, clamped to the joint limits
+  for (const [k, d] of Object.entries(deg)) {
+    const id = +k, [lo, hi] = angleRange(arm, id);
+    const pos = toPos(arm, id, Math.min(hi, Math.max(lo, d / DEG)));
+    (local[arm] ??= {})[id] = { pos, until: performance.now() + 600 };
+    (queued[arm] ??= {})[id] = pos;
+  }
   if (!timer) timer = setTimeout(flush, 30);
   render();
 }
 function flush() {
   timer = null;
-  for (const [id, pos] of Object.entries(queued)) post("/goal", { id: +id, pos });
+  for (const [arm, pose] of Object.entries(queued)) post("/goal", { arm, pose });
   queued = {};
 }
 function post(path, body) {
@@ -318,10 +541,29 @@ function post(path, body) {
 }
 function stop() {
   playing++;
-  for (const id of IDS) delete local[id];
-  queued = {};
+  for (const arm of names) delete local[arm];
+  queued = {}; held.clear(); keyDrive = null;
   post("/hold");
   toast("Stopped.");
+}
+
+// ---------- arms ----------
+function setActive(arm) {
+  if (arm === active) return;
+  active = arm;
+  try { localStorage.setItem("arm", arm); } catch {}
+  keyDrive = null; selected = null;
+  models?.[arm].real.base.add(ring);
+  // Mirror mode follows you: the arm you drive leads, the other copies it.
+  if (state?.mirror && state.mirror !== arm) post("/mirror", { leader: arm });
+  for (const id of IDS) rows[id].row.classList.remove("selected");
+  highlight(); render();
+}
+function toggleMirror() {
+  if (names.length < 2) return;
+  if (!names.every(calibrated)) { toast("Calibrate both twins first: mirroring works in angles."); return; }
+  post("/mirror", { leader: state.mirror ? null : active });
+  toast(state.mirror ? "Mirror off." : `Mirror on: the other arm copies ${active}.`);
 }
 
 // ---------- presets ----------
@@ -334,7 +576,7 @@ const POSES = [
   { name: "Turn left",     deg: { 1: -60 } },
   { name: "Center",        deg: { 1: 0 } },
   { name: "Turn right",    deg: { 1: 60 } },
-  { name: "Gripper open",  deg: { 6: 45 } },
+  { name: "Gripper open",  deg: { 6: GRIP_OPEN } },
   { name: "Gripper close", deg: { 6: 0 } },
 ];
 // A move is a list of poses (keyframes) played one after another.
@@ -346,23 +588,23 @@ const MOVES = {
                  { 1: 30, 4: 20, 6: 40 }, { 1: 0, 2: 0, 3: 0, 4: 0, 6: 0 }],
 };
 
-function degreesToPose(deg) {
+function degreesToPose(arm, deg) {
   const pose = {};
   for (const [k, d] of Object.entries(deg)) {
-    const id = +k, [lo, hi] = angleRange(id);
-    pose[id] = toPos(id, Math.min(hi, Math.max(lo, d / DEG)));
+    const id = +k, [lo, hi] = angleRange(arm, id);
+    pose[id] = toPos(arm, id, Math.min(hi, Math.max(lo, d / DEG)));
   }
   return pose;
 }
 // Send a pose; returns roughly how long (ms) the slowest joint needs to get there.
-function goTo(pose) {
+function goTo(arm, pose) {
   let longest = 0;
   for (const [k, pos] of Object.entries(pose)) {
     const id = +k;
-    longest = Math.max(longest, Math.abs(pos - targetPos(id)) * RAD_PER_STEP * DEG);
-    local[id] = { pos, until: performance.now() + 600 };
+    longest = Math.max(longest, Math.abs(pos - targetPos(arm, id)) * RAD_PER_STEP * DEG);
+    (local[arm] ??= {})[id] = { pos, until: performance.now() + 600 };
   }
-  post("/pose", { pose });
+  post("/pose", { arm, pose });
   render();
   return longest / (state?.speed ?? 50) * 1000 + 250;   // ui.py moves at most state.speed deg/s
 }
@@ -370,11 +612,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 let playing = 0;   // bumped by every new preset or Stop, which cancels a running move
 async function play(name, btn) {
-  const run = ++playing;
+  const run = ++playing, arm = active;
   btn.classList.add("playing");
   for (const frame of MOVES[name]) {
     if (run !== playing) break;
-    await sleep(goTo(degreesToPose(frame)));
+    await sleep(goTo(arm, degreesToPose(arm, frame)));
   }
   btn.classList.remove("playing");
 }
@@ -386,30 +628,30 @@ function button(parent, label, onclick) {
 }
 const calibratedOnly = [];
 for (const p of POSES)
-  calibratedOnly.push(button(document.getElementById("poses"), p.name, () => { playing++; goTo(degreesToPose(p.deg)); }));
+  calibratedOnly.push(button(document.getElementById("poses"), p.name, () => { playing++; goTo(active, degreesToPose(active, p.deg)); }));
 for (const name of Object.keys(MOVES)) {
   const b = button(document.getElementById("moves"), name, () => play(name, b));
   calibratedOnly.push(b);
 }
 
 let shownPresets = "";
-function renderMine(presets) {
-  const key = JSON.stringify(presets);
+function renderMine(arm, presets) {
+  const key = arm + JSON.stringify(presets);
   if (key === shownPresets) return;
   shownPresets = key;
   const el = document.getElementById("mine");
   el.innerHTML = Object.keys(presets).length ? "" : '<p class="hint">None yet. Pose the arm, then save it.</p>';
   for (const [name, pose] of Object.entries(presets)) {
     const row = document.createElement("div"); row.className = "row";
-    button(row, name, () => { playing++; goTo(pose); });
-    button(row, "✕", () => confirm(`Delete "${name}"?`) && post("/preset/delete", { name })).className = "del";
+    button(row, name, () => { playing++; goTo(arm, pose); });
+    button(row, "✕", () => confirm(`Delete "${name}"?`) && post("/preset/delete", { arm, name })).className = "del";
     el.appendChild(row);
   }
 }
 document.getElementById("save-pose").onclick = () => {
   if (!state) return;
-  const name = prompt("Name this pose:");
-  if (name?.trim()) post("/preset/save", { name: name.trim(), pose: state.present });
+  const name = prompt(`Name this pose of the ${active} arm:`);
+  if (name?.trim()) post("/preset/save", { arm: active, name: name.trim(), pose: state.arms[active].present });
 };
 
 // ---------- speed ----------
@@ -434,10 +676,13 @@ for (const id of IDS) {
     <label class="flip"><input type="checkbox"> flip (screen moves opposite to the real arm)</label>`;
   const slider = row.querySelector("input[type=range]");
   const flip = row.querySelector("input[type=checkbox]");
-  slider.addEventListener("input", () => setTarget(id, slider.value / DEG));
+  slider.addEventListener("input", () => setTargets(active, { [id]: +slider.value }));
   slider.addEventListener("pointerdown", () => sliderHeld = id);
   addEventListener("pointerup", () => { if (sliderHeld === id) sliderHeld = null; });
-  flip.addEventListener("change", () => { twin.flip[id] = flip.checked; post("/twin", twin); });
+  flip.addEventListener("change", () => {
+    twins[active].flip[id] = flip.checked;
+    post("/twin", { arm: active, twin: twins[active] });
+  });
   row.addEventListener("pointerdown", () => select(id));
   rows[id] = { row, slider, flip, nums: row.querySelector(".nums") };
   jointsEl.appendChild(row);
@@ -448,24 +693,24 @@ function select(id) {
   highlight();
 }
 
-document.getElementById("torque").onclick = () => post("/torque", { on: !state?.torque });
-document.getElementById("idle").onclick = () => post("/idle");
+const tabs = document.getElementById("tabs");
+function buildTabs() {
+  tabs.hidden = names.length < 2;
+  for (const el of document.querySelectorAll("[data-two]")) el.hidden = names.length < 2;
+  document.getElementById("mirror").hidden = names.length < 2;
+  for (const name of names) button(tabs, name, () => setActive(name)).dataset.arm = name;
+}
+
+document.getElementById("torque").onclick = () => post("/torque", { arm: active, on: !state?.arms[active].torque });
+document.getElementById("idle").onclick = () => post("/idle", { arm: active });
 document.getElementById("stop").onclick = stop;
+document.getElementById("mirror").onclick = toggleMirror;
 document.getElementById("reference").onclick = () => {
   if (!state) return;
-  twin.zero = { ...state.present };
-  post("/twin", twin);
+  twins[active].zero = { ...state.arms[active].present };
+  post("/twin", { arm: active, twin: twins[active] });
   toast("Reference saved. Now check each joint's direction.");
 };
-
-addEventListener("keydown", e => {
-  if (e.key === "Escape") { stop(); return; }
-  if (e.target.matches?.("input")) return;   // a focused slider handles its own arrows
-  if (!selected || !state?.torque || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
-  e.preventDefault();
-  const step = (e.shiftKey ? 5 : 1) / DEG * (e.key === "ArrowRight" ? 1 : -1);
-  setTarget(selected, toAngle(selected, targetPos(selected)) + step);
-});
 
 let toastTimer;
 function toast(msg) {
@@ -475,34 +720,43 @@ function toast(msg) {
 }
 
 function render() {
-  if (!state) return;
-  const on = state.torque;
+  if (!state || !models) return;
+  const me = state.arms[active], on = me.torque;
   const btn = document.getElementById("torque");
   btn.textContent = `Torque: ${on ? "on" : "off"}`;
   btn.classList.toggle("on", on);
+  for (const b of tabs.children) {
+    b.textContent = `${b.dataset.arm} · ${state.arms[b.dataset.arm].torque ? "on" : "off"}`;
+    b.classList.toggle("active", b.dataset.arm === active);
+  }
+  const mirrorBtn = document.getElementById("mirror");
+  mirrorBtn.textContent = state.mirror ? `Mirror: on (${state.mirror} leads)` : "Mirror: off";
+  mirrorBtn.classList.toggle("on", !!state.mirror);
   document.getElementById("mode-hint").textContent = on
-    ? "Holding. Drag the arm or a slider to move it."
+    ? "Holding. Use the keys or drag the orange ball to move the gripper."
     : "Limp. Move the arm by hand; the screen follows it.";
-  document.getElementById("uncalibrated").hidden = Object.keys(twin.zero).length > 0;
-  let far = false;
+  document.getElementById("uncalibrated").hidden = calibrated(active);
   for (const id of IDS) {
-    const r = rows[id], [lo, hi] = angleRange(id), t = targetPos(id), p = state.present[id];
+    const r = rows[id], [lo, hi] = angleRange(active, id), t = targetPos(active, id), p = me.present[id];
     r.slider.min = (lo * DEG).toFixed(1); r.slider.max = (hi * DEG).toFixed(1);
     r.slider.disabled = !on;
-    if (sliderHeld !== id) r.slider.value = toAngle(id, on ? t : p) * DEG;
-    r.nums.textContent = `${(toAngle(id, p) * DEG).toFixed(0)}°` + (on ? ` → ${(toAngle(id, t) * DEG).toFixed(0)}°` : "");
-    r.flip.checked = !!twin.flip[id];
-    if (Math.abs(t - p) > 20) far = true;
+    if (sliderHeld !== id) r.slider.value = toAngle(active, id, on ? t : p) * DEG;
+    r.nums.textContent = `${(toAngle(active, id, p) * DEG).toFixed(0)}°` + (on ? ` → ${(toAngle(active, id, t) * DEG).toFixed(0)}°` : "");
+    r.flip.checked = !!twinOf(active).flip[id];
   }
-  poseArm(real, id => state.present[id]);
-  poseArm(ghost, targetPos);
-  ghost.root.visible = on && (far || !!drag);
-  const calibrated = Object.keys(twin.zero).length > 0;
+  for (const arm of names) {
+    const s = state.arms[arm], { real, ghost } = models[arm];
+    poseArm(real, arm, id => s.present[id]);
+    poseArm(ghost, arm, id => targetPos(arm, id));
+    const far = IDS.some(id => Math.abs(targetPos(arm, id) - s.present[id]) > 20);
+    ghost.base.visible = s.torque && (far || drag?.arm === arm || keyDrive?.arm === arm);
+    real.tip.visible = s.torque;
+  }
   for (const b of calibratedOnly) {
-    b.disabled = !calibrated;
-    b.title = calibrated ? "" : "Calibrate the twin first: these are defined relative to straight up";
+    b.disabled = !calibrated(active);
+    b.title = calibrated(active) ? "" : "Calibrate the twin first: these are defined relative to straight up";
   }
-  renderMine(state.presets ?? {});
+  renderMine(active, me.presets ?? {});
   if (!speedHeld && state.speed != null) {
     speedSlider.value = state.speed;
     document.getElementById("speed-value").textContent = `${Math.round(state.speed)}°/s`;
@@ -516,8 +770,18 @@ setInterval(async () => {
   inFlight = true;
   try {
     state = await (await fetch("/state")).json();
-    if (state.twin) twin = { zero: state.twin.zero ?? {}, flip: state.twin.flip ?? {} };
-    if (!state.torque) for (const id of IDS) delete local[id];
+    for (const [arm, s] of Object.entries(state.arms)) {
+      twins[arm] = { zero: s.twin?.zero ?? {}, flip: s.twin?.flip ?? {} };
+      if (!s.torque) delete local[arm];
+    }
+    if (!models) {
+      names = Object.keys(state.arms);
+      buildModels();
+      buildTabs();
+      let saved = null;
+      try { saved = localStorage.getItem("arm"); } catch {}
+      setActive(names.includes(saved) ? saved : names[0]);
+    }
     render();
     frames++;
     const now = performance.now();
@@ -525,8 +789,9 @@ setInterval(async () => {
       document.getElementById("status").textContent = `live · ${frames} updates/s`;
       frames = 0; lastFpsAt = now;
     }
-  } catch {
+  } catch (err) {
     document.getElementById("status").textContent = "lost connection to ui.py";
+    if (!(err instanceof TypeError)) console.error(err);
   } finally { inFlight = false; }
 }, 33);
 </script>

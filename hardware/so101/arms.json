@@ -1,0 +1,7 @@
+{
+  "layout": "side_by_side",
+  "spacing_cm": 40,
+  "arms": {
+    "left": "/dev/tty.usbmodem5B790153891"
+  }
+}

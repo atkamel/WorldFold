@@ -40,6 +40,7 @@
 </head>
 <body>
   <div id="status"><span id="conn">connecting…</span><span id="sensor">motion: off</span></div>
+  <div class="bar" id="armBar"></div>
   <div class="bar">
     <button id="motion">Enable motion</button>
     <button id="torque">Torque: off</button>
@@ -59,7 +60,7 @@
     <button id="open">Open</button>
   </div>
   <div class="bar">
-    <button id="mirror">Mirror: on</button>
+    <button id="mirror">Facing arm: on</button>
     <button id="gestures">Gestures: off</button>
   </div>
   <div class="bar">
@@ -82,12 +83,15 @@ function post(path, body) {
 // angle 0 = straight up; positive = right / forward / clockwise / open.
 const RAD_PER_STEP = 2 * Math.PI / 4096, DEG = 180 / Math.PI;
 let state = null, twin = { zero: {}, flip: {} };
+let arm = null;                       // chosen arm name (a key of state.arms)
+const me = () => state.arms[arm];     // chosen arm's slice of /state
+const loadTwin = () => { twin = { zero: me().twin?.zero ?? {}, flip: me().twin?.flip ?? {} }; };
 const zero = id => twin.zero[id] ?? 2047;
 const sign = id => (twin.flip[id] ? -1 : 1);
 const toDeg = (id, pos) => sign(id) * (pos - zero(id)) * RAD_PER_STEP * DEG;
 const toPos = (id, deg) => Math.round(zero(id) + sign(id) * deg / DEG / RAD_PER_STEP);
 function degRange(id) {
-  const [a, b] = state.limits[id].map(p => toDeg(id, p));
+  const [a, b] = me().limits[id].map(p => toDeg(id, p));
   return [Math.min(a, b), Math.max(a, b)];
 }
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -101,10 +105,10 @@ function setDeg(degs) {
     const id = +k, [lo, hi] = degRange(id);
     queued[id] = lastSent[id] = toPos(id, clamp(d, lo, hi));
   }
-  if (!timer) timer = setTimeout(() => { timer = null; post("/pose", { pose: queued }); queued = {}; }, 50);
+  if (!timer) timer = setTimeout(() => { timer = null; post("/pose", { arm, pose: queued }); queued = {}; }, 50);
 }
 function currentDeg(id) {               // where we last asked this joint to go
-  return toDeg(id, lastSent[id] ?? state.target[id]);
+  return toDeg(id, lastSent[id] ?? me().target[id]);
 }
 
 // ---------- arm geometry for reach/height ----------
@@ -189,7 +193,7 @@ pad.addEventListener("pointerup", release);
 pad.addEventListener("pointercancel", release);
 document.addEventListener("visibilitychange", () => document.hidden && release());
 
-// Mirror on = you face the robot (its right is your left), so turn and twist flip.
+// Facing arm on = you face the arm (its right is your left), so turn and twist flip.
 let mirror = localStorage.getItem("mirror") !== "off";
 function update() {
   if (busy) return;                     // a strike is playing; don't fight it
@@ -231,7 +235,7 @@ function sendNow(degs, speed) {
     longest = Math.max(longest, Math.abs(target - currentDeg(id)));
     pose[id] = lastSent[id] = toPos(id, target);
   }
-  post("/pose", { pose, speed });
+  post("/pose", { arm, pose, speed });
   return longest / speed * 1000 + 120;
 }
 
@@ -270,7 +274,7 @@ function onMotion(e) {
 
 const mirrorBtn = document.getElementById("mirror"), gestureBtn = document.getElementById("gestures");
 function showToggles() {
-  mirrorBtn.textContent = `Mirror: ${mirror ? "on" : "off"}`; mirrorBtn.classList.toggle("on", mirror);
+  mirrorBtn.textContent = `Facing arm: ${mirror ? "on" : "off"}`; mirrorBtn.classList.toggle("on", mirror);
   gestureBtn.textContent = `Gestures: ${gestures ? "on" : "off"}`; gestureBtn.classList.toggle("on", gestures);
 }
 mirrorBtn.onclick = () => { mirror = !mirror; localStorage.setItem("mirror", mirror ? "on" : "off"); if (drive) anchor(drive.x, drive.y); showToggles(); };
@@ -283,8 +287,38 @@ document.getElementById("punch").onclick = () => strike("punch");
 document.getElementById("uppercut").onclick = () => strike("uppercut");
 showToggles();
 
+// ---------- arm picker ----------
+// Hidden when there's only one arm. Switching arm drops anything in flight
+// for the old arm, same as STOP, so nothing meant for it reaches the new one.
+const armBar = document.getElementById("armBar");
+function renderArmBar() {
+  const names = Object.keys(state.arms);
+  armBar.style.display = names.length > 1 ? "flex" : "none";
+  armBar.innerHTML = "";
+  for (const name of names) {
+    const b = document.createElement("button");
+    b.textContent = name;
+    b.classList.toggle("on", name === arm);
+    b.onclick = () => pickArm(name);
+    armBar.appendChild(b);
+  }
+}
+function pickArm(name) {
+  if (name === arm) return;
+  strikeRun++; release(); queued = {}; lastSent = {};
+  arm = name;
+  localStorage.setItem("arm", name);
+  loadTwin();
+  renderArmBar();
+}
+function pickInitialArm(names) {
+  const url = new URLSearchParams(location.search).get("arm");
+  const saved = localStorage.getItem("arm");
+  return [url, saved].find(n => names.includes(n)) ?? names[0];
+}
+
 // ---------- buttons ----------
-document.getElementById("torque").onclick = () => post("/torque", { on: !state?.torque });
+document.getElementById("torque").onclick = () => post("/torque", { arm, on: !me()?.torque });
 document.getElementById("stop").onclick = () => {
   strikeRun++; release(); gestures = false; showToggles(); queued = {}; lastSent = {};
   post("/hold"); toast("Stopped. Gestures off.");
@@ -311,17 +345,18 @@ function toast(msg) {
 
 // ---------- live state ----------
 function render() {
+  const mine = me();
   const btn = document.getElementById("torque");
-  btn.textContent = `Torque: ${state.torque ? "on" : "off"}`;
-  btn.classList.toggle("on", state.torque);
+  btn.textContent = `Torque: ${mine.torque ? "on" : "off"}`;
+  btn.classList.toggle("on", mine.torque);
   const [glo, ghi] = degRange(6);
   gripper.min = glo; gripper.max = ghi;
-  if (!gripperHeld) gripper.value = toDeg(6, state.target[6]);
-  document.getElementById("gripper-value").textContent = `${Math.round(toDeg(6, state.present[6]))}°`;
+  if (!gripperHeld) gripper.value = toDeg(6, mine.target[6]);
+  document.getElementById("gripper-value").textContent = `${Math.round(toDeg(6, mine.present[6]))}°`;
   if (!speedHeld) speed.value = state.speed;
   document.getElementById("speed-value").textContent = `${Math.round(speed.value)}°/s`;
   document.getElementById("angles").textContent = [1, 2, 3, 4, 5]
-    .map(id => `${id}:${Math.round(toDeg(id, state.present[id]))}°`).join("  ");
+    .map(id => `${id}:${Math.round(toDeg(id, mine.present[id]))}°`).join("  ");
 }
 let inFlight = false;
 setInterval(async () => {
@@ -331,10 +366,12 @@ setInterval(async () => {
     const r = await fetch(api("/state"));
     if (r.status === 403) { document.getElementById("conn").textContent = "bad link: rescan the QR code"; return; }
     state = await r.json();
-    if (state.twin) twin = { zero: state.twin.zero ?? {}, flip: state.twin.flip ?? {} };
+    const names = Object.keys(state.arms);
+    if (arm === null) { arm = pickInitialArm(names); localStorage.setItem("arm", arm); renderArmBar(); }
+    loadTwin();
     if (!drive) lastSent = {};          // between drives, start from the server's targets
     render();
-    document.getElementById("conn").textContent = "connected";
+    document.getElementById("conn").textContent = names.length > 1 ? `connected · ${arm}` : "connected";
   } catch { document.getElementById("conn").textContent = "lost connection"; }
   finally { inFlight = false; }
 }, 100);
