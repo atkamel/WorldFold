@@ -96,13 +96,15 @@ $J -m cloth_angles.benchmark_state_predictor --data outputs/cloth_angles/isaac_w
 $J -m isaac.world_model.run --checkpoint outputs/cloth_angles/isaac_wm_smoke_model/state_l1_seed0.pt
 ```
 
-Full collection in two jobs, each under the 12 h limit, then the benchmark on their union.
+Full collection in three jobs, each under the 12 h limit (play runs at about 2 to 3.5 steps/s, the scripted fold at
+about 5.5), then the benchmark on their union.
 
 ```bash
-$J -m isaac.world_model.collect --output outputs/cloth_angles/isaac_wm_a
-$J -m isaac.world_model.collect --kinds play --seed-base 1100000 --output outputs/cloth_angles/isaac_wm_b
-$J -m cloth_angles.benchmark_state_predictor --data outputs/cloth_angles/isaac_wm_a \
-  outputs/cloth_angles/isaac_wm_b --output outputs/cloth_angles/isaac_wm_benchmark
+$J -m isaac.world_model.collect --kinds expert expert_noisy expert_release --output outputs/cloth_angles/isaac_wm_task
+$J -m isaac.world_model.collect --kinds play --seed-base 1000000 --output outputs/cloth_angles/isaac_wm_play1
+$J -m isaac.world_model.collect --kinds play --seed-base 1100000 --output outputs/cloth_angles/isaac_wm_play2
+D="outputs/cloth_angles/isaac_wm_task outputs/cloth_angles/isaac_wm_play1 outputs/cloth_angles/isaac_wm_play2"
+$J -m cloth_angles.benchmark_state_predictor --data $D --output outputs/cloth_angles/isaac_wm_benchmark
 ```
 
 Each collected line (`EPISODE ...`) carries the episode's steps per second and its disturbance statistics.
@@ -111,7 +113,6 @@ Then train the world model and its grasp head on both stores, check the analytic
 clone the expert and train it in imagination (all three need no GPU), and evaluate on Isaac.
 
 ```bash
-D="outputs/cloth_angles/isaac_wm_a outputs/cloth_angles/isaac_wm_b"
 $J -m cloth_angles.train_state_predictor --data $D --output outputs/cloth_angles/isaac_wm_model/state_l1_seed0.pt
 $J -m cloth_angles.check_fold_reward --data $D --output outputs/cloth_angles/isaac_wm_model/reward_check.json
 $J -m cloth_angles.train_imagined_actor --model outputs/cloth_angles/isaac_wm_model/state_l1_seed0.pt --data $D \

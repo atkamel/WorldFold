@@ -2646,3 +2646,55 @@ Offline IK check (`isaac.sim.pinch.PinchIK` on LeHome's SO101 URDF, no Isaac), f
 - So the single-corner task cannot run on this layout. The Isaac world model uses the two-arm half fold instead
   (status.md, 2026-11-05).
 
+### Isaac world model, smoke run end to end (2026-11-05, jobs 738554, 738556, 738557)
+
+Code at d4aab45 (branch `isaac`). Friction profile, dynamics DR on. Smoke scale only: none of these numbers measure
+the method.
+
+**Collection** (job 738554, thor, 50 min with the image build; store `outputs/cloth_angles/isaac_wm_smoke`): 3
+episodes per kind, the first of each held out, seeds 1,000,000-1,000,002 (play) and 1,001,000+ / 1,002,000+ /
+1,003,000+ (expert, expert_noisy, expert_release). 4,917 steps in 937 s of collection.
+
+| kind | steps per episode | ended | steps/s | grasps / releases / slips per episode | mean / max vertex displacement (mm) | max height (mm) |
+|---|---|---|---|---|---|---|
+| play (200-step cap) | 200, 200, 200 | cap ×3 | 1.7-3.7 | 3-5 / 2-3 / 1-2 | 59-76 / 241-291 | 114-201 |
+| expert | 289-312 | success ×3 | 5.1-5.6 | 2-3 / 0-2 / 1-2 | 72-79 / 303-331 | 121-126 |
+| expert_noisy | 216, 500, 500 | dragged, cap ×2 | 3.1-5.3 | 2-3 / 0-1 / 1-2 | 52-86 / 281-326 | 129-141 |
+| expert_release | 500 ×3 | cap ×3 | 5.1-6.4 | 2 / 2 / 0 | 46-64 / 138-262 | 111-125 |
+
+Frames are about 42 KB per state (128² main + two 64² wrists, RGB uint8 + depth uint16 mm, compressed); main
+depth 0.40-1.47 m, wrist depth empty on 1.6-4.2% of pixels. The scripted fold's "slips" are real: the grasp flag
+drops with the jaw still shut, mid-carry (seeds 1,001,000-1,001,002, steps 123-152), and the fold still succeeds.
+
+**Training, benchmark, reward check** (Mac, CPU): 8 training episodes, 500 updates, 3 seeds. Test windows, vertex
+MAE / manipulated-vertex error in mm, model vs persistence:
+
+| group | h = 1 | h = 10 |
+|---|---|---|
+| play, all (n = 19) | 1.125 / 3.15 vs 1.013 / 3.12 | 8.611 / 21.34 vs 8.052 / 22.84 |
+| task, all (n = 99) | 0.467 / 2.78 vs 0.401 / 2.53 | 3.277 / 17.27 vs 2.678 / 14.82 |
+| task, grasped (n = 29) | 1.107 / 5.75 vs 1.193 / 6.75 | 5.643 / 26.29 vs 7.006 / 39.72 |
+
+Grasp head, held-out transitions: accuracy 0.878 (play) and 0.903 (task) against 0.985 / 0.993 for flag
+persistence; it predicts changes too often (onset precision 0.05 / 0.27). FoldReward against the env's recorded
+rewards on all 9 half-fold episodes: max difference 1.3e-6, no termination or stage mismatch (success ×3, dragged ×1,
+capped ×5). Clone (300 updates on 3 expert episodes) + imagination (300 updates) ran in 22 s; the actor's mean
+absolute action bias against held-out expert actions went 0.263 (clone) → 0.361 after imagination.
+
+**Live predictor** (job 738556, scripted half fold, seed 2,000,000): success in 283 steps, fold score 0.893;
+one-step vertex MAE 0.41 mm, manipulated vertex 2.58 mm, grasp accuracy 0.915, predictor 0.6 ms per step, 8.8 Hz
+control loop.
+
+**Evaluator** (job 738557, seeds 3,000,000-3,000,001, n = 2 per policy, Wilson 95% in %): every policy then gets
+the shared release + settle finish (no cap hit).
+
+| policy | env success | gate valid | passed and valid | fold score | gated mean / edge (cm) | finish displacement (mm) |
+|---|---|---|---|---|---|---|
+| scripted | 0/2 [0, 65.8] | 2/2 [34.2, 100] | 0/2 [0, 65.8] | 0.761 | 2.31 / 5.52 | 0.3 |
+| clone | 0/2 [0, 65.8] | 2/2 | 0/2 | 0.001 | 15.92 / 29.13 | 15.8 |
+| imagined | 0/2 [0, 65.8] | 2/2 | 0/2 | 0.065 | 13.22 / 25.06 | 5.0 |
+
+The scripted fold ran out of steps on both seeds with its corners short (fold 0.78 / 0.74; gated 1.93 / 2.68 cm mean,
+in line with the 2.2-2.8 cm settled median). It ran first, before any finish, so the miss isn't carried over from
+another episode. So the pipeline runs end to end in Isaac; the clone and the imagined actor do not fold at this scale.
+
