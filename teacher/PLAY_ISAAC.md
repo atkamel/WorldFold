@@ -1,5 +1,8 @@
 # Play the Isaac cloth scene with two mice
 
+> **Parked.** Mouse teleop only worked with sticky cloth, and sticky demos are invalid. Don't use this to collect demos.
+> Current work: `harness/README.md`.
+
 You fold the LeHome shirt in Isaac Sim with one USB mouse per SO-101 arm. The sessions become demos for the VLA
 pipeline (fine-tune the pi0.5 teacher, then distil). State as of 2026-10-06.
 

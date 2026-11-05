@@ -1,5 +1,8 @@
 # VLA teacher (π0.5 `lehome_sim`) on Modal
 
+> **Older page.** Current work is neat-fold RL on GCP, so start at `harness/README.md`. Distillation and Modal below are from
+> September. The teacher's I/O contract and the speed findings still hold.
+
 Sprint: **VLA_TEACHER**. Goal: distill a cloth-folding VLA teacher into a small student policy.
 Teacher = [`IliaLarchenko/lehome_sim`](https://huggingface.co/IliaLarchenko/lehome_sim) (π0.5, JAX/Orbax, ~10 GB,
 1st of 62 in the LeHome 2026 sim round). Code: [`IliaLarchenko/lehome_solution`](https://github.com/IliaLarchenko/lehome_solution).

@@ -1,7 +1,10 @@
 # Running the teacher yourself
 
-Tested on a GCP L4 VM (24 GB, Toronto) in October. Not yet tested from a clean clone by someone else, so team `plumbing`
-is checking this page. Fix it when it's wrong.
+This is setup for the RL, not a task in itself. You need the teacher on your GPU, and this run is also what produces your
+reset bank.
+
+Tested on a GCP L4 VM (24 GB, Toronto) in October. Nobody has run it from a clean clone yet, so expect a snag or two, and fix
+this page when it's wrong. The image and checkpoint below were confirmed downloadable without login on 2026-11-05.
 
 ## You need
 - A cloud GPU with an RTX card and NVIDIA **driver 580.x**. Isaac needs RTX: A100, H100, H200 and B200 can't run it.
@@ -18,22 +21,22 @@ Copy this repo to `~/wf/WorldFold` on the VM, then:
 cd ~/wf/WorldFold/teacher/gcp
 bash docker_run.sh prep     # checks docker and GPU, pulls the image
 bash docker_run.sh setup    # one time: teacher venv + checkpoint, kept on the VM disk
-PHYSICS=orig PER_TYPE=5 WORKERS=2 bash docker_run.sh teacher     # 20 folds in the teacher's own physics
+TEACHER_SNAPSHOT_EVERY=5 PHYSICS=orig PER_TYPE=5 WORKERS=2 bash docker_run.sh teacher     # 20 folds + your reset bank
 ```
-Results land in `~/wf/results/teachergrasp/<time>-orig/`.
+Results land in `~/wf/results/teachergrasp/<time>-orig/`, with mid-fold states in `snapshots/`.
 
-**Pass check:** our run took 25 min for 20 episodes (76 s/episode, 2 workers) and passed LeHome's check on 18/20.
-Reproduce about that before changing anything.
+**Sanity check:** ours took about 25 min on an L4 (about $0.40), passed LeHome's check on 18/20, and saved 1,049 states
+(294 MB). If yours is close, your setup matches ours.
 
 ## Reset bank and scores
-- Add `TEACHER_SNAPSHOT_EVERY=5` to save mid-fold states.
+- Our own 1,049 states exist on Roy's laptop. They aren't in git because of size. Ask on the board if you'd rather have those.
 - `grasp_test_patch.py` restores them (`TEACHER_RESTORE_DIR`, `TEACHER_RESTORE_SHIFT_CM`, `TEACHER_RESTORE_ROT_DEG`).
 - `select_pregrasp.py` picks snapshots just before a grasp.
 - `bash docker_run.sh flatten` writes flat garment shapes, about 1 min per garment.
 - `python neat/teacher_end_states.py <run dir> <garments_flat dir> teacher/mujoco_live <out dir>` scores end states.
 - `neat/fold_videos_3d.py` renders them with the arms.
 
-Snapshots and flat garments aren't in git (hundreds of MB), so regenerate them, or ask on the board.
+Our scores for the 20 folds are in `neat_data/`, so you don't need to rerun those to start calibrating.
 
 ## Known failures
 - **First Isaac start looks hung.** It compiles shaders on the CPU for about 5 min, then Kit's hang detector kills it.
