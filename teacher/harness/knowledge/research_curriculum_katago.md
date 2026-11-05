@@ -33,6 +33,3 @@
 3. **Run the cheap proxy most of the time and the full scorer occasionally** (playout-cap-style).
 4. **Sample near 50% success** (SGS, AlphaNIST, KataGo evaluation).
 5. **From-scratch step counts (10^8–10^9) are out of reach for cloth.** Adapt the teacher instead.
-
-Takeaway 2 is our reading from Go and AlphaNIST. A DSRL result at very small budget points the other way on dense reward: see
-`rl_recipe.md` section 5.

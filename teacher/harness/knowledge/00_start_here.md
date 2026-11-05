@@ -18,19 +18,8 @@ check passes, so it was never asked to tidy. And some of its folds are already n
 
 ## Open decisions
 1. **Neatness pass line.** `fold_score` exists, the line doesn't. Roy calibrates it by eye. Until then no target is real.
-2. **Binary or not?** See `rl_recipe.md` section 5. Binary won AlphaNIST at billions of steps; a learned progress reward beat it
-   7/30 to 25/30 with DSRL at 90 rollouts. Roy's bet is the full recipe. Nobody has tested DSRL + SGS + bank on neatness.
-3. **How to run SGS at our speed.** About 210 episodes/hour across 1,049 states can't estimate success per state.
-4. **Learner.** DSRL is the likely pick (fits an L4, teacher frozen) and needs adapting to Ilia's inference (CFG, inpainting,
-   candidates).
-5. **What December shows.** LeHome's physics or realistic physics? Unresolved with the team lead.
-
-## RL the team has already done
-Teammates have run RL, all on square sheets, none on the teacher or garments, and from what we've read none with SGS:
-- **Adam, PR #18:** residual RL (RLPD) on a scripted base, Isaac quarter fold. Half fold at the bar on 1 of 64 for both the
-  scripted-plus-touch-up and RL runs, "no average gain" from RL, no quarter fold passed. Details in `docs/results.md` on main.
-- **`cloth_fold_rl/`, PR #7:** RL half and quarter fold in MuJoCo. Its "100% success" title hasn't been checked by us.
-- **Ruby, PR #2:** PPO baseline in MuJoCo.
+2. **Learner.** Not decided.
+3. **What December shows.** LeHome's physics or realistic physics? Unresolved.
 
 ## What's measured
 All in the teacher's own LeHome world unless stated. Data gathered 2026-10-19 and 20 on one GCP L4.
@@ -95,12 +84,10 @@ The larger hypothesis behind this (subskills, ADEPT, a brain) and the other open
 ## What you have
 | You need | Where |
 |---|---|
-| The method, exact formulas, code hooks | `rl_recipe.md` |
-| The teacher running, and your reset bank | `run_it.md` |
+| The method | `rl_recipe.md` |
+| The teacher running, and your half-completed states | `run_it.md` |
 | The neatness score | `teacher/mujoco_live/neat_metric.py`, `teacher/neat/` |
 | Save and restore mid-fold states | `teacher/grasp_test_patch.py`, `teacher/select_pregrasp.py` |
 | Per-grasp logging | `teacher/grasp_log_patch.py`, `teacher/oracle/grasp_log.py` |
-| Neatness metrics and the cost ladder | `reports/Cloth fold quality metrics.md` |
-| All research reports | `reports/` (mixed verification; each says what wasn't checked) |
 | Designing and red-teaming the score | `research_good_rl_tasks.md` |
 | Mistakes already paid for | `team_lessons.md` |
