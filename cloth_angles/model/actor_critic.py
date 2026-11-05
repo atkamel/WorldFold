@@ -170,19 +170,21 @@ class ImaginationTrainer:
         return (torch.stack(states, 1), torch.stack(actions, 1), torch.stack(rewards, 1),
                 torch.stack(terminated, 1), torch.stack(stages, 1), entropy)
 
-    def update(self, state, prev_state, goal, anchors0, stage=None, anchor=None) -> dict:
+    def update(self, state, prev_state, goal, starts, stage=None, anchor=None, stage_start=None) -> dict:
         """One actor and one critic update from a batch of real start states.
 
-        stage: long [B], the task stage at each start state (default 0).
+        starts: [B, N, 3], each start state's episode's cloth at reset.
+        stage: long [B], the task stage at each start state (default 0);
+        stage_start: [B, N, 3], the cloth when that stage began (default starts).
         Imagined steps whose normalized features leave [-ood_limit, ood_limit]
         are treated as terminal with zero value, so the actor cannot profit
         from states the model was never trained on. With bc_coef > 0 and
         anchor=(states, goals, stages, actions), the actor is also pulled
         toward those actions on those states.
         """
-        spec = FoldReward(goal, anchors0, self.task, soft=self.soft_reward)
+        spec = FoldReward(goal, starts, self.task, soft=self.soft_reward)
         spec.flat_goal = goal
-        rs = spec.init(torch.zeros(len(state), dtype=torch.long) if stage is None else stage)
+        rs = spec.init(torch.zeros(len(state), dtype=torch.long) if stage is None else stage, stage_start)
         states, actions, rewards, terminated, stages, entropy = self.imagine(state, prev_state, spec, rs)
         disagreement = torch.stack(self._disagreement, 1) if self._disagreement else torch.zeros_like(rewards)
         rewards = rewards - self.disagreement_coef * disagreement

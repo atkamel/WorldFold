@@ -62,18 +62,43 @@ IsaacLab's simulation context is a singleton, so build one scene per process. Th
 half fold, 2.0 / 3.0 cm for the quarter fold). A score only counts when `rl/precision_env.gate` passes it, meaning
 the cloth is flat on the table, still, and both jaws are open and clear of it.
 
-## Full-state predictor tools
+## World model (full-state predictor)
 
-Collect, train, then evaluate the predictor inside a live Isaac Sim 5.1 episode:
+`world_model/` collects data for the half fold's world model and scores a trained model live. The state is the half
+fold's 393 values (121 cloth vertices, then 15 per arm) and the action its 12. Training and the benchmark are
+sim-agnostic and live in `cloth_angles/` (`train_state_predictor`, `benchmark_state_predictor`). `docs/world_model.md`
+has the protocol.
+
+- `world_model/collect.py` records episodes of two kinds into one store format. `play` has both arms pinch random
+  reachable vertices on their own side of the cloth and lift, drag, shake, drop or force-release them. The scripted
+  half fold (`world_model/half_fold.py`, the place-servo base `rl/precision_env` runs) records as `expert`,
+  `expert_noisy` and `expert_release`. Frames from the imitation camera rig (RGB, plus depth in mm from the main and
+  wrist cameras) go to `frames_<n>.npz` beside each episode unless `--no-frames`.
+- `world_model/run.py` predicts each next state before the step and scores it after. It drives the scripted half fold
+  by default, `--driver play` plays, `--actions` replays a collected episode. The predictor never drives.
+
+Smoke run, two train and one test episode per kind (about 4,000 control steps). Submit each job once the last ends.
+Training and the benchmark need no GPU and also run in the `.venv` here.
 
 ```bash
-python isaac/collect_world_model_data.py --output outputs/cloth_angles/isaac_state --episodes 20 --steps 200
-python isaac/train_world_model.py --data-dir outputs/cloth_angles/isaac_state \
-  --output outputs/isaac/state_predictor.pt --epochs 100
-python isaac/run_world_model.py --checkpoint outputs/isaac/state_predictor.pt --steps 200
+J="sbatch --gres=gpu:rtx_3090:1,tmpdisk:200000 isaac/watcloud.sbatch"
+$J -m isaac.world_model.collect --per-kind 3 --test-per-kind 1 --play-steps 200 \
+  --output outputs/cloth_angles/isaac_wm_smoke
+$J -m cloth_angles.train_state_predictor --data outputs/cloth_angles/isaac_wm_smoke --steps 500 \
+  --output outputs/cloth_angles/isaac_wm_smoke_model/state_l1_seed0.pt
+$J -m cloth_angles.benchmark_state_predictor --data outputs/cloth_angles/isaac_wm_smoke --steps 500 \
+  --output outputs/cloth_angles/isaac_wm_smoke_benchmark
+$J -m isaac.world_model.run --checkpoint outputs/cloth_angles/isaac_wm_smoke_model/state_l1_seed0.pt
 ```
 
-The live runner predicts the next state **before** each Isaac step, then scores it against the observed state and
-reports prediction latency and control-loop rate. It evaluates predictions online; the predictor does not control
-the robot. Pass `--actions` with an NPZ containing `actions[T,6]` to replay a control sequence. No Isaac dataset or
-checkpoint is bundled, so collect episodes in the Isaac 5.1 environment before training.
+Full collection in two jobs, each under the 12 h limit, then the benchmark on their union.
+
+```bash
+$J -m isaac.world_model.collect --output outputs/cloth_angles/isaac_wm_a
+$J -m isaac.world_model.collect --kinds play --seed-base 1100000 --output outputs/cloth_angles/isaac_wm_b
+$J -m cloth_angles.benchmark_state_predictor --data outputs/cloth_angles/isaac_wm_a \
+  outputs/cloth_angles/isaac_wm_b --output outputs/cloth_angles/isaac_wm_benchmark
+```
+
+Each collected line (`EPISODE ...`) carries the episode's steps per second and its disturbance statistics. No Isaac
+dataset or checkpoint exists yet.

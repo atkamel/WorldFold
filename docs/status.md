@@ -1,7 +1,7 @@
 # Status
 
-**Updated:** 2026-10-29 · **Branch:** `isaac` · **Phase:** Q, the quarter fold on
-Isaac (revised plan of 2026-10-22, steps 1 to 3)
+**Updated:** 2026-11-05 · **Branch:** `isaac` (PR #20) · **Phase:** Q, the quarter fold on Isaac (revised plan of
+2026-10-22, steps 1 to 3), and the half-fold world model on Isaac (user, 2026-11-05)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
 pass log. The plan is in [roadmap.md](roadmap.md), every number in [results.md](results.md), the re-evaluation and
@@ -27,13 +27,15 @@ released, still), user 2026-10-22.
 - **Repo cleanup** (user, 2026-10-22/23): retired code deleted, the Isaac code split into `isaac/sim`, `isaac/experts`,
   `isaac/rl` and `isaac/tools`, `mujuco/` renamed `mujoco_sim/`, run outputs and videos untracked. Tag
   `pre-cleanup-2026-10-22` has everything as it was. No WATcloud jobs are queued (the user cancelled 711774-711776).
-- **Isaac branch sync** (2026-10-29): branch `isaac` includes `origin/main` at `24515e0`. It now uses the Isaac Sim
-  5.1 / IsaacLab environment under `isaac/sim`; the failed Isaac 4.5 Modal prototype was retired upstream. The
-  branch's full-state predictor collector and runner remain, with imports updated to the current environment path.
-- **Online world-model path** (2026-10-29, user request): added a trainer for Isaac-collected 378-state episodes
-  and changed the Isaac runner to predict before each action, then score the observed transition. This is online
-  evaluation only; it does not select robot actions. The synthetic train-load-predict integration check passes,
-  but there is no Isaac dataset/checkpoint and no Isaac runtime available here, so a real simulator run is not verified.
+- **World model on Isaac** (user, 2026-11-05, continuing PR #20): back on the plan, for the half fold (393-value
+  state, 12 actions). `isaac/world_model/collect.py` records play episodes (both arms pinch, lift, drag, shake and
+  drop the cloth to disturb it as much as they can; the bulk of the data) and the scripted half fold (expert, noisy,
+  forced release), with the camera rig's RGB and depth in compressed files beside each episode.
+  `cloth_angles/train_state_predictor.py` trains one model on both, `cloth_angles/benchmark_state_predictor.py`
+  scores 1 / 5 / 10 steps against persistence. The single-corner goal is out of the left arm's reach on the friction
+  layout (results.md), so the single-arm path is gone. `tasks.py` builds `HALF` and `QUARTER` from
+  `quarter_fold_env.STAGES` (closes #10). Nothing has run in Isaac yet. Phase B (learned grasp head, imagination on
+  the half fold, evaluation in Isaac) comes after the data.
 
 The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Best policies: DAgger diffusion at replan 4
 (privileged, 99.5 / 77.0 / 79.5 on id_easy / id_hard / recovery) and the vision student at replan 2 (sensor-only,
@@ -41,12 +43,14 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. Find why `quarter2` folds fail: read the per-arm grasp traces of 712165, then run 8 seeds with the gentle release
+1. World model: WATcloud smoke run (collect 2 + 1 episodes per kind, train, benchmark, online runner), then the full
+   collection (two jobs, about 145k steps), training and the benchmark into results.md, then phase B.
+2. Find why `quarter2` folds fail: read the per-arm grasp traces of 712165, then run 8 seeds with the gentle release
    off and on. If the tilted pinches (A0 39°, S 34.5°) are what slips, try the slide grasp (`GRASP=slide`) on those
    two. Target: fold 2 landing within 3 cm on gated episodes, with video.
-2. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
+3. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
    with no drag and the idle arm parked.
-3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
+4. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
 ## Environment
@@ -92,18 +96,15 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 17 | Online Isaac predictor has only synthetic integration coverage; local Isaac runtime is absent, `watcloud` DNS does not resolve, and no Isaac episode dataset/checkpoint exists | real Isaac Sim world-model run | user request |
+| 17 | Isaac world-model code has sim-free tests only: whether play cycles grasp physically, episode lengths and the rig's render cost are unverified, and no Isaac dataset or checkpoint exists | world-model training | world model |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujoco_sim/` first on `sys.path`; `mujoco_sim/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
 | 12 | `imitation.cpu_slot` isn't fair: a lane that releases and re-takes it between eval sets starves a lane polling every 2 s (lane A waited 37 min) | parallel queues | — |
 | 11 | `v1_dagger_v1_r1`/`_r2` frozen with bad teacher labels — never train on them | DAgger | — |
-| 10 | `cloth_angles/tasks.py::QUARTER` diverged from `quarter_fold_env.STAGES` (3 ways) | world-model work only (parked) | M7.3 |
 
 ## Parked
 
-- **World model** (`cloth_angles/`) is off the critical path by decision. Its task definition has diverged (#10) and
-  must be reconciled or deleted before any result from it counts.
 - **VLA** enters at Phase 6 as a subgoal proposer, not an action labeler.
 - **F4 DAgger on `isaac_friction`** waits behind Phase Q.
 - **Roy's grasp port** is paused. Its slide grasp stays in `isaac/experts/fold_expert.py` (`GRASP=slide`) as the
@@ -113,6 +114,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-05 · **World model phase A (PR #20 continued):** single-corner goal out of reach on friction (45-52 cm vs 44.5 cm); code moved to `isaac/world_model/` (two-arm adapter, play + half-fold collector with RGB/depth frames, online runner); union trainer + restored 1/5/10-step benchmark in `cloth_angles/`; HALF/QUARTER built from STAGES (#10 closed, M7.3); rig main + wrist cameras render depth; fast 240 passed + #15, slow 12 passed / 8 skipped · (this commit)
+- 2026-11-05 · **Review, no code:** PR #20 never ran in Isaac (train script import error, random-action collector, runner scores only, mislabelled corner metric, no imagination path); quarter fold: fold 2 scripted only, RL wired for the half fold only; PR tests 7 passed, quarter fast tests 35 passed · (this commit)
 - 2026-10-29 · **Sync Isaac branch with main:** merged `origin/main` (`24515e0`), retained the branch's world-model tools and updated them for `isaac.sim`; fast 226 passed / 1 known float failure / 5 skipped, slow 12 passed / 8 skipped · `24515e0`
 - 2026-10-29 · **Online world-model integration:** added Isaac dataset trainer and pre-step predictor/scorer, plus a synthetic train-load-predict check; focused check passed, fast 227 passed / 1 known float failure / 5 skipped. Real Isaac execution remains blocked by missing runtime/data and unreachable WATcloud · (this commit)
 - 2026-10-23 · **Cleanup check (WATcloud 712165):** new layout runs in Isaac end to end; first `quarter2` folds, n = 2: fold 1 broke in 1/2, fold-2 grasps held 1/4, both endings invalid (results.md) · (this commit)

@@ -8,15 +8,16 @@ grasped / released-and-placed regimes), control cost, settle counter, stage
 bonus, success bonus, drag penalty. The one rule it cannot reproduce is the
 "unstable" termination, which reads joint accelerations the state omits.
 
-The reward machine carries a stage and a settle counter per batch row
-(`init`, `step`), because a task's stage depends on the trajectory so far.
+The reward machine carries a stage, a settle counter and the cloth as it was
+when the stage began per batch row (`init`, `step`), because a task's stage
+and its anchors depend on the trajectory so far.
 """
 
 from __future__ import annotations
 
 import torch
 
-from cloth_angles.tasks import SINGLE, Arm, Task, corner_slot
+from cloth_angles.tasks import SINGLE, VERTEX_DIM, Arm, Task
 from cloth_fold_rl.fold_env import CTRL_COST, DRAG_LIMIT, GRASP_BONUS, SUCCESS_BONUS, SUCCESS_DIST, W_CARRY, W_REACH
 from cloth_fold_rl.quarter_fold_env import RELEASE_BONUS, STAGE_BONUS
 
@@ -29,11 +30,11 @@ def _vertex(state: torch.Tensor, index: int) -> torch.Tensor:
 
 
 class FoldReward:
-    """Per-episode constants (goals, corner starts) plus the batched reward rules.
+    """Per-episode constants (goals, start positions) plus the batched reward rules.
 
-    goal: [goal_dim] or [B, goal_dim]; anchors0: [4, 3] or [B, 4, 3], the start
-    positions of cloth_0, _10, _110, _120. A batched spec pairs each batch row
-    of the states with its own episode.
+    goal: [goal_dim] or [B, goal_dim]; starts: [N, 3] or [B, N, 3], every cloth
+    vertex's position at reset (an episode's first state). A batched spec pairs
+    each batch row of the states with its own episode.
 
     soft=True blends the grasped and free potentials by the clamped grasp value
     instead of thresholding it. On real states (flag exactly 0 or 1) this is
@@ -42,11 +43,11 @@ class FoldReward:
     always use hard thresholds.
     """
 
-    def __init__(self, goal, anchors0, task: Task = SINGLE, soft: bool = False):
+    def __init__(self, goal, starts, task: Task = SINGLE, soft: bool = False):
         self.task, self.soft = task, soft
         goal = torch.as_tensor(goal, dtype=torch.float32)
         self.goal = goal.reshape(*goal.shape[:-1], len(task.goal_corners), 3)
-        self.starts = torch.as_tensor(anchors0, dtype=torch.float32)
+        self.starts = torch.as_tensor(starts, dtype=torch.float32)
 
     # ---- geometry ------------------------------------------------------------
 
@@ -66,7 +67,7 @@ class FoldReward:
         return (self._corner_distances(state, move) < SUCCESS_DIST).all(-1)
 
     def start_distance(self, move):
-        return torch.stack([(self.starts[..., corner_slot(c), :] - self._goal(move)).norm(dim=-1)
+        return torch.stack([(self.starts[..., c, :] - self._goal(move)).norm(dim=-1)
                             for c in move.corners], -1).mean(-1).clamp(min=1e-6)
 
     def _per_stage(self, fn, state, stage):
@@ -102,18 +103,22 @@ class FoldReward:
             return placed & (~held if self.task.release else held).all(-1)
         return self._per_stage(one, state, stage)
 
-    def anchor_drift(self, state, stage):
+    def anchor_drift(self, state, stage, stage_start):
+        """stage_start: [B, N, 3], the cloth when the current stage began."""
         def one(state, s):
-            return torch.stack([(_vertex(state, v) - self.starts[..., corner_slot(ref), :]).norm(dim=-1)
+            return torch.stack([(_vertex(state, v) - stage_start[..., ref, :]).norm(dim=-1)
                                 for v, ref in self.task.stages[s].anchors], -1).amax(-1)
         return self._per_stage(one, state, stage)
 
     # ---- reward machine --------------------------------------------------------
 
-    def init(self, stage):
-        """stage: long [B], the task stage at the first state."""
+    def init(self, stage, stage_start=None):
+        """stage: long [B], the task stage at the first state; stage_start: [B, N, 3], the cloth when that stage
+        began (default the reset starts, exact for stage 0)."""
         stage = torch.as_tensor(stage, dtype=torch.long)
-        return {"stage": stage, "hold": torch.zeros_like(stage)}
+        if stage_start is None:
+            stage_start = self.starts.expand(*stage.shape, *self.starts.shape[-2:])
+        return {"stage": stage, "hold": torch.zeros_like(stage), "stage_start": stage_start}
 
     def step(self, state, next_state, action, rs):
         """One transition -> reward [B], terminated [B], next machine state."""
@@ -123,9 +128,12 @@ class FoldReward:
         complete = hold >= self.task.settle_steps
         last = stage == len(self.task.stages) - 1
         success, advance = complete & last, complete & ~last
-        dragged = ~complete & (self.anchor_drift(next_state, stage) > DRAG_LIMIT)
+        dragged = ~complete & (self.anchor_drift(next_state, stage, rs["stage_start"]) > DRAG_LIMIT)
         reward = reward + SUCCESS_BONUS * success.float() + STAGE_BONUS * advance.float() - DRAG_PENALTY * dragged.float()
-        new = {"stage": torch.where(advance, stage + 1, stage), "hold": torch.where(advance, torch.zeros_like(hold), hold)}
+        cloth = next_state[..., :VERTEX_DIM].reshape(*next_state.shape[:-1], -1, 3)
+        new = {"stage": torch.where(advance, stage + 1, stage),
+               "hold": torch.where(advance, torch.zeros_like(hold), hold),
+               "stage_start": torch.where(advance[..., None, None], cloth, rs["stage_start"])}
         return reward, success | dragged, new
 
     def rollout(self, states, actions, stage=None):

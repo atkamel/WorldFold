@@ -2633,3 +2633,16 @@ end (59 min with the image build, python exit 0). As a code check it passed. As 
 - So on `quarter2`, fold 1 (8/8 on the friction layout) broke in 1 of 2 and the fold-2 grasps held 1 of 4. Too few
   episodes to separate the tilted pinches (A0 39°, S 34.5°) from the gentle release; the per-arm grasp traces are the
   next thing to read.
+
+### Single-corner goal on the Isaac friction layout: out of reach (2026-11-05, offline)
+
+Offline IK check (`isaac.sim.pinch.PinchIK` on LeHome's SO101 URDF, no Isaac), for `SingleCornerFoldEnv`'s goal
+(cloth_10 onto cloth_120's start) on the `friction` profile: left base at (-0.22, -0.30), cloth centred at
+(0, -0.135), the 9 offsets of the ±2.5 cm jitter box.
+
+- cloth_120's start is 45.1 to 52.1 cm from the left base horizontally (48.6 cm at zero offset). A 200k-sample FK
+  sweep gives at most 44.5 cm of reach at place height.
+- `IsaacArmExpert`'s plan pinches cloth_10 within 0 to 28.6 mm and places 128 to 196 mm from the goal at every offset.
+- So the single-corner task cannot run on this layout. The Isaac world model uses the two-arm half fold instead
+  (status.md, 2026-11-05).
+

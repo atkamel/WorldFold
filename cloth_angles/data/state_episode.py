@@ -1,11 +1,11 @@
-"""Full-state episodes from the single-corner fold environment.
+"""Full-state episodes from the fold environments (MuJoCo's, Isaac's play and half fold).
 
 An episode stores T+1 observed states and the T actions between them:
 
     vertices[t]  float32[T+1, N*N, 3]  cloth vertex world positions
-    robot[t]     float32[T+1, 15*arms] per arm: joint pos(5), joint vel(5),
+    robot[t]     float32[T+1, 15*arms] per arm (left first): joint pos(5), joint vel(5),
                                        gripper ctrl(1), end-effector pos(3),
-                                       grasp weld active(1)
+                                       grasp flag(1): MuJoCo's weld, Isaac's friction grasp
     actions[t]   float32[T, A]         action taken between state t and t+1
     rewards[t]   float32[T]            environment reward for that transition (optional)
     terminated[t] bool[T]              environment terminated after it (optional)
@@ -22,6 +22,8 @@ import numpy as np
 
 ROBOT_DIM = 15
 GRASP_INDEX = 14
+MOVING_CORNER = 10        # cloth_10, the vertex the single-corner task carries
+ARM_PREFIXES = ("left_", "right_")   # robot block order
 
 
 @dataclass
@@ -59,6 +61,16 @@ class StateEpisode:
     def states(self) -> np.ndarray:
         """float32[T+1, N*N*3 + 15*arms]: flattened vertices followed by robot state."""
         return np.concatenate([self.vertices.reshape(len(self) + 1, -1), self.robot], axis=1)
+
+
+def manipulated_vertices(episode: StateEpisode) -> np.ndarray:
+    """int[T+1, arms]: the cloth vertex each arm works on at each state, from the metadata's cycles (each names its
+    arm, its first state index and its vertex: the Isaac collector's play cycles and half-fold corners), else
+    MOVING_CORNER (the MuJoCo single-corner data)."""
+    vertex = np.full((len(episode) + 1, episode.robot.shape[1] // ROBOT_DIM), MOVING_CORNER)
+    for cycle in episode.metadata.get("cycles", []):
+        vertex[cycle["start"]:, ARM_PREFIXES.index(cycle["arm"])] = cycle["vertex"]
+    return vertex
 
 
 class StateEpisodeStore:

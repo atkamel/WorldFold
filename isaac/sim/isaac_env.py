@@ -615,6 +615,12 @@ class IsaacClothFoldEnv(gym.Env):
         return {name: np.ascontiguousarray(np.transpose(_npy(cam.data.output["rgb"][0])[:, :, :3], (2, 0, 1)))
                 .astype(np.uint8) for name, cam in self._cp.rig_cameras.items()}
 
+    def render_rig_depth(self):
+        """The rig's depth frames (main and wrists), {name: float32 [H, W]}: distance to the image plane in m, inf
+        where nothing was hit."""
+        return {name: _npy(cam.data.output["distance_to_image_plane"][0])[:, :, 0].astype(np.float32)
+                for name, cam in self._cp.rig_cameras.items() if "distance_to_image_plane" in cam.cfg.data_types}
+
     def keep_alive(self):
         """Tick Kit without stepping physics, for a process that sits idle (e.g. a rollout worker waiting while
         the parent trains): Kit's hang detector aborts the app after 120 s without a tick."""

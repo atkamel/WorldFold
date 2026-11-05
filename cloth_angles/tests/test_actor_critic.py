@@ -52,10 +52,10 @@ def test_quarter_features_follow_the_stage():
     offsets = features[:, -8:-2].reshape(3, 2, 3)
     # stage 0: left carries cloth_10 to slot 0, right carries cloth_120 to slot 1
     torch.testing.assert_close(offsets[0, 0], (state[0, 30:33] - goal[0, :3]) * 10)
-    torch.testing.assert_close(offsets[0, 1], (state[0, 360:363] - goal[0, 3:]) * 10)
-    # stage 1: left idle, right carries the mean of cloth_0 and cloth_10 to slot 1
-    assert (offsets[1, 0] == 0).all()
-    torch.testing.assert_close(offsets[1, 1], ((state[1, 0:3] + state[1, 30:33]) / 2 - goal[1, 3:]) * 10)
+    torch.testing.assert_close(offsets[0, 1], (state[0, 360:363] - goal[0, 3:6]) * 10)
+    # stage 1: left carries cloth_5 to slot 2, right carries the mean of cloth_0 and cloth_10 to slot 1
+    torch.testing.assert_close(offsets[1, 0], (state[1, 15:18] - goal[1, 6:9]) * 10)
+    torch.testing.assert_close(offsets[1, 1], ((state[1, 0:3] + state[1, 30:33]) / 2 - goal[1, 3:6]) * 10)
     torch.testing.assert_close(features[:, -2:], torch.tensor([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0]]))
 
 
@@ -72,8 +72,8 @@ def test_imagination_update_changes_actor_and_returns_metrics():
     before = [p.clone() for p in actor.parameters()]
     state = torch.randn(4, SINGLE.state_dim) * 0.1
     goal = torch.tensor([[0.15, 0.1, 0.43]]).expand(4, 3)
-    anchors0 = torch.zeros(4, 4, 3)
-    metrics = trainer.update(state, state, goal, anchors0)
+    starts = torch.zeros(4, 121, 3)
+    metrics = trainer.update(state, state, goal, starts)
     assert set(metrics) >= {"actor_loss", "critic_loss", "mean_return", "imagined_grasp_rate", "imagined_stage_advance"}
     assert any(not torch.equal(a, b) for a, b in zip(before, actor.parameters()))
     assert all(not p.requires_grad for p in world_model.parameters())
@@ -83,8 +83,8 @@ def test_quarter_imagination_update_runs_from_either_stage():
     trainer, actor, _ = make_trainer(QUARTER)
     state = torch.randn(4, QUARTER.state_dim) * 0.1
     goal = torch.randn(4, QUARTER.goal_dim)
-    anchors0 = torch.zeros(4, 4, 3)
-    metrics = trainer.update(state, state, goal, anchors0, stage=torch.tensor([0, 1, 0, 1]),
+    starts = torch.zeros(4, 121, 3)
+    metrics = trainer.update(state, state, goal, starts, stage=torch.tensor([0, 1, 0, 1]),
                              anchor=(state, goal, torch.tensor([0, 1, 0, 1]), torch.zeros(4, QUARTER.action_dim)))
     assert all(torch.isfinite(torch.tensor(v)) for v in metrics.values())
 
@@ -101,12 +101,12 @@ def test_ensemble_disagreement_penalizes_reward():
     actor, critic = Actor(feature_dim(SINGLE), 6, hidden_dim=16), Critic(feature_dim(SINGLE), hidden_dim=16)
     state = torch.randn(4, SINGLE.state_dim) * 0.1
     goal = torch.tensor([[0.15, 0.1, 0.43]]).expand(4, 3)
-    anchors0 = torch.zeros(4, 4, 3)
+    starts = torch.zeros(4, 121, 3)
     torch.manual_seed(1)
     plain = ImaginationTrainer(members[0], actor, critic, horizon=3, ensemble=members, disagreement_coef=0.0)
-    plain_metrics = plain.update(state, state, goal, anchors0)
+    plain_metrics = plain.update(state, state, goal, starts)
     torch.manual_seed(1)
     penalized = ImaginationTrainer(members[0], actor, critic, horizon=3, ensemble=members, disagreement_coef=5.0)
-    penalized_metrics = penalized.update(state, state, goal, anchors0)
+    penalized_metrics = penalized.update(state, state, goal, starts)
     assert plain_metrics["disagreement"] > 0
     assert penalized_metrics["mean_reward"] < plain_metrics["mean_reward"]
