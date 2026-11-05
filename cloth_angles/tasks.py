@@ -35,7 +35,6 @@ class Arm:
     robot: int          # offset of its robot block in the state vector
     gripper: int        # index of its gripper command in the action
     joints: slice       # its joint deltas in the action
-    weld_corners: tuple # cloth vertices its gripper welds to when closed within grasp_radius (MuJoCo's weld)
 
     @property
     def ctrl_index(self) -> int:
@@ -71,7 +70,6 @@ class Task:
     stages: tuple
     goal_corners: tuple   # corner per goal slot
     action_dim: int
-    grasp_radius: float
     release: bool         # placed corners must be let go (else held) to settle
     settle_steps: int     # consecutive settled steps that complete a stage
     max_steps: int        # the env's episode length
@@ -122,27 +120,24 @@ class Task:
         return any(g.values()) if isinstance(g, dict) else bool(g)
 
 
-LEFT = Arm("left_", VERTEX_DIM, 5, slice(0, 5), weld_corners=(10,))
+LEFT = Arm("left_", VERTEX_DIM, 5, slice(0, 5))
 SINGLE = Task("single", arms=(LEFT,),
               stages=(Stage(moves=(Move(0, (10,), 0),), anchors=((0, 0), (110, 110))),),
-              goal_corners=(120,), action_dim=6, grasp_radius=0.03, release=False, settle_steps=10, max_steps=200)
+              goal_corners=(120,), action_dim=6, release=False, settle_steps=10, max_steps=200)
 
 PREFIXES = ("left_", "right_")     # the two-arm state and action order
 
 
 def from_stages(name, stages, max_steps) -> Task:
-    """A two-arm Task from quarter_fold_env stages: one goal slot per distinct goal vertex in order of appearance,
-    each arm welding every vertex it carries in any stage."""
+    """A two-arm Task from quarter_fold_env stages: one goal slot per distinct goal vertex in order of appearance."""
     goals = tuple(dict.fromkeys(m.goal for st in stages for m in st.moves))
-    arms = tuple(Arm(p, VERTEX_DIM + ROBOT_DIM * i, 6 * i + 5, slice(6 * i, 6 * i + 5),
-                     weld_corners=tuple(dict.fromkeys(c for st in stages for m in st.moves if m.prefix == p
-                                                      for c in m.corners)))
+    arms = tuple(Arm(p, VERTEX_DIM + ROBOT_DIM * i, 6 * i + 5, slice(6 * i, 6 * i + 5))
                  for i, p in enumerate(PREFIXES))
     return Task(name, arms=arms,
                 stages=tuple(Stage(moves=tuple(Move(PREFIXES.index(m.prefix), m.corners, goals.index(m.goal))
                                                for m in st.moves), anchors=st.anchors) for st in stages),
-                goal_corners=goals, action_dim=quarter_fold_env.ACTION_DIM, grasp_radius=quarter_fold_env.GRASP_RADIUS,
-                release=True, settle_steps=quarter_fold_env.SETTLE_STEPS, max_steps=max_steps)
+                goal_corners=goals, action_dim=quarter_fold_env.ACTION_DIM, release=True,
+                settle_steps=quarter_fold_env.SETTLE_STEPS, max_steps=max_steps)
 
 
 HALF = from_stages("half", quarter_fold_env.STAGES[:1], quarter_fold_env.HALF_FOLD_MAX_STEPS)

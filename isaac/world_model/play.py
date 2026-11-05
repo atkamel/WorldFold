@@ -20,6 +20,7 @@ import sys
 import numpy as np
 
 from cloth_angles.data.state_episode import GRASP_INDEX, ROBOT_DIM
+from cloth_angles.model.grasp_events import grasp_events
 from cloth_angles.tasks import HALF
 from isaac.experts.fold_expert import IsaacArmExpert
 from isaac.experts.half_fold_demo import SEED_Q
@@ -41,7 +42,6 @@ SHAKE_STEPS = 12               # joints reverse every 2 steps: 3 swings of +-0.1
 P_NOISE = 0.5
 NOISE_STD = 0.3                # the MuJoCo collector's expert_noisy std
 CYCLE_STEPS = 250              # a cycle still running after this many steps is abandoned for a new one
-OPEN_ABOVE = 0.3               # isaac_env.set_gripper: a command above this opens the jaw
 
 
 class PlayExpert(IsaacArmExpert):
@@ -207,12 +207,11 @@ def disturbance_stats(vertices, robot, actions, cycles):
              "max_height_mm": round(1000 * float(vertices[..., 2].max() - TABLE_TOP_Z), 1),
              "grasped_steps": 0, "grasp_events": 0, "release_events": 0, "slip_events": 0}
     for i, arm in enumerate(ARMS):
-        grasp = robot[:, ROBOT_DIM * i + GRASP_INDEX] > 0.5
-        lost = grasp[:-1] & ~grasp[1:]
-        opened = actions[:, arm.gripper] > OPEN_ABOVE
-        stats["grasped_steps"] += int(grasp.sum())
-        stats["grasp_events"] += int((~grasp[:-1] & grasp[1:]).sum())
-        stats["release_events"] += int((lost & opened).sum())
-        stats["slip_events"] += int((lost & ~opened).sum())
+        grasp = robot[:, ROBOT_DIM * i + GRASP_INDEX]
+        events = grasp_events(grasp[:-1], grasp[1:], actions[:, arm.gripper])
+        stats["grasped_steps"] += int((grasp > 0.5).sum())
+        stats["grasp_events"] += int(events["onset"].sum())
+        stats["release_events"] += int(events["release"].sum())
+        stats["slip_events"] += int(events["slip"].sum())
     stats.update(cycles=len(cycles), cycles_done=sum(c.get("done", False) for c in cycles))
     return stats

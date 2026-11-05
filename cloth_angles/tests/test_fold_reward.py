@@ -2,7 +2,7 @@
 
 import torch
 
-from cloth_angles.model.fold_reward import FoldReward, gripper_transition
+from cloth_angles.model.fold_reward import FoldReward
 from cloth_angles.tasks import LEFT, QUARTER, SINGLE
 from cloth_fold_rl.fold_env import CTRL_COST, DRAG_LIMIT, GRASP_BONUS, SUCCESS_BONUS, W_CARRY, W_REACH
 from cloth_fold_rl.quarter_fold_env import RELEASE_BONUS, STAGE_BONUS
@@ -68,26 +68,6 @@ def test_soft_potential_matches_hard_on_real_flags_and_blends_between():
     torch.testing.assert_close(soft.potential(half, zero), 0.5 * (lo + hi))
 
 
-def test_gripper_rule_hysteresis_and_weld():
-    near = flat_state((0.0, 0.3, 0.0), (0.0, 0.32, 0.0), 0.0)     # 2 cm away, open
-    far = flat_state((0.0, 0.3, 0.0), (0.0, 0.40, 0.0), 0.0)      # 10 cm away, open
-    held = flat_state((0.0, 0.3, 0.0), (0.0, 0.3, 0.0), 1.0)
-    held[LEFT.ctrl_index] = -0.1
-    close, open_, hold = torch.zeros(6), torch.zeros(6), torch.zeros(6)
-    close[5], open_[5], hold[5] = -1.0, 1.0, 0.1
-    rule = lambda s, a, soft=False: gripper_transition(s[None], a[None], LEFT, SINGLE.grasp_radius, soft)
-    assert rule(near, close) == (1.0, 1.0)
-    assert rule(far, close) == (1.0, 0.0)
-    assert rule(held, hold) == (1.0, 1.0)
-    assert rule(held, open_) == (0.0, 0.0)
-    for state, action in ((near, close), (far, close), (held, hold), (held, open_)):
-        torch.testing.assert_close(torch.stack(rule(state, action, True)), torch.stack(rule(state, action)))
-    ramp = near.clone()
-    ramp[LEFT.ee_slice] = torch.tensor([0.0, 0.335, 0.0])            # 3.5 cm: hard misses, soft partial
-    assert rule(ramp, close)[1] == 0.0
-    assert 0.0 < rule(ramp, close, True)[1] < 1.0
-
-
 H = 0.15
 GRID = torch.stack(torch.meshgrid(torch.linspace(-H, H, 11), torch.linspace(-H, H, 11), indexing="ij"), -1)
 STARTS = torch.cat([GRID.reshape(121, 2), torch.zeros(121, 1)], -1)        # index = ix * 11 + iy, as the env's grid
@@ -128,13 +108,3 @@ def test_quarter_release_regime_is_a_step_up_from_carrying():
     held = quarter_state(s110, s110, s110, s110, right_grasp=1.0, right_ee=s110)
     released = quarter_state(s110, s110, s110, s110, right_grasp=0.0, right_ee=s110)
     torch.testing.assert_close(r.potential(released[None], one) - r.potential(held[None], one), torch.tensor([RELEASE_BONUS]))
-
-
-def test_quarter_right_gripper_welds_any_stacked_corner():
-    right = QUARTER.arms[1]
-    state = quarter_state((0.0, 0.0, 0.0), (0.03, 0.0, 0.0), (1.0, 1.0, 0.0), (1.0, -1.0, 0.0), right_ee=(0.015, 0.0, 0.0))
-    close = torch.zeros(12)
-    close[right.gripper] = -1.0
-    assert gripper_transition(state[None], close[None], right, QUARTER.grasp_radius) == (1.0, 1.0)
-    far = quarter_state((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (1.0, 1.0, 0.0), (1.0, -1.0, 0.0), right_ee=(0.1, 0.0, 0.0))
-    assert gripper_transition(far[None], close[None], right, QUARTER.grasp_radius) == (1.0, 0.0)

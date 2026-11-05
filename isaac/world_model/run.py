@@ -3,8 +3,9 @@
     python -m isaac.world_model.run --checkpoint outputs/cloth_angles/isaac_wm_model/state_l1_seed0.pt --episodes 1
 
 Before each control step the model predicts the next state from the current one and the action; after the step the
-prediction is scored against the observed state: vertex MAE and the error on the manipulated vertices (each arm's
-half-fold corner or play-cycle vertex, averaged). The model only predicts, it never drives. The driver is the scripted
+prediction is scored against the observed state: vertex MAE, the error on the manipulated vertices (each arm's
+half-fold corner or play-cycle vertex, averaged) and the grasp head's flag accuracy. The model only predicts, it
+never drives. The driver is the scripted
 half fold (isaac/world_model/half_fold.py, default) or play (--driver play, isaac/world_model/play.py), on the
 collector's env; --actions replays a collected episode_<n>.npz instead, from its seed, on the driver of its kind.
 Every 25 steps and per episode it prints the errors, predictor latency and control rate; per episode also how it
@@ -37,10 +38,12 @@ from isaac.world_model.play import (  # noqa: E402
 
 class Driver:
     """One live episode: the scripted half fold ("half"), play ("play"), or a collected episode's actions replayed
-    on the driver of its kind. act() -> (action or None, each arm's manipulated vertex); step(action) -> ended."""
+    on the driver of its kind. actor: a callable -> 12-dim action that acts on the half fold instead of its scripted
+    arms (isaac/world_model/evaluate.py). act() -> (action or None, each arm's manipulated vertex); step(action) ->
+    whether the episode ended."""
 
-    def __init__(self, base, half, mode, seed, replay=None):
-        self.base, self.half, self.replay, self.t = base, half, replay, 0
+    def __init__(self, base, half, mode, seed, replay=None, actor=None):
+        self.base, self.half, self.replay, self.actor, self.t = base, half, replay, actor, 0
         self.mode = mode if replay is None else ("play" if replay.metadata["kind"] == "play" else "half")
         self.info = {}
         if self.mode == "half":
@@ -63,7 +66,8 @@ class Driver:
                     self.base.weld_mask[arm.prefix] = {v}
             action = self.replay.actions[self.t]
         elif self.mode == "half":
-            action, vertices = self.half.act(), [c["vertex"] for c in self.cycles]
+            action = self.half.act() if self.actor is None else self.actor()
+            vertices = [c["vertex"] for c in self.cycles]
         else:
             action = self.play.act()
             vertices = None if action is None else self.play.vertices
@@ -78,8 +82,9 @@ class Driver:
         return self.base._failed()
 
 
-def run_episode(base, half, world_model, mode, seed, steps, replay=None):
-    driver = Driver(base, half, mode, seed, replay)
+def run_episode(base, half, world_model, mode, seed, steps, replay=None, actor=None):
+    """-> (summary dict, the episode's states [T+1, 393])."""
+    driver = Driver(base, half, mode, seed, replay, actor)
     states, actions, rows, loops = [observe_state(base, ARMS)], [], [], []
     world_model.reset(states[0])
     reason = "steps"
@@ -99,6 +104,7 @@ def run_episode(base, half, world_model, mode, seed, steps, replay=None):
             recent = rows[-25:]
             print(f"step={t + 1} vertex_mae_mm={1000 * np.mean([r['vertex_mae_m'] for r in recent]):.3f} "
                   f"manip_mm={1000 * np.mean([r['manipulated_vertex_error_m'] for r in recent]):.2f} "
+                  f"grasp_acc={np.mean([r['grasp_accuracy'] for r in recent]):.3f} "
                   f"predictor_ms={np.mean([r['latency_ms'] for r in recent]):.3f} "
                   f"control_hz={len(recent) / np.sum(loops[-25:]):.2f}", flush=True)
         if ended:
@@ -110,12 +116,13 @@ def run_episode(base, half, world_model, mode, seed, steps, replay=None):
     out = {"seed": seed, "driver": driver.mode, "steps": len(rows), "termination_reason": reason,
            "vertex_mae_mm": round(1000 * float(np.mean([r["vertex_mae_m"] for r in rows])), 4),
            "manipulated_vertex_mm": round(1000 * float(np.mean([r["manipulated_vertex_error_m"] for r in rows])), 3),
+           "grasp_accuracy": round(float(np.mean([r["grasp_accuracy"] for r in rows])), 4),
            "predictor_ms": round(float(np.mean([r["latency_ms"] for r in rows])), 3),
            "control_hz": round(len(loops) / float(np.sum(loops)), 2),
            "stats": disturbance_stats(vertices, states[:, VERTEX_DIM:], actions, driver.cycles)}
     if driver.mode == "half":
         out.update(success=bool(driver.info.get("success")), fold_score=round(float(driver.info["fold_score"]), 4))
-    return out
+    return out, states
 
 
 def run(args):
@@ -128,7 +135,7 @@ def run(args):
     steps = args.steps or (PLAY_STEPS if args.driver == "play" else HALF_STEPS)
     for i in range(args.episodes):
         seed = replay.metadata["seed"] if replay else args.seed + i
-        result = run_episode(base, half, world_model, args.driver, seed, steps, replay)
+        result, _ = run_episode(base, half, world_model, args.driver, seed, steps, replay)
         print("EPISODE", json.dumps(result), flush=True)
 
 

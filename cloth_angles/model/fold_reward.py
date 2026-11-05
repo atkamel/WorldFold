@@ -6,7 +6,8 @@ formulas instead of a learned head. This mirrors cloth_fold_rl/fold_env.py
 and cloth_fold_rl/quarter_fold_env.py: potential shaping per move (free /
 grasped / released-and-placed regimes), control cost, settle counter, stage
 bonus, success bonus, drag penalty. The one rule it cannot reproduce is the
-"unstable" termination, which reads joint accelerations the state omits.
+"unstable" termination, which reads what the state omits (MuJoCo's joint
+accelerations, Isaac's particle speeds and every particle's position).
 
 The reward machine carries a stage, a settle counter and the cloth as it was
 when the stage began per batch row (`init`, `step`), because a task's stage
@@ -22,7 +23,6 @@ from cloth_fold_rl.fold_env import CTRL_COST, DRAG_LIMIT, GRASP_BONUS, SUCCESS_B
 from cloth_fold_rl.quarter_fold_env import RELEASE_BONUS, STAGE_BONUS
 
 DRAG_PENALTY = 5.0
-GRIPPER_HYSTERESIS = 0.3
 
 
 def _vertex(state: torch.Tensor, index: int) -> torch.Tensor:
@@ -151,28 +151,3 @@ class FoldReward:
             stages.append(rs["stage"])
         return torch.stack(rewards, 1), torch.stack(terminated, 1), torch.stack(stages, 1)
 
-
-def gripper_transition(state, action, arm: Arm, grasp_radius: float, soft: bool = False):
-    """The simulator's gripper and weld rule for one arm, from state and action.
-
-    Returns (closed, grasp) for the next state. The gripper closes below -0.3,
-    opens above +0.3 and otherwise keeps its state; while closed, the weld to
-    any of the arm's weld corners within grasp_radius engages and stays, and
-    every weld releases when it opens. soft=True replaces the thresholds with
-    linear ramps so gradients reach the gripper command and the end effector.
-    """
-    cmd = action[..., arm.gripper]
-    closed_now = state[..., arm.ctrl_index] < 0
-    gaps = torch.stack([(state[..., arm.ee_slice] - _vertex(state, c)).norm(dim=-1) for c in arm.weld_corners], -1)
-    grasp_now = state[..., arm.grasp_index]
-    if soft:
-        hold = ((GRIPPER_HYSTERESIS - cmd) / (2 * GRIPPER_HYSTERESIS)).clamp(0.0, 1.0)
-        closed = torch.where(cmd < -GRIPPER_HYSTERESIS, torch.ones_like(cmd),
-                             torch.where(cmd > GRIPPER_HYSTERESIS, torch.zeros_like(cmd),
-                                         torch.where(closed_now, torch.ones_like(cmd), hold)))
-        near = ((grasp_radius + 0.01 - gaps) / 0.02).clamp(0.0, 1.0).amax(-1)
-        return closed, closed * torch.maximum(grasp_now.clamp(0.0, 1.0), near)
-    closed = torch.where(cmd < -GRIPPER_HYSTERESIS, torch.ones_like(closed_now),
-                         torch.where(cmd > GRIPPER_HYSTERESIS, torch.zeros_like(closed_now), closed_now))
-    grasp = closed & ((grasp_now > 0.5) | (gaps < grasp_radius).any(-1))
-    return closed.float(), grasp.float()

@@ -1,6 +1,7 @@
 """Sim-free tests for the Isaac world model's state adapter and for fitting and using the online predictor."""
 
 import numpy as np
+import torch
 
 from cloth_angles.data.state_episode import StateEpisode
 from cloth_angles.tasks import HALF, SINGLE, VERTEX_DIM
@@ -61,21 +62,29 @@ def _episode(seed, split):
 
 
 def test_train_checkpoint_runs_prediction_inference(tmp_path):
-    model, loss = train([_episode(0, "train"), _episode(1, "train")], steps=2, hidden_dim=16, seed=7, log_every=0)
+    model, head, loss = train([_episode(0, "train"), _episode(1, "train")], HALF, steps=2, hidden_dim=16, seed=7,
+                              log_every=0)
     checkpoint = tmp_path / "state_predictor.pt"
-    save_checkpoint(model, checkpoint, "state_l1", "half", steps=2, seed=7, hidden_dim=16)
+    save_checkpoint(model, head, checkpoint, "state_l1", "half", steps=2, seed=7, hidden_dim=16)
 
     assert np.isfinite(loss)
     predictor = IsaacWorldModel(checkpoint, device="cpu")
     assert predictor.task is HALF
     state = np.zeros(HALF.state_dim, dtype=np.float32)
     predictor.reset(state)
-    prediction, latency_ms = predictor.predict(np.zeros(12, dtype=np.float32))
+    action = np.zeros(12, dtype=np.float32)
+    prediction, latency_ms = predictor.predict(action)
+    flags = [a.grasp_index for a in HALF.arms]
+    with torch.no_grad():
+        s, a = torch.as_tensor(state)[None], torch.as_tensor(action)[None]
+        expected = torch.sigmoid(head(model._features(s, s, a)))[0].numpy()
+    np.testing.assert_allclose(prediction[flags], expected, rtol=1e-6)           # the flags are the head's
     next_state = prediction.copy()
     next_state[30:33] += [0.003, 0.004, 0.0]             # cloth_10 lands 5 mm from its prediction, cloth_120 on it
+    next_state[flags] = [float(expected[0] <= 0.5), float(expected[1] > 0.5)]    # one flag predicted right
     metrics = predictor.observe_prediction(prediction, next_state, vertices=[10, 120], latency_ms=latency_ms)
     assert prediction.shape == (HALF.state_dim,)
-    assert metrics["latency_ms"] >= 0
+    assert metrics["latency_ms"] >= 0 and metrics["grasp_accuracy"] == 0.5
     np.testing.assert_allclose(metrics["manipulated_vertex_error_m"], 0.0025, rtol=1e-5)
     np.testing.assert_allclose(metrics["vertex_mae_m"], 0.007 / VERTEX_DIM, rtol=1e-4)
     assert np.array_equal(predictor.current, next_state)

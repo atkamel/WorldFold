@@ -18,10 +18,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from cloth_angles.model.fold_reward import FoldReward, gripper_transition
+from cloth_angles.model.fold_reward import FoldReward
 from cloth_angles.tasks import SINGLE, Task
-
-GRIPPER_CLOSED, GRIPPER_OPEN = -0.1, 1.0
 
 
 def policy_features(state, goal, state_mean, state_scale, task: Task = SINGLE, stage=None):
@@ -98,20 +96,22 @@ def lambda_returns(rewards: torch.Tensor, values: torch.Tensor, continues: torch
 
 
 class ImaginationTrainer:
-    def __init__(self, world_model, actor: Actor, critic: Critic, task: Task = SINGLE, horizon: int = 15,
+    def __init__(self, world_model, grasp_head, actor: Actor, critic: Critic, task: Task = SINGLE, horizon: int = 15,
                  gamma: float = 0.98, lam: float = 0.95, entropy_coef: float = 1e-4,
                  lr: float = 3e-4, target_tau: float = 0.02, soft_reward: bool = True,
                  ood_limit: float = 8.0, bc_coef: float = 0.0, ensemble=None,
                  disagreement_coef: float = 0.0):
         """world_model: the model used for normalization and, without an ensemble, for
-        stepping. ensemble: optional list of models; imagination then steps with
-        their mean prediction and subtracts disagreement_coef times the members'
-        spread (in normalized state units) from every imagined reward.
+        stepping. grasp_head: cloth_angles.model.grasp_head.GraspHead trained with
+        world_model; it sets every arm's grasp flag. ensemble: optional list of
+        models; imagination then steps with their mean prediction and subtracts
+        disagreement_coef times the members' spread (in normalized state units)
+        from every imagined reward.
         """
-        self.world_model, self.task = world_model, task
+        self.world_model, self.grasp_head, self.task = world_model, grasp_head, task
         self.ensemble = list(ensemble) if ensemble else [world_model]
         self.disagreement_coef = disagreement_coef
-        for model in {id(m): m for m in self.ensemble + [world_model]}.values():
+        for model in {id(m): m for m in self.ensemble + [world_model, grasp_head]}.values():
             for p in model.parameters():
                 p.requires_grad_(False)
         self.actor, self.critic = actor, critic
@@ -131,26 +131,24 @@ class ImaginationTrainer:
         return policy_features(state, goal, self.world_model.state_mean, self.world_model.state_scale, self.task, stage)
 
     def step(self, state, prev_state, action):
-        """Learned continuous dynamics, with each gripper and grasp set by the exact rule.
+        """Learned continuous dynamics, with each arm's grasp flag from the grasp head.
 
         The learned model never reproduces grasp and release (about one
-        transition per episode, which the L1 loss treats as outliers), so
-        those dimensions come from gripper_transition instead; the soft
-        version keeps them differentiable for the actor.
+        transition per arm per carry, which the L1 loss treats as outliers), so
+        the flags come from the head as probabilities: soft, so the actor's
+        gradient reaches the gripper command and the end effector through them.
         """
         predictions = torch.stack([m(state, prev_state, action) for m in self.ensemble])
         nxt = predictions.mean(0)
         if len(self.ensemble) > 1:
             spread = (predictions / self.world_model.state_scale).std(0)
             self._disagreement.append(spread.pow(2).mean(-1).sqrt())
+        flags = torch.sigmoid(self.grasp_head(self.world_model._features(state, prev_state, action)))
         mask = torch.zeros_like(nxt)
         replacement = torch.zeros_like(nxt)
-        for arm in self.task.arms:
-            closed, grasp = gripper_transition(state, action, arm, self.task.grasp_radius, soft=self.soft_reward)
-            mask[..., arm.ctrl_index] = 1.0
+        for k, arm in enumerate(self.task.arms):
             mask[..., arm.grasp_index] = 1.0
-            replacement[..., arm.ctrl_index] = GRIPPER_OPEN + closed * (GRIPPER_CLOSED - GRIPPER_OPEN)
-            replacement[..., arm.grasp_index] = grasp
+            replacement[..., arm.grasp_index] = flags[..., k]
         return nxt * (1.0 - mask) + replacement * mask
 
     def imagine(self, state, prev_state, spec, rs):

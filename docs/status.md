@@ -34,8 +34,11 @@ released, still), user 2026-10-22.
   `cloth_angles/train_state_predictor.py` trains one model on both, `cloth_angles/benchmark_state_predictor.py`
   scores 1 / 5 / 10 steps against persistence. The single-corner goal is out of the left arm's reach on the friction
   layout (results.md), so the single-arm path is gone. `tasks.py` builds `HALF` and `QUARTER` from
-  `quarter_fold_env.STAGES` (closes #10). Nothing has run in Isaac yet. Phase B (learned grasp head, imagination on
-  the half fold, evaluation in Isaac) comes after the data.
+  `quarter_fold_env.STAGES` (closes #10). Phase B code is in too: a learned grasp head trained with the model
+  (replaces the weld rule in imagination), clone + imagination training on the half fold
+  (`cloth_angles/train_imagined_actor.py`), a reward check against the env (`cloth_angles/check_fold_reward.py`)
+  and an Isaac evaluation (`isaac/world_model/evaluate.py`) that gives every policy the place servo's release and a
+  settle before the gate. Nothing has run in Isaac yet: WATcloud's SSH port has timed out since 2026-11-05 afternoon.
 
 The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Best policies: DAgger diffusion at replan 4
 (privileged, 99.5 / 77.0 / 79.5 on id_easy / id_hard / recovery) and the vision student at replan 2 (sensor-only,
@@ -43,8 +46,9 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. World model: WATcloud smoke run (collect 2 + 1 episodes per kind, train, benchmark, online runner), then the full
-   collection (two jobs, about 145k steps), training and the benchmark into results.md, then phase B.
+1. World model: WATcloud smoke run (collect 2 + 1 episodes per kind, train and benchmark locally, online runner),
+   then the full collection (two jobs, about 145k steps), training, benchmark and reward check into results.md, then
+   clone + imagination and the Isaac evaluation (scripted base vs clone vs imagined, gated, Wilson intervals).
 2. Find why `quarter2` folds fail: read the per-arm grasp traces of 712165, then run 8 seeds with the gentle release
    off and on. If the tilted pinches (A0 39°, S 34.5°) are what slips, try the slide grasp (`GRASP=slide`) on those
    two. Target: fold 2 landing within 3 cm on gated episodes, with video.
@@ -114,6 +118,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-05 · **World model phase B (sim-free):** learned grasp head (change-weighted BCE, trained with the model, grasp metrics in the benchmark), imagination on HALF with the head's soft flags and per-joint bias logging, FoldReward check vs env rewards (<1e-4 on a scripted fold), Isaac evaluator with a shared release + settle finish before the gate; weld rule (`gripper_transition`, `weld_corners`, `Task.grasp_radius`) deleted; fast 256 passed + #15 · (this commit)
 - 2026-11-05 · **World model phase A (PR #20 continued):** single-corner goal out of reach on friction (45-52 cm vs 44.5 cm); code moved to `isaac/world_model/` (two-arm adapter, play + half-fold collector with RGB/depth frames, online runner); union trainer + restored 1/5/10-step benchmark in `cloth_angles/`; HALF/QUARTER built from STAGES (#10 closed, M7.3); rig main + wrist cameras render depth; fast 240 passed + #15, slow 12 passed / 8 skipped · (this commit)
 - 2026-11-05 · **Review, no code:** PR #20 never ran in Isaac (train script import error, random-action collector, runner scores only, mislabelled corner metric, no imagination path); quarter fold: fold 2 scripted only, RL wired for the half fold only; PR tests 7 passed, quarter fast tests 35 passed · (this commit)
 - 2026-10-29 · **Sync Isaac branch with main:** merged `origin/main` (`24515e0`), retained the branch's world-model tools and updated them for `isaac.sim`; fast 226 passed / 1 known float failure / 5 skipped, slow 12 passed / 8 skipped · `24515e0`

@@ -9,7 +9,6 @@ import pytest
 
 from cloth_angles.data.state_episode import GRASP_INDEX, StateEpisodeStore, manipulated_vertices
 from cloth_angles.tasks import HALF
-from cloth_fold_rl.quarter_fold_env import STAGES, QuarterFoldEnv
 from isaac.experts.fold_expert import IsaacArmExpert
 from isaac.sim.isaac_env import CLOTH_CENTER, PROFILES, cloth_grid_mesh
 from isaac.world_model import collect, play
@@ -56,6 +55,7 @@ class PlayBase(gym.Env):
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(14,), dtype=np.float32)
         self.n_tasks, self.prefixes, self.max_episode_steps = 4, list(PREFIXES), 60
         self.weld_mask, self.grasped, self.failed = {}, {p: False for p in PREFIXES}, False
+        self.jaw_open = {p: None for p in PREFIXES}
 
     def _get_obs(self):
         return {k: np.zeros(n, dtype=np.float32) for k, n in self._sizes}
@@ -106,19 +106,12 @@ class PlayBase(gym.Env):
 CARRY = np.array([0.5, 0, 0, 0, 0, -1.0, -0.5, 0, 0, 0, 0, -1.0], dtype=np.float32)
 
 
-class FakeHalf:
-    """ScriptedHalfFold's interface over the real QuarterFoldEnv stage 0: both arms carry with their jaws shut."""
-
-    def __init__(self, base):
-        self.task = QuarterFoldEnv(base_env=base, cloth_jitter=0.0, stages=STAGES[:1])
-
-    def reset(self, seed):
-        return self.task.reset(seed=seed)[1]
+class FakeHalf(ScriptedHalfFold):
+    """The scripted half fold (its QuarterFoldEnv stage 0 and place-servo experts) with both arms carrying, jaws shut,
+    instead of the experts' actions."""
 
     def act(self):
         return CARRY.copy()
-
-    cycles = ScriptedHalfFold.cycles
 
 
 @pytest.fixture
