@@ -45,7 +45,7 @@ It worked on a real robot.
 - **KataGo-style help:** predict the neatness sub-scores (rect, flat, layers) as extra critic targets. In KataGo, auxiliary
   targets made training 1.65× faster. Dense prediction helps, dense reward hurts.
 - **Randomize:** garment pose and rotation, LeHome's 5 seen garments per type, unseen held out, mild visual changes.
-- **Learner:** not decided.
+- **Learner:** not decided. The draft in `stage1_design.md` uses Advantage Guidance. Options are in `research_nov5.md`.
 
 ## Rules for RL code
 - Build on published code (Isaac Lab `rsl_rl`, UWLab/OmniReset, LeRobot HIL-SERL, Ilia's LeHome solution). No from-scratch RL
@@ -54,5 +54,7 @@ It worked on a real robot.
 - Freeze a skill once it passes, retest after every update, roll back if it drops.
 
 ## Further reading
+- `stage1_design.md`: the draft design, with steps and costs.
+- `research_nov5.md`: learner, route, raw AlphaNIST cost, papers read.
 - `research_curriculum_katago.md`: mid-state resets, and KataGo's compute efficiency.
 - `research_good_rl_tasks.md`: how to design and red-team the verifier.

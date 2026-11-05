@@ -3,12 +3,12 @@
 Nothing is assigned. This is where the work is, so you can take it from here without redoing anything.
 
 ## Where we stopped
-**We finished the research on Oct 20, and the next step was writing the stage-1 RL design. That design doesn't exist yet.**
-No RL has run on the teacher. So the next thing anyone needs to do is design and build:
+**The stage-1 design now exists as a draft (`stage1_design.md`), but none of it is built.** No RL has run on the teacher.
 
 > **Stage 1: SGS-style neatness RL on Ilia Larchenko's `lehome_sim` π0.5, in its own LeHome Isaac world.**
 
-The method is in `rl_recipe.md`. The decisions below are still open.
+The first step in the design is free: Roy marks folds neat or not on video, which sets the pass line. The method is in
+`rl_recipe.md`, and everything learned on Nov 5 is in `research_nov5.md`. The decisions below are still open.
 
 ## Why this, in one paragraph
 Everything since September came down to this. The teacher (1st of 62 in the LeHome 2026 sim round) already folds real garment
@@ -18,8 +18,15 @@ check passes, so it was never asked to tidy. And some of its folds are already n
 
 ## Open decisions
 1. **Neatness pass line.** `fold_score` exists, the line doesn't. Roy calibrates it by eye. Until then no target is real.
-2. **Learner.** Not decided.
+2. **Learner.** Not decided. The draft uses Advantage Guidance with the teacher frozen. The alternative is changing the teacher's
+   weights (Route A). DSRL is rejected. See `research_nov5.md`.
 3. **What December shows.** LeHome's physics or realistic physics? Unresolved.
+
+## Speeds and costs (measured, one L4 at about $0.94/hour)
+- About 48 full folds/hour (20 in 25 min), about 12,600 policy steps/hour.
+- About 210 restored 60-step episodes/hour.
+- Teacher inference uses 16 GB of the L4's 24 GB.
+- `fold_score` takes 109 ms on a 663-point shirt, on a laptop.
 
 ## What's measured
 All in the teacher's own LeHome world unless stated. Data gathered 2026-10-19 and 20 on one GCP L4.
@@ -85,6 +92,9 @@ The larger hypothesis behind this (subskills, ADEPT, a brain) and the other open
 | You need | Where |
 |---|---|
 | The method | `rl_recipe.md` |
+| The draft design, with steps and costs | `stage1_design.md` |
+| Learner, route, costs, papers read, VR | `research_nov5.md` |
+| Roy's research screenshots, as text | `research_screenshots.md` |
 | The teacher running, and your half-completed states | `run_it.md` |
 | The neatness score | `teacher/mujoco_live/neat_metric.py`, `teacher/neat/` |
 | Save and restore mid-fold states | `teacher/grasp_test_patch.py`, `teacher/select_pregrasp.py` |

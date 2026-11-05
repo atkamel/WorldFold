@@ -52,3 +52,5 @@ MuJoCo square sheet.
 - Prediction error on moving cloth: 0.0141, against 0.0350 for repeating the last state.
 - Carries planned in imagination: 0/10, against 10/10 scripted.
 - Draft PR #20 is a separate one-step state predictor, not this.
+
+More on this, and on SuperMimic, in `research_nov5.md`.
