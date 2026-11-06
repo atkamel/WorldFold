@@ -2698,3 +2698,23 @@ The scripted fold ran out of steps on both seeds with its corners short (fold 0.
 in line with the 2.2-2.8 cm settled median). It ran first, before any finish, so the miss isn't carried over from
 another episode. So the pipeline runs end to end in Isaac; the clone and the imagined actor do not fold at this scale.
 
+### Release with the gentle release on, scripted half fold (2026-11-05, job 738561 data, offline)
+
+`outputs/cloth_angles/isaac_wm_task`: friction profile, dynamics DR on, place-servo base with the gentle release (its
+default), seeds 1,001,000-1,001,019 (expert), 1,002,000-019 (expert_noisy), 1,003,000-019 (expert_release). Per arm and
+episode, from the first step the jaw target opens after a grasp: "carried" = the carried corner (cloth_10 / cloth_120)
+rises more than 2 cm in the next 60 steps and is still within 5 cm of the gripper at the end of them.
+
+| kind | arm-episodes | released | carried | no release | final corner height (cm), median / max |
+|---|---|---|---|---|---|
+| expert | 40 | 35 | 3/38 [2.7, 20.8]% | 2 | 0.40 / 1.40 |
+| expert_noisy | 40 | 23 | 0 | 16 (+1 never grasped) | 0.40 / 3.15 (both > 2 cm in dragged episodes) |
+| expert_release (forced open) | 40 | 40 | 0 | 0 | 0.89 / 1.63 |
+
+- On `expert`, the corner sits a median 3.5 cm up when the release starts and rises a median 1.0 cm with the slow
+  lift before it lets go. The 3 carries were temporary: no corner was still up at the episode end (max 1.4 cm).
+- So the cloth-on-the-fingers failure of s3e (roy profile, slide grasp, box pads: released 5/20 and 1/20) does not
+  show here. This is not an A/B: there is no gentle-release-off run on these seeds, and the friction profile already
+  released 19/20 in F2 (attempt I). The half fold's misses are placement (14/20 `expert` runs end at the step cap
+  with fold scores 0.52-0.83) and mid-carry slips, not the release.
+
