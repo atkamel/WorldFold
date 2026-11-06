@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-05 · **Branch:** `chore/cleanup` (to be merged into `main`) · **Phase:** Q, the quarter fold on
+**Updated:** 2026-11-06 · **Branch:** `chore/cleanup` (to be merged into `main`) · **Phase:** Q, the quarter fold on
 Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -106,6 +106,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-06 · **SO-101 leader arm calibrated and working (user):** leader calibrated by posing both arms the same way (its reference makes its angles equal the follower's there); leader readings taken within half a turn of that pose, so its wrist roll crossing 4095 -> 0 no longer jumps the follower; fast suite 226 passed + #15 · (this commit)
 - 2026-11-05 · **SO-101 leader arm:** an SO-101 leader (`arms/leader/`, limits read from its motors) drives the follower through both arms' straight-up references (`arms.json` "leaders", Leader arm button, Esc releases); `ui.py` now exits when an arm's USB drops instead of serving frozen readings (seen live: the follower's cable dropped mid-session); follower twin recalibrated by the user in the page; checked on the fake bus (leader, two-arm, one-arm, facing, phone), leader twin not yet calibrated; fast suite 226 passed + #15 · (this commit)
 - 2026-11-05 · **SO-101 two-arm teleop:** `hardware/so101/` drives one or two arms (`arms.json`, calibration per arm in `arms/<name>/`), mirror mode (the other arm copies the leader, pan and roll flipped), laptop page moves the gripper by IK (WASD/R/F camera-relative, arrows tilt/roll, drag the fingertip ball), phone page picks its arm; checked against a fake servo bus in headless Chrome, not yet on hardware; fast suite 226 passed + #15 · (this commit)
 - 2026-11-05 · **SO-101 hardware:** real-arm scripts from `lerobot-env` into `hardware/so101/` (servo limit calibration, idle pose, web control panel with 3D twin, phone teleop); no tests touched · (this commit)

@@ -73,6 +73,11 @@ def copy_pose(pose, twin_from, twin_to, mirror):
 
     out = {}
     for m, pos in pose.items():
+        center = twin_from.get("center", {}).get(str(m))
+        if center is not None:
+            # A leader arm's encoder can roll over 4095 -> 0 (its wrist roll turns all the way
+            # round): read it within half a turn of the pose it was matched to its follower in.
+            pos = center + (pos - center + 2048) % 4096 - 2048
         angle = sign(twin_from, m) * (pos - zero(twin_from, m)) * (MIRROR_SIGN.get(m, 1) if mirror else 1)
         out[m] = zero(twin_to, m) + sign(twin_to, m) * angle
     return out
