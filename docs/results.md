@@ -2718,3 +2718,33 @@ rises more than 2 cm in the next 60 steps and is still within 5 cm of the grippe
   released 19/20 in F2 (attempt I). The half fold's misses are placement (14/20 `expert` runs end at the step cap
   with fold scores 0.52-0.83) and mid-carry slips, not the release.
 
+### Isaac world model, full data (2026-11-06, jobs 738561-63, trained on the Mac)
+
+Stores `isaac_wm_task` (60 scripted half folds), `isaac_wm_play1` / `_play2` (200 play episodes, seeds 1,000,000-099
+and 1,100,000-099; 113 ended "unreachable", 1 failed): 119,764 transitions, 96,666 train / 23,098 test (first fifth
+of each kind held out). Code d4aab45. State L1 predictor + grasp head, 10,000 updates, 3 seeds (spread not shown).
+Reward check: FoldReward vs the env on all 60 half-fold episodes, max difference 1.5e-6, no termination or stage
+mismatch.
+
+Test windows, vertex MAE / manipulated-vertex error (mm), model vs persistence:
+
+| group | n | h = 1 | h = 5 | h = 10 |
+|---|---|---|---|---|
+| play, all | 1,753 | 1.30 / 3.60 vs 1.45 / 4.02 | 4.51 / 11.8 vs 4.93 / 13.4 | 8.33 / 21.7 vs 8.82 / 23.8 |
+| play, grasped | 743 | 1.75 / 4.90 vs 2.00 / 5.69 | 6.21 / 16.6 vs 7.21 / 20.1 | 11.8 / 32.7 vs 13.2 / 37.8 |
+| task, all | 494 | 0.23 / 1.59 vs 0.24 / 1.82 | 0.89 / 4.82 vs 1.02 / 6.30 | 1.62 / 7.68 vs 1.92 / 10.7 |
+| task, grasped | 104 | 0.79 / 5.51 vs 0.97 / 6.59 | 2.56 / 15.3 vs 3.57 / 22.5 | 4.40 / 24.3 vs 6.50 / 39.1 |
+
+- The model beats persistence on every held-out group and horizon. The margin is smaller than MuJoCo's (task
+  grasped at 10 steps: 24.3 vs 39.1 mm here, against 15.4 vs 74.5 mm on MuJoCo). Training windows score the same as
+  test (play h = 10: 8.35 vs 8.33 mm), so this is not a data shortfall.
+- Grasp head, held-out transitions: accuracy 0.937 (play) / 0.966 (task) against 0.980 / 0.992 for persistence.
+  Releases are predicted (precision / recall 1.00 / 0.99 play, 1.00 / 0.98 task). Onsets are over-predicted
+  (0.27 / 0.95, 0.31 / 0.90). Slips are not predicted (0.05 / 0.46, 0.05 / 0.53; n = 140 / 24). The change weight
+  (all changes weigh as much as all steady steps) buys recall with false alarms.
+- Clone (3,000 updates, 6,540 expert transitions) + imagination (3,000 updates, horizon 10, anchor 1.0, 20,240 start
+  states): imagined return rose 1.56 → 3.94 while the imagined grasp rate fell 0.22 → 0.01, with no imagined stage
+  completion. The actor's mean absolute action bias against held-out expert actions went 0.20 (clone) → 0.34. So
+  the actor raised its imagined return by letting go, not by folding: it exploits the model or the reward. Not
+  evaluated in Isaac.
+
