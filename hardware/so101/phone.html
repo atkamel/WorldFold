@@ -291,8 +291,10 @@ showToggles();
 // Hidden when there's only one arm. Switching arm drops anything in flight
 // for the old arm, same as STOP, so nothing meant for it reaches the new one.
 const armBar = document.getElementById("armBar");
+// Arms a phone can drive: every arm except leader arms, which a hand moves.
+const drivable = () => Object.keys(state.arms).filter(n => !Object.values(state.leaders ?? {}).includes(n));
 function renderArmBar() {
-  const names = Object.keys(state.arms);
+  const names = drivable();
   armBar.style.display = names.length > 1 ? "flex" : "none";
   armBar.innerHTML = "";
   for (const name of names) {
@@ -366,7 +368,7 @@ setInterval(async () => {
     const r = await fetch(api("/state"));
     if (r.status === 403) { document.getElementById("conn").textContent = "bad link: rescan the QR code"; return; }
     state = await r.json();
-    const names = Object.keys(state.arms);
+    const names = drivable();
     if (arm === null) { arm = pickInitialArm(names); localStorage.setItem("arm", arm); renderArmBar(); }
     loadTwin();
     if (!drive) lastSent = {};          // between drives, start from the server's targets

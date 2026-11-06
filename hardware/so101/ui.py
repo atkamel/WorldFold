@@ -11,9 +11,14 @@ its target. The browser only talks to this server, never to the motors.
 Mirror mode: one arm leads and the other copies its target as a mirror image
 (pan and wrist roll flipped), so any input that moves the leader moves both.
 With the leader limp, moving it by hand drives the other arm.
+
+Leader arm: arms.json "leaders" pairs a follower with a leader arm (a limp
+SO-101 moved by hand), e.g. {"left": "leader"}. With it on, the follower
+copies the leader's joint angles.
 """
 
 import json
+import os
 import secrets
 import socket
 import ssl
@@ -56,10 +61,10 @@ GRIPPER_TORQUE_LIMIT = 500  # 50% of max, as lerobot does, so it can't burn out 
 MIRROR_SIGN = {1: -1, 5: -1}  # a mirror image swaps left and right: pan and wrist roll change sign
 
 
-def mirrored(pose, twin_from, twin_to):
-    """One arm's encoder pose -> the mirror-image pose for the other arm, through
-    each arm's straight-up reference (same convention as the pages:
-    angle = sign * (encoder - zero))."""
+def copy_pose(pose, twin_from, twin_to, mirror):
+    """One arm's encoder pose -> the same joint angles on another arm (or their
+    mirror image), through each arm's straight-up reference (same convention as
+    the pages: angle = sign * (encoder - zero))."""
     def zero(twin, m):
         return twin.get("zero", {}).get(str(m), 2047)
 
@@ -68,7 +73,7 @@ def mirrored(pose, twin_from, twin_to):
 
     out = {}
     for m, pos in pose.items():
-        angle = sign(twin_from, m) * (pos - zero(twin_from, m)) * MIRROR_SIGN.get(m, 1)
+        angle = sign(twin_from, m) * (pos - zero(twin_from, m)) * (MIRROR_SIGN.get(m, 1) if mirror else 1)
         out[m] = zero(twin_to, m) + sign(twin_to, m) * angle
     return out
 
@@ -112,7 +117,7 @@ class Arm:
         self.burst_speed = None  # temporary faster speed until the current pose is reached
         self.pending_burst = None
         self.twin = json.loads(self.twin_file.read_text()) if self.twin_file.exists() else None
-        self.mirror_of = None  # the leading Arm while mirror mode is on
+        self.follows = None  # (leading Arm, mirror?) while this arm copies another
 
     # --- bus access: only ever called from the control thread (or __init__) ---
 
@@ -162,10 +167,10 @@ class Arm:
 
     def control_loop(self):
         while True:
-            leader = self.mirror_of
-            if leader:
-                with leader.lock:
-                    lead_target = dict(leader.target)
+            follows = self.follows
+            if follows:
+                with follows[0].lock:
+                    lead_target = dict(follows[0].target)
             with self.lock:
                 pending, self.pending_torque = self.pending_torque, None
                 if pending is not None:
@@ -179,8 +184,9 @@ class Arm:
 
                 self.read_present()
                 if self.torque:
-                    if leader:
-                        self.target = self.clamp(mirrored(lead_target, leader.twin or {}, self.twin or {}))
+                    if follows:
+                        leader, mirror = follows
+                        self.target = self.clamp(copy_pose(lead_target, leader.twin or {}, self.twin or {}, mirror))
                     # Speed = how far a goal may move per tick. 50 deg/s is
                     # ~11.4 steps per 20 ms tick; fractions carry over.
                     max_step = (self.burst_speed or self.speed) * STEPS_PER_DEGREE * TICK_SECONDS
@@ -255,6 +261,16 @@ class Arm:
             }
 
 
+def run(arm):
+    """The arm's control loop. A lost USB link ends the whole server: a page
+    that keeps showing frozen readings as live is worse than no page."""
+    try:
+        arm.control_loop()
+    except OSError as err:  # pyserial's SerialException is an OSError
+        print(f"\nLost the {arm.name} arm's USB connection ({err}). Stopping; torque is left as is.", flush=True)
+        os._exit(1)
+
+
 def ensure_certificate():
     """Self-signed HTTPS certificate for the phone link (the phone will warn
     once, since no authority vouches for it; the traffic is still encrypted)."""
@@ -276,6 +292,10 @@ def lan_ip():
 
 
 def make_handler(arms_by_name, token=None):
+    # follower -> leader arm, for the pairs whose arms are both running
+    leaders = {f: arms_by_name[l] for f, l in arms.CONFIG.get("leaders", {}).items()
+               if f in arms_by_name and l in arms_by_name}
+
     """token=None: trusted (localhost). Otherwise every request must carry ?t=token,
     so only someone with the printed link can drive the arm over Wi-Fi."""
 
@@ -305,7 +325,9 @@ def make_handler(arms_by_name, token=None):
                     "arms": {name: arm.state() for name, arm in arms_by_name.items()},
                     "layout": arms.CONFIG.get("layout", "side_by_side"),
                     "spacing_cm": arms.CONFIG.get("spacing_cm", 40),
-                    "mirror": next((a.mirror_of.name for a in arms_by_name.values() if a.mirror_of), None),
+                    "leaders": {f: l.name for f, l in leaders.items()},
+                    "follow": {a.name: {"leader": a.follows[0].name, "mirror": a.follows[1]}
+                               for a in arms_by_name.values() if a.follows},
                     "speed": first.speed,
                 })
             elif path == "/phone":
@@ -328,14 +350,19 @@ def make_handler(arms_by_name, token=None):
                 for a in arms_by_name.values():
                     a.speed = max(1, min(MAX_SPEED, float(body["speed"])))
             elif self.path == "/hold":
-                # Stop everything, mirror mode included, so no arm keeps chasing another.
+                # Stop everything, mirror and leader arm included, so no arm keeps chasing another.
                 for a in arms_by_name.values():
-                    a.mirror_of = None
+                    a.follows = None
                     a.hold()
             elif self.path == "/mirror":
+                # Every other arm that isn't a leader arm mirrors this one.
                 leader = arms_by_name.get(body.get("leader"))
+                lead_arms = set(leaders.values())
                 for a in arms_by_name.values():
-                    a.mirror_of = leader if a is not leader else None
+                    a.follows = (leader, True) if leader and a is not leader and a not in lead_arms else None
+            elif self.path == "/leader":
+                for follower, leader in leaders.items():
+                    arms_by_name[follower].follows = (leader, False) if body["on"] else None
             elif self.path == "/pose":
                 arm.go_pose(body["pose"], body.get("speed"))
             elif self.path == "/preset/save":
@@ -365,7 +392,7 @@ def main():
         sys.exit(f"Unknown arm {unknown}; arms.json has {', '.join(arms.ARMS)}")
     arms_by_name = {name: Arm(name) for name in names}
     for arm in arms_by_name.values():
-        threading.Thread(target=arm.control_loop, daemon=True).start()
+        threading.Thread(target=run, args=(arm,), daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name))
 
     ensure_certificate()

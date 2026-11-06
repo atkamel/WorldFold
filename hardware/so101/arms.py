@@ -4,6 +4,8 @@ arms.json names every arm and its serial port, plus how the arms stand:
     "layout": "side_by_side"  both face the same way, "left" on the left
     "layout": "facing"        they face each other across the table
     "spacing_cm"              distance between the two bases
+    "leaders"                 optional {follower: leader arm}: a limp SO-101 moved by
+                              hand whose joint angles the follower copies (ui.py)
 Names are seen from behind the arms (side_by_side) or from the side of the
 table between them (facing). Find a port with `ls /dev/tty.usbmodem*`.
 

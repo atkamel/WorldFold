@@ -79,6 +79,7 @@
     <button id="stop" class="stop">Stop <kbd>Esc</kbd></button>
   </div>
   <button id="mirror" hidden>Mirror: off</button>
+  <button id="leader" hidden>Leader arm: off</button>
   <p class="hint" id="mode-hint"></p>
   <div class="joint" id="speed-row">
     <span class="name">Speed</span><span class="nums" id="speed-value"></span>
@@ -97,7 +98,7 @@
       <span><kbd>Space</kbd></span><span>open / close</span>
       <span>hold <kbd>Shift</kbd></span><span>slow, for fine moves</span>
       <span data-two hidden><kbd>Tab</kbd></span><span data-two hidden>switch arm (or click it)</span>
-      <span data-two hidden><kbd>M</kbd></span><span data-two hidden>mirror: the other arm copies this one</span>
+      <span data-mirror hidden><kbd>M</kbd></span><span data-mirror hidden>mirror: the other arm copies this one</span>
     </div>
   </section>
   <section>
@@ -555,15 +556,30 @@ function setActive(arm) {
   keyDrive = null; selected = null;
   models?.[arm].real.base.add(ring);
   // Mirror mode follows you: the arm you drive leads, the other copies it.
-  if (state?.mirror && state.mirror !== arm) post("/mirror", { leader: arm });
+  const mirroring = state && mirrorLeader();
+  if (mirroring && mirroring !== arm && !leaderArms().has(arm)) post("/mirror", { leader: arm });
   for (const id of IDS) rows[id].row.classList.remove("selected");
   highlight(); render();
 }
+// Mirror and leader arm are both "one arm copies another"; the server reports them in state.follow.
+const mirrorLeader = () => Object.values(state.follow).find(f => f.mirror)?.leader ?? null;
+const leaderArms = () => new Set(Object.values(state.leaders));
+const followers = () => names.filter(n => !leaderArms().has(n));
+const leading = () => Object.values(state.follow).some(f => !f.mirror);
 function toggleMirror() {
-  if (names.length < 2) return;
-  if (!names.every(calibrated)) { toast("Calibrate both twins first: mirroring works in angles."); return; }
-  post("/mirror", { leader: state.mirror ? null : active });
-  toast(state.mirror ? "Mirror off." : `Mirror on: the other arm copies ${active}.`);
+  if (followers().length < 2) return;
+  if (leaderArms().has(active)) { toast("Pick the arm to lead first: the leader arm only drives its follower."); return; }
+  if (!followers().every(calibrated)) { toast("Calibrate both twins first: mirroring works in angles."); return; }
+  post("/mirror", { leader: mirrorLeader() ? null : active });
+  toast(mirrorLeader() ? "Mirror off." : `Mirror on: the other arm copies ${active}.`);
+}
+function toggleLeader() {
+  const pairs = Object.entries(state.leaders);
+  if (!leading() && !pairs.flat().every(calibrated)) {
+    toast("Calibrate the leader arm's twin first (select it, then Twin calibration below)."); return;
+  }
+  post("/leader", { on: !leading() });
+  toast(leading() ? "Leader arm off." : `Leader arm on: ${pairs.map(([f, l]) => `${f} copies ${l}`).join(", ")}. Esc stops.`);
 }
 
 // ---------- presets ----------
@@ -697,7 +713,9 @@ const tabs = document.getElementById("tabs");
 function buildTabs() {
   tabs.hidden = names.length < 2;
   for (const el of document.querySelectorAll("[data-two]")) el.hidden = names.length < 2;
-  document.getElementById("mirror").hidden = names.length < 2;
+  for (const el of document.querySelectorAll("[data-mirror]")) el.hidden = followers().length < 2;
+  document.getElementById("mirror").hidden = followers().length < 2;
+  document.getElementById("leader").hidden = !Object.keys(state.leaders).length;
   for (const name of names) button(tabs, name, () => setActive(name)).dataset.arm = name;
 }
 
@@ -705,6 +723,7 @@ document.getElementById("torque").onclick = () => post("/torque", { arm: active,
 document.getElementById("idle").onclick = () => post("/idle", { arm: active });
 document.getElementById("stop").onclick = stop;
 document.getElementById("mirror").onclick = toggleMirror;
+document.getElementById("leader").onclick = toggleLeader;
 document.getElementById("reference").onclick = () => {
   if (!state) return;
   twins[active].zero = { ...state.arms[active].present };
@@ -721,19 +740,25 @@ function toast(msg) {
 
 function render() {
   if (!state || !models) return;
-  const me = state.arms[active], on = me.torque;
+  const me = state.arms[active], on = me.torque, isLeader = leaderArms().has(active);
   const btn = document.getElementById("torque");
   btn.textContent = `Torque: ${on ? "on" : "off"}`;
   btn.classList.toggle("on", on);
+  // A leader arm stays limp so a hand can move it.
+  btn.disabled = document.getElementById("idle").disabled = isLeader && !on;
   for (const b of tabs.children) {
     b.textContent = `${b.dataset.arm} · ${state.arms[b.dataset.arm].torque ? "on" : "off"}`;
     b.classList.toggle("active", b.dataset.arm === active);
   }
-  const mirrorBtn = document.getElementById("mirror");
-  mirrorBtn.textContent = state.mirror ? `Mirror: on (${state.mirror} leads)` : "Mirror: off";
-  mirrorBtn.classList.toggle("on", !!state.mirror);
-  document.getElementById("mode-hint").textContent = on
-    ? "Holding. Use the keys or drag the orange ball to move the gripper."
+  const mirrorBtn = document.getElementById("mirror"), mirroring = mirrorLeader();
+  mirrorBtn.textContent = mirroring ? `Mirror: on (${mirroring} leads)` : "Mirror: off";
+  mirrorBtn.classList.toggle("on", !!mirroring);
+  const leaderBtn = document.getElementById("leader");
+  leaderBtn.textContent = `Leader arm: ${leading() ? "on" : "off"}`;
+  leaderBtn.classList.toggle("on", leading());
+  document.getElementById("mode-hint").textContent = isLeader
+    ? "Leader arm. Move it by hand; with Leader arm on, its follower copies it."
+    : on ? "Holding. Use the keys or drag the orange ball to move the gripper."
     : "Limp. Move the arm by hand; the screen follows it.";
   document.getElementById("uncalibrated").hidden = calibrated(active);
   for (const id of IDS) {
@@ -753,7 +778,7 @@ function render() {
     real.tip.visible = s.torque;
   }
   for (const b of calibratedOnly) {
-    b.disabled = !calibrated(active);
+    b.disabled = !calibrated(active) || isLeader;
     b.title = calibrated(active) ? "" : "Calibrate the twin first: these are defined relative to straight up";
   }
   renderMine(active, me.presets ?? {});
