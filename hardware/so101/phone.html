@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>SO-101 Leader</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66;
+    --line: #e2e0da; --accent: #d9632b; --accent-soft: #fbe9df; --ok: #2f8f5b; --stop: #b8442a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9892;
+            --line: #33322f; --accent: #ef7a42; --accent-soft: #3a2519; --ok: #4cb37b; --stop: #e0674a; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); overscroll-behavior: none;
+         font: 15px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
+         display: flex; flex-direction: column; gap: 10px; padding: 12px 16px;
+         padding-bottom: max(12px, env(safe-area-inset-bottom)); user-select: none; -webkit-user-select: none; }
+  .bar { display: flex; gap: 8px; }
+  button { flex: 1; padding: 12px 10px; border-radius: 10px; border: 1px solid var(--line);
+           background: var(--panel); color: var(--ink); font: inherit; font-weight: 600; }
+  button.on { background: var(--ok); color: #fff; border-color: var(--ok); }
+  button.stop { background: var(--stop); color: #fff; border-color: var(--stop); }
+  #status { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+  #toast { color: var(--stop); font-weight: 600; font-size: 13px; min-height: 18px; }
+  #pad { flex: 1; min-height: 240px; border-radius: 16px; border: 2px dashed var(--line);
+         background: var(--panel); display: flex; flex-direction: column; align-items: center;
+         justify-content: center; text-align: center; padding: 16px; touch-action: none; color: var(--muted); }
+  #pad.active { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--ink); }
+  #pad strong { font-size: 18px; color: var(--ink); }
+  #pad .how { font-size: 12px; margin-top: 8px; }
+  .row { display: grid; grid-template-columns: 70px 1fr auto; align-items: center; gap: 8px; font-size: 13px; }
+  .row span:last-child { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 52px; text-align: right; }
+  input[type=range] { width: 100%; accent-color: var(--accent); height: 32px; }
+  #angles { font: 11px/1.5 ui-monospace, monospace; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+  <div id="status"><span id="conn">connecting…</span><span id="sensor">motion: off</span></div>
+  <div class="bar">
+    <button id="motion">Enable motion</button>
+    <button id="torque">Torque: off</button>
+    <button id="stop" class="stop">STOP</button>
+  </div>
+  <div id="toast"></div>
+  <div id="pad">
+    <strong>Hold here to drive</strong>
+    <div class="how">Hold the phone like a TV remote: screen up, top pointing at the robot.<br>
+      Turn = pan · tilt = gripper pitch · twist = wrist roll<br>
+      Slide thumb: up/down = height, left/right = reach (right = farther)<br>
+      Let go = the arm stops following.</div>
+  </div>
+  <div class="row"><span>Gripper</span><input type="range" id="gripper" step="1"><span id="gripper-value"></span></div>
+  <div class="bar">
+    <button id="close">Close</button>
+    <button id="open">Open</button>
+  </div>
+  <div class="bar">
+    <button id="mirror">Mirror: on</button>
+    <button id="gestures">Gestures: off</button>
+  </div>
+  <div class="bar">
+    <button id="punch">Punch 👊</button>
+    <button id="uppercut">Uppercut</button>
+  </div>
+  <div class="row"><span>Speed</span><input type="range" id="speed" min="5" max="180" step="5"><span id="speed-value"></span></div>
+  <div id="angles"></div>
+
+<script>
+// ---------- server ----------
+const TOKEN = new URLSearchParams(location.search).get("t") ?? "";
+const api = path => `${path}?t=${encodeURIComponent(TOKEN)}`;
+function post(path, body) {
+  return fetch(api(path), { method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body ?? {}) });
+}
+
+// ---------- encoder <-> angle (same convention as the laptop page) ----------
+// angle 0 = straight up; positive = right / forward / clockwise / open.
+const RAD_PER_STEP = 2 * Math.PI / 4096, DEG = 180 / Math.PI;
+let state = null, twin = { zero: {}, flip: {} };
+const zero = id => twin.zero[id] ?? 2047;
+const sign = id => (twin.flip[id] ? -1 : 1);
+const toDeg = (id, pos) => sign(id) * (pos - zero(id)) * RAD_PER_STEP * DEG;
+const toPos = (id, deg) => Math.round(zero(id) + sign(id) * deg / DEG / RAD_PER_STEP);
+function degRange(id) {
+  const [a, b] = state.limits[id].map(p => toDeg(id, p));
+  return [Math.min(a, b), Math.max(a, b)];
+}
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const wrap180 = d => ((d + 540) % 360) - 180;
+
+// ---------- sending ----------
+// Targets are batched and sent at most 20 times a second; the newest always wins.
+let queued = {}, timer = null, lastSent = {};
+function setDeg(degs) {
+  for (const [k, d] of Object.entries(degs)) {
+    const id = +k, [lo, hi] = degRange(id);
+    queued[id] = lastSent[id] = toPos(id, clamp(d, lo, hi));
+  }
+  if (!timer) timer = setTimeout(() => { timer = null; post("/pose", { pose: queued }); queued = {}; }, 50);
+}
+function currentDeg(id) {               // where we last asked this joint to go
+  return toDeg(id, lastSent[id] ?? state.target[id]);
+}
+
+// ---------- arm geometry for reach/height ----------
+// Shoulder-lift and elbow form a 2-link arm (lengths in cm). Angles are from
+// vertical, forward positive, so the wrist sits at:
+//   x (reach)  = L1 sin(a2) + L2 sin(a2 + a3)
+//   y (height) = L1 cos(a2) + L2 cos(a2 + a3)
+const L1 = 11.6, L2 = 13.5;
+function forward(a2, a3) {
+  const r2 = a2 / DEG, r23 = (a2 + a3) / DEG;
+  return { x: L1 * Math.sin(r2) + L2 * Math.sin(r23), y: L1 * Math.cos(r2) + L2 * Math.cos(r23) };
+}
+// Inverse: given a wrist point, find (a2, a3). Law of cosines gives the elbow
+// bend from the shoulder-to-wrist distance; the shoulder then aims at the
+// point, minus the tilt the bent elbow adds. Every point has two answers
+// (elbow bent forward or backward); elbowSign keeps the one the arm is in.
+function inverse(x, y, elbowSign) {
+  const d = clamp(Math.hypot(x, y), Math.abs(L1 - L2), L1 + L2);   // keep it reachable
+  const cosA3 = clamp((d * d - L1 * L1 - L2 * L2) / (2 * L1 * L2), -1, 1);
+  const a3 = elbowSign * Math.acos(cosA3);
+  const a2 = Math.atan2(x, y) - Math.atan2(L2 * Math.sin(a3), L1 + L2 * Math.cos(a3));
+  return { a2: a2 * DEG, a3: a3 * DEG };
+}
+
+// ---------- phone motion ----------
+// With the phone held like a remote, the browser's angles are exactly:
+//   alpha = turn left/right, beta = top tilted up/down, gamma = twist.
+let orient = null;
+function onOrientation(e) {
+  if (e.beta == null) return;
+  orient = { alpha: e.alpha, beta: e.beta, gamma: e.gamma };
+  document.getElementById("sensor").textContent =
+    `turn ${Math.round(e.alpha ?? 0)}° · tilt ${Math.round(e.beta)}° · twist ${Math.round(e.gamma)}°`;
+  if (drive) update();
+}
+document.getElementById("motion").onclick = async () => {
+  try {
+    // iOS asks permission, and only from a button tap.
+    if (typeof DeviceOrientationEvent?.requestPermission === "function") {
+      if (await DeviceOrientationEvent.requestPermission() !== "granted") return toast("Motion permission denied.");
+    }
+    if (typeof DeviceMotionEvent?.requestPermission === "function") {
+      await DeviceMotionEvent.requestPermission();
+    }
+    addEventListener("deviceorientation", onOrientation);
+    addEventListener("devicemotion", onMotion);
+    document.getElementById("motion").textContent = "Motion on";
+    document.getElementById("motion").classList.add("on");
+    navigator.wakeLock?.request("screen").catch(() => {});   // keep the screen awake
+  } catch (err) { toast(`Motion unavailable: ${err.message}`); }
+};
+
+// ---------- driving ----------
+// Everything is RELATIVE to the moment your thumb lands: the arm starts from
+// wherever it is and only follows changes, so pressing never makes it jump.
+const CM_PER_PX = 0.08;
+let drive = null;
+const pad = document.getElementById("pad");
+pad.addEventListener("pointerdown", e => {
+  if (!state) return;
+  if (!orient) return toast("Tap “Enable motion” first.");
+  if (!Object.keys(twin.zero).length) return toast("Calibrate the twin on the laptop first.");
+  pad.setPointerCapture(e.pointerId);
+  pad.classList.add("active");
+  anchor(e.clientX, e.clientY);
+});
+// Snapshot "now" (thumb, phone angles, arm angles); later changes are measured from here.
+function anchor(fx, fy) {
+  const a2 = currentDeg(2), a3 = currentDeg(3), a4 = currentDeg(4);
+  drive = {
+    x0: fx, y0: fy, x: fx, y: fy,
+    alpha0: orient.alpha, beta0: orient.beta, gamma0: orient.gamma,
+    pan0: currentDeg(1), roll0: currentDeg(5),
+    pitch0: a2 + a3 + a4,              // gripper's angle from vertical
+    wrist0: forward(a2, a3),
+    elbowSign: a3 < 0 ? -1 : 1,
+  };
+}
+pad.addEventListener("pointermove", e => { if (drive) { drive.x = e.clientX; drive.y = e.clientY; update(); } });
+function release() { drive = null; pad.classList.remove("active"); }
+pad.addEventListener("pointerup", release);
+pad.addEventListener("pointercancel", release);
+document.addEventListener("visibilitychange", () => document.hidden && release());
+
+// Mirror on = you face the robot (its right is your left), so turn and twist flip.
+let mirror = localStorage.getItem("mirror") !== "off";
+function update() {
+  if (busy) return;                     // a strike is playing; don't fight it
+  const d = drive, dir = mirror ? -1 : 1;
+  // Thumb: right = reach farther, up = higher.
+  const { a2, a3 } = inverse(d.wrist0.x + (d.x - d.x0) * CM_PER_PX,
+                             d.wrist0.y - (d.y - d.y0) * CM_PER_PX, d.elbowSign);
+  // Turning the phone right lowers alpha; pan right is positive (flipped when mirrored).
+  const pan = d.alpha0 == null ? d.pan0 : d.pan0 - dir * wrap180(orient.alpha - d.alpha0);
+  // Tilting the top down lowers beta; the gripper should point further down.
+  const pitch = d.pitch0 - (orient.beta - d.beta0);
+  // Twisting clockwise raises gamma; roll clockwise is positive (flipped when mirrored).
+  const roll = d.roll0 + dir * (orient.gamma - d.gamma0);
+  // The wrist makes up whatever the shoulder and elbow don't, so the
+  // gripper keeps the phone's tilt while you change reach and height.
+  setDeg({ 1: pan, 2: a2, 3: a3, 4: pitch - a2 - a3, 5: roll });
+}
+
+// ---------- strikes ----------
+// A strike is a few wrist positions (x = reach, y = height above the shoulder,
+// in cm; pitch = gripper angle from vertical) played fast, then the arm goes
+// back to where it was.
+const STRIKE_SPEED = 270;               // deg/s burst; ui.py caps it there too
+const STRIKES = {
+  punch:    [{ x: 8, y: 6, pitch: 90 },   // chamber: pull the fist back
+             { x: 24, y: 6, pitch: 90 }], // extend straight out, fist level
+  uppercut: [{ x: 9, y: 3, pitch: 80 },   // dip low
+             { x: 13, y: 20, pitch: 25 }],// drive up and through
+};
+let busy = false, strikeRun = 0;      // Stop bumps strikeRun, cancelling a strike midway
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Send degrees right away (no batching) at a given speed; returns ms to arrive.
+function sendNow(degs, speed) {
+  const pose = {};
+  let longest = 0;
+  for (const [k, d] of Object.entries(degs)) {
+    const id = +k, [lo, hi] = degRange(id), target = clamp(d, lo, hi);
+    longest = Math.max(longest, Math.abs(target - currentDeg(id)));
+    pose[id] = lastSent[id] = toPos(id, target);
+  }
+  post("/pose", { pose, speed });
+  return longest / speed * 1000 + 120;
+}
+
+async function strike(kind) {
+  if (busy || !state || !Object.keys(twin.zero).length) return;
+  busy = true;
+  const run = ++strikeRun;
+  clearTimeout(timer); timer = null; queued = {};      // drop any half-sent drive update
+  pad.classList.add("active");
+  const before = Object.fromEntries([1, 2, 3, 4, 5, 6].map(id => [id, currentDeg(id)]));
+  const fist = Math.max(0, degRange(6)[0]);
+  for (const f of STRIKES[kind]) {
+    const { a2, a3 } = inverse(f.x, f.y, 1);
+    await sleep(sendNow({ 2: a2, 3: a3, 4: f.pitch - a2 - a3, 6: fist }, STRIKE_SPEED));
+    if (run !== strikeRun) { busy = false; return; }
+  }
+  await sleep(sendNow(before, Math.max(90, state.speed)));   // recover a bit slower
+  busy = false;
+  if (run !== strikeRun) return;
+  if (drive) anchor(drive.x, drive.y); else pad.classList.remove("active");
+}
+
+// Gestures: a sharp jab of the phone toward its top edge = punch; a sharp jab
+// upward (out of the screen, phone held flat) = uppercut. `acceleration` has
+// gravity removed, in m/s^2 along the phone's own axes.
+const JAB = 14, COOLDOWN_MS = 1200;
+let gestures = false, lastGesture = 0;
+function onMotion(e) {
+  const a = e.acceleration;
+  if (!gestures || busy || !a || a.y == null) return;
+  const now = performance.now();
+  if (now - lastGesture < COOLDOWN_MS) return;
+  if (a.y > JAB && a.y > Math.abs(a.z)) { lastGesture = now; strike("punch"); }
+  else if (a.z > JAB && a.z > Math.abs(a.y)) { lastGesture = now; strike("uppercut"); }
+}
+
+const mirrorBtn = document.getElementById("mirror"), gestureBtn = document.getElementById("gestures");
+function showToggles() {
+  mirrorBtn.textContent = `Mirror: ${mirror ? "on" : "off"}`; mirrorBtn.classList.toggle("on", mirror);
+  gestureBtn.textContent = `Gestures: ${gestures ? "on" : "off"}`; gestureBtn.classList.toggle("on", gestures);
+}
+mirrorBtn.onclick = () => { mirror = !mirror; localStorage.setItem("mirror", mirror ? "on" : "off"); if (drive) anchor(drive.x, drive.y); showToggles(); };
+gestureBtn.onclick = () => {
+  if (!orient) return toast("Tap “Enable motion” first.");
+  gestures = !gestures; showToggles();
+  if (gestures) toast("Jab the phone forward to punch, upward to uppercut.");
+};
+document.getElementById("punch").onclick = () => strike("punch");
+document.getElementById("uppercut").onclick = () => strike("uppercut");
+showToggles();
+
+// ---------- buttons ----------
+document.getElementById("torque").onclick = () => post("/torque", { on: !state?.torque });
+document.getElementById("stop").onclick = () => {
+  strikeRun++; release(); gestures = false; showToggles(); queued = {}; lastSent = {};
+  post("/hold"); toast("Stopped. Gestures off.");
+};
+const gripper = document.getElementById("gripper");
+let gripperHeld = false;
+gripper.addEventListener("pointerdown", () => gripperHeld = true);
+addEventListener("pointerup", () => gripperHeld = false);
+gripper.addEventListener("input", () => setDeg({ 6: +gripper.value }));
+document.getElementById("open").onclick = () => setDeg({ 6: degRange(6)[1] });
+document.getElementById("close").onclick = () => setDeg({ 6: Math.max(0, degRange(6)[0]) });
+const speed = document.getElementById("speed");
+let speedHeld = false;
+speed.addEventListener("pointerdown", () => speedHeld = true);
+addEventListener("pointerup", () => speedHeld = false);
+speed.addEventListener("input", () => post("/speed", { speed: +speed.value }));
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.textContent = "", 2500);
+}
+
+// ---------- live state ----------
+function render() {
+  const btn = document.getElementById("torque");
+  btn.textContent = `Torque: ${state.torque ? "on" : "off"}`;
+  btn.classList.toggle("on", state.torque);
+  const [glo, ghi] = degRange(6);
+  gripper.min = glo; gripper.max = ghi;
+  if (!gripperHeld) gripper.value = toDeg(6, state.target[6]);
+  document.getElementById("gripper-value").textContent = `${Math.round(toDeg(6, state.present[6]))}°`;
+  if (!speedHeld) speed.value = state.speed;
+  document.getElementById("speed-value").textContent = `${Math.round(speed.value)}°/s`;
+  document.getElementById("angles").textContent = [1, 2, 3, 4, 5]
+    .map(id => `${id}:${Math.round(toDeg(id, state.present[id]))}°`).join("  ");
+}
+let inFlight = false;
+setInterval(async () => {
+  if (inFlight) return;
+  inFlight = true;
+  try {
+    const r = await fetch(api("/state"));
+    if (r.status === 403) { document.getElementById("conn").textContent = "bad link: rescan the QR code"; return; }
+    state = await r.json();
+    if (state.twin) twin = { zero: state.twin.zero ?? {}, flip: state.twin.flip ?? {} };
+    if (!drive) lastSent = {};          // between drives, start from the server's targets
+    render();
+    document.getElementById("conn").textContent = "connected";
+  } catch { document.getElementById("conn").textContent = "lost connection"; }
+  finally { inFlight = false; }
+}, 100);
+</script>
+</body>
+</html>

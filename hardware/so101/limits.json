@@ -1,0 +1,68 @@
+{
+  "1": {
+    "homing_offset": -1872,
+    "raw": {
+      "min": 2909,
+      "max": 1538
+    },
+    "true": {
+      "min": 685,
+      "max": 3410
+    }
+  },
+  "2": {
+    "homing_offset": -1353,
+    "raw": {
+      "min": 3597,
+      "max": 1888
+    },
+    "true": {
+      "min": 854,
+      "max": 3241
+    }
+  },
+  "3": {
+    "homing_offset": -1316,
+    "raw": {
+      "min": 3728,
+      "max": 1831
+    },
+    "true": {
+      "min": 948,
+      "max": 3147
+    }
+  },
+  "4": {
+    "homing_offset": -1323,
+    "raw": {
+      "min": 3656,
+      "max": 1889
+    },
+    "true": {
+      "min": 883,
+      "max": 3212
+    }
+  },
+  "5": {
+    "homing_offset": -1495,
+    "raw": {
+      "min": 2725,
+      "max": 2475
+    },
+    "true": {
+      "min": 124,
+      "max": 3970
+    }
+  },
+  "6": {
+    "homing_offset": -1233,
+    "raw": {
+      "min": 83,
+      "max": 1546
+    },
+    "true": {
+      "min": 1316,
+      "max": 2779
+    }
+  }
+}
