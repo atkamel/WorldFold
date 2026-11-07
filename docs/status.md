@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-07 · **Branch:** `isaac` (PR #20, to be merged into `main`) · **Phase:** Q, the quarter fold on
+**Updated:** 2026-11-07 · **Branch:** `feat/quarter-fold-traces` · **Phase:** Q, the quarter fold on
 Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -40,9 +40,12 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. Find why `quarter2` folds fail: read the per-arm grasp traces of 712165, then run 8 seeds with the gentle release
-   off and on. If the tilted pinches (A0 39°, S 34.5°) are what slips, try the slide grasp (`GRASP=slide`) on those
-   two. Target: fold 2 landing within 3 cm on gated episodes, with video.
+1. Find why `quarter2` folds fail. 712165 kept no per-step traces (only summaries and two videos); `quarter_batch`
+   now writes them (`trace_seed<seed>.npz`). Run 8 `quarter2` seeds with traces, gentle release on and off: the
+   traces show when, at what tilt and how far from the jaws each fold-2 corner goes; the on/off pair is for fold 1's
+   release (seed 0 left the sheet 10.5 cm up with a gripper 1.5 cm away), not the fold-2 drops, which happen in the
+   carry. If the drops follow the tilted pinches (A0 39°, S 34.5°), try the slide grasp (`GRASP=slide`) on those two.
+   Target: fold 2 landing within 3 cm on gated episodes, with video.
 2. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
    with no drag and the idle arm parked.
 3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
@@ -112,6 +115,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-07 · **Quarter-fold traces:** 712165 reviewed (no per-step traces existed; seed 1's fold-2 corners both left the jaws mid-carry by the expert's own rule, seed 0's fold 1 left the sheet 10.5 cm up); `quarter_batch` writes a per-seed trace (stage, cloth, per arm phase / carried vertices / jaw / command / tilt / site / corner / drop); nothing run in Isaac; fast 257 passed + #15 · (this commit)
 - 2026-11-07 · **World model full data, then parked (user):** 738561-63 done (260 episodes, 119,764 transitions); model beats persistence on every held-out group, grasp head predicts releases not slips, reward check 1.5e-6, imagination exploits (return up, grasp rate 0.22 → 0.01); release check on the gentle release (35/40 clean); merged main (#21) into `isaac`; fast 256 passed + #15 · (this commit)
 - 2026-11-05 · **World model smoke on Isaac:** collection (738554), live predictor (738556) and evaluator (738557) ran, python exit 0; train, benchmark, reward check (1.3e-6), clone + imagination ran locally on the smoke store (results.md); full collection submitted as 738561-63; no code change · (this commit)
 - 2026-11-05 · **World model phase B (sim-free):** learned grasp head (change-weighted BCE, trained with the model, grasp metrics in the benchmark), imagination on HALF with the head's soft flags and per-joint bias logging, FoldReward check vs env rewards (<1e-4 on a scripted fold), Isaac evaluator with a shared release + settle finish before the gate; weld rule (`gripper_transition`, `weld_corners`, `Task.grasp_radius`) deleted; fast 256 passed + #15 · (this commit)

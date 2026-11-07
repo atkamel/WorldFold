@@ -9,7 +9,9 @@ parks at home. Offline (scratchpad/drag_search.py): with DRAG (0.12, 0.04) fold 
     python isaac/tools/quarter_batch.py --copies 8 --seeds 0:8 --video --out outputs/isaac/quarter/drag1
 
 Run with WORLDFOLD_PLACE_PARAMS for fold 1's base (latch + g-fold 1.2). One row per seed in <out>/episodes.jsonl
-(fold-1 alignment, the sheet's move in the drag, the final quarter-fold alignment), a top video per seed with --video.
+(fold-1 alignment, the sheet's move in the drag, the final quarter-fold alignment), a top video per seed with --video,
+and a trace per seed in <out>/trace_seed<seed>.npz: every control step's stage and cloth, and per arm its phase, carried
+vertices, jaw angle and command, pinch tilt, gripper site, carried corner and drop flag (QuarterBatch.trace_arrays).
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ PARK_STEPS = 40                          # the left arm goes home before fold 2 
 PARK_LIFT = 0.12                         # m: it first rises this far straight up (run drag1: going straight home with
 LIFT_STEPS = 25                          # the cloth on its fingers carried the sheet off the table)
 DRAG_BACKOFF = 0.02                      # the drag's release slides the open jaws out this far before lifting
+TRACE_KEYS = ("phase", "corners", "jaw", "closed", "tilt_deg", "site", "corner", "dropped")
 
 
 def park_action(q, home, scale):
@@ -60,6 +63,7 @@ class QuarterBatch(PrecisionBatch):
         self.two = fold2 == "two"
         self.fold2 = FOLD2[fold2]
         self.sequenced = [False] * n
+        self.trace, self.stage = None, None              # run() starts the per-copy traces; the warm-up isn't traced
         super().__init__(n, profile=profile, cameras=cameras)
 
     def _configure(self, i, p, corners, goal, live_goal, flat):
@@ -87,11 +91,13 @@ class QuarterBatch(PrecisionBatch):
         return park_action(q, sub._home()[:5], JOINT_DELTA_SCALE)
 
     def _scripted_step(self, actions=None):
+        waiting = []
         for i, sub in enumerate(self.subs):
             moving = {p: e for p, e in self.experts[i].items() if p not in self.parked[i]}
             coordinate(moving)
             left, right = self.experts[i]["left_"], self.experts[i]["right_"]
             wait = self.sequenced[i] and right.phase == 0 and left.phase < left.PHASES.index("descend")
+            waiting.append(wait)
             hold = np.r_[np.zeros(5), 1.0].astype(np.float32)          # the right arm waits where it is, jaw open
             acts = [hold if (p == "right_" and wait) else moving[p].act() if p in moving else self._park(i, p)
                     for p in ARMS]
@@ -102,6 +108,34 @@ class QuarterBatch(PrecisionBatch):
         if self.frames is not None:
             for i, sub in enumerate(self.subs):
                 self.frames[i].append(sub.render_rig()["top"].transpose(1, 2, 0))
+        if self.trace is not None:
+            self._record(waiting)
+
+    def _record(self, waiting):
+        """Append every copy's state after this control step to its trace. Tilt is the fingers' angle from straight
+        down (the gripperframe site's z, which PinchIK aims at -z), from the measured joints."""
+        for i, sub in enumerate(self.subs):
+            t = self.trace[i]
+            t["stage"].append(self.stage)
+            t["cloth"].append(np.asarray(sub.cloth_positions(), dtype=np.float32))
+            for p in ARMS:
+                e, q = self.experts[i][p], sub.joint_positions(p)
+                R = e._ik.site_pose(p, q[:5])[1]
+                phase = ("parked" if p in self.parked[i] else "wait" if p == "right_" and waiting[i]
+                         else e.PHASES[e.phase])
+                for k, v in zip(TRACE_KEYS, (phase, "+".join(map(str, e.corners)), q[5], sub._gripper_closed[p],
+                                             np.degrees(np.arccos(np.clip(-R[2, 2], -1.0, 1.0))),
+                                             sub.gripper_position(p), e._corner(), e.dropped)):
+                    t[p + k].append(v)
+
+    def trace_arrays(self, i):
+        """Copy i's trace -> {name: array [T, ...]}: stage, cloth (121 x 3), and per arm (prefix + key) phase, corners
+        (carried vertex ids, e.g. "0+10"), jaw (rad), closed (jaw commanded shut), tilt_deg, site (xyz), corner (the
+        carried vertices' mean xyz, as the expert's drop rule reads it) and dropped."""
+        out = {k: np.asarray(v) for k, v in self.trace[i].items()}
+        for k in ("cloth", *(p + k for p in ARMS for k in ("jaw", "tilt_deg", "site", "corner"))):
+            out[k] = out[k].astype(np.float32)
+        return out
 
     def _run_stage(self, cap):
         """Step until every copy's moving arms have been done SETTLE_STEPS steps (or cap); per-copy settled flags."""
@@ -129,6 +163,7 @@ class QuarterBatch(PrecisionBatch):
                 self._configure(i, p, grasp, lambda s=sub, t=target: s.cloth_positions()[list(t)].mean(axis=0),
                                 lambda s=sub, t=target: s.cloth_positions()[list(t)].mean(axis=0), flat=False)
             self.sequenced[i] = True
+        self.stage = "fold2"
         ok2 = self._run_stage(CAPS["fold2"])
         for i, sub in enumerate(self.subs):
             cloth = sub.cloth_positions()
@@ -151,6 +186,8 @@ class QuarterBatch(PrecisionBatch):
         from cloth_fold_rl.fold_alignment import QUARTER_FOLDS, score
         from isaac.rl.precision_env import FOLDS
         recs = [{"seed": int(s)} for s in seeds]
+        self.trace = [{k: [] for k in ("stage", "cloth", *(p + k for p in ARMS for k in TRACE_KEYS))} for _ in seeds]
+        self.stage = "fold1"
         for i, seed in enumerate(seeds):
             self.tasks[i].reset(seed=int(seed))
             self.parked[i] = set()
@@ -173,6 +210,7 @@ class QuarterBatch(PrecisionBatch):
                 self._configure(i, "right_", EAST, lambda g=e0 + self.drag: g, lambda g=e0 + self.drag: g, flat=True)
         if self.two:
             return self._fold2_two(recs)
+        self.stage = "drag"
         okd = self._run_stage(CAPS["drag"]) if self.drag is not None else [True] * self.n
         for i, sub in enumerate(self.subs):
             cloth = sub.cloth_positions()
@@ -189,6 +227,7 @@ class QuarterBatch(PrecisionBatch):
                                                 "site_cm": round(float(np.linalg.norm(cloth[list(idx)].mean(axis=0) - site)) * 100, 1)}
             self.parked[i] = {"left_"}
             self.park_steps[i], self.park_lift[i] = 0, None
+        self.stage = "park"
         for _ in range(LIFT_STEPS + PARK_STEPS):           # the right arm is done (idle) while the left one goes home
             self._scripted_step()
         grasp, target = self.fold2
@@ -197,6 +236,7 @@ class QuarterBatch(PrecisionBatch):
                                            "z_max_cm": round(float(sub.cloth_positions()[:, 2].max() - sub.cloth_positions()[:, 2].min()) * 100, 1)}
             self._configure(i, "right_", grasp, lambda s=sub: s.cloth_positions()[list(target)].mean(axis=0),
                             lambda s=sub: s.cloth_positions()[list(target)].mean(axis=0), flat=False)
+        self.stage = "fold2"
         ok2 = self._run_stage(CAPS["fold2"])
         for i, sub in enumerate(self.subs):
             cloth = sub.cloth_positions()
@@ -231,10 +271,11 @@ def main():
     for start in range(a, b, qb.n):
         seeds = list(range(start, start + qb.n))
         qb.frames = [[] for _ in range(qb.n)] if args.video else None
-        for rec in qb.run(seeds):
+        for i, rec in enumerate(qb.run(seeds)):
             print("QUARTER", json.dumps({k: v for k, v in rec.items() if k != "cloth"}), flush=True)
             with open(out / "episodes.jsonl", "a") as f:
                 f.write(json.dumps(rec) + "\n")
+            np.savez_compressed(out / f"trace_seed{rec['seed']}.npz", **qb.trace_arrays(i))
         if args.video:
             import imageio
             for i, seed in enumerate(seeds):
