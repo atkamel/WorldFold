@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-10-23 · **Branch:** `chore/cleanup` (to be merged into `main`) · **Phase:** Q, the quarter fold on
+**Updated:** 2026-11-07 · **Branch:** `isaac` (PR #20, to be merged into `main`) · **Phase:** Q, the quarter fold on
 Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -21,12 +21,18 @@ released, still), user 2026-10-22.
   base hunt 2.62 cm).
 - **Quarter fold** has not passed. Every one-arm fold 2 tried failed. The first two-arm runs on the `quarter2` layout
   (n = 2, 2026-10-23) went badly: fold 1 broke in one, and three of four fold-2 grasps slipped.
-- **Gentle release** (user, 2026-10-22) is the place-servo default and has not run in Isaac yet. The jaw opens
-  0.02 rad per step to 0.3 rad with the arm still, the arm lifts 2 mm per step, and the jaw opens fully 5 cm up.
-  It adds about 30 steps per release, so window runs need `WORLDFOLD_WINDOW_STEPS=400`.
+- **Gentle release** (user, 2026-10-22) is the place-servo default. The jaw opens 0.02 rad per step to 0.3 rad with
+  the arm still, the arm lifts 2 mm per step, and the jaw opens fully 5 cm up. It adds about 30 steps per release, so
+  window runs need `WORLDFOLD_WINDOW_STEPS=400`. On 20 scripted half folds (job 738561) 35 of 40 arm releases were
+  clean and no corner was left up at the end (results.md); not A/B'd against the old release yet.
 - **Repo cleanup** (user, 2026-10-22/23): retired code deleted, the Isaac code split into `isaac/sim`, `isaac/experts`,
   `isaac/rl` and `isaac/tools`, `mujuco/` renamed `mujoco_sim/`, run outputs and videos untracked. Tag
   `pre-cleanup-2026-10-22` has everything as it was. No WATcloud jobs are queued (the user cancelled 711774-711776).
+- **World model on Isaac** (PR #20, user 2026-11-05, parked 2026-11-07): the pipeline works end to end in Isaac on
+  the half fold (play + scripted data with RGB/depth frames, 119,764 transitions; model + learned grasp head; reward
+  check 1.5e-6; live predictor; evaluator). The model beats persistence on held-out windows (task, grasped, 10 steps:
+  24.3 vs 39.1 mm), the grasp head predicts releases but not slips, and imagination raised its return by letting go
+  of the cloth. Parked because folding fails on grasp physics the model can't predict (results.md, 2026-11-06).
 
 The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Best policies: DAgger diffusion at replan 4
 (privileged, 99.5 / 77.0 / 79.5 on id_easy / id_hard / recovery) and the vision student at replan 2 (sensor-only,
@@ -34,13 +40,12 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. Merge `chore/cleanup` (the WATcloud check, job 712165, ran the new layout end to end).
-2. Find why `quarter2` folds fail: read the per-arm grasp traces of 712165, then run 8 seeds with the gentle release
+1. Find why `quarter2` folds fail: read the per-arm grasp traces of 712165, then run 8 seeds with the gentle release
    off and on. If the tilted pinches (A0 39°, S 34.5°) are what slips, try the slide grasp (`GRASP=slide`) on those
    two. Target: fold 2 landing within 3 cm on gated episodes, with video.
-3. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
+2. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
    with no drag and the idle arm parked.
-4. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
+3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
 ## Environment
@@ -49,7 +54,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | 226 fast on macOS 2026-10-23, 1 failing there (#15), plus 12 slow, all passing (`pytest -m "not slow"` / `-m slow`) |
+| tests | macOS 2026-10-29: fast 227 passed, 1 failed (#15), 5 skipped; slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -91,12 +96,13 @@ Ordered by what they block. Each is a roadmap milestone.
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujoco_sim/` first on `sys.path`; `mujoco_sim/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
 | 12 | `imitation.cpu_slot` isn't fair: a lane that releases and re-takes it between eval sets starves a lane polling every 2 s (lane A waited 37 min) | parallel queues | — |
 | 11 | `v1_dagger_v1_r1`/`_r2` frozen with bad teacher labels — never train on them | DAgger | — |
-| 10 | `cloth_angles/tasks.py::QUARTER` diverged from `quarter_fold_env.STAGES` (3 ways) | world-model work only (parked) | M7.3 |
 
 ## Parked
 
-- **World model** (`cloth_angles/`) is off the critical path by decision. Its task definition has diverged (#10) and
-  must be reconciled or deleted before any result from it counts.
+- **World model on Isaac** (2026-11-07, user): resume once fold 2 works and RL is limited by Isaac's speed. First fixes
+  then: split the imagined return by reward term to find what pays without a grasp, and soften the grasp head's
+  change weighting (it over-predicts onsets). Data: `outputs/cloth_angles/isaac_wm_{task,play1,play2}` (frames only
+  on WATcloud, about 6 GB); model `outputs/cloth_angles/isaac_wm_model/state_l1_seed0.pt`.
 - **VLA** enters at Phase 6 as a subgoal proposer, not an action labeler.
 - **F4 DAgger on `isaac_friction`** waits behind Phase Q.
 - **Roy's grasp port** is paused. Its slide grasp stays in `isaac/experts/fold_expert.py` (`GRASP=slide`) as the
@@ -106,7 +112,14 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-07 · **World model full data, then parked (user):** 738561-63 done (260 episodes, 119,764 transitions); model beats persistence on every held-out group, grasp head predicts releases not slips, reward check 1.5e-6, imagination exploits (return up, grasp rate 0.22 → 0.01); release check on the gentle release (35/40 clean); merged main (#21) into `isaac`; fast 256 passed + #15 · (this commit)
+- 2026-11-05 · **World model smoke on Isaac:** collection (738554), live predictor (738556) and evaluator (738557) ran, python exit 0; train, benchmark, reward check (1.3e-6), clone + imagination ran locally on the smoke store (results.md); full collection submitted as 738561-63; no code change · (this commit)
+- 2026-11-05 · **World model phase B (sim-free):** learned grasp head (change-weighted BCE, trained with the model, grasp metrics in the benchmark), imagination on HALF with the head's soft flags and per-joint bias logging, FoldReward check vs env rewards (<1e-4 on a scripted fold), Isaac evaluator with a shared release + settle finish before the gate; weld rule (`gripper_transition`, `weld_corners`, `Task.grasp_radius`) deleted; fast 256 passed + #15 · (this commit)
+- 2026-11-05 · **World model phase A (PR #20 continued):** single-corner goal out of reach on friction (45-52 cm vs 44.5 cm); code moved to `isaac/world_model/` (two-arm adapter, play + half-fold collector with RGB/depth frames, online runner); union trainer + restored 1/5/10-step benchmark in `cloth_angles/`; HALF/QUARTER built from STAGES (#10 closed, M7.3); rig main + wrist cameras render depth; fast 240 passed + #15, slow 12 passed / 8 skipped · (this commit)
+- 2026-11-05 · **Review, no code:** PR #20 never ran in Isaac (train script import error, random-action collector, runner scores only, mislabelled corner metric, no imagination path); quarter fold: fold 2 scripted only, RL wired for the half fold only; PR tests 7 passed, quarter fast tests 35 passed · (this commit)
 - 2026-11-05 · **SO-101 hardware:** real-arm scripts from `lerobot-env` into `hardware/so101/` (servo limit calibration, idle pose, web control panel with 3D twin, phone teleop); no tests touched · (this commit)
+- 2026-10-29 · **Sync Isaac branch with main:** merged `origin/main` (`24515e0`), retained the branch's world-model tools and updated them for `isaac.sim`; fast 226 passed / 1 known float failure / 5 skipped, slow 12 passed / 8 skipped · `24515e0`
+- 2026-10-29 · **Online world-model integration:** added Isaac dataset trainer and pre-step predictor/scorer, plus a synthetic train-load-predict check; focused check passed, fast 227 passed / 1 known float failure / 5 skipped. Real Isaac execution remains blocked by missing runtime/data and unreachable WATcloud · (this commit)
 - 2026-10-23 · **Cleanup check (WATcloud 712165):** new layout runs in Isaac end to end; first `quarter2` folds, n = 2: fold 1 broke in 1/2, fold-2 grasps held 1/4, both endings invalid (results.md) · (this commit)
 - 2026-10-23 · **Repo cleanup:** run outputs and videos untracked (17 showcase videos kept), retired code deleted (weld, once-per-fold RL, Roy profiles, old quarter profiles, one-off probes, IQL, verifier, early PPO/MolmoAct), `isaac/` split into subpackages, `mujuco/` → `mujoco_sim/`, docs rewritten; fast suite 226 passed + #15, slow 12 passed · (this commit)
 - 2026-10-22 · **Gentle release:** jaw opens slowly part way, slow straight lift, full open above (env `jaw_open` cap for the binary gripper); isaac tests 72, fast suite 273 passed + #15 · (this commit)

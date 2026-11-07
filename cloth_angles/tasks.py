@@ -2,13 +2,14 @@
 
 The state vector is 363 cloth vertex coordinates followed by 15 robot values
 per arm (joint pos 5, joint vel 5, gripper command, end-effector position 3,
-grasp weld flag). An episode's goal vector holds the start positions of the
-goal corners, 3 values per goal slot; anchors0 holds the start positions of
-the four corners in CORNER_LIST order. Both come from the env at reset.
+grasp flag). An episode's goal vector holds the start positions of the goal
+vertices, 3 values per goal slot; it comes from the env at reset.
 
-    single   the left arm carries cloth_10 to cloth_120's start and holds it
-    quarter  both arms fold the y > 0 edge over and release, then the right arm
-             carries the stacked cloth_0 + cloth_10 onto cloth_110 and releases
+    single   the left arm carries cloth_10 to cloth_120's start and holds it (MuJoCo)
+    half     cloth_fold_rl.quarter_fold_env.STAGES[0]: both arms fold the y > 0 edge over and release
+    quarter  all of STAGES: the half fold, then the west short edge onto the east one
+
+half and quarter are built from STAGES, so they cannot drift from the env.
 """
 
 from __future__ import annotations
@@ -16,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+
+from cloth_fold_rl import quarter_fold_env
 
 VERTEX_DIM = 363
 ROBOT_DIM = 15
@@ -32,7 +35,6 @@ class Arm:
     robot: int          # offset of its robot block in the state vector
     gripper: int        # index of its gripper command in the action
     joints: slice       # its joint deltas in the action
-    weld_corners: tuple # cloth vertices its gripper welds to when closed within grasp_radius
 
     @property
     def ctrl_index(self) -> int:
@@ -57,7 +59,8 @@ class Move:
 @dataclass(frozen=True)
 class Stage:
     moves: tuple
-    anchors: tuple      # (vertex, reference corner): vertex stays within DRAG_LIMIT of the reference's start
+    anchors: tuple      # (vertex, reference vertex): vertex stays within DRAG_LIMIT of where the reference was when
+                        # the stage began
 
 
 @dataclass(frozen=True)
@@ -67,7 +70,6 @@ class Task:
     stages: tuple
     goal_corners: tuple   # corner per goal slot
     action_dim: int
-    grasp_radius: float
     release: bool         # placed corners must be let go (else held) to settle
     settle_steps: int     # consecutive settled steps that complete a stage
     max_steps: int        # the env's episode length
@@ -86,8 +88,9 @@ class Task:
         if self.name == "single":
             from cloth_fold_rl.fold_env import SingleCornerFoldEnv
             return SingleCornerFoldEnv(**kwargs)
-        from cloth_fold_rl.quarter_fold_env import QuarterFoldEnv
-        return QuarterFoldEnv(**kwargs)
+        if self.name == "half":
+            return quarter_fold_env.HalfFoldEnv(**kwargs)
+        return quarter_fold_env.QuarterFoldEnv(**kwargs)
 
     def make_expert(self, env, seed):
         if self.name == "single":
@@ -103,9 +106,11 @@ class Task:
         return np.asarray(env._start[list(CORNER_LIST)], dtype=np.float32)
 
     def goals(self, env) -> np.ndarray:
-        """float32[goal_dim]: start positions of the goal corners."""
-        starts = self.corner_starts(env)
-        return np.concatenate([starts[corner_slot(c)] for c in self.goal_corners])
+        """float32[goal_dim]: start positions of the goal vertices."""
+        if self.name == "single":
+            starts = self.corner_starts(env)
+            return np.concatenate([starts[corner_slot(c)] for c in self.goal_corners])
+        return np.asarray(env._start[list(self.goal_corners)], dtype=np.float32).reshape(-1)
 
     def stage(self, info) -> int:
         return int(info.get("stage", 0))
@@ -115,14 +120,26 @@ class Task:
         return any(g.values()) if isinstance(g, dict) else bool(g)
 
 
-LEFT = Arm("left_", VERTEX_DIM, 5, slice(0, 5), weld_corners=(10,))
+LEFT = Arm("left_", VERTEX_DIM, 5, slice(0, 5))
 SINGLE = Task("single", arms=(LEFT,),
               stages=(Stage(moves=(Move(0, (10,), 0),), anchors=((0, 0), (110, 110))),),
-              goal_corners=(120,), action_dim=6, grasp_radius=0.03, release=False, settle_steps=10, max_steps=200)
+              goal_corners=(120,), action_dim=6, release=False, settle_steps=10, max_steps=200)
 
-RIGHT_Q = Arm("right_", VERTEX_DIM + ROBOT_DIM, 11, slice(6, 11), weld_corners=(120, 0, 10))
-QUARTER = Task("quarter", arms=(LEFT, RIGHT_Q),
-               stages=(Stage(moves=(Move(0, (10,), 0), Move(1, (120,), 1)), anchors=((0, 0), (110, 110))),
-                       Stage(moves=(Move(1, (0, 10), 1),), anchors=((110, 110), (120, 110)))),
-               goal_corners=(0, 110), action_dim=12, grasp_radius=0.04, release=True, settle_steps=20, max_steps=400)
-TASKS = {"single": SINGLE, "quarter": QUARTER}
+PREFIXES = ("left_", "right_")     # the two-arm state and action order
+
+
+def from_stages(name, stages, max_steps) -> Task:
+    """A two-arm Task from quarter_fold_env stages: one goal slot per distinct goal vertex in order of appearance."""
+    goals = tuple(dict.fromkeys(m.goal for st in stages for m in st.moves))
+    arms = tuple(Arm(p, VERTEX_DIM + ROBOT_DIM * i, 6 * i + 5, slice(6 * i, 6 * i + 5))
+                 for i, p in enumerate(PREFIXES))
+    return Task(name, arms=arms,
+                stages=tuple(Stage(moves=tuple(Move(PREFIXES.index(m.prefix), m.corners, goals.index(m.goal))
+                                               for m in st.moves), anchors=st.anchors) for st in stages),
+                goal_corners=goals, action_dim=quarter_fold_env.ACTION_DIM, release=True,
+                settle_steps=quarter_fold_env.SETTLE_STEPS, max_steps=max_steps)
+
+
+HALF = from_stages("half", quarter_fold_env.STAGES[:1], quarter_fold_env.HALF_FOLD_MAX_STEPS)
+QUARTER = from_stages("quarter", quarter_fold_env.STAGES, quarter_fold_env.MAX_STEPS)
+TASKS = {"single": SINGLE, "half": HALF, "quarter": QUARTER}

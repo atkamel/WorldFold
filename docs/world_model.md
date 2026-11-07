@@ -1,7 +1,9 @@
 # World model: benchmarks, analytic reward, imagination
 
 > Parked. The experiment scripts this page names (`scripts/*.py`) and the one-corner PPO checkpoint were removed in
-> the October 2026 cleanup; tag `pre-cleanup-2026-10-22` has them. The `cloth_angles/` package is still here.
+> the October 2026 cleanup; tag `pre-cleanup-2026-10-22` has them. The `cloth_angles/` package is still here. The
+> trainer and the benchmark are back as `cloth_angles.train_state_predictor` and
+> `cloth_angles.benchmark_state_predictor` (section 8).
 
 The repo's world model went from a latent RSSM over angle fields that lost to
 persistence by an order of magnitude, to a residual MLP over physical state
@@ -291,6 +293,69 @@ zero). Over ten imagined steps that moves an end effector 3 to 4 cm and
 earns a small positive potential; over 400 real steps it walks the arms
 away from the cloth, which a ten-step horizon never shows the model. The
 anchor weight that held on the single task does not hold here.
+
+## 8. Isaac
+
+The world model moves to Isaac Sim 5.1 for the half fold on the GPU `friction` profile with dynamics randomization on.
+No Isaac numbers exist yet.
+
+`cloth_angles/tasks.py` builds `HALF` and `QUARTER` from `cloth_fold_rl/quarter_fold_env.STAGES`, so the task the
+model is scored on is the env's. Building `QUARTER` that way removed three differences from the hand-written version.
+Stage 1 had lost the left arm's move (cloth_5 onto cloth_115), the stage-1 anchor for cloth_120 was taken from
+cloth_110's reset position rather than from cloth_120's own position at the stage start, and the grasp radius was 4 cm
+where the env uses 6. `FoldReward` now takes every vertex's start position (an episode's first state) and carries the
+cloth as it was when the stage began, which is what the env measures drag against. Section 7's numbers predate this.
+
+The state is the half fold's 393 values and the action its 12. Each arm's grasp flag is the friction grasp's
+(the jaw shut and settled with a vertex within 5 cm), limited to the vertex that arm works on. In the half fold that
+is its corner. In play it is the cycle's vertex.
+
+`isaac/world_model/collect.py` writes one store format for two kinds of episode. Play is the bulk. Both arms run their
+own cycles on their own side of the cloth. Each cycle pinches a random reachable vertex (corner, edge, interior or on
+another layer), carries it in an arc 4 to 20 cm high or drags it 1 cm above the table, sometimes shakes it at the top,
+and lets go at the target, at the top of the arc or at a random point of the carry. Half the cycles add Gaussian
+noise of std 0.3 to the joint actions. The scripted half fold is the place-servo base the residual RL runs, recorded
+plain, with action noise and with a forced release, as the MuJoCo collector did. Those episodes keep the env's
+rewards, terminations and stage per state, the goal and the corner starts. Every episode can carry the imitation
+camera rig's frames in a separate compressed file next to it, so state-only loads stay fast: RGB as uint8 and the main
+and wrist cameras' depth as uint16 millimetres, without sensor noise (add it at training time).
+
+The benchmark keeps the protocol above and scores held-out play episodes and held-out task episodes separately. The
+moving-corner error becomes the manipulated-vertex error, the mean over both arms of the position error of the vertex
+each arm works on at the window's origin. On the MuJoCo store that vertex is cloth_10, so the earlier columns carry
+over. `isaac/world_model/run.py` scores one-step predictions live while the scripted half fold, play or a replayed
+episode drives, and reports latency and control rate. Commands are in `isaac/README.md`.
+
+### Learned grasp flags and imagination on the half fold
+
+The weld rule of section 4 (`gripper_transition`) is gone with the weld. A grasp head
+(`cloth_angles/model/grasp_head.py`) gives each arm's flag at the next step from the predictor's own normalized
+inputs, the current and previous state and the action. It trains in the predictor's run on the same batches and lives
+in the same checkpoint. A flag changes about once per arm per carry, so every transition where it changes is weighted
+by the ratio of steady to changing transitions for that arm, and the changes together weigh as much as the steady
+steps. The benchmark scores the head one step ahead on every held-out transition against flag persistence, as accuracy
+and as precision and recall for onsets, releases (the jaw commanded open) and slips (commanded shut). The ten-step
+windows hold too few changes for that. The online runner reports the head's flag accuracy.
+
+`cloth_angles/train_imagined_actor.py` is section 5's recipe with section 6's anchor, for the half fold. The world model
+and the head are frozen. The actor is cloned from the `expert` episodes (3,000 updates), then trained for 3,000
+imagination updates on batches of 256 real start states from every half-fold training episode, ten imagined steps
+each, with the anchor toward the expert actions at weight 1. In every imagined step the head's sigmoid sets each arm's
+flag, so the actor's gradient reaches the gripper command through it. `FoldReward` for the half fold scores the steps
+with each episode's goal and first-state vertices. Play episodes train the model only, since the reward is the half
+fold's. The actor sees the full state and the goal every step. After the clone and every 500 imagination updates the
+log holds the actor's mean deviation from the expert's actions on held-out episodes per action dimension, signed, so a
+bias like the one that walked the arms off the cloth in section 7 is visible as it grows.
+
+`cloth_angles/check_fold_reward.py` recomputes `FoldReward` on recorded half-fold episodes and compares it with the
+env's rewards and terminations. On episodes recorded through the real wrapper over a scripted stand-in base it matches
+to 1e-4, and the one rule it cannot apply, the env's instability check, shows as the penalty at the last step.
+`isaac/world_model/evaluate.py` runs the scripted half fold, the clone and the imagined actor on the same seeds. An
+actor has no release of its own, so after every episode each policy gets the same finish before it is scored, the
+place servo's gentle release pointed at wherever each arm is, then a hold until the cloth has been still for 15 steps.
+That is the point `precision_env` scores at. The finish's cloth displacement is recorded per episode to show whether it
+disturbs the fold. For each policy the evaluator reports the env's success, the fold score and the gated alignment
+score at the half fold's bar, counts with Wilson intervals, and the world model's one-step error alongside.
 
 ## Artifacts and reproduction
 

@@ -154,7 +154,8 @@ def _wrist_camera(robot_path, size):
         prim_path=f"{robot_path}/gripper/wrist_cam",
         offset=TiledCameraCfg.OffsetCfg(pos=WRIST_CAM_POS, rot=tuple(float(v) for v in wrist_cam_quat()),
                                         convention="opengl"),
-        data_types=["rgb"], spawn=_pinhole(size, size, WRIST_CAM_FOVY_DEG), width=size, height=size)
+        data_types=["rgb", "distance_to_image_plane"], spawn=_pinhole(size, size, WRIST_CAM_FOVY_DEG), width=size,
+        height=size)
 
 
 TOP_VIEW_HEIGHT = 0.85     # m above the table: a 45 deg view spans +-0.35 m, both quarter-layout bases included
@@ -169,7 +170,8 @@ def rig_camera_cfg(name, size, c=0, view_shift=(0.0, 0.0, 0.0)):
     toward the arms, at the top edge of the MuJoCo-aimed view (Phase F3b)."""
     root = copy_root(c)
     if name in ("main", "demo"):  # demo: the main view at video resolution, for imitation.demo (not a policy input)
-        cfg = _camera((size, size), prim_path=f"{root}/rig_{name}", data_types=("rgb",))
+        cfg = _camera((size, size), prim_path=f"{root}/rig_{name}",
+                      data_types=("rgb", "distance_to_image_plane") if name == "main" else ("rgb",))
         shift = np.asarray(view_shift, dtype=float)
         if c or shift.any():
             pos = np.asarray(CAMERA_POS) + (COPY_OFFSETS[c] if c else 0.0) + shift

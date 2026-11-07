@@ -2633,3 +2633,118 @@ end (59 min with the image build, python exit 0). As a code check it passed. As 
 - So on `quarter2`, fold 1 (8/8 on the friction layout) broke in 1 of 2 and the fold-2 grasps held 1 of 4. Too few
   episodes to separate the tilted pinches (A0 39°, S 34.5°) from the gentle release; the per-arm grasp traces are the
   next thing to read.
+
+### Single-corner goal on the Isaac friction layout: out of reach (2026-11-05, offline)
+
+Offline IK check (`isaac.sim.pinch.PinchIK` on LeHome's SO101 URDF, no Isaac), for `SingleCornerFoldEnv`'s goal
+(cloth_10 onto cloth_120's start) on the `friction` profile: left base at (-0.22, -0.30), cloth centred at
+(0, -0.135), the 9 offsets of the ±2.5 cm jitter box.
+
+- cloth_120's start is 45.1 to 52.1 cm from the left base horizontally (48.6 cm at zero offset). A 200k-sample FK
+  sweep gives at most 44.5 cm of reach at place height.
+- `IsaacArmExpert`'s plan pinches cloth_10 within 0 to 28.6 mm and places 128 to 196 mm from the goal at every offset.
+- So the single-corner task cannot run on this layout. The Isaac world model uses the two-arm half fold instead
+  (status.md, 2026-11-05).
+
+### Isaac world model, smoke run end to end (2026-11-05, jobs 738554, 738556, 738557)
+
+Code at d4aab45 (branch `isaac`). Friction profile, dynamics DR on. Smoke scale only: none of these numbers measure
+the method.
+
+**Collection** (job 738554, thor, 50 min with the image build; store `outputs/cloth_angles/isaac_wm_smoke`): 3
+episodes per kind, the first of each held out, seeds 1,000,000-1,000,002 (play) and 1,001,000+ / 1,002,000+ /
+1,003,000+ (expert, expert_noisy, expert_release). 4,917 steps in 937 s of collection.
+
+| kind | steps per episode | ended | steps/s | grasps / releases / slips per episode | mean / max vertex displacement (mm) | max height (mm) |
+|---|---|---|---|---|---|---|
+| play (200-step cap) | 200, 200, 200 | cap ×3 | 1.7-3.7 | 3-5 / 2-3 / 1-2 | 59-76 / 241-291 | 114-201 |
+| expert | 289-312 | success ×3 | 5.1-5.6 | 2-3 / 0-2 / 1-2 | 72-79 / 303-331 | 121-126 |
+| expert_noisy | 216, 500, 500 | dragged, cap ×2 | 3.1-5.3 | 2-3 / 0-1 / 1-2 | 52-86 / 281-326 | 129-141 |
+| expert_release | 500 ×3 | cap ×3 | 5.1-6.4 | 2 / 2 / 0 | 46-64 / 138-262 | 111-125 |
+
+Frames are about 42 KB per state (128² main + two 64² wrists, RGB uint8 + depth uint16 mm, compressed); main
+depth 0.40-1.47 m, wrist depth empty on 1.6-4.2% of pixels. The scripted fold's "slips" are real: the grasp flag
+drops with the jaw still shut, mid-carry (seeds 1,001,000-1,001,002, steps 123-152), and the fold still succeeds.
+
+**Training, benchmark, reward check** (Mac, CPU): 8 training episodes, 500 updates, 3 seeds. Test windows, vertex
+MAE / manipulated-vertex error in mm, model vs persistence:
+
+| group | h = 1 | h = 10 |
+|---|---|---|
+| play, all (n = 19) | 1.125 / 3.15 vs 1.013 / 3.12 | 8.611 / 21.34 vs 8.052 / 22.84 |
+| task, all (n = 99) | 0.467 / 2.78 vs 0.401 / 2.53 | 3.277 / 17.27 vs 2.678 / 14.82 |
+| task, grasped (n = 29) | 1.107 / 5.75 vs 1.193 / 6.75 | 5.643 / 26.29 vs 7.006 / 39.72 |
+
+Grasp head, held-out transitions: accuracy 0.878 (play) and 0.903 (task) against 0.985 / 0.993 for flag
+persistence; it predicts changes too often (onset precision 0.05 / 0.27). FoldReward against the env's recorded
+rewards on all 9 half-fold episodes: max difference 1.3e-6, no termination or stage mismatch (success ×3, dragged ×1,
+capped ×5). Clone (300 updates on 3 expert episodes) + imagination (300 updates) ran in 22 s; the actor's mean
+absolute action bias against held-out expert actions went 0.263 (clone) → 0.361 after imagination.
+
+**Live predictor** (job 738556, scripted half fold, seed 2,000,000): success in 283 steps, fold score 0.893;
+one-step vertex MAE 0.41 mm, manipulated vertex 2.58 mm, grasp accuracy 0.915, predictor 0.6 ms per step, 8.8 Hz
+control loop.
+
+**Evaluator** (job 738557, seeds 3,000,000-3,000,001, n = 2 per policy, Wilson 95% in %): every policy then gets
+the shared release + settle finish (no cap hit).
+
+| policy | env success | gate valid | passed and valid | fold score | gated mean / edge (cm) | finish displacement (mm) |
+|---|---|---|---|---|---|---|
+| scripted | 0/2 [0, 65.8] | 2/2 [34.2, 100] | 0/2 [0, 65.8] | 0.761 | 2.31 / 5.52 | 0.3 |
+| clone | 0/2 [0, 65.8] | 2/2 | 0/2 | 0.001 | 15.92 / 29.13 | 15.8 |
+| imagined | 0/2 [0, 65.8] | 2/2 | 0/2 | 0.065 | 13.22 / 25.06 | 5.0 |
+
+The scripted fold ran out of steps on both seeds with its corners short (fold 0.78 / 0.74; gated 1.93 / 2.68 cm mean,
+in line with the 2.2-2.8 cm settled median). It ran first, before any finish, so the miss isn't carried over from
+another episode. So the pipeline runs end to end in Isaac; the clone and the imagined actor do not fold at this scale.
+
+### Release with the gentle release on, scripted half fold (2026-11-05, job 738561 data, offline)
+
+`outputs/cloth_angles/isaac_wm_task`: friction profile, dynamics DR on, place-servo base with the gentle release (its
+default), seeds 1,001,000-1,001,019 (expert), 1,002,000-019 (expert_noisy), 1,003,000-019 (expert_release). Per arm and
+episode, from the first step the jaw target opens after a grasp: "carried" = the carried corner (cloth_10 / cloth_120)
+rises more than 2 cm in the next 60 steps and is still within 5 cm of the gripper at the end of them.
+
+| kind | arm-episodes | released | carried | no release | final corner height (cm), median / max |
+|---|---|---|---|---|---|
+| expert | 40 | 35 | 3/38 [2.7, 20.8]% | 2 | 0.40 / 1.40 |
+| expert_noisy | 40 | 23 | 0 | 16 (+1 never grasped) | 0.40 / 3.15 (both > 2 cm in dragged episodes) |
+| expert_release (forced open) | 40 | 40 | 0 | 0 | 0.89 / 1.63 |
+
+- On `expert`, the corner sits a median 3.5 cm up when the release starts and rises a median 1.0 cm with the slow
+  lift before it lets go. The 3 carries were temporary: no corner was still up at the episode end (max 1.4 cm).
+- So the cloth-on-the-fingers failure of s3e (roy profile, slide grasp, box pads: released 5/20 and 1/20) does not
+  show here. This is not an A/B: there is no gentle-release-off run on these seeds, and the friction profile already
+  released 19/20 in F2 (attempt I). The half fold's misses are placement (14/20 `expert` runs end at the step cap
+  with fold scores 0.52-0.83) and mid-carry slips, not the release.
+
+### Isaac world model, full data (2026-11-06, jobs 738561-63, trained on the Mac)
+
+Stores `isaac_wm_task` (60 scripted half folds), `isaac_wm_play1` / `_play2` (200 play episodes, seeds 1,000,000-099
+and 1,100,000-099; 113 ended "unreachable", 1 failed): 119,764 transitions, 96,666 train / 23,098 test (first fifth
+of each kind held out). Code d4aab45. State L1 predictor + grasp head, 10,000 updates, 3 seeds (spread not shown).
+Reward check: FoldReward vs the env on all 60 half-fold episodes, max difference 1.5e-6, no termination or stage
+mismatch.
+
+Test windows, vertex MAE / manipulated-vertex error (mm), model vs persistence:
+
+| group | n | h = 1 | h = 5 | h = 10 |
+|---|---|---|---|---|
+| play, all | 1,753 | 1.30 / 3.60 vs 1.45 / 4.02 | 4.51 / 11.8 vs 4.93 / 13.4 | 8.33 / 21.7 vs 8.82 / 23.8 |
+| play, grasped | 743 | 1.75 / 4.90 vs 2.00 / 5.69 | 6.21 / 16.6 vs 7.21 / 20.1 | 11.8 / 32.7 vs 13.2 / 37.8 |
+| task, all | 494 | 0.23 / 1.59 vs 0.24 / 1.82 | 0.89 / 4.82 vs 1.02 / 6.30 | 1.62 / 7.68 vs 1.92 / 10.7 |
+| task, grasped | 104 | 0.79 / 5.51 vs 0.97 / 6.59 | 2.56 / 15.3 vs 3.57 / 22.5 | 4.40 / 24.3 vs 6.50 / 39.1 |
+
+- The model beats persistence on every held-out group and horizon. The margin is smaller than MuJoCo's (task
+  grasped at 10 steps: 24.3 vs 39.1 mm here, against 15.4 vs 74.5 mm on MuJoCo). Training windows score the same as
+  test (play h = 10: 8.35 vs 8.33 mm), so this is not a data shortfall.
+- Grasp head, held-out transitions: accuracy 0.937 (play) / 0.966 (task) against 0.980 / 0.992 for persistence.
+  Releases are predicted (precision / recall 1.00 / 0.99 play, 1.00 / 0.98 task). Onsets are over-predicted
+  (0.27 / 0.95, 0.31 / 0.90). Slips are not predicted (0.05 / 0.46, 0.05 / 0.53; n = 140 / 24). The change weight
+  (all changes weigh as much as all steady steps) buys recall with false alarms.
+- Clone (3,000 updates, 6,540 expert transitions) + imagination (3,000 updates, horizon 10, anchor 1.0, 20,240 start
+  states): imagined return rose 1.56 → 3.94 while the imagined grasp rate fell 0.22 → 0.01, with no imagined stage
+  completion. The actor's mean absolute action bias against held-out expert actions went 0.20 (clone) → 0.34. So
+  the actor raised its imagined return by letting go, not by folding: it exploits the model or the reward. Not
+  evaluated in Isaac.
+

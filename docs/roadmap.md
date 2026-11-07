@@ -253,4 +253,4 @@ positions; it must become vision-based or be dropped, and dropping it costs succ
 |---|---|---|---|
 | M7.1 | Deployment budget check against `imitation.md` §8 | budget met with no VLA in the stack | ☐ |
 | M7.2 | Delete the dead PPO path (`cloth_fold_rl/train.py`, `bc.py`); keep the MuJoCoTouch baseline | SB3 dep still justified | ☐ |
-| M7.3 | Reconcile or delete `cloth_angles/tasks.py::QUARTER` | one source of truth for the task | ☐ |
+| M7.3 | Reconcile or delete `cloth_angles/tasks.py::QUARTER` | one source of truth for the task | ✅ 2026-11-05: `HALF` and `QUARTER` built from `quarter_fold_env.STAGES` (3 differences removed) |

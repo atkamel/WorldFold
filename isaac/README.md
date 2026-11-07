@@ -61,3 +61,65 @@ IsaacLab's simulation context is a singleton, so build one scene per process. Th
 `cloth_fold_rl/fold_alignment.py` scores how well the layers line up (mean and edge spread, bar 1.0 / 1.5 cm for the
 half fold, 2.0 / 3.0 cm for the quarter fold). A score only counts when `rl/precision_env.gate` passes it, meaning
 the cloth is flat on the table, still, and both jaws are open and clear of it.
+
+## World model (full-state predictor)
+
+`world_model/` collects data for the half fold's world model and scores a trained model live. The state is the half
+fold's 393 values (121 cloth vertices, then 15 per arm) and the action its 12. Training and the benchmark are
+sim-agnostic and live in `cloth_angles/` (`train_state_predictor`, `benchmark_state_predictor`). `docs/world_model.md`
+has the protocol.
+
+- `world_model/collect.py` records episodes of two kinds into one store format. `play` has both arms pinch random
+  reachable vertices on their own side of the cloth and lift, drag, shake, drop or force-release them. The scripted
+  half fold (`world_model/half_fold.py`, the place-servo base `rl/precision_env` runs) records as `expert`,
+  `expert_noisy` and `expert_release`. Frames from the imitation camera rig (RGB, plus depth in mm from the main and
+  wrist cameras) go to `frames_<n>.npz` beside each episode unless `--no-frames`.
+- `world_model/run.py` predicts each next state before the step and scores it after, grasp flags included (the
+  checkpoint's grasp head). It drives the scripted half fold by default, `--driver play` plays, `--actions` replays a
+  collected episode. The predictor never drives.
+- `world_model/evaluate.py` runs the scripted half fold and trained actors on the same seeds. After each episode every
+  arm releases gently and lifts from where it is and the cloth settles, then the episode is scored by the env's
+  success, the fold score and the gated alignment score (`rl/precision_env.gate`, then `cloth_fold_rl/fold_alignment`
+  at the half fold's bar), with Wilson intervals, the world model scoring every step alongside.
+
+Smoke run, two train and one test episode per kind (about 4,000 control steps). Submit each job once the last ends.
+Training and the benchmark need no GPU and also run in the `.venv` here.
+
+```bash
+J="sbatch --gres=gpu:rtx_3090:1,tmpdisk:200000 isaac/watcloud.sbatch"
+$J -m isaac.world_model.collect --per-kind 3 --test-per-kind 1 --play-steps 200 \
+  --output outputs/cloth_angles/isaac_wm_smoke
+$J -m cloth_angles.train_state_predictor --data outputs/cloth_angles/isaac_wm_smoke --steps 500 \
+  --output outputs/cloth_angles/isaac_wm_smoke_model/state_l1_seed0.pt
+$J -m cloth_angles.benchmark_state_predictor --data outputs/cloth_angles/isaac_wm_smoke --steps 500 \
+  --output outputs/cloth_angles/isaac_wm_smoke_benchmark
+$J -m isaac.world_model.run --checkpoint outputs/cloth_angles/isaac_wm_smoke_model/state_l1_seed0.pt
+```
+
+Full collection in three jobs, each under the 12 h limit (play runs at about 2 to 3.5 steps/s, the scripted fold at
+about 5.5), then the benchmark on their union.
+
+```bash
+$J -m isaac.world_model.collect --kinds expert expert_noisy expert_release --output outputs/cloth_angles/isaac_wm_task
+$J -m isaac.world_model.collect --kinds play --seed-base 1000000 --output outputs/cloth_angles/isaac_wm_play1
+$J -m isaac.world_model.collect --kinds play --seed-base 1100000 --output outputs/cloth_angles/isaac_wm_play2
+D="outputs/cloth_angles/isaac_wm_task outputs/cloth_angles/isaac_wm_play1 outputs/cloth_angles/isaac_wm_play2"
+$J -m cloth_angles.benchmark_state_predictor --data $D --output outputs/cloth_angles/isaac_wm_benchmark
+```
+
+Each collected line (`EPISODE ...`) carries the episode's steps per second and its disturbance statistics.
+
+Then train the world model and its grasp head on both stores, check the analytic reward against the recorded one,
+clone the expert and train it in imagination (all three need no GPU), and evaluate on Isaac.
+
+```bash
+$J -m cloth_angles.train_state_predictor --data $D --output outputs/cloth_angles/isaac_wm_model/state_l1_seed0.pt
+$J -m cloth_angles.check_fold_reward --data $D --output outputs/cloth_angles/isaac_wm_model/reward_check.json
+$J -m cloth_angles.train_imagined_actor --model outputs/cloth_angles/isaac_wm_model/state_l1_seed0.pt --data $D \
+  --output outputs/cloth_angles/isaac_imagined
+$J -m isaac.world_model.evaluate --checkpoint outputs/cloth_angles/isaac_wm_model/state_l1_seed0.pt \
+  --actors outputs/cloth_angles/isaac_imagined/clone.pt outputs/cloth_angles/isaac_imagined/imagined.pt \
+  --episodes 20 --out outputs/cloth_angles/isaac_imagined/evaluation.json
+```
+
+No Isaac dataset, checkpoint or actor exists yet.

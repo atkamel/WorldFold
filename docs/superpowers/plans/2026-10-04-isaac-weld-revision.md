@@ -120,7 +120,7 @@ Order, to stay within W's 2 Isaac slots:
   - per-env reset offset
   - per-env weld pins
   - camera rig per env (or state-only)
-  
+
   Measure s/step versus B at 101×101. If GarmentObject can't be replicated, build the cloths directly via the
   particle-cloth API.
 - **V1, batched env:** `IsaacClothFoldEnv` is batched internally. `B` sub-envs expose the same per-env gym API
