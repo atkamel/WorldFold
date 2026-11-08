@@ -2872,3 +2872,11 @@ mean / SE / better / n. Rows in `outputs/isaac/rl/audit_{a,b}/`.
 **`quarter2` fold 1, gentle release on vs off** (742655 / 742656, 8 seeds, same code): gate-valid 8/8 vs 6/8. Paired
 mean −0.28 cm (SE 0.58), edge −0.03 (SE 2.82), on better 4/8, so no measurable alignment difference. Fold 2 failed
 the same way in both (the right arm short of the stack).
+
+### Reset check (2026-11-08, WATcloud 742671, code a638de6)
+
+`isaac/world_model/collect.py --kinds expert_noisy --per-kind 20 --no-frames`: the same seeds (1,002,000-019) and
+single-env collector as `isaac_wm_task`'s noisy kind, now with the particle velocities zeroed at each reset. 7 of 20
+episodes ended `cloth_dragged`. All 7 starts that followed a drag were flat (shortest neighbour edge 30.0 mm, height
+range 0.0 mm), as were the other 13: **0/7 wrinkled after a drag [0, 35.4]%**, against 5/11 [21.3, 72.0]% in
+`isaac_wm_task`. Defect 20 is fixed.
