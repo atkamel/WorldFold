@@ -2963,3 +2963,19 @@ The best per-seed a on r1 is a median 3.50 cm (IQR 3.19-3.75). Removing each see
 0.37 / 1.67 cm and 11/32. **The 12/32 is an upper bound.** It holds only if the interior follows the corners when the
 place target moves. At half transfer nothing passes. On r0 no constant shift passes any seed, which is why batch B
 runs on the floor.
+
+### Round 2a's fold shape, for batch S (2026-11-08, offline, 742669)
+
+Medians over gate-valid seeds of the final 11x11 grid. Layer gap is the interior folded pairs' top-minus-bottom z, and
+"under 1 mm" is the share of those pairs that close. Shrink is how much each half's grid edges shortened in plan view
+against 30 mm (wrinkling shortens them).
+
+| config | layer gap | under 1 mm | shrink top / bottom (mm) | sheet moved before the carry |
+|---|---|---|---|---|
+| r0 kept jaw | 4.9 mm | 13% | 1.19 / 1.47 | 3.34 cm |
+| r1 floor 17 mm | 4.8 mm | 10% | 0.45 / 0.44 | 3.33 cm |
+| r2 shift | 4.9 mm | 7% | 1.66 / 2.06 | 3.36 cm |
+| r3 floor + shift | 4.9 mm | 4% | 1.39 / 0.61 | 3.31 cm |
+
+The 4.9 mm gap is two particle rest offsets, so the fine mesh's layers don't pass through each other. The close pairs
+are where the top layer slid off its partner. Every reset started flat (shortest edge 30.0 mm, height range 0.0 mm).

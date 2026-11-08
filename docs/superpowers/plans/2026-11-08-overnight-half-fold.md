@@ -40,6 +40,45 @@ partners in x (left −1.5 cm, right +2.3 cm median).
 On r0. Control, then `PLACE_ALONG` 1 / 2 cm, `PLACE_INWARD` 1.5 cm, along 2 + inward 1.5, `GFOLD_SLOPE` 1.0 / 1.6 /
 0.8, and layer shift (gain 0.5) with inward 1.5.
 
+## Batch S. A stiffer cloth (user, 2026-11-08, reviewed 12:40, runs before B)
+
+The user's hypothesis is that the cloth is too fine, so it wrinkles and folds imprecisely. Isaac's sheet is 101x101
+particles at 3 mm (`CLOTH_SUBDIV` 10) with LeHome's springs (bend 5000, shear 5000, damping 10, stretch 1e8) and 50 g in
+total, so each particle weighs 4.9 mg. MuJoCo's cloth, the one that folded well with the weld, is the 11x11 grid itself
+at 3 cm.
+
+The springs aren't saturated (review, from PhysX 5.6.1's particle solver). PhysX solves each spring as an implicit
+spring-damper once per 0.31 ms substep. The share of a length error it removes per substep is about k / (k + c/dt),
+32,000 N/m at damping 10, almost independent of the mass: 0.015 at k 500, 0.135 at 5000, 0.61 at 5e4, 0.94 at 5e5.
+Damping already removes 99.9% of the relative velocity per substep, so more damping only softens the springs. A rough
+static estimate puts curvature under a load at (k h^4)^(-1/3) for spring stiffness k and spacing h, so the batch is one
+ordered axis. The 6 mm mesh at LeHome's k sits near the 3 mm mesh at 16x k. Stiff shear on top of stretch 1e8 makes a
+paper-like sheet that may wrinkle more when a corner lifts, so the spring configs change bend alone, and two of them
+change both. The 6 mm mesh keeps the particle offsets. Neighbours at rest leave 0.76 mm of margin against a particle
+passing through a cell (2.88 mm at 3 mm), so the press in place and hold has less room. A 1 cm mesh would let particles
+through. Total mass stays 50 g, so each particle weighs 19.2 mg at 6 mm.
+
+Configs on r0 (`LATCH_GOAL=1,GFOLD_SLOPE=1.2`, window 450, seeds 910000-31, 8 copies), knobs in the sweep's 8th field.
+
+- s0 r0 repeat (control, and r0's run-to-run noise), s1 bend 500, s2 bend 5e4
+- s3 bend 5e5, s4 bend + shear 5e5, s5 `cloth_subdiv=5`
+- s6 `cloth_subdiv=5` + bend 5e5, s7 bend + shear 5e4, s5r s5 repeated
+
+Drape probe (`isaac/tools/drape_probe.py`, a 4th short job, over the 3-job cap for about 40 minutes). Each cloth above
+plus bend 5e6 is laid flat with 8 cm over the table edge. The probe measures the free edge's droop after 4 s and reads
+back the authored springs, the cooked springs, the particle count and the mass. That tells "the knob didn't take" apart
+from "stiffness doesn't matter", and the user can repeat the ruler test on the real cloth.
+
+Judged against s0 only, by the usual rule, with the scoreable counts compared as well as the paired seeds (pairing
+hides a config that leaves more cloth on a finger). The paired SE is about 0.13 cm, so the batch sees about 0.35 cm.
+With 8 configs a false winner has about a 25% chance, so no cloth is promoted on this batch alone. It needs its repeat
+or fresh seeds, and a drape match to the real cloth, because a sim cloth only helps the hardware if the real one is as
+stiff. Batch B stays on r0's cloth until then. Extra columns: the folded layers' z gap and the share under 1 mm (4-13%
+on round 2a's fine mesh, where the top layer slid off its partner), how much each half's grid edges shrank in plan
+view, the reset's flatness, the sheet's move before the carry (3.3 cm on round 2a), drops, interior top-minus-bottom y
+and folded corners. The expert was tuned on the current cloth, so a stiffer sheet that loses on this pass may still win
+after re-tuning the pinch and place.
+
 ## Batch B. Floor plus placement offset (3 jobs, 9 configs, about 1.5 h). Runs before batch A
 
 Changed after review (2026-11-07 23:20). Round 2's 17 mm floor (r1) leaves an almost rigid translation of the top layer

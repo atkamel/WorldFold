@@ -77,9 +77,15 @@ PROFILES = {
 # Phase F (F2), the rest of LeHome's particle material and the physics rate: adhesion (LeHome 0.1, we spawn 0; the
 # user's cap is ADHESION_MAX), adhesion_offset_scale (LeHome 0: adhesion acts in contact only), gravity_scale (LeHome
 # 2, we spawn 1), physics_hz (100; a multiple of 20 so it divides the 0.05 s control step).
+# The cloth's stiffness (user, 2026-11-08): bend_stiffness, shear_stiffness and spring_damping go onto LeHome's
+# garment_config (CLOTH_SPRING_KNOBS; LeHome bend 5000, shear 5000, damping 10, stretch 1e8), and cloth_subdiv sets
+# the particles per 3 cm grid gap (CLOTH_SUBDIV 10: 101x101 at 3 mm; MuJoCo's cloth is the 11x11 grid itself).
 FRICTION_GRASP          = {"particle_friction": None, "pad_friction": None, "pad_thickness": None,
                            "gripper_drive": None, "gripper_closed": None, "jaw_open_rate": None, "gripper_mode": None,
-                           "adhesion": None, "adhesion_offset_scale": None, "gravity_scale": None, "physics_hz": None}
+                           "adhesion": None, "adhesion_offset_scale": None, "gravity_scale": None, "physics_hz": None,
+                           "bend_stiffness": None, "shear_stiffness": None, "spring_damping": None,
+                           "cloth_subdiv": None}
+CLOTH_SPRING_KNOBS      = ("bend_stiffness", "shear_stiffness", "spring_damping")
 ADHESION_MAX            = 0.3                 # user rule (2026-10-07): friction + adhesion only, adhesion <= 0.3
 PROFILES["lehome"]["friction_grasp"] = FRICTION_GRASP
 # "friction" (Phase F): the MuJoCo setup the imitation pipeline was built on (flat drop, MuJoCo's arm drives, its
@@ -228,6 +234,14 @@ def usd_root_pose(base_pos, base_quat):
     return np.asarray(base_pos) + R @ USD_ROOT_OFFSET, _quat_from_matrix(R @ _matrix_from_quat(USD_ROOT_YAW))
 
 
+def garment_springs(garment_config, knobs):
+    """The cloth-stiffness knobs (CLOTH_SPRING_KNOBS) onto LeHome's garment_config, in place; None keeps LeHome's."""
+    for key in CLOTH_SPRING_KNOBS:
+        if knobs.get(key) is not None:
+            garment_config[key] = float(knobs[key])
+    return garment_config
+
+
 def grid_particles(subdiv):
     # particle index of each MuJoCo grid vertex (cloth_0..cloth_120, row-major) in the subdivided mesh
     n = (CLOTH_COUNT - 1) * subdiv + 1
@@ -348,7 +362,7 @@ class IsaacClothFoldEnv(gym.Env):
         n_vert = CLOTH_COUNT * CLOTH_COUNT
         self._corner_idx = [0, CLOTH_COUNT - 1, (CLOTH_COUNT - 1) * CLOTH_COUNT, n_vert - 1]
         self._sample_idx = np.linspace(0, n_vert - 1, self.n_cloth_samples).astype(int)
-        self._grid = grid_particles(CLOTH_SUBDIV)
+        self._grid = grid_particles(int(self.grasp_knobs.get("cloth_subdiv") or CLOTH_SUBDIV))
         self.weld_mask = {p: None for p in self.prefixes}
 
         self._joint_targets = {p: self._home() for p in self.prefixes}

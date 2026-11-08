@@ -41,7 +41,7 @@ from isaac.sim.isaac_env import (
     CAMERA_CLIP, CLOTH_ADHESION, CLOTH_GRAVITY_SCALE, CLOTH_SUBDIV, FLOOR_COLOR, FLOOR_SIZE, GRIPPER_JOINT,
     GRIPPERFRAME_POS, GRIPPERFRAME_QUAT,
     HEADLIGHT_AMBIENT, HEADLIGHT_DIFFUSE, LIGHT_INTENSITY, LIGHTS, TABLE_SIZE, PAD_LINING_FRICTION,
-    PAD_LINING_THICKNESS, cloth_grid_mesh, usd_root_pose, _matrix_from_quat, _quat_facing,
+    PAD_LINING_THICKNESS, cloth_grid_mesh, garment_springs, usd_root_pose, _matrix_from_quat, _quat_facing,
     _quat_from_matrix,
 )
 
@@ -340,7 +340,8 @@ class SceneEnv(DirectRLEnv):
     def _spawn_cloth(self, cp):
         # WorldFold's square cloth packaged the way LeHome packages a garment: a USD whose default prim holds a
         # "mesh", plus a garment config. GarmentObject applies LeHome's particle system, material and cloth settings.
-        points, faces = cloth_grid_mesh(CLOTH_SUBDIV, self.cfg.cloth_spacing)
+        subdiv = int(self.grasp.get("cloth_subdiv", CLOTH_SUBDIV))
+        points, faces = cloth_grid_mesh(subdiv, self.cfg.cloth_spacing)
         usd = os.path.join(tempfile.mkdtemp(), "square_cloth.usd")
         stage = Usd.Stage.CreateNew(usd)
         UsdGeom.SetStageUpAxis(stage, "Z")
@@ -353,8 +354,9 @@ class SceneEnv(DirectRLEnv):
         mesh.GetDisplayColorAttr().Set([Gf.Vec3f(0.8, 0.2, 0.2)])
         mesh.GetDoubleSidedAttr().Set(True)
         stage.GetRootLayer().Save()
-        n = (CLOTH_COUNT - 1) * CLOTH_SUBDIV + 1
+        n = (CLOTH_COUNT - 1) * subdiv + 1
         particle_cfg = OmegaConf.load(PARTICLE_CFG)
+        garment_springs(particle_cfg.objects.garment_config, self.grasp)
         # CLOTH_MASS is the 30 cm sheet's; a smaller sheet keeps its mass per area
         particle_cfg.objects.garment_config.particle_mass = (CLOTH_MASS * (self.cfg.cloth_spacing / CLOTH_SPACING) ** 2
                                                              / (n * n))

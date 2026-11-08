@@ -45,12 +45,13 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. Half fold, batch B of the overnight plan
-   ([superpowers/plans/2026-11-08-overnight-half-fold.md](superpowers/plans/2026-11-08-overnight-half-fold.md)). No
-   batch ran overnight (blocker 21). The launch commands are in the plan. Batch B puts the 17 mm floor under
-   `PLACE_ALONG` 3-4.5 cm and tries `CARRY_FLOOR`, judged against the audit base r0 (kept jaw, latch + g-fold 1.2,
-   2.07 / 3.65 cm, 1/32). Then batch A (placement and slope on r0), then batch C, a confirmation on seeds 920000-63
-   with video. Each new batch gets a subagent review before launch.
+1. Half fold, batch S then batch B of the plan
+   ([superpowers/plans/2026-11-08-overnight-half-fold.md](superpowers/plans/2026-11-08-overnight-half-fold.md)). Batch S
+   (user, 2026-11-08) tries a stiffer cloth on the audit base r0 (kept jaw, latch + g-fold 1.2, 2.07 / 3.65 cm, 1/32):
+   bend-only springs up and down, bend + shear, and a 51x51 mesh at 6 mm, plus a drape probe that reads back the springs
+   and measures 8 cm of overhang, for matching to the real cloth. No cloth is promoted without a repeat and a drape match.
+   Batch B (the 17 mm floor under `PLACE_ALONG` 3-4.5 cm, `CARRY_FLOOR`) stays on r0's cloth. Launch commands in the plan
+   for B, in the session scratchpad's `launch_stiff.sh` for S. Both wait on WATcloud (blocker 21).
 2. `quarter2` fold 2 rerun with traces. The right arm missed the stack S because S sat past an upright pinch's reach
    and the IK weights pushed it onto a flipped wrist (results.md). `TWO_IK` (fold 2's right arm at orientation weight
    0.005, jaw weight 0.02) reaches 24/24 offline within 5 mm, untested in Isaac. Run the 742655 job again with it
@@ -66,7 +67,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-08: fast 268 passed, 5 skipped (#15 deselected), isaac 91 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-08: fast 276 passed, 5 skipped (#15 deselected), isaac 99 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -125,6 +126,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-08 · **Stiffer cloth, batch S (user):** cloth knobs `bend_stiffness`, `shear_stiffness`, `spring_damping`, `cloth_subdiv` (FRICTION_GRASP, onto LeHome's garment_config); `isaac/tools/drape_probe.py` (8 cm overhang droop, spring / mass readback); batch S designed and reviewed (opus: springs not saturated, bend-only configs, hold promotion until a real-cloth match); round 2a fold-shape diagnostics in results.md; WATcloud still down; fast 276 passed + 5 skipped (#15 deselected), isaac 99 passed · (this commit)
 - 2026-11-08 · **Overnight run blocked by the WATcloud outage:** no batch ran (blocker 21); before it, `CARRY_FLOOR` (carry and place above a 17 mm floor, lower before release), `quarter2` fold 2's right-arm IK fix (`TWO_IK`, `_carry_w`) and arm joints in the traces landed in a528405, batch B reviewed; launch commands for batch B and the fold-2 rerun in the plan; fast 268 passed + 5 skipped (#15 deselected), isaac 91 passed · (this commit)
 - 2026-11-07 · **Audit closed, overnight run started (user):** round 2 read (results.md); the kept jaw is permanent (knob gone), the stall exit deleted, the 10 mm pinch, 17 mm floor and 5 cm shift cap rejected; defects 17-20 closed (19 and 20 fixed, 17 and 18 measured and left as they were); `PLACE_ALONG` / `PLACE_INWARD` added for batch A; overnight plan written; isaac tests 86 passed · (this commit)
 - 2026-11-08 · **Audit round 1 read, round 2 launched:** the kept jaw halves the edge; LeHome's jaw actuator doubled carry drops and is reverted (MuJoCo's armature stays on the jaw); floor, shift, pinch and adhesion results in results.md; `quarter2` traces: fold 2's right arm never reaches the stack, the gentle release made no difference to fold 1; round 2 742669 / 742670 and the reset check 742671 submitted; isaac tests 86 passed · (this commit)
