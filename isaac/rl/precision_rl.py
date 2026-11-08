@@ -325,7 +325,7 @@ def demo(args):
             pb.frames = [[] for _ in range(pb.n)]
         finals = run_episodes(pb, [snaps[i] if snaps[i] is not None else snaps[ok[0]] for i in range(pb.n)], policy)
         for i in ok:
-            row = {"seed": seeds[i], "ckpt": None if args.base else args.ckpt, **finals[i]}
+            row = {"seed": seeds[i], "ckpt": None if args.base else args.ckpt, **finals[i], "pre": snaps[i]["pre"]}
             print("DEMO", json.dumps(row), flush=True)
             with open(out / "demo.jsonl", "a") as f:
                 f.write(json.dumps(row) + "\n")

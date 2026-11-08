@@ -62,12 +62,31 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     RELEASE_JAW = 0.3        # rad (closed -0.1, open 1.0)
     RELEASE_STEP = 0.02      # rad per step: 20 steps (1 s) from closed to RELEASE_JAW
     RETREAT_STEP = 0.002     # m per step: 4 cm/s
+    # Audit fixes (2026-11-07, results.md); 0 restores the old behaviour for the A/B.
+    # KEEP_JAW 1: hold, release and retreat keep the pinch's jaw axis (servo_expert re-aimed it from the folded cloth's
+    # centre, ~70 deg off, so the wrist rolled while gripping and letting go). PLACE_STALL_EXIT 1: the place also ends
+    # once the corner is over its goal and the site has stopped coming down (the corner rides ~2.5 cm up the pads, so
+    # "within 1.5 cm of the goal's height" never came and every place pressed for its full PLACE_PATIENCE)
+    KEEP_JAW = 1
+    PLACE_STALL_EXIT = 1
+    PLACE_STALL = 0.001      # m the site must still come down over PLACE_STALL_STEPS steps
+    PLACE_STALL_STEPS = 3
+    # Layer-shift correction (audit 2026-11-07: the top layer lies a rigid ~2.2 cm off the bottom one before release).
+    # Once every arm of the fold holds, each step both arms move their held point by -SHIFT_GAIN times the top-minus-
+    # bottom offset the batch measures (layer_offset), at most SHIFT_STEP per step and SHIFT_MAX in all, until it is
+    # under SHIFT_TOL or SHIFT_STEPS steps have passed; only then can they release. SHIFT_GAIN 0: off
+    SHIFT_GAIN = 0.0
+    SHIFT_STEP = 0.002
+    SHIFT_MAX = 0.03
+    SHIFT_TOL = 0.003
+    SHIFT_STEPS = 40
 
     PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped", "latched", "touch",
-                                                    "release_site")
+                                                    "release_site", "hold_offset", "shift")
 
-    def __init__(self, *args, live_goal=None, **kwargs):
+    def __init__(self, *args, live_goal=None, layer_offset=None, **kwargs):
         self.live_goal = live_goal       # callable -> the partner vertex's current position; None: self.goal
+        self.layer_offset = layer_offset     # callable -> the fold's top-minus-bottom offset (m); None: no correction
         super().__init__(*args, **kwargs)
         self.PHASES = self.PHASES + ("touch",)
 
@@ -80,6 +99,28 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         self.latched = None
         self.touch = None
         self.release_site = None
+        self.hold_offset = np.zeros(3)
+        self.shift = {"steps": 0, "first": None, "last": None}
+
+    def _hold_jaw(self):
+        return self.plan["jaw"] if self.KEEP_JAW else super()._hold_jaw()
+
+    def _shifting(self):
+        """SHIFT_GAIN: move the held point against the layer offset; True while the correction still runs."""
+        if not (self.SHIFT_GAIN and self.layer_offset is not None and self.release_allowed) \
+                or self.shift["steps"] >= self.SHIFT_STEPS:
+            return False
+        off = np.asarray(self.layer_offset(), dtype=float)[:2]
+        if self.shift["first"] is None:
+            self.shift["first"] = off.round(4).tolist()
+        self.shift["last"] = off.round(4).tolist()
+        if np.linalg.norm(off) <= self.SHIFT_TOL:
+            self.shift["steps"] = self.SHIFT_STEPS
+            return False
+        step = np.clip(-self.SHIFT_GAIN * off, -self.SHIFT_STEP, self.SHIFT_STEP)
+        self.hold_offset[:2] = np.clip(self.hold_offset[:2] + step, -self.SHIFT_MAX, self.SHIFT_MAX)
+        self.shift["steps"] += 1
+        return True
 
     def _goal_now(self):
         if self.latched is not None:
@@ -184,12 +225,17 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             goal = self._goal_now()
             action[0:5], _ = self._toward(self._tip(self._steer(goal + [0.0, 0.0, self.PRESS_Z]) + self.residual),
                                           jaw, weight=0.05)
-            if (np.linalg.norm(corner[:2] - goal[:2]) < self.PLACE_TOL and corner[2] - goal[2] < 0.015) \
+            hist = self.sv["hist"] = (self.sv["hist"] + [float(site[2])])[-(self.PLACE_STALL_STEPS + 1):]
+            stalled = (self.PLACE_STALL_EXIT and len(hist) > self.PLACE_STALL_STEPS
+                       and hist[0] - hist[-1] < self.PLACE_STALL)
+            if (np.linalg.norm(corner[:2] - goal[:2]) < self.PLACE_TOL and (corner[2] - goal[2] < 0.015 or stalled)) \
                     or self.phase_steps >= self.PLACE_PATIENCE:
                 self._start_hold()
         else:   # hold: stay, plus the residual, until the gate and the vote let go
-            action[0:5], _ = self._toward(self._tip(self.hold_site + self.residual), jaw, weight=0.05)
-            if self.release_allowed and (self.release_vote or self.phase_steps >= self.HOLD_CAP):
+            shifting = self._shifting()
+            action[0:5], _ = self._toward(self._tip(self.hold_site + self.hold_offset + self.residual), jaw,
+                                          weight=0.05)
+            if not shifting and self.release_allowed and (self.release_vote or self.phase_steps >= self.HOLD_CAP):
                 self.plan["arc"], self.wp = [self._q()], 0      # release where the arm is, not at the hold start
                 self.release_site = self._site()
                 self._go("release")

@@ -129,3 +129,19 @@ def test_gate_rejects_a_lifted_held_moving_or_off_table_cloth():
     off = _folded()
     off[:, 0] += 0.4
     assert not _gate(off)["valid"]
+
+
+def test_layer_offset_is_zero_on_a_clean_fold_and_reads_a_rigid_top_shift():
+    folded = _folded()
+    assert np.allclose(pe.layer_offset(folded), 0.0, atol=1e-9)
+    top = np.array([ix * pe.N + iy for ix in range(pe.N) for iy in range(pe.N // 2 + 1, pe.N)])
+    folded[top, 1] -= 0.022                                   # the top layer lies 2.2 cm past the bottom one
+    assert np.allclose(pe.layer_offset(folded), [0.0, -0.022], atol=1e-9)
+
+
+def test_grid_stats_reads_a_flat_cloth_and_a_compressed_one():
+    flat = _flat()
+    assert pe.grid_stats(flat) == {"edge_min_mm": 1000 * S, "edge_max_mm": 1000 * S, "z_range_mm": 0.0}
+    flat[0, 0] += 0.006                                       # one corner pushed 6 mm in along the edge
+    stats = pe.grid_stats(flat)
+    assert stats["edge_min_mm"] == round(1000 * S - 6.0, 2) and stats["z_range_mm"] == 0.0

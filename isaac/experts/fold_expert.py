@@ -56,8 +56,13 @@ class IsaacArmExpert:
                     "site_hist")
 
     # the pinch / place geometry and dwells, as class attributes so the grasp bench can try candidates (track G)
-    PINCH_HEIGHT = 0.005             # fingertip above the table at the pinch (IG.2 #9; half_fold_demo / weld: 0.010)
-    PINCH_INSET = 0.005              # pinch point this far in from the corner, toward the cloth centre
+    # gripper site above the table at the pinch (IG.2 #9; half_fold_demo / weld: 0.010). The pads reach 8-9.5 mm below
+    # the site, so on the friction profile the site stops at 9.6-9.9 mm and the arm presses (audit, 2026-11-07)
+    PINCH_HEIGHT = 0.005
+    # the site goes this far OUT from the corner (away from the cloth centre): the site is outside the fixed finger's
+    # pad face (5.6-8.6 mm), which then lands just inside the edge, and the jaw sweeps in from the cloth side. On the
+    # friction profile the site lands ~7 mm further out than planned, the pad face off the cloth (audit, 2026-11-07)
+    PINCH_INSET = 0.005
     PLACE_HEIGHT = PLACE_HEIGHT
     ARC_HEIGHT = ARC_HEIGHT
     CLOSE_DWELL = CLOSE_DWELL

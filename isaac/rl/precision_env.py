@@ -26,6 +26,9 @@ N = 11
 # edge at three depths. Index = ix * N + iy.
 PAIRS = np.array([(ix * N + iy, ix * N + (N - 1 - iy)) for ix in (0, 5, 10) for iy in (10, 8, 6)])
 DRIFT_IDX = np.array([0, 5, 110, 115])     # bottom-layer corners and crease ends: they should not move
+# (top, bottom) pairs of the rows between the open edge and the crease (top iy 9-6 over bottom iy 1-4): the offset the
+# layer-shift correction measures. The open-edge row is left out: while held, its top corners are bunched in the jaws
+SHIFT_PAIRS = np.array([(ix * N + (N - 1 - iy), ix * N + iy) for ix in range(N) for iy in range(1, N // 2)])
 FOLDS = (("y", 5),)
 WINDOW_PHASES = ("carry", "place", "hold", "release", "retreat", "done", "touch")
 ARMS = ("left_", "right_")
@@ -86,6 +89,21 @@ def potential(cloth):
     """Higher when the pairs stack: -mean log(xy gap + EPS)."""
     gap = np.linalg.norm(cloth[PAIRS[:, 0], :2] - cloth[PAIRS[:, 1], :2], axis=1)
     return -float(np.mean(np.log(gap + EPS)))
+
+
+def layer_offset(cloth):
+    """m, (2,): the mean top-minus-bottom xy offset over SHIFT_PAIRS."""
+    c = np.asarray(cloth, float)
+    return (c[SHIFT_PAIRS[:, 0], :2] - c[SHIFT_PAIRS[:, 1], :2]).mean(axis=0)
+
+
+def grid_stats(cloth):
+    """How flat a cloth lies: its shortest and longest neighbour edge and its height range (mm). A clean reset is
+    30.0 / 30.0 / ~0; after a dragged episode some resets started at 23-29 mm edges (audit, 2026-11-07)."""
+    g = np.asarray(cloth, float).reshape(N, N, 3)
+    edges = np.r_[np.linalg.norm(np.diff(g, axis=0), axis=-1).ravel(), np.linalg.norm(np.diff(g, axis=1), axis=-1).ravel()]
+    return {"edge_min_mm": round(1000 * float(edges.min()), 2), "edge_max_mm": round(1000 * float(edges.max()), 2),
+            "z_range_mm": round(1000 * float(np.ptp(g[..., 2])), 2)}
 
 
 def drift(cloth, start):
@@ -178,9 +196,11 @@ class PrecisionBatch:
         for task, sub in zip(self.tasks, self.subs):
             self.experts.append({p: IsaacPlaceServoExpert(task, prefix=p, corner=list(m.corners), release=True,
                                                           goal=lambda m=m, t=task: t.goal(m),
-                                                          live_goal=lambda m=m, s=sub: s.cloth_positions()[m.goal])
+                                                          live_goal=lambda m=m, s=sub: s.cloth_positions()[m.goal],
+                                                          layer_offset=lambda s=sub: layer_offset(s.cloth_positions()))
                                  for p, m in self.moves.items()})
         self.state = [None] * n
+        self.pre = [None] * n        # per copy, the scripted phase's diagnostics (scripted_to_window), kept in its snapshot
         self.frames, self.cut = None, [None] * n     # demo video: per copy, the "top" frame after every step
         self.warm_up()
 
@@ -223,7 +243,26 @@ class PrecisionBatch:
         exp = {p: {f: copy.deepcopy(getattr(e, f)) for f in e.PHASE_FIELDS + ("lift_allowed",)}
                for p, e in self.experts[i].items()}
         return {"seed": seed, "env": self.subs[i].snapshot(), "experts": exp,
-                "task_start": self.tasks[i]._start.copy(), "start": self.subs[i].cloth_positions().copy()}
+                "task_start": self.tasks[i]._start.copy(), "start": self.subs[i].cloth_positions().copy(),
+                "pre": copy.deepcopy(self.pre[i])}
+
+    def _pre_close(self, i):
+        """At each arm's first close step: how far the site is in from its corner along the plan's jaw axis (mm,
+        negative: outside the corner)."""
+        for p, e in self.experts[i].items():
+            if e.PHASES[e.phase] == "close" and p not in self.pre[i]["close_in_mm"]:
+                d = np.asarray(self.subs[i].gripper_position(p), float) - e._corner()
+                self.pre[i]["close_in_mm"][p] = round(1000 * float(d[:2] @ e.plan["jaw"][:2]), 2)
+
+    def _pre_window(self, i):
+        """At the window start: how far the bottom half moved since the reset (cm) and how far each corner sits above
+        its gripper site (cm)."""
+        cloth = self.subs[i].cloth_positions()
+        moved = np.linalg.norm(cloth[BOTTOM_IDX, :2] - self.pre[i]["reset_cloth"][BOTTOM_IDX, :2], axis=1)
+        self.pre[i]["pre_shift_cm"] = round(100 * float(moved.mean()), 2)
+        self.pre[i]["corner_up_cm"] = {p: round(100 * float(e._corner()[2] - self.subs[i].gripper_position(p)[2]), 2)
+                                       for p, e in self.experts[i].items()}
+        del self.pre[i]["reset_cloth"]
 
     def scripted_to_window(self, seeds, finish=False):
         """Reset copy i with seeds[i], run the base to the window start, snapshot it (None: it never got there with
@@ -232,13 +271,17 @@ class PrecisionBatch:
         for i, seed in enumerate(seeds):
             self.tasks[i].reset(seed=int(seed))
             self._reset_experts(i, int(seed))
+            cloth = self.subs[i].cloth_positions().copy()
+            self.pre[i] = {"reset": grid_stats(cloth), "reset_cloth": cloth, "close_in_mm": {}}
         snaps, finals = [None] * self.n, [None] * self.n
         pending = set(range(self.n))
         for _ in range(PRE_MAX):
             self._scripted_step()
             for i in list(pending):
+                self._pre_close(i)
                 if all(e.PHASES[e.phase] == "carry" for e in self.experts[i].values()):
                     pending.discard(i)
+                    self._pre_window(i)
                     if self._held(i):
                         snaps[i] = self.snapshot(i, int(seeds[i]))
                         if self.frames is not None:
@@ -367,6 +410,8 @@ class PrecisionBatch:
                                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
                                "gate": g, "passed_valid": bool(s["passed"] and g["valid"] and reason == "settled"),
                                "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS},
+                               "shift": {p: dict(ex[p].shift, offset=np.round(ex[p].hold_offset, 4).tolist())
+                                         for p in ARMS},
                                "cloth": np.round(cloth, 4).tolist(), "start": np.round(st["start"], 4).tolist()}
                 infos[i] = st["final"]
             obs[i] = self._obs(i)

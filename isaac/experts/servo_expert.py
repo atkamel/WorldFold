@@ -123,10 +123,13 @@ class IsaacServoExpert(IsaacArmExpert):
         self.sv.update(path=self._corner_path(self._corner(), goal), k=0, k_steps=0, slip=0)
         self._go("carry")
 
+    def _hold_jaw(self):
+        return self._jaw_dir(self._corner())
+
     def _start_hold(self):
         q = self._q()
         site = self._site()
-        jaw = self._jaw_dir(self._corner())
+        jaw = self._hold_jaw()
         retreat, _ = self._ik.solve(self.prefix, site + [0, 0, RETREAT], jaw, q, orientation_weight=0.02)
         self.plan = dict(self.plan or {}, jaw=jaw, arc=[q], arc_tips=[site], retreat=retreat)
         self.wp = 0

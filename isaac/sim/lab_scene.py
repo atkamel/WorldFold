@@ -98,10 +98,13 @@ def _robot(prim_path, base_pos, drive=None, gripper_drive=None, base_quat=ARM_BA
                                                  joint_pos=HOME if home is None else
                                                  dict(zip(ARM_JOINTS, map(float, home))) | {GRIPPER_JOINT: GRIPPER_OPEN})
     cfg = SO101_FOLLOWER_CFG.replace(prim_path=prim_path, init_state=init)
+    lehome = cfg.actuators
     if drive:
         cfg = cfg.replace(actuators={name: act.replace(**drive) for name, act in cfg.actuators.items()})
     if gripper_drive:
-        cfg = cfg.replace(actuators={name: act.replace(**gripper_drive) if name == "sts3215-gripper" else act
+        # LeHome's own gripper actuator with gripper_drive on top: the arm drive's fields (MuJoCo's armature 0.028)
+        # stay off the jaw, which with them rang at ~4 Hz (audit, 2026-11-07)
+        cfg = cfg.replace(actuators={name: lehome[name].replace(**gripper_drive) if name == "sts3215-gripper" else act
                                      for name, act in cfg.actuators.items()})
     return cfg
 
@@ -405,6 +408,12 @@ class SceneEnv(DirectRLEnv):
         cp.cloth.reset()
         pose = cp.cloth_pose + np.array([offset_xy[0], offset_xy[1], height])
         cp.cloth.set_world_pose(position=pose, orientation=euler_angles_to_quat(np.asarray(rpy_deg), degrees=True))
+        if self.device != "cpu":
+            # after a dragged episode 5 of 11 resets started wrinkled (audit, 2026-11-07): start the drop at rest, not
+            # with whatever particle velocities the soft reset keeps
+            view = cp.cloth._cloth_prim_view
+            vel = view.get_velocities()
+            view._physics_view.set_velocities(torch.zeros_like(vel), torch.arange(vel.shape[0], device=vel.device))
 
     def reset_copy(self, c):
         """Copy c's arms back to their spawn pose and HOME joints at rest and its rig cameras
