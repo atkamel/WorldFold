@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-07 · **Branch:** `fix/half-fold-audit` · **Phase:** Q, the quarter fold on
+**Updated:** 2026-11-08 · **Branch:** `fix/half-fold-audit` · **Phase:** Q, the quarter fold on
 Isaac (revised plan of 2026-10-22), half-fold expert fixes first
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -45,15 +45,16 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. Overnight run (user, 2026-11-07, until 10:00 on 2026-11-08), plan in
-   [superpowers/plans/2026-11-08-overnight-half-fold.md](superpowers/plans/2026-11-08-overnight-half-fold.md). Raise the
-   half fold's pass rate from the audit's base (kept jaw, latch + g-fold 1.2: 2.07 / 3.65 cm, 1/32), batch after batch,
-   each reviewed by a subagent before launch. Batch A tries placement offsets (`PLACE_ALONG`, `PLACE_INWARD`) and the
-   g-fold slope, then batch B combines the winners and batch C confirms on fresh seeds with video.
-2. `quarter2` fold 2 (traces 742655 / 742656, results.md): the right arm never reaches the corner stack S (its close
-   10-29 cm from S in 6/8 seeds, the IK on a flipped branch in 2), and fold 1 pulls cloth_0 5-10 cm in, so S is no
-   stack. Fix the right arm's fold-2 approach (IK seed and weights for S) and re-run with traces. The gentle release
-   made no measurable difference to fold 1. Target: fold 2 landing within 3 cm on gated episodes, with video.
+1. Half fold, batch B of the overnight plan
+   ([superpowers/plans/2026-11-08-overnight-half-fold.md](superpowers/plans/2026-11-08-overnight-half-fold.md)). No
+   batch ran overnight (blocker 21). The launch commands are in the plan. Batch B puts the 17 mm floor under
+   `PLACE_ALONG` 3-4.5 cm and tries `CARRY_FLOOR`, judged against the audit base r0 (kept jaw, latch + g-fold 1.2,
+   2.07 / 3.65 cm, 1/32). Then batch A (placement and slope on r0), then batch C, a confirmation on seeds 920000-63
+   with video. Each new batch gets a subagent review before launch.
+2. `quarter2` fold 2 rerun with traces. The right arm missed the stack S because S sat past an upright pinch's reach
+   and the IK weights pushed it onto a flipped wrist (results.md). `TWO_IK` (fold 2's right arm at orientation weight
+   0.005, jaw weight 0.02) reaches 24/24 offline within 5 mm, untested in Isaac. Run the 742655 job again with it
+   (command in the plan). Target: fold 2 landing within 3 cm on gated episodes, with video.
 3. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
    with no drag and the idle arm parked.
 4. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
@@ -65,7 +66,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-07: fast 263 passed, 5 skipped (#15 deselected); macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-08: fast 268 passed, 5 skipped (#15 deselected), isaac 91 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -102,7 +103,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 21 | WATcloud DNS outage from ~22:55 EST 2026-11-07: the login node can't resolve the SLURM controller and jobs can't reach PyPI, so every image build fails (batch A 742699-742701 died in the build, no rows) | overnight run | — |
+| 21 | WATcloud outage from ~22:55 EST 2026-11-07, still down at 09:32 on 2026-11-08: the cluster's internal DNS failed, so jobs couldn't reach PyPI and every image build failed (batch A 742699-742701 died in the build, no rows). PyPI resolves again from ~00:15, but `squeue` can't reach the SLURM controller (110 polls 02:18-09:29, all `connect failure`) | every Isaac job | — |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujoco_sim/` first on `sys.path`; `mujoco_sim/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
@@ -124,6 +125,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-08 · **Overnight run blocked by the WATcloud outage:** no batch ran (blocker 21); before it, `CARRY_FLOOR` (carry and place above a 17 mm floor, lower before release), `quarter2` fold 2's right-arm IK fix (`TWO_IK`, `_carry_w`) and arm joints in the traces landed in a528405, batch B reviewed; launch commands for batch B and the fold-2 rerun in the plan; fast 268 passed + 5 skipped (#15 deselected), isaac 91 passed · (this commit)
 - 2026-11-07 · **Audit closed, overnight run started (user):** round 2 read (results.md); the kept jaw is permanent (knob gone), the stall exit deleted, the 10 mm pinch, 17 mm floor and 5 cm shift cap rejected; defects 17-20 closed (19 and 20 fixed, 17 and 18 measured and left as they were); `PLACE_ALONG` / `PLACE_INWARD` added for batch A; overnight plan written; isaac tests 86 passed · (this commit)
 - 2026-11-08 · **Audit round 1 read, round 2 launched:** the kept jaw halves the edge; LeHome's jaw actuator doubled carry drops and is reverted (MuJoCo's armature stays on the jaw); floor, shift, pinch and adhesion results in results.md; `quarter2` traces: fold 2's right arm never reaches the stack, the gentle release made no difference to fold 1; round 2 742669 / 742670 and the reset check 742671 submitted; isaac tests 86 passed · (this commit)
 - 2026-11-07 · **Audit fixes + sweep (user):** hold keeps the pinch's jaw (`KEEP_JAW`), the place ends once the corner is over its goal and the site stops coming down (`PLACE_STALL_EXIT`), the jaw gets LeHome's own actuator under its drive (no MuJoCo armature), resets zero the cloth's particle velocities, an optional layer-shift correction in hold (`SHIFT_GAIN`, off), pinch comments corrected (the inset's sign is intended; the site lands ~7 mm further out than planned), demo rows log reset flatness, the site's offset at the close, the sheet's move before the carry and the corner's height in the jaws; WATcloud 742650 / 742651 submitted; isaac tests 86 passed, fast 263 passed + 5 skipped (#15 deselected) · (this commit)

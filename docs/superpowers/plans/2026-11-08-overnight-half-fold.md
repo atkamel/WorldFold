@@ -70,6 +70,37 @@ passing videos to the Mac (not git).
   with PinchIK. Find why the close lands 10-29 cm from S (seed, flipped branch, weights) and fix it, with a test.
 - Q2. Rerun the 8-seed trace job on `quarter2` with the fix and the best fold-1 base available by then.
 
+## What happened (2026-11-08 09:35)
+
+Nothing ran. WATcloud's internal DNS failed at about 22:55, which killed batch A in the image build (742699-742701).
+PyPI resolved again from about 00:15, but `squeue` never reached the SLURM controller (110 polls from 02:18 to 09:29,
+all `connect failure`). Batch B and the fold-2 rerun are ready to launch on code a528405, from `~/WorldFold` on the
+login node after syncing the repo.
+
+```bash
+B="LATCH_GOAL=1,GFOLD_SLOPE=1.2"
+COMMON=(isaac/rl/precision_rl.py sweep --seeds 910000:910032 --copies 8 --parallel 2 --child-minutes 120)
+G=gpu:rtx_3090:1,tmpdisk:200000
+sbatch --job-name=wf-nb1 --gres=$G isaac/watcloud.sbatch "${COMMON[@]}" --out outputs/isaac/rl/night_b1 \
+    "b0_floor||$B,Z_FLOOR=0.017|450||||" \
+    "b1_floor_along45||$B,Z_FLOOR=0.017,PLACE_ALONG=0.045|450||||" \
+    "b2_floor_along35||$B,Z_FLOOR=0.017,PLACE_ALONG=0.035|450||||"
+sbatch --job-name=wf-nb2 --gres=$G isaac/watcloud.sbatch "${COMMON[@]}" --out outputs/isaac/rl/night_b2 \
+    "b3_floor_along30||$B,Z_FLOOR=0.017,PLACE_ALONG=0.03|450||||" \
+    "b4_floor_along40||$B,Z_FLOOR=0.017,PLACE_ALONG=0.04|450||||" \
+    "b5_carryfloor||$B,CARRY_FLOOR=0.017|450||||"
+sbatch --job-name=wf-nb3 --gres=$G isaac/watcloud.sbatch "${COMMON[@]}" --out outputs/isaac/rl/night_b3 \
+    "b6_carryfloor_along35||$B,CARRY_FLOOR=0.017,PLACE_ALONG=0.035|450||||" \
+    "b7_carryfloor_along30||$B,CARRY_FLOOR=0.017,PLACE_ALONG=0.03|450||||" \
+    "b2r_floor_along35||$B,Z_FLOOR=0.017,PLACE_ALONG=0.035|450||||"
+# Track Q2, once a slot frees: the 742655 job with TWO_IK
+WORLDFOLD_PLACE_PARAMS=$B sbatch --job-name=wf-q2-twoik --gres=$G isaac/watcloud.sbatch isaac/tools/quarter_batch.py \
+    --copies 8 --seeds 0:8 --profile quarter2 --fold2 two --drag none --video --out outputs/isaac/quarter/q2_twoik
+```
+
+Batch B takes about 1.5-2 h with the image build, the fold-2 rerun about 1 h. r0's rows for the paired comparison
+are in `outputs/isaac/rl/audit_r2a/r0_base/`.
+
 ## Morning summary
 
 What won and by how much, the confirmation pass rate, videos, the fold-2 diagnosis, what to try next.
