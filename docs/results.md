@@ -2808,3 +2808,22 @@ axis (≤ 2%), and the carry arc (corner at most 13 cm from the crease against 1
 
 The reviewers estimate, without a run, that defects 1-4 cost 0.8-2 cm of the mean, and that fixing them brings Isaac
 to about MuJoCo's 2.0-2.4 cm. Reaching the bar also needs the rigid shift taken out.
+
+### `quarter2` with per-step traces, gentle release on (2026-11-08, WATcloud 742655, audit-fix code 2e6fb14)
+
+`quarter_batch.py --copies 8 --seeds 0:8 --profile quarter2 --fold2 two --drag none --video`, place params
+`LATCH_GOAL=1,GFOLD_SLOPE=1.2`, the audit fixes on (kept jaw, stall exit, LeHome's gripper actuator, reset
+velocities). Traces and videos in `outputs/isaac/quarter/q2_trace_on/`.
+
+- **Fold 1 settled and passed the gate on 8/8** (712165: broke in 1/2). Mean 1.8-8.4 cm, edge 3.8-22.7 cm.
+- **Fold 2 failed on 8/8**, final gate valid on 3/8, quarter-fold means 5.6-17.0 cm.
+- **The right arm mostly never reached the corner stack S, so its "drops" were never slips.** At its close the site was
+  10-29 cm from S in 6/8 seeds (1.2 and 2.2 cm in the other two, which then slipped in the carry). It looped approach /
+  descend up to three times first, and in seed 7 it never closed. Its pinch tilt at the close was 4-17° in five seeds
+  and 139° / 178° in two (the IK on a flipped branch), against the layout search's 34.5°.
+- **Fold 1 pulls the bottom-layer west corner in.** At fold 2's start cloth_0 sits 5-10 cm east of its start
+  (cloth-local x −5 to −13 against −15), and cloth_0 / cloth_10 are 3-5 cm apart, so S is no stack. The crease end
+  cloth_5 stays at −14 to −16. The left arm pinched cloth_5 within 0.8-1.5 cm at 1° tilt in all 8 seeds and held it
+  except in seeds 2 and 4.
+- So fold 2's blocker is the right arm's IK and approach on `quarter2`. The steep pinches were never tested, because it
+  never got there. The gentle-release on / off pair for fold 1 waits on 742656.
