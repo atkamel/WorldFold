@@ -70,10 +70,10 @@ passing videos to the Mac (not git).
   with PinchIK. Find why the close lands 10-29 cm from S (seed, flipped branch, weights) and fix it, with a test.
 - Q2. Rerun the 8-seed trace job on `quarter2` with the fix and the best fold-1 base available by then.
 
-## What happened (2026-11-08 09:35)
+## What happened (2026-11-08 10:00)
 
 Nothing ran. WATcloud's internal DNS failed at about 22:55, which killed batch A in the image build (742699-742701).
-PyPI resolved again from about 00:15, but `squeue` never reached the SLURM controller (110 polls from 02:18 to 09:29,
+PyPI resolved again from about 00:15, but `squeue` never reached the SLURM controller (polls every 2-4 min from 02:18 to 09:58,
 all `connect failure`). Batch B and the fold-2 rerun are ready to launch on code a528405, from `~/WorldFold` on the
 login node after syncing the repo.
 

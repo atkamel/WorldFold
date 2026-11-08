@@ -103,7 +103,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 21 | WATcloud outage from ~22:55 EST 2026-11-07, still down at 09:32 on 2026-11-08: the cluster's internal DNS failed, so jobs couldn't reach PyPI and every image build failed (batch A 742699-742701 died in the build, no rows). PyPI resolves again from ~00:15, but `squeue` can't reach the SLURM controller (110 polls 02:18-09:29, all `connect failure`) | every Isaac job | — |
+| 21 | WATcloud outage from ~22:55 EST 2026-11-07, still down at 10:00 on 2026-11-08: the cluster's internal DNS failed, so jobs couldn't reach PyPI and every image build failed (batch A 742699-742701 died in the build, no rows). PyPI resolves again from ~00:15, but `squeue` can't reach the SLURM controller (polls every 2-4 min from 02:18 to 09:58, all `connect failure`) | every Isaac job | — |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujoco_sim/` first on `sys.path`; `mujoco_sim/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
