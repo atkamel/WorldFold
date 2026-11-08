@@ -102,6 +102,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
+| 21 | WATcloud DNS outage from ~22:55 EST 2026-11-07: the login node can't resolve the SLURM controller and jobs can't reach PyPI, so every image build fails (batch A 742699-742701 died in the build, no rows) | overnight run | — |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujoco_sim/` first on `sys.path`; `mujoco_sim/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
