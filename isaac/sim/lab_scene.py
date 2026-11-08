@@ -98,13 +98,12 @@ def _robot(prim_path, base_pos, drive=None, gripper_drive=None, base_quat=ARM_BA
                                                  joint_pos=HOME if home is None else
                                                  dict(zip(ARM_JOINTS, map(float, home))) | {GRIPPER_JOINT: GRIPPER_OPEN})
     cfg = SO101_FOLLOWER_CFG.replace(prim_path=prim_path, init_state=init)
-    lehome = cfg.actuators
     if drive:
         cfg = cfg.replace(actuators={name: act.replace(**drive) for name, act in cfg.actuators.items()})
     if gripper_drive:
-        # LeHome's own gripper actuator with gripper_drive on top: the arm drive's fields (MuJoCo's armature 0.028)
-        # stay off the jaw, which with them rang at ~4 Hz (audit, 2026-11-07)
-        cfg = cfg.replace(actuators={name: lehome[name].replace(**gripper_drive) if name == "sts3215-gripper" else act
+        # on top of drive, so the jaw keeps the arm drive's armature (0.028): without it (LeHome's own gripper
+        # actuator) corners left the jaws in the carry on 37% of arms against 11-16% (audit sweep 742650, c3)
+        cfg = cfg.replace(actuators={name: act.replace(**gripper_drive) if name == "sts3215-gripper" else act
                                      for name, act in cfg.actuators.items()})
     return cfg
 

@@ -2827,3 +2827,48 @@ velocities). Traces and videos in `outputs/isaac/quarter/q2_trace_on/`.
   except in seeds 2 and 4.
 - So fold 2's blocker is the right arm's IK and approach on `quarter2`. The steep pinches were never tested, because it
   never got there. The gentle-release on / off pair for fold 1 waits on 742656.
+
+### Audit fix sweep, round 1 (2026-11-08, WATcloud 742650 / 742651, code 2e6fb14)
+
+`precision_rl.py sweep`, 32 paired seeds 910000-31 per config, 8 copies, window 450 steps, friction profile with DR
+off. Every config sits on the latch + g-fold 1.2 base. c0 reproduces the old behaviour (`KEEP_JAW=0`,
+`PLACE_STALL_EXIT=0`, MuJoCo's jaw armature through the `gripper_drive` knob). c1-c3 add one code fix each. c4-c11 sit
+on c3. 742650 was cancelled after c3's 24th seed, once c3 proved harmful, so c4 and c5 have no rows. All endings were
+"settled". Most strict-gate failures were a cloth still moving 1-2 mm per step at the 15-step settle, so the table
+scores "scoreable" folds (strict gate minus the stillness check). Paired differences are on seeds scoreable in both:
+mean / SE / better / n. Rows in `outputs/isaac/rl/audit_{a,b}/`.
+
+| config | scoreable (strict) | mean | edge | bottom shift | arms dropped | passed, strict (Wilson) | paired mean vs parent | paired edge vs parent |
+|---|---|---|---|---|---|---|---|---|
+| c0 old behaviour | 26 (17) / 32 | 2.48 | 6.37 | 1.84 | 9/64 | 0/32 [0, 10.7] | | |
+| c1 + kept jaw | 26 (25) / 32 | 2.02 | 3.38 | 1.82 | 7/64 | 0/32 [0, 10.7] | −0.31 / 0.18 / 13 / 20 | **−2.77 / 0.59 / 18 / 20** |
+| c2 + stall exit | 23 (22) / 32 | 2.14 | 3.57 | 2.16 | 10/64 | 0/32 [0, 10.7] | +0.14 / 0.13 / 8 / 21 | +0.19 / 0.21 / 8 / 21 |
+| c3 + LeHome jaw actuator | 21 (20) / 24 | 2.51 | 6.44 | 0.82 | **18/48** | 2/24 [2.3, 25.8] | +0.71 / 0.53 / 7 / 16 | **+3.95 / 1.82 / 5 / 16** |
+| c6 c3 + pinch 10 mm + floor 17 mm | 32 (31) / 32 | 2.77 | 7.55 | 0.34 | 19/64 | 1/32 [0.6, 15.7] | (c4 cancelled) | |
+| c7 c6 + layer shift | 32 (28) / 32 | 2.29 | 7.16 | 0.42 | 19/64 | 3/32 [3.2, 24.2] | **−0.48 / 0.18 / 22 / 32** | −0.40 / 0.91 / 14 / 32 |
+| c8 c3 + inset 2 mm in + floor + shift | 32 (27) / 32 | 3.49 | 7.52 | 0.56 | 17/64 | 1/32 [0.6, 15.7] | vs c0: +1.11 / 0.26 / 5 / 26 | |
+| c9 c3 + layer shift | 29 (28) / 32 | 2.23 | 6.71 | 1.12 | 28/64 | 3/32 [3.2, 24.2] | −0.60 / 0.34 / 11 / 18 | −0.31 / 0.63 / 9 / 18 |
+| c10 c7 + adhesion 0 | 32 (29) / 32 | 2.50 | 9.28 | 0.41 | 20/64 | 2/32 [1.7, 20.1] | +0.21 / 0.17 / 12 / 32 | +2.13 / 0.92 / 10 / 32 |
+| c11 c3 + g-fold 0.6 (reset check) | 29 (25) / 32 | 2.20 | 5.27 | 1.61 | 24/64 | 1/32 [0.6, 15.7] | −0.13 / 0.53 / 9 / 20 | −0.82 / 0.97 / 11 / 20 |
+
+- **The kept jaw is a clear win.** The worst edge pair halves (median 5.79 → 3.44 cm, max 12.4 → 6.0) and the cloth is
+  left on a finger less often. The re-aim was defect 19.
+- **The LeHome jaw actuator is harmful, and it is reverted.** Without MuJoCo's armature the jaw lets corners leave in
+  the carry on 37% of arms against 11-16%. All 7 of c3's edges over 6 cm come with a drop. The audit's "ringing jaw"
+  reading had the sign wrong. Every config built on c3 (c6-c11) carries this, so round 2 reruns them on c1 / c2.
+- **The 17 mm floor does its job.** Bottom shift falls to 0.34-0.56 cm and no fold ends with cloth on a finger
+  (0 z / clearance gate failures against 2-6 per config without it). Its alignment effect is confounded by c3.
+- **The layer-shift correction lowers the mean on both bases** (−0.48 and −0.60 cm) and gives the only clusters of
+  passes (3/32). It runs all 40 steps against the 3 cm cap: at hold the measured offset is ~3.4 cm in −y and it
+  removes about half.
+- **Rejected:** the 2 mm inward pinch (+1.11 cm against c0) and adhesion 0 (+2.13 cm on the edge).
+- **The stall exit is neutral** (+0.14 ± 0.13 mean).
+- **The reset fix is untested here.** No episode dragged, even with g-fold 0.6, so no reset followed a drag. 0 of 320
+  resets were wrinkled.
+- Diagnostics: with the old 5 mm pinch the site closes a median 5.2 mm outside the corner and the sheet moves 3.3 cm
+  before the carry. The 10 mm pinch (c6) moved neither much (8.4 mm, 4.2 cm, on c3), so the landing error isn't the
+  table stop.
+
+**`quarter2` fold 1, gentle release on vs off** (742655 / 742656, 8 seeds, same code): gate-valid 8/8 vs 6/8. Paired
+mean −0.28 cm (SE 0.58), edge −0.03 (SE 2.82), on better 4/8, so no measurable alignment difference. Fold 2 failed
+the same way in both (the right arm short of the stack).
