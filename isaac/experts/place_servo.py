@@ -69,6 +69,14 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     # their partners (median)
     PLACE_ALONG = 0.0
     PLACE_INWARD = 0.0
+    # Place high, then put down (overnight plan, batch B): CARRY_FLOOR m above the table is the steered tip's floor in
+    # the carry and the place (None: Z_FLOOR), so the pads stay off the bottom layer while the corner is steered over
+    # its partner; hold then lowers the site straight down to Z_FLOOR, and the arm may release once it has stopped
+    # coming down (< DESCEND_STILL over 3 steps) or after DESCEND_STEPS. 17 mm everywhere cut the bottom shift 2.0 ->
+    # 0.5 cm but cost 1.4 cm on the mean, released from higher (audit round 2)
+    CARRY_FLOOR = None
+    DESCEND_STILL = 0.001
+    DESCEND_STEPS = 20
     # Layer-shift correction (audit 2026-11-07: the top layer lies a rigid ~2.2 cm off the bottom one before release).
     # Once every arm of the fold holds, each step both arms move their held point by -SHIFT_GAIN times the top-minus-
     # bottom offset the batch measures (layer_offset), at most SHIFT_STEP per step and SHIFT_MAX in all, until it is
@@ -142,10 +150,18 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             inward = -inward
         return self.PLACE_ALONG * back + self.PLACE_INWARD * inward
 
-    def _tip(self, tip):
-        if self.Z_FLOOR is not None:
-            tip = np.r_[tip[:2], max(float(tip[2]), TABLE_TOP_Z + self.Z_FLOOR)]
+    def _tip(self, tip, floor=None):
+        floor = self.Z_FLOOR if floor is None else floor
+        if floor is not None:
+            tip = np.r_[tip[:2], max(float(tip[2]), TABLE_TOP_Z + floor)]
         return tip
+
+    def _descending(self, site):
+        """CARRY_FLOOR: True while hold is still lowering the site onto the stack."""
+        if self.CARRY_FLOOR is None or self.phase_steps > self.DESCEND_STEPS:
+            return False
+        hist = self.sv["hist"] = (self.sv["hist"] + [float(site[2])])[-4:]
+        return len(hist) < 4 or hist[0] - hist[-1] >= self.DESCEND_STILL
 
     def _corner_path(self, corner, goal):
         path = super()._corner_path(corner, goal)
@@ -161,6 +177,8 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     def _start_hold(self):
         super()._start_hold()
         self.hold_site = self._site() - self.residual      # hold where the arm is now
+        if self.CARRY_FLOOR is not None and not self.dropped:     # ... but put it down (an empty jaw stays up)
+            self.hold_site[2] = TABLE_TOP_Z + (self.Z_FLOOR or 0.0)
         if self.BACKOFF:
             jaw = self.plan["jaw"]
             back = self._site() - self.BACKOFF * np.r_[jaw[:2], 0.0]
@@ -191,7 +209,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             action[5] = self._close_command()
             t = self.touch
             tip = t["path"][t["k"]]
-            action[0:5], _ = self._toward(self._tip(tip + self.residual), self.plan["jaw"], weight=0.05)
+            action[0:5], _ = self._toward(self._tip(tip + self.residual), self.plan["jaw"], weight=self._carry_w)
             t["k_steps"] += 1
             if np.linalg.norm(self._site() - tip) < 0.006 or t["k_steps"] > 12:
                 t["k"], t["k_steps"] = t["k"] + 1, 0
@@ -223,7 +241,8 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         if name == "carry":
             path, k = self.sv["path"], self.sv["k"]
             target = path[min(k, len(path) - 1)]
-            action[0:5], _ = self._toward(self._tip(self._steer(target) + self.residual), jaw, weight=0.05)
+            action[0:5], _ = self._toward(self._tip(self._steer(target) + self.residual, self.CARRY_FLOOR), jaw,
+                                          weight=self._carry_w)
             self.sv["k_steps"] += 1
             if np.linalg.norm(corner - target) < self.CORNER_WP_TOL or self.sv["k_steps"] > self.WP_PATIENCE:
                 self.sv["k"], self.sv["k_steps"] = k + 1, 0
@@ -234,15 +253,17 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             action[0:5] *= self.CARRY_SPEED
         elif name == "place":
             goal = self._goal_now()
-            action[0:5], _ = self._toward(self._tip(self._steer(goal + [0.0, 0.0, self.PRESS_Z]) + self.residual),
-                                          jaw, weight=0.05)
+            action[0:5], _ = self._toward(self._tip(self._steer(goal + [0.0, 0.0, self.PRESS_Z]) + self.residual,
+                                                    self.CARRY_FLOOR), jaw, weight=self._carry_w)
             if (np.linalg.norm(corner[:2] - goal[:2]) < self.PLACE_TOL and corner[2] - goal[2] < 0.015) \
                     or self.phase_steps >= self.PLACE_PATIENCE:
                 self._start_hold()
         else:   # hold: stay, plus the residual, until the gate and the vote let go
             shifting = self._shifting()
             action[0:5], _ = self._toward(self._tip(self.hold_site + self.hold_offset + self.residual), jaw,
-                                          weight=0.05)
+                                          weight=self._carry_w)
+            if self._descending(site):
+                return action
             if not shifting and self.release_allowed and (self.release_vote or self.phase_steps >= self.HOLD_CAP):
                 self.plan["arc"], self.wp = [self._q()], 0      # release where the arm is, not at the hold start
                 self.release_site = self._site()
@@ -271,7 +292,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         if name == "release":
             q = min(self.RELEASE_JAW, float(self.base._joint_targets[self.prefix][5]) + self.RELEASE_STEP)
             self._set_jaw(action, q)
-            action[0:5], _ = self._toward(self.release_site, jaw, weight=0.05)
+            action[0:5], _ = self._toward(self.release_site, jaw, weight=self._carry_w)
             opened = float(self.base.joint_positions(self.prefix)[5]) >= self.RELEASE_JAW - 0.05
             if q >= self.RELEASE_JAW and (opened or self.phase_steps >= 60):     # 3 s patience
                 self._go("retreat")      # the jaw itself, not just its target, is open: the pads have let go
@@ -280,7 +301,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         back = min(self.BACKOFF, self.phase_steps * self.RETREAT_STEP)        # BACKOFF: slide out first, then lift
         lift = min(RETREAT, self.phase_steps * self.RETREAT_STEP - back)
         top = self.release_site - back * np.r_[jaw[:2], 0.0]
-        action[0:5], _ = self._toward(top + [0.0, 0.0, lift], jaw, weight=0.05)
+        action[0:5], _ = self._toward(top + [0.0, 0.0, lift], jaw, weight=self._carry_w)
         if lift >= RETREAT and (self._site()[2] >= self.release_site[2] + RETREAT - 0.005
                                 or self.phase_steps >= (self.BACKOFF + RETREAT) / self.RETREAT_STEP + 20):
             self._go("done")

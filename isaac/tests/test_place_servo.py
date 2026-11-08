@@ -278,3 +278,53 @@ def test_place_offset_moves_the_target_toward_the_crease_and_the_centre_line(mon
     monkeypatch.setattr(IsaacPlaceServoExpert, "PLACE_ALONG", 0.02)
     monkeypatch.setattr(IsaacPlaceServoExpert, "PLACE_INWARD", 0.015)
     assert np.allclose(e._goal_now(), e.base.cloth[0] + [0.015, 0.02, 0.0])   # partner at (-0.15, -0.15): +y, +x
+
+
+def test_carry_floor_keeps_the_place_high_then_hold_lowers_before_release(monkeypatch):
+    monkeypatch.setattr(IsaacPlaceServoExpert, "CARRY_FLOOR", 0.017)
+    e = _expert()
+    e._go("place")
+    e.base.site = e.base.cloth[0] + [0.0, 0.0, 0.01]             # unfloored, the place would aim the tip ~13 mm up
+    e.act()
+    assert e._ik.tips[-1][2] == TABLE_TOP_Z + 0.017              # steered over the partner from the floor
+    e._start_hold()
+    e.release_allowed = True
+    e.act()
+    assert e._ik.tips[-1][2] == TABLE_TOP_Z + e.Z_FLOOR         # hold goes straight down
+    assert e.PHASES[e.phase] == "hold"                          # still coming down: no release
+    for _ in range(3):                                          # the site has stopped (the fake never moves it)
+        e.act()
+    assert e.PHASES[e.phase] == "release"
+
+
+def test_carry_floor_off_by_default_keeps_the_hold_where_it_is():
+    e = _expert()
+    e._start_hold()
+    assert np.allclose(e.hold_site, e.base.site)
+
+
+def test_carry_floor_holds_the_carry_up_and_leaves_a_dropped_arm_where_it_is(monkeypatch):
+    monkeypatch.setattr(IsaacPlaceServoExpert, "CARRY_FLOOR", 0.017)
+    e = _expert()
+    e._start_carry()
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.005]
+    e.sv["path"] = [e.base.cloth[10] + [0.02, 0.0, 0.0]]          # a waypoint on the table: unfloored, the tip ~5 mm up
+    e.act()
+    assert e._ik.tips[-1][2] == TABLE_TOP_Z + 0.017
+    e.dropped = True                                             # a slip ended the carry: the empty jaw stays up
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.2]
+    e._start_hold()
+    assert np.allclose(e.hold_site, e.base.site)
+
+
+def test_a_soft_pinch_weight_carries_through_the_carry_and_the_default_keeps_005(monkeypatch):
+    e = _expert()
+    weights = []
+    solve = e._ik.solve
+    e._ik.solve = lambda *a, orientation_weight=0.0, **k: (weights.append(orientation_weight), solve(*a, **k))[1]
+    e._start_carry()
+    e.act()
+    assert weights[-1] == 0.05                                  # the half fold's 0.1 pinch: as before
+    e.PINCH_ORIENTATION_WEIGHT = 0.005                          # quarter_batch TWO_IK's far right arm
+    e.act()
+    assert weights[-1] == 0.005

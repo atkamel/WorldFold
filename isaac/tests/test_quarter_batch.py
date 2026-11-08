@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from isaac.tools.quarter_batch import EAST, TRACE_KEYS, WEST, QuarterBatch, park_action
+from isaac.tools.quarter_batch import EAST, TRACE_KEYS, TWO, TWO_IK, WEST, QuarterBatch, park_action
 
 
 def test_park_moves_toward_home_at_the_speed_limit_with_the_jaw_open():
@@ -67,3 +67,38 @@ def test_trace_records_each_arm_per_step_with_tilt_labels_and_float32_arrays():
     assert np.allclose(t["left_jaw"], -0.1) and list(t["left_closed"]) == [True, True]
     assert t["left_dropped"].all() and not t["right_dropped"].any()
     assert t["right_site"].shape == (2, 3) and np.allclose(t["right_corner"], 0.2)
+    assert t["left_q"].shape == (2, 5) and t["left_q"].dtype == np.float32
+
+
+class _PinchExpert:
+    PINCH_ORIENTATION_WEIGHT, JAW_WEIGHT = 0.1, 0.1        # IsaacArmExpert's class defaults
+    dropped = False
+
+    def reset(self):
+        self.phase = 0
+
+
+class _FlatSub:
+    def cloth_positions(self):
+        ix, iy = np.divmod(np.arange(121), 11)
+        return np.c_[0.03 * ix, 0.03 * iy, np.zeros(121)]
+
+    def _failed(self):
+        return False
+
+
+def test_fold2_two_softens_only_the_right_arms_pinch_ik_and_the_next_configure_restores_it():
+    qb = QuarterBatch.__new__(QuarterBatch)
+    qb.n, qb.subs, qb.sequenced = 1, [_FlatSub()], [False]
+    qb.experts = [{"left_": _PinchExpert(), "right_": _PinchExpert()}]
+    qb._run_stage = lambda cap: [True]                      # no sim: fold 2 "settles" at once
+    qb._gate = lambda i: {"valid": True}
+    qb._fold2_two([{"seed": 0}])
+    left, right = qb.experts[0]["left_"], qb.experts[0]["right_"]
+    assert right.corners == TWO["right_"][0] and left.corners == TWO["left_"][0]
+    assert (right.PINCH_ORIENTATION_WEIGHT, right.JAW_WEIGHT) == (TWO_IK["right_"]["PINCH_ORIENTATION_WEIGHT"],
+                                                                  TWO_IK["right_"]["JAW_WEIGHT"])
+    assert (left.PINCH_ORIENTATION_WEIGHT, left.JAW_WEIGHT) == (0.1, 0.1)
+    assert not vars(left).keys() & TWO_IK["right_"].keys()
+    qb._configure(0, "right_", (10,), None, None, flat=False)          # the next episode's fold 1
+    assert (right.PINCH_ORIENTATION_WEIGHT, right.JAW_WEIGHT) == (0.1, 0.1)

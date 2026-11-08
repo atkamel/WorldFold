@@ -11,7 +11,7 @@ parks at home. Offline (scratchpad/drag_search.py): with DRAG (0.12, 0.04) fold 
 Run with WORLDFOLD_PLACE_PARAMS for fold 1's base (latch + g-fold 1.2). One row per seed in <out>/episodes.jsonl
 (fold-1 alignment, the sheet's move in the drag, the final quarter-fold alignment), a top video per seed with --video,
 and a trace per seed in <out>/trace_seed<seed>.npz: every control step's stage and cloth, and per arm its phase, carried
-vertices, jaw angle and command, pinch tilt, gripper site, carried corner and drop flag (QuarterBatch.trace_arrays).
+vertices, jaw angle and command, pinch tilt, gripper site, carried corner, drop flag and arm joints (QuarterBatch.trace_arrays).
 """
 
 from __future__ import annotations
@@ -35,6 +35,12 @@ FOLD2 = {"mid": (WEST, EAST), "crease": ((5,), (115,)), "two": None}
 # corner stack (cloth_0 + cloth_10) onto the east stack (cloth_110 + cloth_120); the right arm waits at its start until
 # the left one has reached its pose above the crease end (sequenced approach), and neither lifts before both closed
 TWO = {"left_": ((5,), (115,)), "right_": ((0, 10), (110, 120))}
+# fold2 "two": the right arm's pinch IK weights over IsaacArmExpert's 0.1 / 0.1. Run 742655: S lay 32-43 cm from the
+# right base, past the upright pinch's ~32 cm, and with its jaw 28-53 deg off the arm's reach the jaw term taxes the
+# tilt as the orientation term does; the pan sweep picked a flipped wrist and the arm closed 10-29 cm off. Offline on
+# that run's S (scratchpad quarter_q1): 207/208 plans within 5 mm, tilt 0-48 deg, jaw within 18 deg; jaw weight 0.03
+# left the 42-43 cm S up to 1.9 cm short, 0.01 or none let the wrist or the jaw flip
+TWO_IK = {"right_": {"PINCH_ORIENTATION_WEIGHT": 0.005, "JAW_WEIGHT": 0.02}}
 DRAG = (0.12, 0.04)
 FLAT_ARC = 0.01                          # the drag's lift (IsaacArmExpert.ARC_HEIGHT for its plan) and no corner arc
 CAPS = {"fold1": 650, "drag": 300, "fold2": 400}
@@ -42,7 +48,7 @@ PARK_STEPS = 40                          # the left arm goes home before fold 2 
 PARK_LIFT = 0.12                         # m: it first rises this far straight up (run drag1: going straight home with
 LIFT_STEPS = 25                          # the cloth on its fingers carried the sheet off the table)
 DRAG_BACKOFF = 0.02                      # the drag's release slides the open jaws out this far before lifting
-TRACE_KEYS = ("phase", "corners", "jaw", "closed", "tilt_deg", "site", "corner", "dropped")
+TRACE_KEYS = ("phase", "corners", "jaw", "closed", "tilt_deg", "site", "corner", "dropped", "q")
 
 
 def park_action(q, home, scale):
@@ -66,14 +72,15 @@ class QuarterBatch(PrecisionBatch):
         self.trace, self.stage = None, None              # run() starts the per-copy traces; the warm-up isn't traced
         super().__init__(n, profile=profile, cameras=cameras)
 
-    def _configure(self, i, p, corners, goal, live_goal, flat):
+    def _configure(self, i, p, corners, goal, live_goal, flat, ik=None):
         e = self.experts[i][p]
         e.corners = tuple(corners)
         e.goal, e.live_goal = goal, live_goal
-        for k in ("ARC_HEIGHT", "ARC_FRAC", "BACKOFF"):
+        for k in ("ARC_HEIGHT", "ARC_FRAC", "BACKOFF", "PINCH_ORIENTATION_WEIGHT", "JAW_WEIGHT"):
             e.__dict__.pop(k, None)
         if flat:
             e.ARC_HEIGHT, e.ARC_FRAC, e.BACKOFF = FLAT_ARC, 0.0, DRAG_BACKOFF
+        e.__dict__.update(ik or {})
         e.reset()
         e.release_allowed = False
 
@@ -125,7 +132,8 @@ class QuarterBatch(PrecisionBatch):
                          else e.PHASES[e.phase])
                 for k, v in zip(TRACE_KEYS, (phase, "+".join(map(str, e.corners)), q[5], sub._gripper_closed[p],
                                              np.degrees(np.arccos(np.clip(-R[2, 2], -1.0, 1.0))),
-                                             sub.gripper_position(p), e._corner(), e.dropped)):
+                                             sub.gripper_position(p), e._corner(), e.dropped,
+                                             np.asarray(q[:5], dtype=float))):
                     t[p + k].append(v)
 
     def trace_arrays(self, i):
@@ -133,7 +141,7 @@ class QuarterBatch(PrecisionBatch):
         (carried vertex ids, e.g. "0+10"), jaw (rad), closed (jaw commanded shut), tilt_deg, site (xyz), corner (the
         carried vertices' mean xyz, as the expert's drop rule reads it) and dropped."""
         out = {k: np.asarray(v) for k, v in self.trace[i].items()}
-        for k in ("cloth", *(p + k for p in ARMS for k in ("jaw", "tilt_deg", "site", "corner"))):
+        for k in ("cloth", *(p + k for p in ARMS for k in ("jaw", "tilt_deg", "site", "corner", "q"))):
             out[k] = out[k].astype(np.float32)
         return out
 
@@ -161,7 +169,8 @@ class QuarterBatch(PrecisionBatch):
         for i, sub in enumerate(self.subs):
             for p, (grasp, target) in TWO.items():
                 self._configure(i, p, grasp, lambda s=sub, t=target: s.cloth_positions()[list(t)].mean(axis=0),
-                                lambda s=sub, t=target: s.cloth_positions()[list(t)].mean(axis=0), flat=False)
+                                lambda s=sub, t=target: s.cloth_positions()[list(t)].mean(axis=0), flat=False,
+                                ik=TWO_IK.get(p))
             self.sequenced[i] = True
         self.stage = "fold2"
         ok2 = self._run_stage(CAPS["fold2"])

@@ -35,15 +35,29 @@ partners in x (left −1.5 cm, right +2.3 cm median).
 - New knob `PLACE_OFFSET = (along, inward)` m: the place target moves `along` toward the crease (back along the carry)
   and `inward` toward the cloth's centre line, per arm. Sim-free tests.
 
-## Batch A. Placement and lay-down shape (2 jobs, 9 configs, about 1.5 h)
+## Batch A design (reviewed 2026-11-07 22:50, launched 742699-742701, killed by the WATcloud DNS outage)
 
-On r0. Control, then `PLACE_OFFSET` along 1 / 2 cm, inward 1.5 cm, along 2 + inward 1.5, `GFOLD_SLOPE` 1.0 / 1.6 /
-2.0, and layer shift (gain 0.5) with inward 1.5.
+On r0. Control, then `PLACE_ALONG` 1 / 2 cm, `PLACE_INWARD` 1.5 cm, along 2 + inward 1.5, `GFOLD_SLOPE` 1.0 / 1.6 /
+0.8, and layer shift (gain 0.5) with inward 1.5.
 
-## Batch B. Combine (2 jobs, about 8 configs, about 1.5 h)
+## Batch B. Floor plus placement offset (3 jobs, 9 configs, about 1.5 h). Runs before batch A
 
-The batch-A winners together. Then on top of them the layer shift at gain 0.25 with a 1.5 cm cap and at gain 0.5
-with a 3 cm cap, one touch-up round, and the r6 pinch height if it won.
+Changed after review (2026-11-07 23:20). Round 2's 17 mm floor (r1) leaves an almost rigid translation of the top layer
+(interior −3.44 cm y, corners −2.7 / −3.0, partners barely moving, seed IQR −3.70 to −3.11). Removing one constant
+−3.4 cm from r1's grids gives 0.63 / 1.85 cm with 12/32 passing, an upper bound that needs the interior to follow the
+corners. On the floor it did follow by about 81% in r3, against 34% on r0. On r0 no constant passes any fold, and the
+reviewer's ceiling for batch A's r0 knobs is 1/26. Configs, all on `LATCH_GOAL=1,GFOLD_SLOPE=1.2`:
+
+- b0 `Z_FLOOR=0.017` (r1 repeat, the floor's own noise), b1 + `PLACE_ALONG=0.045`, b2 + 0.035
+- b3 + 0.03, b4 + 0.04, b5 `CARRY_FLOOR=0.017` (floor in carry and place only, hold lowers before release)
+- b6 `CARRY_FLOOR=0.017` + 0.035, b7 `CARRY_FLOOR=0.017` + 0.03, b2r (b2 repeated)
+
+Winners are judged against r0 (not b0), from the shape of the response across ALONG. Extra report columns: corners
+folded back on themselves, the open row's offset next to the interior rows', z / clearance failures, drops, paired n.
+
+## Batch A. Placement and lay-down shape on r0 (reviewed, after B)
+
+As above, if B leaves time; a0 against r0 gives the run-to-run noise.
 
 ## Batch C. Confirmation (2 jobs, about 2.5 h)
 

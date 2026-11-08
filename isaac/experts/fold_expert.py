@@ -232,6 +232,12 @@ class IsaacArmExpert:
         plan["retreat"] = q
         return plan
 
+    @property
+    def _carry_w(self):
+        """IK orientation weight for the lift, carry, place, hold and release: 0.05, or the pinch's own weight when that
+        is softer, so a tilted far pinch (quarter_batch TWO_IK, 0.005) isn't pulled upright again in the lift"""
+        return min(0.05, self.PINCH_ORIENTATION_WEIGHT)
+
     def _add_arc(self, plan, start, place, jaw, q, jaw_weight=None):
         """The carry: a half ellipse from start to place rising ARC_HEIGHT, IK-solved into plan["arc"]; returns the last q."""
         ik, p = self._ik, self.prefix
@@ -239,7 +245,7 @@ class IsaacArmExpert:
         for s in np.linspace(0.0, 1.0, ARC_WAYPOINTS + 1)[1:]:
             tip = start + (place - start) * (1.0 - math.cos(math.pi * s)) / 2.0
             tip[2] = start[2] + (place[2] - start[2]) * s + self.ARC_HEIGHT * math.sin(math.pi * s)
-            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=0.05, jaw_weight=jaw_weight)
+            q, _ = ik.solve(p, tip, jaw, q, orientation_weight=self._carry_w, jaw_weight=jaw_weight)
             plan["arc"].append(q)
             plan["arc_tips"].append(tip)
         return q

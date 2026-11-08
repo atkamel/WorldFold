@@ -2927,3 +2927,21 @@ the 10 mm pinch, the 2 mm inward pinch, adhesion 0, the stall exit. The layer sh
 same score (2.43 / 4.83). Its error is a short fold line (interior top-minus-bottom −1.8 cm median in y; removing it
 leaves a 0.92 cm median mean) and top corners landing outside their partners in x (left −1.5, right +2.3 cm median),
 which set the edge in 31 of 32 seeds.
+
+### `quarter2` fold 2: why the right arm misses the stack (2026-11-07, offline, opus subagent, lead-read)
+
+From 742655's traces, re-solved with PinchIK on the Mac (scripts in the session scratchpad, `quarter_q1/`). S (cloth_0
++ cloth_10) is 31.6-40.5 cm from the right base at fold 2's start. When the left arm closes on cloth_5, S jumps another
+0.7-5.3 cm west, so the right arm aims at 35-42.5 cm, past the ~32 cm that an upright pinch reaches. Its jaw points
+28-53° off the arm's reach, so `JAW_WEIGHT` 0.1 taxes the tilt as heavily as the orientation term. The pan-sweep seed
+then picks a flipped wrist, and the plans miss by 1-27 cm at 0-163° tilt (first plan and approach-end re-plan, per
+seed). The descend never meets `CART_ARRIVE`, so the retries loop and the arm closes far off.
+
+Fix in `quarter_batch.py` (`TWO_IK`): for fold 2 "two" only, the right arm runs `PINCH_ORIENTATION_WEIGHT` 0.005 and
+`JAW_WEIGHT` 0.02, restored by the next `_configure`. Offline through the real expert's `_make_plan` this gives 24/24
+plans within 5 mm (max 3.1 mm) at 6-46° tilt with the jaw within 17°. Over every 10th recorded S up to the close, 207/208
+are within 5 mm. A jaw weight of 0.03 left the far stacks 1.9 cm short, and 0.01 or none let the wrist or jaw flip. The lift, carry,
+place, hold and release IK now use `min(0.05, PINCH_ORIENTATION_WEIGHT)` (`IsaacArmExpert._carry_w`), so the tilt
+isn't pulled upright in the lift (lift waypoints within 2 mm at 16-42°, arc worst error 4-11 mm against 14-129 mm).
+The half fold's 0.1 pinch keeps 0.05 throughout. Untested in Isaac: whether a 22-46° friction pinch holds (validated
+to 16.5°), and open-jaw contact with the table when tilted. Fold 1 still leaves cloth_0 and cloth_10 3-5 cm apart.
