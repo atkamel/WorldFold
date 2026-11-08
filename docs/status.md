@@ -1,7 +1,7 @@
 # Status
 
 **Updated:** 2026-11-07 · **Branch:** `feat/quarter-fold-traces` · **Phase:** Q, the quarter fold on
-Isaac (revised plan of 2026-10-22, steps 1 to 3)
+Isaac (revised plan of 2026-10-22), half-fold expert fixes first
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
 pass log. The plan is in [roadmap.md](roadmap.md), every number in [results.md](results.md), the re-evaluation and
@@ -19,6 +19,11 @@ released, still), user 2026-10-22.
   touch-up (seed 930005, 0.95 / 1.45 cm) and with the RL policy p8 (seed 980008, 0.43 / 1.13 cm). Videos in
   `docs/reports/media/isaac_half_fold_pass_*.mp4`. RL shows no average gain over the scripted base (p8 hunt 2.65 cm,
   base hunt 2.62 cm).
+- **Audit (2026-11-07, results.md).** MuJoCo's weld half fold never met the bar either. It scores 2.43 cm with
+  0/97 passing, so it only passed the 5 cm corner test. Isaac's friction expert scores 3.32 cm. The Isaac expert has
+  verified defects: the pinch lands outside the corner, the heights treat the site as the fingertip, the place can't
+  finish, and hold re-aims the jaw. The largest term in both sims is a rigid shift of the top layer of about 2.2 cm,
+  set before release. Removing it takes Isaac to 1.35 cm.
 - **Quarter fold** has not passed. Every one-arm fold 2 tried failed. The first two-arm runs on the `quarter2` layout
   (n = 2, 2026-10-23) went badly: fold 1 broke in one, and three of four fold-2 grasps slipped.
 - **Gentle release** (user, 2026-10-22) is the place-servo default. The jaw opens 0.02 rad per step to 0.3 rad with
@@ -40,15 +45,19 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. Find why `quarter2` folds fail. 712165 kept no per-step traces (only summaries and two videos); `quarter_batch`
+1. Fix the half-fold expert's defects 17-19 (pinch inside the corner, heights from the pad tip, a place that ends
+   on xy with a latched goal, the pinch's jaw kept through hold and release), then take out the rigid shift while
+   both corners are still held. One paired run, n = 32, on the friction profile, each fix added in turn. Waits on the
+   user's go-ahead. The quarter fold needs this fold 1 anyway.
+2. Find why `quarter2` folds fail. 712165 kept no per-step traces (only summaries and two videos); `quarter_batch`
    now writes them (`trace_seed<seed>.npz`). Run 8 `quarter2` seeds with traces, gentle release on and off: the
    traces show when, at what tilt and how far from the jaws each fold-2 corner goes; the on/off pair is for fold 1's
    release (seed 0 left the sheet 10.5 cm up with a gripper 1.5 cm away), not the fold-2 drops, which happen in the
    carry. If the drops follow the tilted pinches (A0 39°, S 34.5°), try the slide grasp (`GRASP=slide`) on those two.
    Target: fold 2 landing within 3 cm on gated episodes, with video.
-2. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
+3. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
    with no drag and the idle arm parked.
-3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
+4. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
 ## Environment
@@ -94,6 +103,10 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
+| 17 | The Isaac half-fold pinch lands about 1.2 cm outside the corner (`fold_expert.py:204`, `servo_expert.py:82` against the doc at `fold_expert.py:60`), and `PINCH_HEIGHT` / `Z_FLOOR` / `PRESS_Z` treat the site as the fingertip while the pads reach 8-9.5 mm below it. The close drags the sheet 3.5 cm, the corner rides 2.5 cm up the pads, and the pads plough the bottom layer | half-fold precision | Q |
+| 18 | The place-servo place can't finish (`place_servo.py:187` needs the corner within 1.5 cm of the partner's height), so it presses for the full `PLACE_PATIENCE` while chasing a partner it drags | half-fold precision | Q |
+| 19 | Hold re-aims the jaw about 70° from the pinch (`servo_expert.py:129`), so the wrist rolls while gripping and releasing | half-fold precision | Q |
+| 20 | A reset after a `cloth_dragged` episode starts wrinkled (world-model collector, non-expert episodes 21 / 36 / 40) | data collection | — |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujoco_sim/` first on `sys.path`; `mujoco_sim/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
@@ -115,6 +128,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-07 · **Half-fold audit, no code (user):** three opus reviewers plus lead re-checks. MuJoCo's weld half fold scores 2.43 cm on the alignment score with 0/97 passing (lead re-run 1.97-2.18 cm), so it only ever passed the 5 cm test. Isaac's friction expert scores 3.32 cm. Defects 17-20 added; a 2.2 cm rigid top-layer shift is the largest term in both sims; the 2026-11-05 "mid-carry slips" corrected (flag artefacts in place / hold); tests not run (docs only) · (this commit)
 - 2026-11-07 · **Quarter-fold traces:** 712165 reviewed (no per-step traces existed; seed 1's fold-2 corners both left the jaws mid-carry by the expert's own rule, seed 0's fold 1 left the sheet 10.5 cm up); `quarter_batch` writes a per-seed trace (stage, cloth, per arm phase / carried vertices / jaw / command / tilt / site / corner / drop); nothing run in Isaac; fast 257 passed + #15 · (this commit)
 - 2026-11-07 · **World model full data, then parked (user):** 738561-63 done (260 episodes, 119,764 transitions); model beats persistence on every held-out group, grasp head predicts releases not slips, reward check 1.5e-6, imagination exploits (return up, grasp rate 0.22 → 0.01); release check on the gentle release (35/40 clean); merged main (#21) into `isaac`; fast 256 passed + #15 · (this commit)
 - 2026-11-05 · **World model smoke on Isaac:** collection (738554), live predictor (738556) and evaluator (738557) ran, python exit 0; train, benchmark, reward check (1.3e-6), clone + imagination ran locally on the smoke store (results.md); full collection submitted as 738561-63; no code change · (this commit)

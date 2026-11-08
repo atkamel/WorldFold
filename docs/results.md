@@ -2748,3 +2748,63 @@ Test windows, vertex MAE / manipulated-vertex error (mm), model vs persistence:
   the actor raised its imagined return by letting go, not by folding: it exploits the model or the reward. Not
   evaluated in Isaac.
 
+
+### Audit of the Isaac scripted half fold against MuJoCo (2026-11-07, offline, three opus reviewers, lead re-checked)
+
+The user asked how much of the half fold's miss is implementation error. Data are the `isaac_wm_task` expert kind (n = 20,
+seeds 1,001,000-019, place-servo base with the gentle release, DR on, code d4aab45), the R0 traces, the stored MuJoCo
+folds in `outputs/cloth_angles/quarter_state` (stage 0) and fresh MuJoCo runs. Score `fold_alignment.score(folds=(("y",
+5),))` throughout. Scripts in the session scratchpad (`audit_gripper/`, `audit_expert/`, `audit_data/`, `lead_*.py`).
+
+**MuJoCo never met the bar either.** Weld grasp, same score:
+
+| source | n | mean (cm) | edge (cm) | passed (Wilson 95%) |
+|---|---|---|---|---|
+| stored MuJoCo weld half folds (quarter_state, stage 0 end, released and settled) | 97 | median 2.43 (p10 1.42, p90 3.58) | median 4.83 | 0/97 [0, 3.8]% |
+| `QuarterFoldExpert` on `HalfFoldEnv`, DR on, seeds 0-19, then 20 open-jaw steps | 20 | 2.44 (sd 1.27) | 5.40 | 1/20 [0.9, 23.6]% |
+| `ScriptedHalfFold`, DR on, seeds 0-19 | 20 | 2.25 (sd 1.41) | 4.39 | 0/20 [0, 16.1]% |
+| lead re-run, `QuarterFoldExpert`, DR on, seeds 0-5 | 6 | 2.18 (sd 0.97) | 4.75 | 1/6 |
+| lead re-run, `QuarterFoldExpert`, DR off, seeds 0-9 | 10 | 1.97 (sd 0.56) | 5.06 | 0/10 |
+| Isaac friction expert (`isaac_wm_task`) | 20 | median 3.32 (IQR 2.57-3.72) | median 5.81 | 0/20 [0, 16.1]% |
+
+The MuJoCo runs scored 20/20 and 16/16 on the env's own success, the 5 cm corner test (`fold_env.SUCCESS_DIST`). So
+"the MuJoCo fold works" held for that test and never for the 1.0 / 1.5 cm alignment bar.
+
+**The largest term in both sims is one rigid shift of the top layer.** In Isaac the top layer sits a median 2.21 cm past
+the bottom in −y (IQR 1.59-2.88), and removing it takes the mean from 3.32 to 1.35 cm (lead re-run). 2.31 cm of the
+3.32 is already there when the corners come down, before any release, with the fold line at material row 4.5 instead
+of 5 and the top corners ending on the table off the bottom layer. MuJoCo's weld folds carry a 2.26 cm shift of the
+opposite y sign; removing it leaves 1.31-1.41 cm.
+
+**Implementation defects in the Isaac friction half fold** (L = re-checked by the lead on the stored data):
+1. The pinch lands outside the corner. `fold_expert.py:204` and `servo_expert.py:82` subtract the centre direction,
+   while `fold_expert.py:60` documents the inset as toward the centre. At the close the site sits (−0.9, +0.8) cm from
+   cloth_10 with the centre direction (+0.7, −0.7) (L). The close drags the whole sheet a median 3.48 cm (IQR
+   3.09-3.55) before a 2 cm lift (L), and the held corner rides a median 2.51 cm above the site (IQR 2.17-3.05) (L).
+2. Every height knob treats the gripper site as the fingertip. LeHome's pads reach 8-9.5 mm below the site (URDF plus
+   `LININGS`, ±3 mm). `PINCH_HEIGHT` and `Z_FLOOR` ask for the site 5 mm up and it never goes below 9.6 mm on 40 arms
+   (L). The pads press into the bottom layer on 47% of held steps, where the bottom half moves 4.8 cm against 0.5 cm
+   in the raised carry. In R0 the table drove the jaw past its closed target in 62% of low samples.
+3. The place can't finish. `place_servo.py:187` needs the corner within 1.5 cm of the partner's height, and it rides
+   2.5 cm up in the pads. 33-35 of 38 arms run the full 40-step `PLACE_PATIENCE`, pressed down and chasing a live
+   partner that moves 2-4 cm (77% of R0 arm-episodes, ending with the corner 4.5 cm up).
+4. Hold re-aims the jaw. `servo_expert.py:129` recomputes it from the folded cloth's centre, about 70° from the
+   pinch's, so the wrist rolls 0.2-1.85 rad while gripping and releasing. The partner drifts 3.2 cm in the 30 steps
+   before release when the roll moved more than 0.5 rad (n = 11) and 1.5 cm when it moved less than 0.3 (n = 21).
+5. The servo dropped the place compensation. `OVERSHOOT_SCALE = 0.0` (`servo_expert.py:35`) removed the open-loop
+   expert's calibrated +5 cm y, and nothing replaced it for a corner held 2.5 cm up the pads.
+6. The gripper drive keeps MuJoCo's armature 0.028 (`lab_scene.py:101-105`), so the jaw rings at about 4 Hz with a
+   damping ratio of 0.42.
+7. `pad_friction` is likely a no-op. PhysX particle contacts have no friction combine mode and no static friction.
+8. Adhesion 0.1 was never A/B'd on alignment.
+9. A reset after a `cloth_dragged` episode starts wrinkled (non-expert episodes 21, 36 and 40).
+
+**Correction to the 2026-11-05 release check.** Its "mid-carry slips" are flag artefacts. All 37 slip events in the
+expert kind fall in place or hold with the jaw commanded shut, none in lift or carry.
+
+Checked and fine: the cloth rests 4.0 mm above the table with a 4.8 mm layer gap, the grid indexing and the score's
+pairing, the goals (cloth_0 / cloth_110 read after the jittered reset), arm tracking (≤ 10 mrad), strain along the fold
+axis (≤ 2%), and the carry arc (corner at most 13 cm from the crease against 15).
+
+The reviewers estimate, without a run, that defects 1-4 cost 0.8-2 cm of the mean, and that fixing them brings Isaac
+to about MuJoCo's 2.0-2.4 cm. Reaching the bar also needs the rigid shift taken out.
