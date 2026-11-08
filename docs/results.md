@@ -2945,3 +2945,21 @@ place, hold and release IK now use `min(0.05, PINCH_ORIENTATION_WEIGHT)` (`Isaac
 isn't pulled upright in the lift (lift waypoints within 2 mm at 16-42°, arc worst error 4-11 mm against 14-129 mm).
 The half fold's 0.1 pinch keeps 0.05 throughout. Untested in Isaac: whether a 22-46° friction pinch holds (validated
 to 16.5°), and open-jaw contact with the table when tilted. Fold 1 still leaves cloth_0 and cloth_10 3-5 cm apart.
+
+### Batch B's basis: moving r1's top layer back (2026-11-08, offline, lead re-run)
+
+On round 2a's rows (742669, seeds 910000-31, gate-valid 32/32 for r1, 26/32 for r0), with the top half (iy 6-10) moved
++a cm in y and re-scored. Median mean / median edge (cm), then passes at the bar.
+
+| a (cm) | r1 floor 17 mm, rigid | r1, interior moves 50% | r0, rigid |
+|---|---|---|---|
+| 0 | 3.42 / 3.82, 0 | 3.42 / 3.82, 0 | 1.83 / 3.68, 1 |
+| 2.5 | 1.13 / 1.72, 10 | 2.03 / 2.60, 0 | 1.48 / 3.39, 0 |
+| 3.0 | 0.73 / 1.73, 12 | 1.79 / 2.35, 0 | 1.74 / 3.65, 0 |
+| 3.4 | 0.63 / 1.85, 12 | 1.62 / 2.23, 0 | 2.02 / 3.95, 0 |
+| 4.0 | 0.85 / 2.17, 7 | 1.44 / 2.46, 0 | 2.59 / 4.43, 0 |
+
+The best per-seed a on r1 is a median 3.50 cm (IQR 3.19-3.75). Removing each seed's own mean xy offset instead gives
+0.37 / 1.67 cm and 11/32. **The 12/32 is an upper bound.** It holds only if the interior follows the corners when the
+place target moves. At half transfer nothing passes. On r0 no constant shift passes any seed, which is why batch B
+runs on the floor.
