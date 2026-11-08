@@ -45,12 +45,11 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. Read audit round 2 (WATcloud 742669 / 742670, `outputs/isaac/rl/audit_r2{a,b}/`) and the reset check (742671,
-   `outputs/cloth_angles/reset_check/`). Round 1 (results.md): the kept jaw halves the edge (kept). LeHome's jaw actuator
-   doubles the carry drops (reverted). The 17 mm floor stops the bottom-layer plough. The layer shift lowers the mean.
-   The 2 mm inward pinch and adhesion 0 are rejected, and the stall exit is neutral. Round 2 reruns the floor, the
-   shift (3 and 5 cm caps), the 10 mm pinch and the stall exit on the kept-jaw base with MuJoCo's armature. Make the
-   winners the defaults and delete the rest.
+1. Overnight run (user, 2026-11-07, until 10:00 on 2026-11-08), plan in
+   [superpowers/plans/2026-11-08-overnight-half-fold.md](superpowers/plans/2026-11-08-overnight-half-fold.md). Raise the
+   half fold's pass rate from the audit's base (kept jaw, latch + g-fold 1.2: 2.07 / 3.65 cm, 1/32), batch after batch,
+   each reviewed by a subagent before launch. Batch A tries placement offsets (`PLACE_ALONG`, `PLACE_INWARD`) and the
+   g-fold slope, then batch B combines the winners and batch C confirms on fresh seeds with video.
 2. `quarter2` fold 2 (traces 742655 / 742656, results.md): the right arm never reaches the corner stack S (its close
    10-29 cm from S in 6/8 seeds, the IK on a flipped branch in 2), and fold 1 pulls cloth_0 5-10 cm in, so S is no
    stack. Fix the right arm's fold-2 approach (IK seed and weights for S) and re-run with traces. The gentle release
@@ -103,10 +102,6 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 17 | (variants in 742650/1) The Isaac half-fold pinch lands about 1.2 cm outside the corner (`fold_expert.py:204`, `servo_expert.py:82` against the doc at `fold_expert.py:60`), and `PINCH_HEIGHT` / `Z_FLOOR` / `PRESS_Z` treat the site as the fingertip while the pads reach 8-9.5 mm below it. The close drags the sheet 3.5 cm, the corner rides 2.5 cm up the pads, and the pads plough the bottom layer | half-fold precision | Q |
-| 18 | (stall exit added, neutral in round 1; decided in round 2) The place-servo place can't finish (`place_servo.py:187` needs the corner within 1.5 cm of the partner's height), so it presses for the full `PLACE_PATIENCE` while chasing a partner it drags | half-fold precision | Q |
-| 19 | (fixed: `KEEP_JAW`, edge −2.77 cm in round 1; row goes when round 2 confirms) Hold re-aims the jaw about 70° from the pinch (`servo_expert.py:129`), so the wrist rolls while gripping and releasing | half-fold precision | Q |
-| 20 | (patched; checking in 742671) A reset after a `cloth_dragged` episode starts wrinkled (world-model collector, non-expert episodes 21 / 36 / 40) | data collection | — |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujoco_sim/` first on `sys.path`; `mujoco_sim/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
@@ -128,6 +123,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-07 · **Audit closed, overnight run started (user):** round 2 read (results.md); the kept jaw is permanent (knob gone), the stall exit deleted, the 10 mm pinch, 17 mm floor and 5 cm shift cap rejected; defects 17-20 closed (19 and 20 fixed, 17 and 18 measured and left as they were); `PLACE_ALONG` / `PLACE_INWARD` added for batch A; overnight plan written; isaac tests 86 passed · (this commit)
 - 2026-11-08 · **Audit round 1 read, round 2 launched:** the kept jaw halves the edge; LeHome's jaw actuator doubled carry drops and is reverted (MuJoCo's armature stays on the jaw); floor, shift, pinch and adhesion results in results.md; `quarter2` traces: fold 2's right arm never reaches the stack, the gentle release made no difference to fold 1; round 2 742669 / 742670 and the reset check 742671 submitted; isaac tests 86 passed · (this commit)
 - 2026-11-07 · **Audit fixes + sweep (user):** hold keeps the pinch's jaw (`KEEP_JAW`), the place ends once the corner is over its goal and the site stops coming down (`PLACE_STALL_EXIT`), the jaw gets LeHome's own actuator under its drive (no MuJoCo armature), resets zero the cloth's particle velocities, an optional layer-shift correction in hold (`SHIFT_GAIN`, off), pinch comments corrected (the inset's sign is intended; the site lands ~7 mm further out than planned), demo rows log reset flatness, the site's offset at the close, the sheet's move before the carry and the corner's height in the jaws; WATcloud 742650 / 742651 submitted; isaac tests 86 passed, fast 263 passed + 5 skipped (#15 deselected) · (this commit)
 - 2026-11-07 · **Half-fold audit, no code (user):** three opus reviewers plus lead re-checks. MuJoCo's weld half fold scores 2.43 cm on the alignment score with 0/97 passing (lead re-run 1.97-2.18 cm), so it only ever passed the 5 cm test. Isaac's friction expert scores 3.32 cm. Defects 17-20 added; a 2.2 cm rigid top-layer shift is the largest term in both sims; the 2026-11-05 "mid-carry slips" corrected (flag artefacts in place / hold); tests not run (docs only) · (this commit)

@@ -241,32 +241,10 @@ def test_gentle_retreat_slides_out_by_backoff_before_lifting(monkeypatch):
     assert np.allclose(tips[-1], tips[n - 1] + [0.0, 0.0, 3 * e.RETREAT_STEP])
 
 
-def test_hold_keeps_the_pinch_jaw_unless_keep_jaw_is_off(monkeypatch):
+def test_hold_keeps_the_pinch_jaw():
     e = _expert()
     e._start_hold()
     assert np.allclose(e.plan["jaw"], [0.0, -1.0, 0.0])        # the folded cloth's centre would aim it ~45 deg off
-    monkeypatch.setattr(IsaacPlaceServoExpert, "KEEP_JAW", 0)
-    e = _expert()
-    e._start_hold()
-    assert not np.allclose(e.plan["jaw"], [0.0, -1.0, 0.0])
-
-
-def test_place_ends_once_the_corner_is_over_its_goal_and_the_site_stops_coming_down(monkeypatch):
-    def placing():
-        e = _expert()
-        e._go("place")
-        e.base.cloth[10] = e.base.cloth[0] + [0.0, 0.0, 0.03]  # over the goal, held 3 cm up the pads
-        e.base.site = e.base.cloth[0] + [0.0, 0.0, 0.01]       # the site can't come lower
-        return e
-    e = placing()
-    for _ in range(e.PLACE_STALL_STEPS + 1):
-        e.act()
-    assert e.PHASES[e.phase] == "hold"
-    monkeypatch.setattr(IsaacPlaceServoExpert, "PLACE_STALL_EXIT", 0)
-    e = placing()
-    for _ in range(e.PLACE_PATIENCE - 1):
-        e.act()
-    assert e.PHASES[e.phase] == "place"                        # the old test waits out its patience
 
 
 def test_shift_moves_the_held_point_against_the_layer_offset_before_releasing(monkeypatch):
@@ -291,3 +269,12 @@ def test_shift_is_off_by_default_and_waits_for_the_gate():
     e._start_hold()
     e.act()                                                     # gate closed: hold still
     assert np.allclose(e._ik.tips[-1], e.hold_site) and e.shift["steps"] == 0
+
+
+def test_place_offset_moves_the_target_toward_the_crease_and_the_centre_line(monkeypatch):
+    e = _expert()
+    e.plan["corner"] = e.base.cloth[10].copy()                 # the carried corner started at (-0.15, +0.15)
+    assert np.allclose(e._goal_now(), e.base.cloth[0])         # off by default
+    monkeypatch.setattr(IsaacPlaceServoExpert, "PLACE_ALONG", 0.02)
+    monkeypatch.setattr(IsaacPlaceServoExpert, "PLACE_INWARD", 0.015)
+    assert np.allclose(e._goal_now(), e.base.cloth[0] + [0.015, 0.02, 0.0])   # partner at (-0.15, -0.15): +y, +x

@@ -2902,3 +2902,28 @@ Rows in `outputs/isaac/rl/audit_r2a/`.
   offset (r3 vs r1: −1.56 cm, better on 32 / 32) but the edge grows +2.14 cm.
 - The kept-jaw base alone is the most balanced: 2.07 / 3.65 cm against MuJoCo's weld half fold at 2.43 / 4.83
   (stored, median) on the same score.
+
+### Audit fix sweep, round 2b (2026-11-08, WATcloud 742670, code a638de6)
+
+Same base and protocol as round 2a. r4 and r6 have 31 rows each.
+
+| config | scoreable (strict) | mean (median) | edge (median) | bottom shift | arms dropped | passed, strict (Wilson) | paired mean | paired edge |
+|---|---|---|---|---|---|---|---|---|
+| r4 pinch 10 mm + floor + shift | 31 (30) / 31 | 3.13 (2.53) | 9.35 (6.10) | 0.63 | 12/62 | 3/31 [3.3, 24.9] | vs r3 +1.27 / 0.44 / 10 / 31 | vs r3 +3.53 / 1.54 / 16 / 31 |
+| r5 floor + shift + stall exit | 32 (28) / 32 | 2.05 (1.98) | 5.50 (5.79) | 0.68 | 0/64 | 0/32 [0, 10.7] | vs r3 +0.18 / 0.09 / 11 / 32 | vs r3 −0.33 / 0.22 / 18 / 32 |
+| r6 pinch 10 mm | 26 (24) / 31 | 3.37 (3.03) | 8.66 (4.87) | 0.92 | **20/62** | 2/31 [1.8, 20.7] | vs r0 +1.39 / 0.53 / 8 / 20 | vs r0 **+5.29 / 1.95** / 7 / 20 |
+| r7 floor + shift, 5 cm cap, 60 steps | 32 (28) / 32 | 1.88 (1.80) | 7.43 (7.36) | 1.04 | 0/64 | 0/32 [0, 10.7] | vs r3 +0.01 / 0.07 / 16 / 32 | vs r3 **+1.60 / 0.26** / 3 / 32 |
+
+- **The 10 mm pinch drops corners in the carry** on 32% of arms against 9% at 5 mm. The 5 mm press (IG.2 #9) holds.
+  On this base the site closes a median 5.2 mm outside the corner, as planned (round 1 c0), so the extra 7 mm the
+  audit found in `isaac_wm_task` (DR on, default place params) does not show here.
+- **The stall exit is neutral again**, so it is deleted.
+- **A 5 cm shift cap gains nothing on the mean and costs 1.6 cm on the edge.**
+
+**Outcome of the audit fixes.** Kept: the pinch's jaw through hold and release (edge −2.8 cm) and zeroed reset
+velocities (0/7 wrinkled starts after a drag, was 5/11). Reverted or rejected: LeHome's jaw actuator, the 17 mm floor,
+the 10 mm pinch, the 2 mm inward pinch, adhesion 0, the stall exit. The layer shift stays as an off-by-default knob
+(−0.48 cm mean, +1.21 cm edge). New base: 2.07 / 3.65 cm, 1/32 at the bar. That beats MuJoCo's weld half fold on the
+same score (2.43 / 4.83). Its error is a short fold line (interior top-minus-bottom −1.8 cm median in y; removing it
+leaves a 0.92 cm median mean) and top corners landing outside their partners in x (left −1.5, right +2.3 cm median),
+which set the edge in 31 of 32 seeds.

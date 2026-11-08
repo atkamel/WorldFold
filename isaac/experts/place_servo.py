@@ -36,7 +36,8 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     # R0 (results.md): unbounded chasing dragged the bottom layer 7-12 cm
     LIVE_MAX = None
     # m above the table: the steered tip (residual included) never goes lower, so a residual can't drive the jaws
-    # into the table (p1, 2026-10-20: the noisy prior's episodes blew the cloth up); None: no floor
+    # into the table (p1, 2026-10-20: the noisy prior's episodes blew the cloth up); None: no floor. 17 mm (pads clear
+    # of the bottom layer) stopped the plough but cost 1.4 cm of alignment (audit round 2, results.md)
     Z_FLOOR = 0.005
     # Base fixes from the 2026-10-21 brainstorm (results.md), all off by default:
     # LATCH_GOAL 1: the place target is the partner where it was when the place began (the fingers push the partner,
@@ -62,15 +63,12 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     RELEASE_JAW = 0.3        # rad (closed -0.1, open 1.0)
     RELEASE_STEP = 0.02      # rad per step: 20 steps (1 s) from closed to RELEASE_JAW
     RETREAT_STEP = 0.002     # m per step: 4 cm/s
-    # Audit fixes (2026-11-07, results.md); 0 restores the old behaviour for the A/B.
-    # KEEP_JAW 1: hold, release and retreat keep the pinch's jaw axis (servo_expert re-aimed it from the folded cloth's
-    # centre, ~70 deg off, so the wrist rolled while gripping and letting go). PLACE_STALL_EXIT 1: the place also ends
-    # once the corner is over its goal and the site has stopped coming down (the corner rides ~2.5 cm up the pads, so
-    # "within 1.5 cm of the goal's height" never came and every place pressed for its full PLACE_PATIENCE)
-    KEEP_JAW = 1
-    PLACE_STALL_EXIT = 1
-    PLACE_STALL = 0.001      # m the site must still come down over PLACE_STALL_STEPS steps
-    PLACE_STALL_STEPS = 3
+    # Placement offset (overnight plan 2026-11-08): the place target moves PLACE_ALONG m from the partner back toward
+    # where the carried corner started (toward the crease) and PLACE_INWARD m toward the cloth's centre line. Audit
+    # round 2's base ends with the interior top layer 1.8 cm past the bottom and the top corners 1.5-2.3 cm outside
+    # their partners (median)
+    PLACE_ALONG = 0.0
+    PLACE_INWARD = 0.0
     # Layer-shift correction (audit 2026-11-07: the top layer lies a rigid ~2.2 cm off the bottom one before release).
     # Once every arm of the fold holds, each step both arms move their held point by -SHIFT_GAIN times the top-minus-
     # bottom offset the batch measures (layer_offset), at most SHIFT_STEP per step and SHIFT_MAX in all, until it is
@@ -103,7 +101,9 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         self.shift = {"steps": 0, "first": None, "last": None}
 
     def _hold_jaw(self):
-        return self.plan["jaw"] if self.KEEP_JAW else super()._hold_jaw()
+        # the pinch's jaw axis through hold, release and retreat: servo_expert re-aimed it from the folded cloth's
+        # centre, ~70 deg off, so the wrist rolled while gripping and letting go (audit sweep: edge -2.8 cm)
+        return self.plan["jaw"]
 
     def _shifting(self):
         """SHIFT_GAIN: move the held point against the layer offset; True while the correction still runs."""
@@ -129,7 +129,18 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         if self.LIVE_MAX is not None and self.live_goal is not None:
             start = np.asarray(self.goal(), dtype=float)
             goal = start + np.clip(goal - start, -self.LIVE_MAX, self.LIVE_MAX)
-        return goal
+        return goal + self._place_offset(goal)
+
+    def _place_offset(self, goal):
+        """PLACE_ALONG / PLACE_INWARD as a (3,) offset from the partner; zero when both are 0 or before a plan."""
+        if not (self.PLACE_ALONG or self.PLACE_INWARD) or not self.plan or "corner" not in self.plan:
+            return np.zeros(3)
+        back = np.r_[np.asarray(self.plan["corner"], float)[:2] - goal[:2], 0.0]
+        back /= max(np.linalg.norm(back), 1e-9)
+        inward = np.array([-back[1], back[0], 0.0])
+        if inward[:2] @ (self.base.cloth_positions().mean(axis=0)[:2] - goal[:2]) < 0:
+            inward = -inward
+        return self.PLACE_ALONG * back + self.PLACE_INWARD * inward
 
     def _tip(self, tip):
         if self.Z_FLOOR is not None:
@@ -225,10 +236,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             goal = self._goal_now()
             action[0:5], _ = self._toward(self._tip(self._steer(goal + [0.0, 0.0, self.PRESS_Z]) + self.residual),
                                           jaw, weight=0.05)
-            hist = self.sv["hist"] = (self.sv["hist"] + [float(site[2])])[-(self.PLACE_STALL_STEPS + 1):]
-            stalled = (self.PLACE_STALL_EXIT and len(hist) > self.PLACE_STALL_STEPS
-                       and hist[0] - hist[-1] < self.PLACE_STALL)
-            if (np.linalg.norm(corner[:2] - goal[:2]) < self.PLACE_TOL and (corner[2] - goal[2] < 0.015 or stalled)) \
+            if (np.linalg.norm(corner[:2] - goal[:2]) < self.PLACE_TOL and corner[2] - goal[2] < 0.015) \
                     or self.phase_steps >= self.PLACE_PATIENCE:
                 self._start_hold()
         else:   # hold: stay, plus the residual, until the gate and the vote let go
