@@ -2880,3 +2880,25 @@ single-env collector as `isaac_wm_task`'s noisy kind, now with the particle velo
 episodes ended `cloth_dragged`. All 7 starts that followed a drag were flat (shortest neighbour edge 30.0 mm, height
 range 0.0 mm), as were the other 13: **0/7 wrinkled after a drag [0, 35.4]%**, against 5/11 [21.3, 72.0]% in
 `isaac_wm_task`. Defect 20 is fixed.
+
+### Audit fix sweep, round 2a (2026-11-08, WATcloud 742669, code a638de6)
+
+Same protocol as round 1, on the round-1 winner: the kept jaw, MuJoCo's jaw armature (c3 reverted), latch + g-fold
+1.2, the stall exit off. "Scoreable" means the strict gate minus the stillness check. Paired: mean / SE / better / n.
+Rows in `outputs/isaac/rl/audit_r2a/`.
+
+| config | scoreable (strict) | mean (median) | edge (median) | bottom shift | arms dropped | passed, strict (Wilson) | paired mean vs r0 | paired edge vs r0 |
+|---|---|---|---|---|---|---|---|---|
+| r0 kept jaw | 26 (24) / 32 | 2.07 (1.82) | 3.65 (3.68) | 2.01 | 6/64 | 1/32 [0.6, 15.7] | | |
+| r1 + floor 17 mm | 32 (31) / 32 | 3.43 (3.42) | 4.05 (3.82) | 0.50 | 0/64 | 0/32 [0, 10.7] | **+1.42 / 0.13 / 1 / 26** | +0.39 / 0.24 / 9 / 26 |
+| r2 + layer shift | 22 (19) / 32 | 1.53 (1.42) | 4.57 (3.94) | 2.00 | 9/64 | 0/32 [0, 10.7] | **−0.48 / 0.21 / 12 / 18** | +1.21 / 0.71 / 6 / 18 |
+| r3 + floor + shift | 32 (30) / 32 | 1.87 (1.89) | 5.83 (6.07) | 0.75 | 0/64 | 1/32 [0.6, 15.7] | −0.19 / 0.14 / 12 / 26 | **+2.14 / 0.27 / 3 / 26** |
+
+- **The floor stops the plough and costs alignment.** With it the bottom layer moves 0.5 cm instead of 2.0, no arm
+  drops, and every fold is scoreable. But the mean is worse on 25 of 26 seeds (+1.42 cm): released from higher, the top
+  layer lands further off. The audit's plough mechanism is real, and it isn't what sets the alignment.
+- **The layer shift lowers the mean** (−0.48 cm, median 1.42) **and widens the edge** (+1.21 cm). The held corners move
+  with the grippers while the middle of the layer follows only partly. On top of the floor it undoes the floor's
+  offset (r3 vs r1: −1.56 cm, better on 32 / 32) but the edge grows +2.14 cm.
+- The kept-jaw base alone is the most balanced: 2.07 / 3.65 cm against MuJoCo's weld half fold at 2.43 / 4.83
+  (stored, median) on the same score.
