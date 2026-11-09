@@ -40,7 +40,7 @@ partners in x (left −1.5 cm, right +2.3 cm median).
 On r0. Control, then `PLACE_ALONG` 1 / 2 cm, `PLACE_INWARD` 1.5 cm, along 2 + inward 1.5, `GFOLD_SLOPE` 1.0 / 1.6 /
 0.8, and layer shift (gain 0.5) with inward 1.5.
 
-## Batch S. A stiffer cloth (user, 2026-11-08, reviewed 11:35, runs before B)
+## Batch S. A stiffer cloth (user, 2026-11-08, reviewed 11:35, launched 2026-11-09 as 743600-743603)
 
 The user's hypothesis is that the cloth is too fine, so it wrinkles and folds imprecisely. Isaac's sheet is 101x101
 particles at 3 mm (`CLOTH_SUBDIV` 10) with LeHome's springs (bend 5000, shear 5000, damping 10, stretch 1e8) and 50 g in

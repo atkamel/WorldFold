@@ -51,7 +51,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
    bend-only springs up and down, bend + shear, and a 51x51 mesh at 6 mm, plus a drape probe that reads back the springs
    and measures 8 cm of overhang, for matching to the real cloth. No cloth is promoted without a repeat and a drape match.
    Batch B (the 17 mm floor under `PLACE_ALONG` 3-4.5 cm, `CARRY_FLOOR`) stays on r0's cloth. Launch commands in the plan
-   for B, in the session scratchpad's `launch_stiff.sh` for S. Both wait on WATcloud (blocker 21).
+   for B. S launched 2026-11-09 08:55 as 743600-743602, the drape probe as 743603.
 2. `quarter2` fold 2 rerun with traces. The right arm missed the stack S because S sat past an upright pinch's reach
    and the IK weights pushed it onto a flipped wrist (results.md). `TWO_IK` (fold 2's right arm at orientation weight
    0.005, jaw weight 0.02) reaches 24/24 offline within 5 mm, untested in Isaac. Run the 742655 job again with it
@@ -104,7 +104,6 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 21 | WATcloud outage from ~22:55 EST 2026-11-07, still down at 00:00 on 2026-11-09 (the scheduler never answered on 2026-11-08; from 18:02 the login node's SSH port timed out too): the cluster's internal DNS failed, so jobs couldn't reach PyPI and every image build failed (batch A 742699-742701 died in the build, no rows). PyPI resolves again from ~00:15, but `squeue` can't reach the SLURM controller (polls every 2-4 min from 02:18 to 09:58, all `connect failure`) | every Isaac job | — |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujoco_sim/` first on `sys.path`; `mujoco_sim/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
@@ -126,6 +125,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-09 · **WATcloud back (08:51), batch S launched:** 743600-743602 (9 cloth configs on r0) and the drape probe 743603; the outage (blocker 21, 22:55 on 11-07 to 08:51 on 11-09) closed; no code change · (this commit)
 - 2026-11-08 · **Stiffer cloth, batch S (user):** cloth knobs `bend_stiffness`, `shear_stiffness`, `spring_damping`, `cloth_subdiv` (FRICTION_GRASP, onto LeHome's garment_config); `isaac/tools/drape_probe.py` (8 cm overhang droop, spring / mass readback); batch S designed and reviewed (opus: springs not saturated, bend-only configs, hold promotion until a real-cloth match); round 2a fold-shape diagnostics in results.md; WATcloud still down; fast 276 passed + 5 skipped (#15 deselected), isaac 99 passed · (this commit)
 - 2026-11-08 · **Overnight run blocked by the WATcloud outage:** no batch ran (blocker 21); before it, `CARRY_FLOOR` (carry and place above a 17 mm floor, lower before release), `quarter2` fold 2's right-arm IK fix (`TWO_IK`, `_carry_w`) and arm joints in the traces landed in a528405, batch B reviewed; launch commands for batch B and the fold-2 rerun in the plan; fast 268 passed + 5 skipped (#15 deselected), isaac 91 passed · (this commit)
 - 2026-11-07 · **Audit closed, overnight run started (user):** round 2 read (results.md); the kept jaw is permanent (knob gone), the stall exit deleted, the 10 mm pinch, 17 mm floor and 5 cm shift cap rejected; defects 17-20 closed (19 and 20 fixed, 17 and 18 measured and left as they were); `PLACE_ALONG` / `PLACE_INWARD` added for batch A; overnight plan written; isaac tests 86 passed · (this commit)
