@@ -1,9 +1,13 @@
-"""Drape probe for the cloth stiffness knobs (batch S, user 2026-11-08): the sheet is laid flat with OVERHANG of it past
-the table's far edge and left to droop, then how far its free edge hangs below its height on the table. The same test
-with a ruler on the real cloth gives the number a sim cloth has to match. Each config also reads back what PhysX was
-given: the authored bend / shear / stretch stiffness, the cooked springs, and the particle count and mass.
+"""Cantilever probe for the cloth stiffness knobs (batch S / G, 2026-11-09): the sheet is laid flat with a short flap
+past the table's far edge and left to droop, then the flap's chord angle from the edge to its free edge and the Peirce
+bending length c = L (cos(t/2) / (8 tan t))^(1/3) (ASTM D1388's cantilever relation). The same test with a ruler on
+the real cloth gives c to match. The table is a solid block, so a flap that reaches its side face lies on it and
+measures nothing: a reading counts only while the free edge hangs at least CLEAR clear of the face. Run it with
+adhesion=0 in the knobs, or the flap sticks to the face. Each config also reads back what PhysX was given: the
+authored bend / shear / stretch stiffness, the cooked springs, and the particle count and mass.
 
-  isaac/watcloud.sbatch isaac/tools/drape_probe.py --out outputs/isaac/drape 'base|' 'bend500k|bend_stiffness=500000'
+  isaac/watcloud.sbatch isaac/tools/drape_probe.py --overhang 0.01,0.02,0.04 --out outputs/isaac/drape \\
+      'base|adhesion=0' 'bend500k|adhesion=0,bend_stiffness=500000'
 
 One Isaac process per config (Kit runs one scene per process), each appending a row to <out>/drape.jsonl.
 """
@@ -22,25 +26,26 @@ sys.path.insert(0, str(REPO))
 
 from mujoco_sim.cloth_params import CLOTH_COUNT as N   # noqa: E402
 
-OVERHANG = 0.08          # m of cloth past the table edge (ruler test: lay it flat 8 cm over the edge); --overhang
+OVERHANGS = (0.01, 0.02, 0.03, 0.04, 0.06)   # m of flap past the table edge; --overhang
+CLEAR = 0.006            # m the free edge must hang clear of the table's side face (rest offset 4 mm + margin)
 DROOP_STEPS = 80         # control steps (4 s) after the reset's settle, before measuring
 STILL_MM = 0.5           # the free edge moved less than this over the last 10 steps: settled
 CHILD_S = 900            # a child longer than this is killed
-ON_TABLE = np.array([ix * N + iy for ix in range(N) for iy in range(6)])   # grid rows well inside the table edge
 
 
-def row(iy):
-    return np.array([ix * N + iy for ix in range(N)])
-
-
-def drape_metrics(cloth, edge_y):
-    """From the 11x11 grid (free edge iy = 10, table edge at y = edge_y): the free edge's droop below the sheet's height
-    on the table and its reach past the edge (cm), and each row's (past the edge, below the table height) in cm."""
-    c = np.asarray(cloth, float)
-    z0 = float(np.median(c[ON_TABLE, 2]))
-    prof = {int(iy): [round(100 * float(c[row(iy), 1].mean() - edge_y), 2), round(100 * float(z0 - c[row(iy), 2].mean()), 2)]
-            for iy in range(6, N)}
-    return {"droop_cm": prof[N - 1][1], "reach_cm": prof[N - 1][0], "profile": prof}
+def flap_metrics(particles, n, edge_y, overhang):
+    """The full-resolution n x n sheet (index ix * n + iy, free edge iy = n - 1) with `overhang` m past the table edge at
+    y = edge_y: the free edge's reach past the edge and drop below the sheet's height on the table (cm), the chord angle
+    (deg), whether it hangs clear of the face, and the Peirce bending length (cm) when it does."""
+    p = np.asarray(particles, float).reshape(n, n, 3)
+    z0 = float(np.median(p[:, : n // 2, 2]))
+    reach, drop = float(p[:, -1, 1].mean() - edge_y), float(z0 - p[:, -1, 2].mean())
+    theta = float(np.arctan2(drop, reach))
+    clear = reach >= CLEAR and 0.0 < theta < np.pi / 2
+    c = overhang * (np.cos(theta / 2) / (8 * np.tan(theta))) ** (1 / 3) if clear else None
+    return {"overhang_cm": round(100 * overhang, 2), "reach_cm": round(100 * reach, 2), "drop_cm": round(100 * drop, 2),
+            "angle_deg": round(float(np.degrees(theta)), 1), "clear": bool(clear),
+            "bending_length_cm": None if c is None else round(100 * float(c), 2)}
 
 
 def _springs(k):
@@ -65,34 +70,38 @@ def readback(env):
     return out
 
 
-def probe(name, knobs, overhang=OVERHANG):
-    from isaac.sim.isaac_env import TABLE_SIZE, IsaacClothFoldEnv
+def probe(name, knobs, overhangs=OVERHANGS):
+    from isaac.sim.isaac_env import CLOTH_SUBDIV, TABLE_SIZE, IsaacClothFoldEnv
     from isaac.tools.grasp_bench import parse_kv
     env = IsaacClothFoldEnv(profile="friction", grasp_knobs=parse_kv(knobs) or None)
+    n = (N - 1) * int(env.grasp_knobs.get("cloth_subdiv") or CLOTH_SUBDIV) + 1
+    free = np.arange(n) * n + (n - 1)
     edge_y = TABLE_SIZE / 2                     # copy 0's table is centred on the origin
     env.reset(seed=0)
-    dy = edge_y + overhang - float(env.cloth_positions()[row(N - 1), 1].mean())
-    env.reset(seed=0, options={"cloth_pose": [0.0, dy]})
-    tip = []
-    for _ in range(DROOP_STEPS):
-        env._advance()
-        tip.append(float(env.cloth_positions()[row(N - 1), 2].mean()))
-    out = {"name": name, "knobs": knobs, "overhang_cm": 100 * overhang,
-           "settled": abs(tip[-1] - tip[-11]) * 1000 < STILL_MM, **drape_metrics(env.cloth_positions(), edge_y)}
-    return out | readback(env)
+    y_free = float(env._particle_positions()[free, 1].mean())
+    flaps = []
+    for overhang in overhangs:
+        env.reset(seed=0, options={"cloth_pose": [0.0, edge_y + overhang - y_free]})
+        tip = []
+        for _ in range(DROOP_STEPS):
+            env._advance()
+            tip.append(float(env._particle_positions()[free, 2].mean()))
+        flaps.append(flap_metrics(env._particle_positions(), n, edge_y, overhang)
+                     | {"settled": abs(tip[-1] - tip[-11]) * 1000 < STILL_MM})
+    return {"name": name, "knobs": knobs, "flaps": flaps} | readback(env)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", required=True)
     ap.add_argument("--child", nargs=2, metavar=("NAME", "KNOBS"))
-    ap.add_argument("--overhang", type=float, default=OVERHANG, help="m past the table edge")
+    ap.add_argument("--overhang", default=",".join(map(str, OVERHANGS)), help="m past the table edge, comma-separated")
     ap.add_argument("configs", nargs="*", help="name|GRASP_KNOBS")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     if args.child:
-        result = probe(*args.child, overhang=args.overhang)
+        result = probe(*args.child, overhangs=[float(v) for v in args.overhang.split(",")])
         with open(out / "drape.jsonl", "a") as f:
             f.write(json.dumps(result) + "\n")
         print("DRAPE", json.dumps(result), flush=True)
@@ -101,7 +110,7 @@ def main():
         name, knobs = (cfg.split("|") + [""])[:2]
         with open(out / f"{name}.log", "w") as log:
             try:
-                rc = subprocess.run([sys.executable, "-u", __file__, "--out", args.out, "--overhang", str(args.overhang),
+                rc = subprocess.run([sys.executable, "-u", __file__, "--out", args.out, "--overhang", args.overhang,
                                      "--child", name, knobs],
                                     stdout=log, stderr=subprocess.STDOUT, timeout=CHILD_S).returncode
             except subprocess.TimeoutExpired:

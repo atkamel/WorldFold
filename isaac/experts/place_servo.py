@@ -88,7 +88,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     SHIFT_STEPS = 40
 
     PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped", "latched", "touch",
-                                                    "release_site", "hold_offset", "shift")
+                                                    "release_site", "hold_offset", "shift", "drop_at")
 
     def __init__(self, *args, live_goal=None, layer_offset=None, **kwargs):
         self.live_goal = live_goal       # callable -> the partner vertex's current position; None: self.goal
@@ -102,6 +102,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         self.release_vote = True
         self.hold_site = None
         self.dropped = False
+        self.drop_at = None
         self.latched = None
         self.touch = None
         self.release_site = None
@@ -234,6 +235,11 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             self.sv["slip"] += 1
             if self.sv["slip"] >= self.SLIP_STEPS:
                 self.dropped = True
+                # when and how far (batch G review: on stiff cloth the corner rides ~2.8 cm up the pads, so the 5 cm
+                # rule may fire with it still pinched)
+                self.drop_at = {"phase": name, "wp": [int(self.sv.get("k", 0)), len(self.sv.get("path", ()))],
+                                "dist_cm": round(100 * float(np.linalg.norm(corner - site)), 2),
+                                "dz_cm": round(100 * float(corner[2] - site[2]), 2)}
                 self._start_hold()
                 return action
         else:

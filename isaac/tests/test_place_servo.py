@@ -97,6 +97,13 @@ def test_slip_in_the_carry_marks_a_drop_and_holds():
     for _ in range(e.SLIP_STEPS):
         e.act()
     assert e.dropped and e.PHASES[e.phase] == "hold"
+    assert e.drop_at["phase"] == "carry" and e.drop_at["wp"][0] == 0 and e.drop_at["wp"][1] == len(e.sv["path"])
+    assert e.drop_at["dist_cm"] == 20.0 and e.drop_at["dz_cm"] == -20.0     # the corner 20 cm below the site
+
+
+def test_drop_record_is_cleared_and_restored_with_the_phase_state():
+    e = _expert()
+    assert e.drop_at is None and "drop_at" in e.PHASE_FIELDS
 
 
 def test_live_goal_is_capped_around_the_start(monkeypatch):

@@ -3023,3 +3023,11 @@ bend springs don't make the sheet stiffer at the drape's scale, and an 8 cm over
 matched to a real cloth. What the stiff springs change in the final folds is small-scale crumpling. The bottom layer's
 grid edges shrink 0.67 mm (s3) against 1.23 (r0), and its worst diagonal is 11.5 mm short against 15.8. Stretch stays
 under 0.6 mm everywhere.
+
+**Correction (2026-11-09, batch G review).** The 8 cm drape above measured nothing about stiffness. The table is a
+solid block from the floor up, and in every config grid rows 8-10 sit 0.41-0.48 cm past the edge, one particle rest
+offset. So the flap lay flat on the table's side face, held there by adhesion 0.1, which any sheet with a bending
+length of a few cm or less would do. "The bend springs don't make the sheet stiffer at the drape's scale" is withdrawn.
+The fold runs point the other way at the corner's scale: on stiff cloth the right corner rides 2.8 cm up the pads in the
+arm's tight close mode against 1.5 on s0. The crumpling figures stand. `drape_probe.py` is now a cantilever test
+(1-6 cm flaps, adhesion 0, readings only clear of the face, Peirce bending length).

@@ -32,13 +32,24 @@ def test_grid_points_match_at_any_resolution(subdiv):
     np.testing.assert_allclose(np.asarray(fine)[idx], np.asarray(grid), atol=1e-12)
 
 
-def test_drape_metrics_on_a_bent_sheet():
-    from isaac.tools.drape_probe import N, drape_metrics, row
-    grid = np.asarray(cloth_grid_mesh(1)[0]) + [0.0, 0.25, 0.80]    # free edge (iy 10) at y 0.40, 0.80 up
-    edge_y = 0.35
-    for iy, drop in ((8, 0.01), (9, 0.03), (10, 0.06)):             # the outer rows hang down
-        grid[row(iy), 2] -= drop
-    m = drape_metrics(grid, edge_y)
-    assert m["droop_cm"] == pytest.approx(6.0) and m["reach_cm"] == pytest.approx(5.0)
-    assert m["profile"][7] == pytest.approx([-4.0, 0.0]) and m["profile"][9][1] == pytest.approx(3.0)
-    assert len(m["profile"]) == N - 6
+def _flap(n, edge_y, reach, drop, z0=0.8):
+    """An n x n sheet on the table (z0) whose free edge row (iy = n - 1) sits reach past the edge and drop below."""
+    p = np.zeros((n, n, 3))
+    p[..., 1] = np.linspace(edge_y - 0.2, edge_y, n)[None, :]
+    p[..., 2] = z0
+    p[:, -1] = [0.0, edge_y + reach, z0 - drop]
+    return p.reshape(-1, 3)
+
+
+def test_flap_at_the_peirce_angle_gives_half_its_length():
+    from isaac.tools.drape_probe import flap_metrics
+    reach = 0.03
+    m = flap_metrics(_flap(7, 0.35, reach, reach * np.tan(np.radians(41.5))), 7, 0.35, 0.04)
+    assert m["clear"] and m["angle_deg"] == pytest.approx(41.5, abs=0.1)
+    assert m["bending_length_cm"] == pytest.approx(0.509 * 4.0, abs=0.01)     # ASTM D1388: c = L / 2 at 41.5 deg
+
+
+def test_flap_on_the_table_face_measures_nothing():
+    from isaac.tools.drape_probe import flap_metrics
+    m = flap_metrics(_flap(7, 0.35, 0.004, 0.05), 7, 0.35, 0.06)            # lying on the side face, 4 mm out
+    assert not m["clear"] and m["bending_length_cm"] is None and m["drop_cm"] == pytest.approx(5.0)

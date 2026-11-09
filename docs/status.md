@@ -45,13 +45,12 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. Half fold, batch S then batch B of the plan
+1. Half fold on the stiff cloth, batch G of the plan
    ([superpowers/plans/2026-11-08-overnight-half-fold.md](superpowers/plans/2026-11-08-overnight-half-fold.md)). Batch S
-   (user, 2026-11-08) tries a stiffer cloth on the audit base r0 (kept jaw, latch + g-fold 1.2, 2.07 / 3.65 cm, 1/32):
-   bend-only springs up and down, bend + shear, and a 51x51 mesh at 6 mm, plus a drape probe that reads back the springs
-   and measures 8 cm of overhang, for matching to the real cloth. No cloth is promoted without a repeat and a drape match.
-   Batch B (the 17 mm floor under `PLACE_ALONG` 3-4.5 cm, `CARRY_FLOOR`) stays on r0's cloth. Launch commands in the plan
-   for B. S launched 2026-11-09 08:55 as 743600-743602, the drape probe as 743603.
+   (results.md): bend springs 5e5 pass 10/32 at the bar against the control's 0/32, at 0.56 / 1.01 cm median when both
+   corners are held, but the right arm loses its corner in about half the seeds. Batch G tests why (drop logging, a
+   looser drop rule, jaw, adhesion, an outward pinch, a slower carry) with a pre-registered rule, plus videos and a
+   cantilever probe for matching the real cloth's bending length. Then a lean batch B on r0's cloth.
 2. `quarter2` fold 2 rerun with traces. The right arm missed the stack S because S sat past an upright pinch's reach
    and the IK weights pushed it onto a flipped wrist (results.md). `TWO_IK` (fold 2's right arm at orientation weight
    0.005, jaw weight 0.02) reaches 24/24 offline within 5 mm, untested in Isaac. Run the 742655 job again with it
@@ -67,7 +66,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-08: fast 276 passed, 5 skipped (#15 deselected), isaac 99 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-09: fast 278 passed, 5 skipped (#15 deselected), isaac 101 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -125,6 +124,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-09 · **Batch S read, batch G reviewed:** stiff bend springs 10/32 at the bar vs 0/32 (results.md); the 8 cm drape withdrawn (it measured the table's side face); drops log their phase and distances (`drop_at`); `drape_probe.py` rewritten as a cantilever test (Peirce bending length); batch G revised after an opus review (pooled control, Fisher rule, HOLD_DIST, outward inset, lean B); fast 278 passed + 5 skipped (#15 deselected), isaac 101 passed · (this commit)
 - 2026-11-09 · **WATcloud back (08:51), batch S launched:** 743600-743602 (9 cloth configs on r0) and the drape probe 743603; the outage (blocker 21, 22:55 on 11-07 to 08:51 on 11-09) closed; no code change · (this commit)
 - 2026-11-08 · **Stiffer cloth, batch S (user):** cloth knobs `bend_stiffness`, `shear_stiffness`, `spring_damping`, `cloth_subdiv` (FRICTION_GRASP, onto LeHome's garment_config); `isaac/tools/drape_probe.py` (8 cm overhang droop, spring / mass readback); batch S designed and reviewed (opus: springs not saturated, bend-only configs, hold promotion until a real-cloth match); round 2a fold-shape diagnostics in results.md; WATcloud still down; fast 276 passed + 5 skipped (#15 deselected), isaac 99 passed · (this commit)
 - 2026-11-08 · **Overnight run blocked by the WATcloud outage:** no batch ran (blocker 21); before it, `CARRY_FLOOR` (carry and place above a 17 mm floor, lower before release), `quarter2` fold 2's right-arm IK fix (`TWO_IK`, `_carry_w`) and arm joints in the traces landed in a528405, batch B reviewed; launch commands for batch B and the fold-2 rerun in the plan; fast 268 passed + 5 skipped (#15 deselected), isaac 91 passed · (this commit)

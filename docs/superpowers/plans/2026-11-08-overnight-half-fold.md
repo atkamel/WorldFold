@@ -79,6 +79,37 @@ view, the reset's flatness, the sheet's move before the carry (3.3 cm on round 2
 and folded corners. The expert was tuned on the current cloth, so a stiffer sheet that loses on this pass may still win
 after re-tuning the pinch and place.
 
+## Batch G. The grip on the stiff cloth (2026-11-09, reviewed 10:55, revised)
+
+Batch S: bend 5e5 (s3) passes 10/32 against the control's 0/32, and when both top corners are held the fold is
+0.56 / 1.01 cm median. The right arm loses its corner in about half the seeds. Every row starts its carry with both
+corners within 5 cm of their sites, so nothing is lost at the close or lift. Ten lost right corners end on the table
+15-28 cm from their partners, let go early in the carry. On stiff cloth the right corner rides 2.8 cm up the pads in
+the arm's tight close mode (site 12 mm outside the corner), so the 5 cm drop rule may abort carries with the corner
+still pinched. The rows can't tell that from a slip, so drops now log their phase, carry waypoint, and the
+corner-to-site distance and height (`drop_at`).
+
+Configs on s3's settings, seeds 910000-31: g0 s3 repeated (pooled with s3 as the control, n 64), g1 `HOLD_DIST=0.08`,
+g2 `gripper_closed=0.02`, g3 `adhesion=0.2` (also sticks the cloth to the table), g4 `PINCH_INSET=0.008` (outward:
+the right arm's tight mode loses fewer corners, 6/18 against 9/14 on s3), g5 `CARRY_SPEED=0.6` (also slows the lift).
+`pad_friction` is out, because PhysX takes particle-rigid friction from the particle material only. Videos of 8 seeds
+and a cantilever probe follow, then a lean batch B on r0's cloth (b0, b2, b6, b2r), since S doesn't show the stiff
+cloth is the real one.
+
+Decision rule, fixed before the results:
+
+- Primary: seeds with both top corners held, where a corner counts as lost at 8 cm or more from its partner or when it
+  lies on the table off it. Alongside it, strict passes with Wilson intervals.
+- Guard: the median mean and edge over the held seeds.
+- A knob is a candidate only at a one-sided Fisher p < 0.01 against the pooled control, then goes to fresh seeds.
+  (At n 32 one of five null knobs beats a single control by 4+ passes 45% of the time.)
+- Split by the right arm's close mode (tight about −12 mm, loose −3 to −6 mm).
+
+Cantilever probe (`isaac/tools/drape_probe.py`, rewritten): the 8 cm drape in 743603 measured cloth lying on the
+table's side face, held there by adhesion 0.1, so it said nothing about stiffness. Now flaps of 1-6 cm with adhesion 0,
+read from the full-resolution free edge, count only while they hang 6 mm or more clear of the face, and give the Peirce
+bending length c. The same ruler test on the real cloth gives its c.
+
 ## Batch B. Floor plus placement offset (3 jobs, 9 configs, about 1.5 h). Runs before batch A
 
 Changed after review (2026-11-07 23:20). Round 2's 17 mm floor (r1) leaves an almost rigid translation of the top layer

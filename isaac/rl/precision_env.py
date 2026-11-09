@@ -356,7 +356,7 @@ class PrecisionBatch:
             if sub._failed():
                 # a blown-up cloth: park it at once so it can't drift into the other copies, its arms idle
                 st["final"] = {"reason": "unstable", "steps": st["t"], "mean": None, "edge_max": None, "passed": False,
-                               "dropped": [p for p in ARMS if ex[p].dropped], "instability": instability(sub),
+                               "dropped": [p for p in ARMS if ex[p].dropped], "drop_at": {p: ex[p].drop_at for p in ARMS if ex[p].dropped}, "instability": instability(sub),
                                "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS}}
                 sub.park()
                 for e in ex.values():
@@ -405,7 +405,7 @@ class PrecisionBatch:
                 rew[i] += r_end if (reason == "settled" and g["valid"]) else -FAIL
                 st["final"] = {"reason": reason, "steps": st["t"], "mean": round(s["mean"], 4),
                                "bottom_shift": round(bottom_shift(cloth, st["start"]), 4),
-                               "dropped": [p for p in ARMS if ex[p].dropped], "instability": None,
+                               "dropped": [p for p in ARMS if ex[p].dropped], "drop_at": {p: ex[p].drop_at for p in ARMS if ex[p].dropped}, "instability": None,
                                "touch": st.get("touch") or None,
                                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
                                "gate": g, "passed_valid": bool(s["passed"] and g["valid"] and reason == "settled"),
