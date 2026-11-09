@@ -135,6 +135,26 @@ Quarter: `quarter_batch.py` fold 2 with `TWO_IK` on the current cloth and on ben
 On bend 5e5 read fold 2 only on seeds where fold 1 held. The stiff run's per-step traces are the first per-step record
 of a stiff-cloth carry, to tell a slow creep from a sudden release.
 
+## Batch I. Slip recovery in the expert (2026-11-09, reviewed 15:10, fixed in 2e55ccd)
+
+Batch H's grip, load and bite knobs didn't hold the corner, so the expert recovers instead (item 4 of the user's
+list). Two mechanisms, off by default. `SEAT_MIN`: after the lift, a right corner sitting lower than this above the site
+is re-grasped (at most twice), and no carry starts until both arms are past their checks. Right only: the left seats
+under 2 cm in 91/96 control seeds and loses less. `SLIP_REGRASPS`: once the other arm holds, a dropped corner at rest
+more than 5 cm from its goal is re-grasped where it lies; the release waits for that decision. 18 of the control's 21
+passes had the right corner dropped and carried over by the stiff sheet, so the decision waits and a corner near its
+goal stays. A re-grasp clears the goal latch and the retry counts. Rows now log each lift's seat and the re-grasp
+counts, and seeds that never reach the window are written as `no_window` rows.
+
+Configs on s3's settings, window 600 for all (control episodes end by step ~221): i0 control, i1 `SEAT_MIN=0.015`,
+i2 `SLIP_REGRASPS=2`, i3 both, i2r and i3r repeats.
+
+Decision rule, fixed before the results: strict passes over the 32 seeds first, held second, with missing, `no_window`
+and truncated seeds as failures. Candidate at one-sided Fisher p < 0.01 against the pooled control (s3 + g0 + h0, plus
+i0 if it agrees at two-sided p > 0.2), then fresh seeds; p < 0.05 earns a retest only. That bar is about 15/32 strict
+or 25/32 held. Seat check alone can't clear it even if it works (right-high seeds pass 20/54 in the control, about
+12/32), so i1 is read for its mechanism: how often a re-grasp lands a higher seat (`recover.seats`).
+
 ## Batch B. Floor plus placement offset (3 jobs, 9 configs, about 1.5 h). Runs before batch A
 
 Changed after review (2026-11-07 23:20). Round 2's 17 mm floor (r1) leaves an almost rigid translation of the top layer
