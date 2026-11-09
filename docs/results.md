@@ -3035,3 +3035,27 @@ arm's tight close mode against 1.5 on s0. The crumpling figures stand. `drape_pr
 **Batch S, s2 bend 5e4** (743600, finished after the table above): 4/32 [5.0, 28.1] strict, 30 scoreable, 2 z / clear
 fails, 31 drops, median 1.65 / 3.02 cm, paired against s0 mean −0.57 / 0.23 / 16 / 22 and edge +1.92 / 1.10 / 13 / 22.
 Strict passes rise with bend stiffness: 0/31 at 500, 0/32 at LeHome's 5000, 4/32 at 5e4, 10/32 at 5e5.
+
+### Cantilever probe of the batch S cloths (2026-11-09, WATcloud 743938, code 280546e)
+
+`drape_probe.py`: the sheet flat with a 1, 2, 3, 4 or 6 cm flap past the table edge, adhesion 0, 4 s, read from the
+full-resolution free edge. A reading counts only while the free edge hangs 6 mm or more clear of the table's side face.
+
+| cloth | 1 cm flap | 2 cm | 3 cm | 4 cm | 6 cm |
+|---|---|---|---|---|---|
+| LeHome (bend 5000) | 56° on face | 77° on face | 82° on face | 84° on face | 86° on face |
+| bend 500 | 55° on face | 73° on face | 75°, c 0.90 cm | 79°, c 1.06 | 83°, c 1.33 |
+| bend 5e4 | 55° on face | 76° on face | 81° on face | 84° on face | 86° on face |
+| bend 5e5 | 55° on face | 76° on face | 81° on face | 84° on face | 86° on face |
+| bend 5e6 | 55° on face | 76° on face | 81° on face | 84° on face | 86° on face |
+| bend + shear 5e5 | 53° on face | 76° on face | 81° on face | 84° on face | 86° on face |
+
+Angle is the chord from the table edge to the free edge, below horizontal. "On face" means the free edge ended
+0.42-0.57 cm out from the side face, one particle rest offset, so the flap hinged at the edge and hung down. Bend 500's
+"clear" readings sit at 0.69-0.74 cm out, just past the 6 mm line, and are likely noise rather than stiffness.
+
+- **No setting gives the sheet a bending length you can measure.** Even a 1 cm flap hinges at the edge, so c is under
+  about 0.5 cm at every bend stiffness from 500 to 5e6. A real cloth's bending length can't be matched by these
+  springs.
+- **So batch S's gain doesn't come from a sheet that resists bending at the cm scale.** It goes with less
+  particle-scale crumpling (bottom-layer edge shrink 0.67 mm against 1.23, results above).
