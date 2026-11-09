@@ -100,6 +100,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     SLIP_REGRASPS = 0
     REGRASP_FAR = 0.05
     SETTLED_MM = 3.0
+    SLIP_DECIDE = 40         # hold steps with the other arms holding before a corner that never settles stays
 
     PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped", "latched", "touch",
                                                     "release_site", "hold_offset", "shift", "drop_at", "seat_regrasps",
@@ -330,7 +331,11 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         self.corner_hist = (self.corner_hist + [np.asarray(corner, float).copy()])[-5:]
         hist = np.asarray(self.corner_hist)
         settled = len(hist) == 5 and 1000 * float(np.linalg.norm(hist - hist[-1], axis=1).max()) < self.SETTLED_MM
-        if not (settled and getattr(self, "partners_hold", True)):
+        if not getattr(self, "partners_hold", True):
+            return False
+        if not settled:
+            if self.phase_steps >= self.SLIP_DECIDE:     # still creeping: decide that it stays
+                self.slipped = False
             return False
         if float(np.linalg.norm(corner[:2] - self._goal_now()[:2])) > self.REGRASP_FAR:
             return True

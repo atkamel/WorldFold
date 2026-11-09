@@ -319,9 +319,14 @@ def demo(args):
         snaps, _ = pb.scripted_to_window(seeds)
         ok = [i for i in range(pb.n) if snaps[i] is not None]
         for i in set(range(pb.n)) - set(ok):         # never reached the window: a failure, kept in the rows
-            print("DEMO", json.dumps({"seed": seeds[i], "no_window": True}), flush=True)
+            ex = pb.experts[i]
+            row = {"seed": seeds[i], "no_window": True, "phases": {p: e.PHASES[e.phase] for p, e in ex.items()},
+                   "dropped": [p for p, e in ex.items() if e.dropped],
+                   "recover": {p: {"seats": e.seats, "seat": e.seat_regrasps, "slip": e.slip_regrasps}
+                               for p, e in ex.items()}}
+            print("DEMO", json.dumps(row), flush=True)
             with open(out / "demo.jsonl", "a") as f:
-                f.write(json.dumps({"seed": seeds[i], "no_window": True}) + "\n")
+                f.write(json.dumps(row) + "\n")
         if not ok:
             continue
         pre = [f[:c] for f, c in zip(pb.frames, pb.cut)] if args.video else None

@@ -467,3 +467,17 @@ def test_a_regrasp_clears_the_last_grasps_latch_and_retries(monkeypatch):
     e.latched, e.align_tries, e.descend_retries, e.site_hist = np.zeros(3), 2, 1, [1]
     e._regrasp_here(np.zeros(6, np.float32))
     assert e.latched is None and e.align_tries == 0 and e.descend_retries == 0 and e.site_hist == []
+
+
+def test_a_corner_that_never_settles_stays_after_slip_decide_steps(monkeypatch):
+    calls = _restarts(monkeypatch)
+    e = _expert()
+    e.SLIP_REGRASPS = 1
+    e._start_carry()
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.2]
+    for _ in range(e.SLIP_STEPS):
+        e.act()
+    for k in range(e.SLIP_DECIDE + 2):                          # the corner creeps 4 mm a step, far from its goal
+        e.base.cloth[10] = e.base.cloth[10] + [0.004, 0.0, 0.0]
+        e.act()
+    assert not calls and not e.slip_pending()
