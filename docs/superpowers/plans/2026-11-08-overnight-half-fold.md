@@ -135,7 +135,7 @@ Quarter: `quarter_batch.py` fold 2 with `TWO_IK` on the current cloth and on ben
 On bend 5e5 read fold 2 only on seeds where fold 1 held. The stiff run's per-step traces are the first per-step record
 of a stiff-cloth carry, to tell a slow creep from a sudden release.
 
-## Batch I. Slip recovery in the expert (2026-11-09, reviewed 15:10, fixed in 2e55ccd)
+## Batch I. Slip recovery in the expert (2026-11-09, reviewed 15:10, fixed in 2e55ccd and 6352104, launched as 744458-744459)
 
 Batch H's grip, load and bite knobs didn't hold the corner, so the expert recovers instead (item 4 of the user's
 list). Two mechanisms, off by default. `SEAT_MIN`: after the lift, a right corner sitting lower than this above the site

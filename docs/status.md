@@ -66,7 +66,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-09: fast 278 passed, 5 skipped (#15 deselected), isaac 101 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-09: fast 291 passed, 5 skipped (#15 deselected), isaac 114 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -124,6 +124,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-09 · **Batch H read, slip recovery built, batch I launched:** no grip / load / bite knob holds the corner (pooled control 48/96 held, 21/96 strict); low seats in the pads predict the slip; `quarter2` reach fix lands the right arm over the stack in xy but 2-6 cm high; slip recovery in the place expert (`SEAT_MIN` right-arm seat check, `SLIP_REGRASPS` once the other arm holds, carry gate, decision timeout), off by default, reviewed twice; 744458-744459 running; fast 291 passed + 5 skipped (#15 deselected), isaac 114 passed · (this commit)
 - 2026-11-09 · **Batch G, lean B, cantilever read:** stiff cloth repeats (16/64 vs 1/64); no grip knob helps, drops are real mid-carry slips (`drop_at`, videos); slower carry loses almost every right corner; lean B closed without a winner (corners overshoot 5 cm); cantilever: every bend setting hinges at the edge; no code change · (this commit)
 - 2026-11-09 · **Batch S read, batch G reviewed:** stiff bend springs 10/32 at the bar vs 0/32 (results.md); the 8 cm drape withdrawn (it measured the table's side face); drops log their phase and distances (`drop_at`); `drape_probe.py` rewritten as a cantilever test (Peirce bending length); batch G revised after an opus review (pooled control, Fisher rule, HOLD_DIST, outward inset, lean B); fast 278 passed + 5 skipped (#15 deselected), isaac 101 passed · (this commit)
 - 2026-11-09 · **WATcloud back (08:51), batch S launched:** 743600-743602 (9 cloth configs on r0) and the drape probe 743603; the outage (blocker 21, 22:55 on 11-07 to 08:51 on 11-09) closed; no code change · (this commit)
