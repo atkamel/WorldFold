@@ -3102,3 +3102,40 @@ Paired against s0 (mean diff / SE / better / n).
 The placement offset moves the interior onto its partner, as the counterfactual assumed, but the top corners don't
 follow as a rigid sheet. They overshoot about 5 cm and fold back on themselves, so the edge gets 2.9 cm worse and the
 12/32 upper bound doesn't appear. Batch B is closed without a winner.
+
+### Batch H, the mid-carry slip (2026-11-09, WATcloud 744410-744411, code 6fb4451)
+
+On s3's settings (r0's place params + bend 5e5), seeds 910000-31, the rule fixed in the plan. h0 repeats s3 and agrees
+with s3 + g0 (16/32 against 32/64, two-sided Fisher p 0.59), so the pooled control is n 96.
+
+| config | held [Wilson] | strict pass [Wilson] | held-seed median mean / edge | one-sided Fisher p, held |
+|---|---|---|---|---|
+| **pooled control s3 + g0 + h0** | **48/96 [40.2, 59.8]** | **21/96 [14.8, 31.1]** | 0.80 / 1.57 | |
+| h1 `particle_friction=0.8` | 15/32 | 6/32 | 0.91 / 1.96 | 0.70 |
+| h2 jaw drive 3x (53.4 / 0.6 / 10) | 13/32 | 6/32 | 0.85 / 1.45 | 0.87 |
+| h3 `ARC_FRAC=0.3` | 8/32 | 5/32 | 0.47 / 1.34 | 1.00 |
+| h4 `PINCH_INSET=0.002` | 11/32 | 1/32 | 1.29 / 2.00 | 0.96 |
+| h5 `PINCH_INSET=0.0` | 7/32 | 0/32 | 2.01 / 3.10 | 1.00 |
+
+- **No candidate.** The grip, the load and the bite don't hold the right corner.
+- **Seating predicts the slip.** In the pooled control the right arm loses 27/42 corners that sit under 1.5 cm above
+  the site at carry start and 15/54 above (left 14/42 and 9/54). A deeper pinch seats every right corner low (h4, h5:
+  0/32 at or above 1.5 cm) and loses more. The outward pinch in G lost more too, so the 5 mm inset is near the best.
+
+### quarter2 fold 2 with the arm-reach fix, current cloth (2026-11-09, WATcloud 744412, code 6fb4451)
+
+`quarter_batch.py --copies 8 --seeds 0:8 --profile quarter2 --fold2 two --drag none --video` with `TWO_IK`, place
+params `LATCH_GOAL=1,GFOLD_SLOPE=1.2`. Fold 2 failed on 8/8 again (final gate invalid on all 8). At the right arm's
+close, from the per-step traces:
+
+| | 742655 (before) | 744412 (`TWO_IK`) |
+|---|---|---|
+| site to the stack S in xy | 0.5-17.7 cm (10-29 cm in most seeds) | **0.3-2.5 cm on all 8** |
+| tilt above 130° or no close | 3/8 | 0/8 |
+| site height above S | mostly near S | **+2.0 to +5.6 cm** |
+
+The reach fix works in xy. The right arm now stops 4-6 cm above the stack: the descend times out, it re-approaches up
+to twice, then closes over air. Only the 25-31° tilts got down (seed 5, +0.2 cm at the close). At 50-58° it stays
+about 5 cm up, likely the tilted open jaw's lower finger meeting the cloth or table (untested before, flagged in Q1).
+At 7-9° it also stays high, probably beyond the upright reach at table height. Next for fold 2: hold the right arm's
+fold-2 pinch near 25-35° of tilt.

@@ -109,6 +109,15 @@ def test_gates_hold_the_lift_and_the_release():
     assert ex["left_"].release_allowed and ex["right_"].release_allowed
 
 
+def test_no_carry_starts_while_the_other_arm_regrasps():
+    ex = {"left_": _E("carry"), "right_": _E("approach")}           # the right arm went back for its corner
+    pe.coordinate(ex)
+    assert not ex["left_"].carry_allowed
+    ex["right_"].phase = _E.PHASES.index("lift")                    # lifting again, as in a normal start
+    pe.coordinate(ex)
+    assert ex["left_"].carry_allowed and ex["right_"].carry_allowed
+
+
 def _gate(cloth, prev=None, sites=((0.0, 0.0, 0.6), (0.1, 0.0, 0.6)), jaws=(1.0, 1.0)):
     return pe.gate(cloth, cloth if prev is None else prev, [np.array(s) for s in sites], jaws)
 

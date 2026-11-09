@@ -86,9 +86,21 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     SHIFT_MAX = 0.03
     SHIFT_TOL = 0.003
     SHIFT_STEPS = 40
+    # Slip recovery (batch I, 2026-11-09). On the stiff cloth the right corner leaves the shut jaw mid-carry in about
+    # half the seeds, 2.3x as often when it sits under 1.5 cm above the site at carry start (batches G and H). Both off
+    # by default. SEAT_MIN: after the lift, a corner sitting lower than this above the site is re-grasped, at most
+    # SEAT_REGRASPS times. SLIP_REGRASPS: a dropped corner that comes to rest (moved under SETTLED_MM over 5 steps) more
+    # than REGRASP_FAR from its goal is re-grasped where it lies, at most that many times; one that fell near its goal
+    # stays.
+    SEAT_MIN = None
+    SEAT_REGRASPS = 2
+    SLIP_REGRASPS = 0
+    REGRASP_FAR = 0.03
+    SETTLED_MM = 3.0
 
     PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped", "latched", "touch",
-                                                    "release_site", "hold_offset", "shift", "drop_at")
+                                                    "release_site", "hold_offset", "shift", "drop_at", "seat_regrasps",
+                                                    "slip_regrasps", "slipped", "corner_hist")
 
     def __init__(self, *args, live_goal=None, layer_offset=None, **kwargs):
         self.live_goal = live_goal       # callable -> the partner vertex's current position; None: self.goal
@@ -103,6 +115,10 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         self.hold_site = None
         self.dropped = False
         self.drop_at = None
+        self.seat_regrasps = 0
+        self.slip_regrasps = 0
+        self.slipped = False             # the corner left the jaw since the last grasp
+        self.corner_hist = []
         self.latched = None
         self.touch = None
         self.release_site = None
@@ -220,7 +236,11 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         if name in ("approach", "descend", "close", "lift"):
             action = IsaacArmExpert.act(self)
             if self.PHASES[self.phase] == "carry":        # the parent's lift just ended: steer from here
-                self._start_carry()
+                if self._unseated():
+                    self.seat_regrasps += 1
+                    self._regrasp_here(action)
+                else:
+                    self._start_carry()
             return action
         if name in ("release", "retreat", "done") and self.RELEASE_JAW is not None:
             return self._release_gently(name)
@@ -240,12 +260,17 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
                 self.drop_at = {"phase": name, "wp": [int(self.sv.get("k", 0)), len(self.sv.get("path", ()))],
                                 "dist_cm": round(100 * float(np.linalg.norm(corner - site)), 2),
                                 "dz_cm": round(100 * float(corner[2] - site[2]), 2)}
+                self.slipped = True
                 self._start_hold()
                 return action
         else:
             self.sv["slip"] = 0
         if name == "carry":
             path, k = self.sv["path"], self.sv["k"]
+            if k == 0 and not getattr(self, "carry_allowed", True):     # the other arm is re-grasping: wait here
+                action[0:5], _ = self._toward(self._tip(self._steer(path[0]) + self.residual, self.CARRY_FLOOR), jaw,
+                                              weight=self._carry_w)
+                return action
             target = path[min(k, len(path) - 1)]
             action[0:5], _ = self._toward(self._tip(self._steer(target) + self.residual, self.CARRY_FLOOR), jaw,
                                           weight=self._carry_w)
@@ -265,6 +290,10 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
                     or self.phase_steps >= self.PLACE_PATIENCE:
                 self._start_hold()
         else:   # hold: stay, plus the residual, until the gate and the vote let go
+            if self._regrasp_dropped(corner):
+                self.slip_regrasps += 1
+                self._regrasp_here(action)
+                return action
             shifting = self._shifting()
             action[0:5], _ = self._toward(self._tip(self.hold_site + self.hold_offset + self.residual), jaw,
                                           weight=self._carry_w)
@@ -275,6 +304,26 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
                 self.release_site = self._site()
                 self._go("release")
         return action
+
+    def _unseated(self):
+        """SEAT_MIN: the lift just ended with the corner sitting too low in the jaw, and re-grasps are left."""
+        return (self.SEAT_MIN is not None and self.seat_regrasps < self.SEAT_REGRASPS
+                and float(self._corner()[2] - self._site()[2]) < self.SEAT_MIN)
+
+    def _regrasp_dropped(self, corner):
+        """SLIP_REGRASPS: the dropped corner has come to rest more than REGRASP_FAR from its goal."""
+        if not (self.slipped and self.slip_regrasps < self.SLIP_REGRASPS):
+            return False
+        self.corner_hist = (self.corner_hist + [np.asarray(corner, float).copy()])[-5:]
+        hist = np.asarray(self.corner_hist)
+        settled = len(hist) == 5 and 1000 * float(np.linalg.norm(hist - hist[-1], axis=1).max()) < self.SETTLED_MM
+        return settled and float(np.linalg.norm(corner[:2] - self._goal_now()[:2])) > self.REGRASP_FAR
+
+    def _regrasp_here(self, action):
+        """Open, re-plan on the corner where it lies now and approach again (IsaacArmExpert's REGRASP restart)."""
+        self.slipped, self.corner_hist = False, []
+        self._restart_grasp()
+        action[5] = 1.0
 
     def _set_jaw(self, action, q):
         """Open target q (rad) for this arm's jaw, None: fully open."""

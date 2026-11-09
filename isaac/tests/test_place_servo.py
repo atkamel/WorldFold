@@ -335,3 +335,101 @@ def test_a_soft_pinch_weight_carries_through_the_carry_and_the_default_keeps_005
     e.PINCH_ORIENTATION_WEIGHT = 0.005                          # quarter_batch TWO_IK's far right arm
     e.act()
     assert weights[-1] == 0.005
+
+
+def _restarts(monkeypatch):
+    calls = []
+    monkeypatch.setattr(IsaacPlaceServoExpert, "_restart_grasp", lambda self: (calls.append(1), self._go("approach")))
+    return calls
+
+
+def _lift_ends(monkeypatch):
+    monkeypatch.setattr(IsaacArmExpert, "act", lambda self: (self._go("carry"), np.zeros(6, np.float32))[1])
+
+
+def test_a_corner_seated_low_after_the_lift_is_regrasped(monkeypatch):
+    calls = _restarts(monkeypatch)
+    _lift_ends(monkeypatch)
+    e = _expert()
+    e.SEAT_MIN = 0.015
+    e._go("lift")
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, -0.01]            # the corner sits 1 cm above the site
+    action = e.act()
+    assert calls and e.seat_regrasps == 1 and e.PHASES[e.phase] == "approach" and action[5] == 1.0
+    e._go("lift")
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, -0.02]            # 2 cm: seated
+    e.act()
+    assert len(calls) == 1 and e.PHASES[e.phase] == "carry" and e.sv["path"] is not None
+
+
+def test_seat_check_is_off_by_default(monkeypatch):
+    calls = _restarts(monkeypatch)
+    _lift_ends(monkeypatch)
+    e = _expert()
+    e._go("lift")
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.0]
+    e.act()
+    assert not calls and e.PHASES[e.phase] == "carry"
+
+
+def test_seat_regrasps_are_capped(monkeypatch):
+    calls = _restarts(monkeypatch)
+    _lift_ends(monkeypatch)
+    e = _expert()
+    e.SEAT_MIN, e.SEAT_REGRASPS = 0.015, 1
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.0]
+    for _ in range(3):
+        e._go("lift")
+        e.act()
+    assert len(calls) == 1 and e.PHASES[e.phase] == "carry"
+
+
+def test_a_dropped_corner_at_rest_far_from_its_goal_is_regrasped(monkeypatch):
+    calls = _restarts(monkeypatch)
+    e = _expert()
+    e.SLIP_REGRASPS = 1
+    e._start_carry()
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.2]              # the corner fell out of the jaw
+    for _ in range(e.SLIP_STEPS):
+        e.act()
+    assert e.slipped and e.PHASES[e.phase] == "hold"
+    for _ in range(4):                                          # still settling: needs 5 still steps
+        e.act()
+    assert not calls
+    e.act()
+    assert calls and e.slip_regrasps == 1 and not e.slipped and e.PHASES[e.phase] == "approach"
+
+
+def test_a_dropped_corner_that_fell_near_its_goal_stays(monkeypatch):
+    calls = _restarts(monkeypatch)
+    e = _expert()
+    e.SLIP_REGRASPS = 1
+    e.base.cloth[10] = e.base.cloth[0] + [0.01, 0.0, 0.0]         # it landed 1 cm from its partner
+    e._start_carry()
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.2]
+    for _ in range(e.SLIP_STEPS + 10):
+        e.act()
+    assert not calls and e.slipped
+
+
+def test_slip_regrasp_is_off_by_default(monkeypatch):
+    calls = _restarts(monkeypatch)
+    e = _expert()
+    e._start_carry()
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.2]
+    for _ in range(e.SLIP_STEPS + 10):
+        e.act()
+    assert not calls and e.PHASES[e.phase] == "hold"
+
+
+def test_carry_waits_at_its_start_while_the_other_arm_regrasps():
+    e = _expert()
+    e._start_carry()
+    e.carry_allowed = False
+    for _ in range(e.WP_PATIENCE + 3):
+        e.act()
+    assert e.sv["k"] == 0 and e.sv["k_steps"] == 0
+    e.carry_allowed = True
+    for _ in range(e.WP_PATIENCE + 3):
+        e.act()
+    assert e.sv["k"] > 0

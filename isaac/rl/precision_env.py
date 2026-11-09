@@ -47,7 +47,8 @@ FAIL = 10.0
 PASS_BONUS = 10.0
 SETTLE_STEPS = 15            # window ends this long after both arms are done
 T_MAX = int(os.environ.get("WORLDFOLD_WINDOW_STEPS", 200))   # window cap (a failure); slower bases need more
-PRE_MAX = 220                # scripted steps allowed to reach the window
+PRE_MAX = 400                # scripted steps allowed to reach the window (every control seed takes under 220; a re-grasp
+                             # before the carry, SEAT_MIN, needs the rest)
 DRAG_LIMIT = float(os.environ.get("WORLDFOLD_DRAG_LIMIT", 0.20))   # = quarter_fold_env.DRAG_LIMIT by default
 # m: once settled, each arm whose top corner is further than this from its partner touches it up once
 # (IsaacPlaceServoExpert.start_touchup) and the window settles again; unset: no touch-up
@@ -167,10 +168,13 @@ def apply_action(experts, action):
 
 
 def coordinate(experts):
-    """The fold's gates: no arm lifts until both have closed; both release only once both hold."""
+    """The fold's gates: no arm lifts until both have closed; no carry starts while the other arm is re-grasping
+    (before its lift); both release only once both hold."""
     ready = all(e.phase >= e.PHASES.index("close") for e in experts.values())
+    lifted = all(e.phase >= e.PHASES.index("lift") for e in experts.values())
     for e in experts.values():
         e.lift_allowed = ready
+        e.carry_allowed = lifted
     if all(e.PHASES[e.phase] in ("hold",) + e.RELEASE_PHASES for e in experts.values()):
         for e in experts.values():
             e.release_allowed = True
