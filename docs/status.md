@@ -45,12 +45,12 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. Half fold on the stiff cloth, batch G of the plan
-   ([superpowers/plans/2026-11-08-overnight-half-fold.md](superpowers/plans/2026-11-08-overnight-half-fold.md)). Batch S
-   (results.md): bend springs 5e5 pass 10/32 at the bar against the control's 0/32, at 0.56 / 1.01 cm median when both
-   corners are held, but the right arm loses its corner in about half the seeds. Batch G tests why (drop logging, a
-   looser drop rule, jaw, adhesion, an outward pinch, a slower carry) with a pre-registered rule, plus videos and a
-   cantilever probe for matching the real cloth's bending length. Then a lean batch B on r0's cloth.
+1. Half fold on the stiff cloth. Bend springs 5e5 pass 16/64 at the bar [16.0, 36.8] (batch S + its repeat in G),
+   against 1/64 on LeHome's springs, at 0.74 / 1.32 cm median when both corners are held. The limit is the right arm
+   letting go of its corner mid-carry in about half the seeds (`drop_at`, videos in `outputs/isaac/rl/grip_video/`).
+   No grip knob tried helps (jaw, adhesion, outward pinch, slower carry, drop rule), and batch B on the old cloth has
+   no winner (results.md). Open: whether bend 5e5 is faithful to a real cloth, since the cantilever probe shows no
+   measurable bending length at any setting, and what holds the corner through the carry.
 2. `quarter2` fold 2 rerun with traces. The right arm missed the stack S because S sat past an upright pinch's reach
    and the IK weights pushed it onto a flipped wrist (results.md). `TWO_IK` (fold 2's right arm at orientation weight
    0.005, jaw weight 0.02) reaches 24/24 offline within 5 mm, untested in Isaac. Run the 742655 job again with it
@@ -124,6 +124,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-09 · **Batch G, lean B, cantilever read:** stiff cloth repeats (16/64 vs 1/64); no grip knob helps, drops are real mid-carry slips (`drop_at`, videos); slower carry loses almost every right corner; lean B closed without a winner (corners overshoot 5 cm); cantilever: every bend setting hinges at the edge; no code change · (this commit)
 - 2026-11-09 · **Batch S read, batch G reviewed:** stiff bend springs 10/32 at the bar vs 0/32 (results.md); the 8 cm drape withdrawn (it measured the table's side face); drops log their phase and distances (`drop_at`); `drape_probe.py` rewritten as a cantilever test (Peirce bending length); batch G revised after an opus review (pooled control, Fisher rule, HOLD_DIST, outward inset, lean B); fast 278 passed + 5 skipped (#15 deselected), isaac 101 passed · (this commit)
 - 2026-11-09 · **WATcloud back (08:51), batch S launched:** 743600-743602 (9 cloth configs on r0) and the drape probe 743603; the outage (blocker 21, 22:55 on 11-07 to 08:51 on 11-09) closed; no code change · (this commit)
 - 2026-11-08 · **Stiffer cloth, batch S (user):** cloth knobs `bend_stiffness`, `shear_stiffness`, `spring_damping`, `cloth_subdiv` (FRICTION_GRASP, onto LeHome's garment_config); `isaac/tools/drape_probe.py` (8 cm overhang droop, spring / mass readback); batch S designed and reviewed (opus: springs not saturated, bend-only configs, hold promotion until a real-cloth match); round 2a fold-shape diagnostics in results.md; WATcloud still down; fast 276 passed + 5 skipped (#15 deselected), isaac 99 passed · (this commit)

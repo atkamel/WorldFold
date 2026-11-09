@@ -3059,3 +3059,46 @@ Angle is the chord from the table edge to the free edge, below horizontal. "On f
   springs.
 - **So batch S's gain doesn't come from a sheet that resists bending at the cm scale.** It goes with less
   particle-scale crumpling (bottom-layer edge shrink 0.67 mm against 1.23, results above).
+
+### Batch G, the grip on the stiff cloth (2026-11-09, WATcloud 743936-743937, 744182, code 280546e)
+
+All on s3's settings (r0's place params + `bend_stiffness=5e5`), seeds 910000-31, 8 copies. Rule fixed before the
+results (plan, batch G): held = both top corners kept, where a corner is lost at 8 cm or more from its partner or 3 cm
+or more off it at the partner's height (on the table). Candidate only at one-sided Fisher p < 0.01 against the pooled
+control (s3 + g0, n 64).
+
+| config | held [Wilson] | strict pass [Wilson] | held-seed median mean / edge | Fisher p, held | right corner lost, tight / loose close |
+|---|---|---|---|---|---|
+| s3 (batch S) | 14/32 [28.2, 60.7] | 10/32 [18.0, 48.6] | 0.45 / 0.99 | | 6/18, 9/14 |
+| g0 s3 repeated | 18/32 [39.3, 71.8] | 6/32 [8.9, 35.3] | 1.00 / 1.72 | | 5/18, 7/14 |
+| **pooled control** | **32/64 [38.1, 61.9]** | **16/64 [16.0, 36.8]** | 0.74 / 1.32 | | 11/36, 16/28 |
+| g1 `HOLD_DIST=0.08` | 9/32 | 5/32 | 0.58 / 1.43 | 0.989 | 11/18, 9/14 |
+| g2 `gripper_closed=0.02` | 7/32 | 1/32 | 0.78 / 2.07 | 0.998 | 14/18, 11/14 |
+| g3 `adhesion=0.2` | 15/32 | 6/32 | 0.80 / 1.76 | 0.693 | 5/18, 9/14 |
+| g4 `PINCH_INSET=0.008` | 9/32 | 1/32 | 2.37 / 2.95 | 0.989 | 17/30, 2/2 |
+| g5 `CARRY_SPEED=0.6` | 1/32 | 0/32 | 1.82 / 1.83 | 1.000 | 17/18, 13/14 |
+
+- **The stiff cloth repeats.** Pooled it passes 16/64 [16.0, 36.8], against 1/64 for r0 + s0 on the same seeds.
+- **No grip knob is a candidate.** All are worse or equal. A slower carry loses nearly every right corner, so the
+  corner slides out over time under load.
+- **The drops are real slips in the carry.** `drop_at` on g0: 31 of 35 in the carry, at a median 46% of its
+  waypoints, the corner 10.8 cm (median) below the site when the 3-step rule fires. The 8 cm rule didn't help.
+- **Videos** (744182, 8 seeds, `outputs/isaac/rl/grip_video/`): the right arm lets go mid-carry in all 8 (waypoint 4-8
+  of 12-14, corner 10-15 cm below the site). In 3 the stiff sheet carries on over and lands folded (910005 scores
+  0.02 / 0.02 cm and the last frames show a clean rectangle; 910001 passes at 0.66 / 1.21). In 3 it falls back and the
+  corner ends 13-23 cm off.
+
+### Lean batch B on r0's cloth (2026-11-09, WATcloud 744183, code 280546e)
+
+Paired against s0 (mean diff / SE / better / n).
+
+| config | strict pass | median mean / edge | interior y | top corners folded back | paired mean | paired edge |
+|---|---|---|---|---|---|---|
+| b0 floor 17 mm | 0/32 [0, 10.7] | 3.27 / 3.72 | −3.26 | 5/64 | +1.25 / 0.16 / 1 / 23 | +0.59 / 0.29 / 8 / 23 |
+| b2 floor + `PLACE_ALONG=0.035` | 1/32 [0.6, 15.7] | 1.62 / 6.67 | +0.39 | 45/64 | −0.41 / 0.21 / 17 / 23 | +2.87 / 0.59 / 4 / 23 |
+| b2r b2 repeated | 0/32 [0, 10.7] | 1.64 / 6.87 | +0.43 | 42/64 | −0.43 / 0.19 / 17 / 23 | +2.86 / 0.49 / 4 / 23 |
+| b6 `CARRY_FLOOR` + 0.035 | 0/32 [0, 10.7] | 2.21 / 7.75 | +0.87 | 40/64 | −0.03 / 0.23 / 13 / 23 | +3.91 / 0.45 / 2 / 23 |
+
+The placement offset moves the interior onto its partner, as the counterfactual assumed, but the top corners don't
+follow as a rigid sheet. They overshoot about 5 cm and fold back on themselves, so the edge gets 2.9 cm worse and the
+12/32 upper bound doesn't appear. Batch B is closed without a winner.
