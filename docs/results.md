@@ -2979,3 +2979,47 @@ against 30 mm (wrinkling shortens them).
 
 The 4.9 mm gap is two particle rest offsets, so the fine mesh's layers don't pass through each other. The close pairs
 are where the top layer slid off its partner. Every reset started flat (shortest edge 30.0 mm, height range 0.0 mm).
+
+### Batch S, a stiffer cloth (2026-11-09, WATcloud 743600-743603, code 3287864)
+
+User's hypothesis (2026-11-08): the cloth is too fine and wrinkles. All configs on r0's place params
+(`LATCH_GOAL=1,GFOLD_SLOPE=1.2`, window 450), seeds 910000-31, 8 copies; knobs on LeHome's springs (bend 5000, shear
+5000, stretch 1e8) or the particle mesh (`CLOTH_SUBDIV` 10, 101x101 at 3 mm). Strict passes at the bar (1.0 / 1.5 cm)
+with Wilson 95%, paired against the control s0 (mean diff / SE / better / n), medians over scoreable seeds.
+
+| config | strict pass | scoreable | z / clear fail | drops | median mean / edge | paired mean vs s0 | paired edge vs s0 |
+|---|---|---|---|---|---|---|---|
+| s0 control (r0 repeat) | 0/32 [0, 10.7] | 23 | 9 | 9 | 2.36 / 3.17 | | |
+| s1 bend 500 | 0/31 [0, 11.0] | 22 | 9 | 9 | 2.54 / 3.94 | +0.28 / 0.18 / 6 / 17 | +0.53 / 0.25 / 5 / 17 |
+| **s3 bend 5e5** | **10/32 [18.0, 48.6]** | 32 | 0 | 34 | 1.85 / 4.68 | +0.67 / 0.47 / 11 / 23 | +6.69 / 1.81 / 7 / 23 |
+| s4 bend + shear 5e5 | 9/32 [15.6, 45.4] | 32 | 0 | 37 | 1.75 / 12.68 | +0.89 / 0.54 / 12 / 23 | +8.73 / 2.04 / 7 / 23 |
+| s7 bend + shear 5e4 | 5/32 [6.9, 31.8] | 31 | 1 | 33 | 1.13 / 2.48 | −0.56 / 0.25 / 15 / 23 | +2.68 / 1.23 / 14 / 23 |
+| s5 mesh 51x51 at 6 mm | 1/32 [0.6, 15.7] | 30 | 1 | 27 | 5.86 / 9.24 | +3.70 / 0.37 / 0 / 22 | +8.62 / 1.67 / 1 / 22 |
+| s5r s5 repeated | 0/32 [0, 10.7] | 32 | 0 | 23 | 5.80 / 8.25 | +3.41 / 0.45 / 1 / 23 | +7.49 / 1.56 / 1 / 23 |
+| s6 6 mm + bend 5e5 | 0/23 [0, 14.3] | 18 | 0 | 32 | 4.92 / 7.09 | +5.38 / 1.37 / 0 / 11 | +12.09 / 3.01 / 1 / 11 |
+
+s2 (bend 5e4) is still running. s0 against r0 (round 2a): mean −0.08 / 0.12, edge −0.37 / 0.35 (n 21), so the code hasn't
+drifted and the passes come from the springs.
+
+- **Stiff bend springs pass about a third of the seeds, against none.** s3's 10/32 and s0's 0/32 have disjoint
+  intervals, and r0 + s0 together pass 1/64. With eight configs it still needs its repeat (batch G) before it counts.
+- **The fold lands at the bar when both corners are held.** s3's seeds split. In 15 both top corners end within 4 cm
+  of their partners, at 0.56 / 1.01 cm median and 10 strict passes (r0 on the same seeds 1.66 / 3.16). In 17 a corner
+  is lost, at 4.35 / 16.48, with no passes. s4 splits 14 / 18 (0.73 / 1.18, 9 passes) and s7 20 / 12 (0.74 / 1.74, 5).
+  The short fold line is gone: the interior top-minus-bottom y is +0.41 cm on s3 and −0.09 on s7, against −2.05 on s0.
+- **The right arm loses the corner.** It is flagged dropped in 30/32 seeds on s7 against 5/32 on r0. In about 20 of
+  those the corner still ends within 2 cm, so it left the jaws late in the place. In the rest it ends 9-21 cm back
+  toward its start, so the stiff sheet pulled it out during the carry. The right arm closes further outside its corner
+  than the left (median 12.0 against 8.7 mm on s7, 8.8 against 5.1 on r0). The sheet also moves more before the carry
+  (4.3-4.5 cm against 3.3).
+- **The 6 mm mesh is worse.** The folded layers nest (36% of pairs under 1 mm apart, gap 3.6 mm), the interior lands
+  4 cm short, and the corners slip.
+- **Softer is worse** (s1: +0.28 / 0.18 mean, 10 seeds failing only the stillness check).
+
+**Drape probe** (743603, `isaac/tools/drape_probe.py`, cloth flat with 8 cm past the table edge, 4 s). The read-back
+confirms every knob took (bend / shear values as set, 79,800 springs at 3 mm and 19,900 at 6 mm, 50.0 g). But the free
+edge hangs 7.8-8.3 cm below the table in every config, bend 500 to 5e6, bending within about 2 cm of the edge. So the
+bend springs don't make the sheet stiffer at the drape's scale, and an 8 cm overhang can't tell the configs apart or be
+matched to a real cloth. What the stiff springs change in the final folds is small-scale crumpling. The bottom layer's
+grid edges shrink 0.67 mm (s3) against 1.23 (r0), and its worst diagonal is 11.5 mm short against 15.8. Stretch stays
+under 0.6 mm everywhere.
