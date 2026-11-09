@@ -110,6 +110,31 @@ table's side face, held there by adhesion 0.1, so it said nothing about stiffnes
 read from the full-resolution free edge, count only while they hang 6 mm or more clear of the face, and give the Peirce
 bending length c. The same ruler test on the real cloth gives its c.
 
+## Batch H. The mid-carry slip on the stiff cloth (2026-11-09, user: work down the list until it holds; reviewed 13:40)
+
+Batch G: the jaw is shut through the carry (binary mode, `_close_command` −1) and the right corner leaves it mid-carry,
+near the top of the arc. A slower carry lost 31/32 right corners. How high the corner sits in the pads at carry start
+predicts it best (right arm: lost 19/29 below 1.5 cm, 8/35 at or above), and the right arm closes in two seed-fixed
+modes. The user's list, in order: the grip, the load, the bite, then slip recovery in the expert, then the RL residual
+retrained on the stiff cloth with a slip penalty.
+
+Configs on s3's settings (r0's place params + bend 5e5), seeds 910000-31: h0 s3 repeated, h1 `particle_friction=0.8`
+(the only cloth-pad friction in PhysX, but also cloth-table and ×0.6 cloth-cloth; 1.5 in IG.2 let the table hold the
+sheet), h2 the jaw drive 3x stiffer (`gripper_drive` 53.4 / 0.6 / 10, a harder clamp with nothing else changed), h3
+`ARC_FRAC=0.3` in the place params (arc peak 3.6 cm against 7.2), h4 / h5 `PINCH_INSET` 0.002 / 0 (deeper bites; 0
+puts the fixed pad face 6-9 mm onto the cloth, untested). A faster carry is out: `_toward` already puts the leading
+joint at the step limit, so `CARRY_SPEED` above 1 only bends the joint direction.
+
+Decision rule, fixed before the results: batch G's (held = both top corners kept; candidate at one-sided Fisher
+p < 0.01 against the pooled control, then fresh seeds). The pooled control is s3 + g0 (n 64), plus h0 (n 96) if h0's
+held count is within two-sided Fisher p > 0.2 of it. A config at p < 0.05 earns a fresh-seed retest only. Read beside
+it, per arm, how many corners are lost when they sit below or above 1.5 cm in the pads at carry start, and by close
+mode.
+
+Quarter: `quarter_batch.py` fold 2 with `TWO_IK` on the current cloth and on bend 5e5, 8 seeds with video and traces.
+On bend 5e5 read fold 2 only on seeds where fold 1 held. The stiff run's per-step traces are the first per-step record
+of a stiff-cloth carry, to tell a slow creep from a sudden release.
+
 ## Batch B. Floor plus placement offset (3 jobs, 9 configs, about 1.5 h). Runs before batch A
 
 Changed after review (2026-11-07 23:20). Round 2's 17 mm floor (r1) leaves an almost rigid translation of the top layer
