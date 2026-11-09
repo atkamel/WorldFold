@@ -3139,3 +3139,9 @@ to twice, then closes over air. Only the 25-31° tilts got down (seed 5, +0.2 cm
 about 5 cm up, likely the tilted open jaw's lower finger meeting the cloth or table (untested before, flagged in Q1).
 At 7-9° it also stays high, probably beyond the upright reach at table height. Next for fold 2: hold the right arm's
 fold-2 pinch near 25-35° of tilt.
+
+**Same run on bend 5e5** (WATcloud 744413, `WORLDFOLD_GRASP_KNOBS=bend_stiffness=500000`). Fold 1 median 6.8 / 22.9 cm
+(gate-valid 8/8) against 4.1 / 6.0 on the current cloth (7/8), so the stiff cloth's mid-carry slip costs fold 1 here
+too. Final gate-valid 5/8 against 1/8, no passes on either (finals 16.5 / 29.6 and 10.2 / 19.4 cm median). Fold 2's
+right arm closes 0.2-6.3 cm from S in xy and 0.8-5.9 cm above it at 6-37° tilt, so it stops above the stack on this
+cloth too.
