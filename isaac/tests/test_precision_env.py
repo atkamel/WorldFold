@@ -109,13 +109,30 @@ def test_gates_hold_the_lift_and_the_release():
     assert ex["left_"].release_allowed and ex["right_"].release_allowed
 
 
-def test_no_carry_starts_while_the_other_arm_regrasps():
+def test_with_seat_min_no_carry_starts_until_every_arm_reaches_its_carry():
     ex = {"left_": _E("carry"), "right_": _E("approach")}           # the right arm went back for its corner
     pe.coordinate(ex)
+    assert ex["left_"].carry_allowed                                # no SEAT_MIN: no gate (the control)
+    for e in ex.values():
+        e.SEAT_MIN = 0.015
+    pe.coordinate(ex)
     assert not ex["left_"].carry_allowed
-    ex["right_"].phase = _E.PHASES.index("lift")                    # lifting again, as in a normal start
+    ex["right_"].phase = _E.PHASES.index("lift")
+    pe.coordinate(ex)
+    assert not ex["left_"].carry_allowed                            # still lifting: its seat check is to come
+    ex["right_"].phase = _E.PHASES.index("carry")
     pe.coordinate(ex)
     assert ex["left_"].carry_allowed and ex["right_"].carry_allowed
+
+
+def test_release_waits_while_a_slip_decision_is_pending():
+    ex = {"left_": _E("hold"), "right_": _E("hold")}
+    ex["right_"].slip_pending = lambda: True
+    pe.coordinate(ex)
+    assert not ex["left_"].release_allowed and ex["right_"].partners_hold
+    ex["right_"].slip_pending = lambda: False
+    pe.coordinate(ex)
+    assert ex["left_"].release_allowed
 
 
 def _gate(cloth, prev=None, sites=((0.0, 0.0, 0.6), (0.1, 0.0, 0.6)), jaws=(1.0, 1.0)):

@@ -318,6 +318,10 @@ def demo(args):
         pb.cut = [None] * pb.n
         snaps, _ = pb.scripted_to_window(seeds)
         ok = [i for i in range(pb.n) if snaps[i] is not None]
+        for i in set(range(pb.n)) - set(ok):         # never reached the window: a failure, kept in the rows
+            print("DEMO", json.dumps({"seed": seeds[i], "no_window": True}), flush=True)
+            with open(out / "demo.jsonl", "a") as f:
+                f.write(json.dumps({"seed": seeds[i], "no_window": True}) + "\n")
         if not ok:
             continue
         pre = [f[:c] for f, c in zip(pb.frames, pb.cut)] if args.video else None
@@ -333,8 +337,6 @@ def demo(args):
                 import imageio
                 clip = pre[i] + pb.frames[i][:finals[i]["steps"]]
                 imageio.mimwrite(str(out / f"seed{seeds[i]}.mp4"), clip + clip[-1:] * 20, fps=20, macro_block_size=1)
-        for i in set(range(pb.n)) - set(ok):
-            print("DEMO", json.dumps({"seed": seeds[i], "no_window": True}), flush=True)
 
 
 def sweep(args):

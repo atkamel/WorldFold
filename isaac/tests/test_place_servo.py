@@ -351,7 +351,7 @@ def test_a_corner_seated_low_after_the_lift_is_regrasped(monkeypatch):
     calls = _restarts(monkeypatch)
     _lift_ends(monkeypatch)
     e = _expert()
-    e.SEAT_MIN = 0.015
+    e.prefix, e.SEAT_MIN = "right_", 0.015
     e._go("lift")
     e.base.site = e.base.cloth[10] + [0.0, 0.0, -0.01]            # the corner sits 1 cm above the site
     action = e.act()
@@ -376,7 +376,7 @@ def test_seat_regrasps_are_capped(monkeypatch):
     calls = _restarts(monkeypatch)
     _lift_ends(monkeypatch)
     e = _expert()
-    e.SEAT_MIN, e.SEAT_REGRASPS = 0.015, 1
+    e.prefix, e.SEAT_MIN, e.SEAT_REGRASPS = "right_", 0.015, 1
     e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.0]
     for _ in range(3):
         e._go("lift")
@@ -409,7 +409,7 @@ def test_a_dropped_corner_that_fell_near_its_goal_stays(monkeypatch):
     e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.2]
     for _ in range(e.SLIP_STEPS + 10):
         e.act()
-    assert not calls and e.slipped
+    assert not calls and not e.slipped and not e.slip_pending()          # decided: it stays
 
 
 def test_slip_regrasp_is_off_by_default(monkeypatch):
@@ -425,7 +425,7 @@ def test_slip_regrasp_is_off_by_default(monkeypatch):
 def test_carry_waits_at_its_start_while_the_other_arm_regrasps():
     e = _expert()
     e._start_carry()
-    e.carry_allowed = False
+    e.sv["go"], e.carry_allowed = False, False             # as after a seat check, the other arm not yet past its own
     for _ in range(e.WP_PATIENCE + 3):
         e.act()
     assert e.sv["k"] == 0 and e.sv["k_steps"] == 0
@@ -433,3 +433,37 @@ def test_carry_waits_at_its_start_while_the_other_arm_regrasps():
     for _ in range(e.WP_PATIENCE + 3):
         e.act()
     assert e.sv["k"] > 0
+
+
+def test_the_left_arm_skips_the_seat_check(monkeypatch):
+    calls = _restarts(monkeypatch)
+    _lift_ends(monkeypatch)
+    e = _expert()
+    e.SEAT_MIN = 0.015                                          # prefix "left_": not in SEAT_ARMS
+    e._go("lift")
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.0]
+    e.act()
+    assert not calls and e.PHASES[e.phase] == "carry" and e.seats == [0.0]
+
+
+def test_the_slip_decision_waits_for_the_other_arm_to_hold(monkeypatch):
+    calls = _restarts(monkeypatch)
+    e = _expert()
+    e.SLIP_REGRASPS = 1
+    e._start_carry()
+    e.base.site = e.base.cloth[10] + [0.0, 0.0, 0.2]
+    e.partners_hold = False                                     # the other arm is still carrying
+    for _ in range(e.SLIP_STEPS + 10):
+        e.act()
+    assert not calls and e.slip_pending()
+    e.partners_hold = True
+    e.act()
+    assert calls and not e.slip_pending()
+
+
+def test_a_regrasp_clears_the_last_grasps_latch_and_retries(monkeypatch):
+    _restarts(monkeypatch)
+    e = _expert()
+    e.latched, e.align_tries, e.descend_retries, e.site_hist = np.zeros(3), 2, 1, [1]
+    e._regrasp_here(np.zeros(6, np.float32))
+    assert e.latched is None and e.align_tries == 0 and e.descend_retries == 0 and e.site_hist == []

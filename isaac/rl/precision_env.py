@@ -168,14 +168,19 @@ def apply_action(experts, action):
 
 
 def coordinate(experts):
-    """The fold's gates: no arm lifts until both have closed; no carry starts while the other arm is re-grasping
-    (before its lift); both release only once both hold."""
+    """The fold's gates: no arm lifts until both have closed; with SEAT_MIN, no carry starts until every arm has passed
+    its seat check (reached its carry); both release only once both hold and no dropped corner's re-grasp decision is
+    pending (SLIP_REGRASPS, made once the other arms hold)."""
     ready = all(e.phase >= e.PHASES.index("close") for e in experts.values())
-    lifted = all(e.phase >= e.PHASES.index("lift") for e in experts.values())
-    for e in experts.values():
+    seat = any(getattr(e, "SEAT_MIN", None) is not None for e in experts.values())
+    carry = not seat or all(e.phase >= e.PHASES.index("carry") for e in experts.values())
+    held = {p: e.PHASES[e.phase] in ("hold",) + e.RELEASE_PHASES for p, e in experts.items()}
+    for p, e in experts.items():
         e.lift_allowed = ready
-        e.carry_allowed = lifted
-    if all(e.PHASES[e.phase] in ("hold",) + e.RELEASE_PHASES for e in experts.values()):
+        e.carry_allowed = carry
+        e.partners_hold = all(h for q, h in held.items() if q != p)
+    pending = any(getattr(e, "slip_pending", lambda: False)() for e in experts.values())
+    if all(held.values()) and not pending:
         for e in experts.values():
             e.release_allowed = True
 
@@ -360,7 +365,8 @@ class PrecisionBatch:
             if sub._failed():
                 # a blown-up cloth: park it at once so it can't drift into the other copies, its arms idle
                 st["final"] = {"reason": "unstable", "steps": st["t"], "mean": None, "edge_max": None, "passed": False,
-                               "dropped": [p for p in ARMS if ex[p].dropped], "drop_at": {p: ex[p].drop_at for p in ARMS if ex[p].dropped}, "instability": instability(sub),
+                               "dropped": [p for p in ARMS if ex[p].dropped], "drop_at": {p: ex[p].drop_at for p in ARMS if ex[p].dropped},
+                               "recover": {p: {"seats": ex[p].seats, "seat": ex[p].seat_regrasps, "slip": ex[p].slip_regrasps} for p in ARMS}, "instability": instability(sub),
                                "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS}}
                 sub.park()
                 for e in ex.values():
@@ -409,7 +415,8 @@ class PrecisionBatch:
                 rew[i] += r_end if (reason == "settled" and g["valid"]) else -FAIL
                 st["final"] = {"reason": reason, "steps": st["t"], "mean": round(s["mean"], 4),
                                "bottom_shift": round(bottom_shift(cloth, st["start"]), 4),
-                               "dropped": [p for p in ARMS if ex[p].dropped], "drop_at": {p: ex[p].drop_at for p in ARMS if ex[p].dropped}, "instability": None,
+                               "dropped": [p for p in ARMS if ex[p].dropped], "drop_at": {p: ex[p].drop_at for p in ARMS if ex[p].dropped},
+                               "recover": {p: {"seats": ex[p].seats, "seat": ex[p].seat_regrasps, "slip": ex[p].slip_regrasps} for p in ARMS}, "instability": None,
                                "touch": st.get("touch") or None,
                                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
                                "gate": g, "passed_valid": bool(s["passed"] and g["valid"] and reason == "settled"),
