@@ -3031,3 +3031,7 @@ length of a few cm or less would do. "The bend springs don't make the sheet stif
 The fold runs point the other way at the corner's scale: on stiff cloth the right corner rides 2.8 cm up the pads in the
 arm's tight close mode against 1.5 on s0. The crumpling figures stand. `drape_probe.py` is now a cantilever test
 (1-6 cm flaps, adhesion 0, readings only clear of the face, Peirce bending length).
+
+**Batch S, s2 bend 5e4** (743600, finished after the table above): 4/32 [5.0, 28.1] strict, 30 scoreable, 2 z / clear
+fails, 31 drops, median 1.65 / 3.02 cm, paired against s0 mean −0.57 / 0.23 / 16 / 22 and edge +1.92 / 1.10 / 13 / 22.
+Strict passes rise with bend stiffness: 0/31 at 500, 0/32 at LeHome's 5000, 4/32 at 5e4, 10/32 at 5e5.

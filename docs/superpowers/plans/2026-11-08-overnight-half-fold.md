@@ -79,7 +79,7 @@ view, the reset's flatness, the sheet's move before the carry (3.3 cm on round 2
 and folded corners. The expert was tuned on the current cloth, so a stiffer sheet that loses on this pass may still win
 after re-tuning the pinch and place.
 
-## Batch G. The grip on the stiff cloth (2026-11-09, reviewed 10:55, revised)
+## Batch G. The grip on the stiff cloth (2026-11-09, reviewed 10:55, revised, launched as 743936-743938)
 
 Batch S: bend 5e5 (s3) passes 10/32 against the control's 0/32, and when both top corners are held the fold is
 0.56 / 1.01 cm median. The right arm loses its corner in about half the seeds. Every row starts its carry with both
