@@ -22,7 +22,7 @@ sys.path.insert(0, str(REPO))
 
 from mujoco_sim.cloth_params import CLOTH_COUNT as N   # noqa: E402
 
-OVERHANG = 0.08          # m of cloth past the table edge (ruler test: lay it flat 8 cm over the edge)
+OVERHANG = 0.08          # m of cloth past the table edge (ruler test: lay it flat 8 cm over the edge); --overhang
 DROOP_STEPS = 80         # control steps (4 s) after the reset's settle, before measuring
 STILL_MM = 0.5           # the free edge moved less than this over the last 10 steps: settled
 CHILD_S = 900            # a child longer than this is killed
@@ -65,19 +65,19 @@ def readback(env):
     return out
 
 
-def probe(name, knobs):
+def probe(name, knobs, overhang=OVERHANG):
     from isaac.sim.isaac_env import TABLE_SIZE, IsaacClothFoldEnv
     from isaac.tools.grasp_bench import parse_kv
     env = IsaacClothFoldEnv(profile="friction", grasp_knobs=parse_kv(knobs) or None)
     edge_y = TABLE_SIZE / 2                     # copy 0's table is centred on the origin
     env.reset(seed=0)
-    dy = edge_y + OVERHANG - float(env.cloth_positions()[row(N - 1), 1].mean())
+    dy = edge_y + overhang - float(env.cloth_positions()[row(N - 1), 1].mean())
     env.reset(seed=0, options={"cloth_pose": [0.0, dy]})
     tip = []
     for _ in range(DROOP_STEPS):
         env._advance()
         tip.append(float(env.cloth_positions()[row(N - 1), 2].mean()))
-    out = {"name": name, "knobs": knobs, "overhang_cm": 100 * OVERHANG,
+    out = {"name": name, "knobs": knobs, "overhang_cm": 100 * overhang,
            "settled": abs(tip[-1] - tip[-11]) * 1000 < STILL_MM, **drape_metrics(env.cloth_positions(), edge_y)}
     return out | readback(env)
 
@@ -86,12 +86,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", required=True)
     ap.add_argument("--child", nargs=2, metavar=("NAME", "KNOBS"))
+    ap.add_argument("--overhang", type=float, default=OVERHANG, help="m past the table edge")
     ap.add_argument("configs", nargs="*", help="name|GRASP_KNOBS")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     if args.child:
-        result = probe(*args.child)
+        result = probe(*args.child, overhang=args.overhang)
         with open(out / "drape.jsonl", "a") as f:
             f.write(json.dumps(result) + "\n")
         print("DRAPE", json.dumps(result), flush=True)
@@ -100,7 +101,8 @@ def main():
         name, knobs = (cfg.split("|") + [""])[:2]
         with open(out / f"{name}.log", "w") as log:
             try:
-                rc = subprocess.run([sys.executable, "-u", __file__, "--out", args.out, "--child", name, knobs],
+                rc = subprocess.run([sys.executable, "-u", __file__, "--out", args.out, "--overhang", str(args.overhang),
+                                     "--child", name, knobs],
                                     stdout=log, stderr=subprocess.STDOUT, timeout=CHILD_S).returncode
             except subprocess.TimeoutExpired:
                 rc = "timeout"
