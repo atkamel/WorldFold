@@ -3145,3 +3145,38 @@ fold-2 pinch near 25-35° of tilt.
 too. Final gate-valid 5/8 against 1/8, no passes on either (finals 16.5 / 29.6 and 10.2 / 19.4 cm median). Fold 2's
 right arm closes 0.2-6.3 cm from S in xy and 0.8-5.9 cm above it at 6-37° tilt, so it stops above the stack on this
 cloth too.
+
+### Batch I, slip recovery in the expert (2026-11-09, WATcloud 744458-744459, code 6352104)
+
+On s3's settings, window 600, seeds 910000-31, the rule fixed in the plan (strict passes over 32 seeds, held second,
+`no_window` rows as failures). i0 agrees with the pooled control (held 19/32 against 48/96), so the control is now
+s3 + g0 + h0 + i0: held 67/128, strict 28/128.
+
+| config | held | strict pass | no window | re-grasps (seat / slip) | right seat after a seat re-grasp |
+|---|---|---|---|---|---|
+| i0 control | 19/32 | 7/32 [11.0, 38.8] | 0 | 0 / 0 | |
+| i1 `SEAT_MIN=0.015` | 7/32 | 6/32 | 5 | 19 / 0 | −2.9 to +4.2 cm (6 of 11 under 1.5) |
+| i2 `SLIP_REGRASPS=2` | 13/32 | 6/32 | 0 | 0 / 29 | |
+| i2r repeated | 17/32 | 6/32 | 0 | 0 / 22 | |
+| i3 both | 9/32 | 5/32 | 6 | 29 / 23 | −6.8 to +4.4 cm |
+| i3r repeated | 11/32 | 4/32 | 6 | 22 / 18 | −5.2 to +3.0 cm |
+
+- **No candidate.** Re-grasping doesn't recover the fold. A re-grasp on the moved cloth often seats the corner lower
+  than before, some below the site, and a slip re-grasp doesn't turn into a held corner.
+- **The right arm lets go in the carry in 90 of 96 rows** (g0, h0, i0, `drop_at`), so a held carry is rare on this
+  cloth. Where it lets go decides the fold:
+
+| right corner drops at (fraction of the carry) | seeds | lands within 4 cm | strict passes |
+|---|---|---|---|
+| 0.3-0.4 | 39 | 19 | 2 |
+| 0.4-0.5 | 25 | 18 | 6 |
+| 0.5-0.6 | 10 | 4 | 2 |
+| 0.6-0.8 | 9 | 9 | 6 |
+| 0.8-1.0 | 5 | 1 | 1 |
+
+  Corners that hold past about 60% of the carry land on their partners, carried over by the stiff sheet. Seeds that
+  hold that long may also be the better grips.
+- **The slip is sudden, and the layout picks the arm.** In the stiff `quarter2` run's fold 1 (744413 traces), the
+  right arm held on all 8 seeds and the left lost its corner. In 3 seeds the corner rode about 3.5 cm up the pads and
+  then left them within about 3 steps (gap 3.3 → 8.2 cm, the jaw shut at 0.05 rad, tilt about 0-1°), late in the
+  carry. In 5 the left corner was 11-16 cm off and 6 cm below the site at the carry's first step.
