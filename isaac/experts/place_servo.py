@@ -94,6 +94,11 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
     # dropped corner at rest (moved under SETTLED_MM over 5 steps) more than REGRASP_FAR from its goal is re-grasped
     # where it lies, at most that many times; one that fell near its goal stays (18 of the control's 21 passes had the
     # right corner dropped and carried over by the stiff sheet; real losses end 9-21 cm off).
+    # The carry's IK orientation weight (batch J, 2026-11-09). None: _carry_w (0.05). On the friction layout the right
+    # arm starts the carry with its wrist near the joint limit, and at 0.05 its first waypoints miss by over 5 mm in
+    # 73/128 control rows; those corners drop earlier, before the crease (offline: 0.01 brings every s3 seed under 3 mm
+    # at the same tilt and carry length). Carry only: place, hold and release keep _carry_w.
+    CARRY_WEIGHT = None
     SEAT_MIN = None
     SEAT_ARMS = ("right_",)
     SEAT_REGRASPS = 2
@@ -277,12 +282,12 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
             if not self.sv.get("go", True):
                 if not getattr(self, "carry_allowed", True):    # an arm is still re-grasping before its carry: wait
                     action[0:5], _ = self._toward(self._tip(self._steer(path[0]) + self.residual, self.CARRY_FLOOR),
-                                                  jaw, weight=self._carry_w)
+                                                  jaw, weight=self._carry_ik_w)
                     return action
                 self.sv["go"] = True
             target = path[min(k, len(path) - 1)]
             action[0:5], _ = self._toward(self._tip(self._steer(target) + self.residual, self.CARRY_FLOOR), jaw,
-                                          weight=self._carry_w)
+                                          weight=self._carry_ik_w)
             self.sv["k_steps"] += 1
             if np.linalg.norm(corner - target) < self.CORNER_WP_TOL or self.sv["k_steps"] > self.WP_PATIENCE:
                 self.sv["k"], self.sv["k_steps"] = k + 1, 0
@@ -313,6 +318,10 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
                 self.release_site = self._site()
                 self._go("release")
         return action
+
+    @property
+    def _carry_ik_w(self):
+        return self._carry_w if self.CARRY_WEIGHT is None else float(self.CARRY_WEIGHT)
 
     def _unseated(self):
         """SEAT_MIN: the lift just ended with a SEAT_ARMS corner sitting too low in the jaw, and re-grasps are left."""

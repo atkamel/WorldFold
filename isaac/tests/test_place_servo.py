@@ -10,10 +10,11 @@ from mujoco_sim.cloth_params import TABLE_TOP_Z
 
 class _IK:
     def __init__(self):
-        self.tips = []
+        self.tips, self.weights = [], []
 
     def solve(self, prefix, tip, jaw, q, orientation_weight=0.0, iters=None, jaw_weight=None):
         self.tips.append(np.asarray(tip, float).copy())
+        self.weights.append(orientation_weight)
         return np.r_[tip, 0.0, 0.0], 0.0
 
 
@@ -481,3 +482,16 @@ def test_a_corner_that_never_settles_stays_after_slip_decide_steps(monkeypatch):
         e.base.cloth[10] = e.base.cloth[10] + [0.004, 0.0, 0.0]
         e.act()
     assert not calls and not e.slip_pending()
+
+
+def test_carry_weight_sets_the_carry_ik_only():
+    e = _expert()
+    e._start_carry()
+    e.act()
+    assert e._ik.weights[-1] == e._carry_w                      # default
+    e.CARRY_WEIGHT = 0.01
+    e.act()
+    assert e._ik.weights[-1] == 0.01
+    e._go("place")
+    e.act()
+    assert e._ik.weights[-1] == e._carry_w                      # the place keeps the old weight

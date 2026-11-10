@@ -3180,3 +3180,32 @@ s3 + g0 + h0 + i0: held 67/128, strict 28/128.
   right arm held on all 8 seeds and the left lost its corner. In 3 seeds the corner rode about 3.5 cm up the pads and
   then left them within about 3 steps (gap 3.3 → 8.2 cm, the jaw shut at 0.05 rad, tilt about 0-1°), late in the
   carry. In 5 the left corner was 11-16 cm off and 6 cm below the site at the carry's first step.
+
+### Why the right corner drops: the crease crossing and the right arm's reach (2026-11-09, offline, batch J review + lead)
+
+Opus review of a proposed higher-arc batch (rejected), plus an offline IK replay by the lead, on the s3 / g0 / h0 / i0
+rows (scripts in the session scratchpad, `review_J/`).
+
+- **Higher arcs don't fit the cloth or the arm.** The corner is 15 cm from its crease end along an edge at stretch
+  1e8. The planned path at `ARC_FRAC` 1.25 / 1.6 reaches 18.9 / 21.8 cm from it on every arm; at 0.6 the farthest point is
+  the goal itself (15.0 cm median), at 0.9 15.1-15.2 cm. The right arm starts the carry with wrist_flex at a median
+  1.60 rad (limit 1.66). The g-fold cap leaves 1.25 and 1.6 differing only in the first waypoints.
+- **The corner drops where it crosses the crease, at either arc height.** The last waypoint reached at the drop is a
+  median +0.4 cm past the crease end at 0.6 (IQR −1.7 to +3.0) and +1.0 cm at 0.3. In the stiff `quarter2` traces the
+  corner leaves 2.6-4.6 cm past the crease end, 11-12 cm up, the jaw shut and upright. Where it drops decides where it
+  lands: more than 2 cm before the crease 5/20 land within 4 cm, within ±2 cm 29/43, 2-6 cm past 6/12, more than 6 cm
+  past 11/15.
+- **The right arm's reach goes with early drops.** Its IK error on the carry's first five waypoints is over 5 mm in
+  73/128 rows (left 8/128), and correlates with an earlier drop (r −0.47). Under 5 mm the corner drops +3.0 cm past the
+  crease and lands 25/35; 5-10 mm, 1.6 cm before it, 21/36; over 10 mm, 5/19.
+- **A softer carry weight fixes the reach offline.** PinchIK warm-started along the 0.6 path from each s3 row's carry
+  start, plus a servo replay (32 seeds per arm):
+
+| carry orientation weight | right arm worst waypoint error, median (max) | right arms over 5 mm | right max tilt, median | left arms over 5 mm |
+|---|---|---|---|---|
+| 0.05 (now) | 8.6 mm (19.8) | 18/32 | 4.7° | 2/32 |
+| 0.02 | 2.7 mm (8.3) | 3/32 | 4.1° | 0/32 |
+| 0.01 | 0.8 mm (2.8) | 0/32 | 3.9° | 0/32 |
+| 0.005 | 0.2 mm (0.8) | 0/32 | 3.7° | 0/32 |
+
+  Carry length is unchanged (servo replay 61-63 steps median, right arm). New knob `CARRY_WEIGHT` (carry phase only).
