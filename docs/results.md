@@ -3317,3 +3317,20 @@ the window. On round 1's 32 seeds the expert lands 13 (40.6% [25.5, 57.7]) again
 but on different seeds: both succeed on 2, the student alone on 8, the expert alone on 11. Whether a fold lands depends
 mostly on run-to-run physics (the corner slip), so the comparison is between rates, and the student's is within noise of
 the expert's.
+
+### Overnight behaviour cloning, round 2 (2026-11-10, WATcloud 744903 train, 744906 eval)
+
+194 demos (42,072 steps, 18 frozen versions, merged `bc_stiff_m2`), same three students, 30k steps; state diffusion's
+validation loss bottomed at 0.064 near 14k steps and ended at 0.124 (only the final checkpoint is kept). Evaluated on
+held-out seeds 2,000,000-063, 400 steps, against the expert on the same seeds (744905):
+
+| policy | within 2 / 3 cm, full gate | 1.0 / 1.5 | 3 / 5 | gate-valid | paired with the expert: both / policy only / expert only |
+|---|---|---|---|---|---|
+| expert (scripted, privileged state) | 21/64 (32.8%) [22.6, 45.0] | 10/64 | 27/64 | 57/64 | |
+| **state diffusion** | **22/64 (34.4%) [23.9, 46.6]** | 9/64 | 33/64 | 44/64 | 6 / 16 / 15 |
+| **state chunk-MLP** | **22/64 (34.4%) [23.9, 46.6]** | 10/64 | 31/64 | 43/64 (2 unstable) | 10 / 12 / 11 |
+| vision (top + wrists + sensor proprio) | 13/64 (20.3%) [12.3, 31.7] | 4/64 | 18/64 | 53/64 | 4 / 9 / 17 |
+
+- **Two learned policies now fold as well as the scripted expert** at the working bar, and better at 3 / 5 cm.
+- **The camera policy more than doubled** with three times the demos (9% → 20%) and releases cleanly (53/64
+  gate-valid), at about 60% of the expert's rate.
