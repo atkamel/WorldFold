@@ -3310,3 +3310,10 @@ Evaluated closed loop from reset on held-out seeds 2,000,000-031, 400 steps, rep
 diffusion 9/32 (gain 1: 10/32), chunk-MLP 6/32 (4/32), vision 3/32 (3/32); jaws shut at the end 14 / 18 / 4 (11 / 21 /
 6). No effect, so the shut jaws aren't the ±0.3 hysteresis reading a weak command: the students keep holding in the
 states where a fold went wrong, which the success-only demos never show them releasing from.
+
+**Expert reference on the eval seeds** (744905, `bc_collect.py --seeds 2000000:2000064`, same knobs, no cameras): 21/64
+within 2 / 3 cm with the full gate (32.8% [22.6, 45.0]), 5/32 within 1.0 / 1.5 on the first 32, one seed never reached
+the window. On round 1's 32 seeds the expert lands 13 (40.6% [25.5, 57.7]) against the state diffusion student's 10,
+but on different seeds: both succeed on 2, the student alone on 8, the expert alone on 11. Whether a fold lands depends
+mostly on run-to-run physics (the corner slip), so the comparison is between rates, and the student's is within noise of
+the expert's.
