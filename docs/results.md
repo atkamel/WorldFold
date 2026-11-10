@@ -3352,3 +3352,21 @@ settings as round 2:
 The failed episodes taught the state students to release (gate-valid 44 → 55 and 43 → 57 against round 2) but did not
 change how many folds land within the bar; the camera student did worse (13 → 7 of 64). Round 4 goes back to demos
 only, now about 417 of them.
+
+### Overnight behaviour cloning, round 4: all demos (2026-11-10, WATcloud 744983 train, 744984-744985 eval)
+
+All 433 demos (382 train / 51 val episodes, 82,794 samples; the 420 failed episodes dropped), merged `bc_stiff_m4`,
+same three students, 30k steps. Same 64 held-out seeds and settings:
+
+| policy | within 2 / 3 cm, full gate | 1.0 / 1.5 | 3 / 5 | gate-valid | paired with the expert: both / policy only / expert only |
+|---|---|---|---|---|---|
+| expert | 21/64 (32.8%) [22.6, 45.0] | 10/64 (15.6%) | 27/64 | 57/64 | |
+| **state chunk-MLP** | **30/64 (46.9%) [35.2, 58.9]** | **15/64 (23.4%)** | 36/64 | 44/64 | 13 / 17 / 8 |
+| state diffusion | 27/64 (42.2%) [30.9, 54.4] | 9/64 | 32/64 | 48/64 | 14 / 13 / 7 |
+| vision | 11/64 (17.2%) [9.9, 28.2] | 5/64 | 15/64 | 56/64 | 5 / 6 / 16 |
+
+- **The state students at least match the expert.** The chunk-MLP lands 30/64 against the expert's 21/64 at the working
+  bar and 15 against 10 at 1.0 / 1.5; on the seeds where only one of them lands it wins 17 to 8 (one-sided sign test
+  p 0.054), so "better than the expert" is not yet established.
+- **More demos help the state students** (chunk-MLP 4/32 → 22/64 → 30/64 across rounds 1, 2 and 4), not yet the camera
+  student (9% → 20% → 17%).

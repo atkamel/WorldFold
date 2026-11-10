@@ -37,3 +37,10 @@ episodes in the batched precision env instead.
 | quarter (track Q) | a subagent steers fold 2's right-arm pinch to 25-35° tilt (offline, then one Isaac run) |
 
 Reviewed before launch by an opus subagent (subagents.md); its blocker (the jaw side channel) and should-fixes are in.
+
+## Outcome (2026-11-10 10:30)
+
+1,352 expert episodes recorded (433 training demos), four training rounds, every student evaluated on the same 64
+held-out seeds as the expert. Best: the state chunk-MLP on all 433 demos, 30/64 within 2 / 3 cm with the full gate
+(46.9% [35.2, 58.9]) against the expert's 21/64; the camera student 11-13/64. Training on the expert's failed episodes
+taught the release but not the fold. Details and tables in results.md.
