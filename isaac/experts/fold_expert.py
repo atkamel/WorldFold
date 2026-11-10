@@ -122,6 +122,12 @@ class IsaacArmExpert:
     # firm weight on which way the jaw opens (isaac.sim.pinch.PinchIK.solve jaw_weight) for the slide grasp's poses: with
     # only the soft PINCH_ORIENTATION_WEIGHT the jaw came out turned half a round (bench roy_s3b, side video)
     JAW_WEIGHT = 0.1
+    # 1: the pinch's jaw opens across the arm's reach (perpendicular to base -> corner, on the cloth centre's side), not
+    # toward the cloth centre. A far pinch tilts the fingers out along the reach, so a jaw opening back toward the base
+    # dips its open finger below the site: quarter_batch's fold 2 "two" (744412) stalled 1.2-5.6 cm above the stack
+    # with the open finger on the cloth at 25-57 deg tilt. Across the reach the tilt turns about the jaw axis and the
+    # open finger stays up (offline, track Q: 1.1-2.6 cm above the table on every plan within 5 mm, against -3.9 cm)
+    PINCH_JAW_ACROSS = 0
     # GRASP "slide", Roy's grasp (origin/ROY-vla-teacher, teacher/oracle/fold_plans.py pick_place): the open jaws land
     # on the table SLIDE_LEN outside the grasp point, press PRESS below the height at which they rest on it
     # (CONTACT_HEIGHT), and slide into the cloth along the jaw axis, moving finger leading, so the cloth bunches
@@ -203,6 +209,10 @@ class IsaacArmExpert:
         corner = self._corner()
         goal = np.asarray(self.goal(), dtype=float)
         jaw = np.r_[center[:2] - corner[:2], 0.0]
+        if self.PINCH_JAW_ACROSS:
+            reach = corner[:2] - self._ik.root[self.prefix][0][:2]
+            across = np.r_[-reach[1], reach[0], 0.0]
+            jaw = across if across @ jaw >= 0 else -across
         if self.REGRASP_JAW and self.resynced:      # along the arm's reach: base -> corner, pointing back at the base
             base = self._ik.root[self.prefix][0]
             jaw = np.r_[base[:2] - corner[:2], 0.0]

@@ -33,14 +33,20 @@ WEST, EAST = (2, 8), (112, 118)          # the short edges' middles after fold 1
 FOLD2 = {"mid": (WEST, EAST), "crease": ((5,), (115,)), "two": None}
 # fold2 "two" (profile quarter2): both arms, the left one the crease end cloth_5 onto cloth_115, the right one the
 # corner stack (cloth_0 + cloth_10) onto the east stack (cloth_110 + cloth_120); the right arm waits at its start until
-# the left one has reached its pose above the crease end (sequenced approach), and neither lifts before both closed
+# the left one has reached its pose above the crease end (sequenced approach), the left one then waits there, jaw open,
+# until the right one has closed, and neither lifts before both closed. Run 744412 had the left one close first: its
+# closed gripper sits where the right one's jaw opens across its reach (TWO_IK), and its close dragged S 0.7-5.3 cm
+# further out (offline, track Q, the 6 seeds whose fold 1 left S 12-14 cm from cloth_5: S 35-41.5 cm from the right
+# base instead of 39-46, right-left gap 2.9-5.1 cm at the right pinch, every descend within 6.3 mm of its pinch point)
 TWO = {"left_": ((5,), (115,)), "right_": ((0, 10), (110, 120))}
 # fold2 "two": the right arm's pinch IK weights over IsaacArmExpert's 0.1 / 0.1. Run 742655: S lay 32-43 cm from the
 # right base, past the upright pinch's ~32 cm, and with its jaw 28-53 deg off the arm's reach the jaw term taxes the
 # tilt as the orientation term does; the pan sweep picked a flipped wrist and the arm closed 10-29 cm off. Offline on
 # that run's S (scratchpad quarter_q1): 207/208 plans within 5 mm, tilt 0-48 deg, jaw within 18 deg; jaw weight 0.03
-# left the 42-43 cm S up to 1.9 cm short, 0.01 or none let the wrist or the jaw flip
-TWO_IK = {"right_": {"PINCH_ORIENTATION_WEIGHT": 0.005, "JAW_WEIGHT": 0.02}}
+# left the 42-43 cm S up to 1.9 cm short, 0.01 or none let the wrist or the jaw flip. Run 744412 then stopped 1.2-5.6 cm
+# above S: at the reach's 25-57 deg tilt the open jaw, opening back toward the base, dipped 1.2-4.6 cm below the table
+# and rested on the cloth. PINCH_JAW_ACROSS turns it across the reach (offline, track Q: 1.1-2.6 cm clear)
+TWO_IK = {"right_": {"PINCH_ORIENTATION_WEIGHT": 0.005, "JAW_WEIGHT": 0.02, "PINCH_JAW_ACROSS": 1}}
 DRAG = (0.12, 0.04)
 FLAT_ARC = 0.01                          # the drag's lift (IsaacArmExpert.ARC_HEIGHT for its plan) and no corner arc
 CAPS = {"fold1": 650, "drag": 300, "fold2": 400}
@@ -76,7 +82,7 @@ class QuarterBatch(PrecisionBatch):
         e = self.experts[i][p]
         e.corners = tuple(corners)
         e.goal, e.live_goal = goal, live_goal
-        for k in ("ARC_HEIGHT", "ARC_FRAC", "BACKOFF", "PINCH_ORIENTATION_WEIGHT", "JAW_WEIGHT"):
+        for k in ("ARC_HEIGHT", "ARC_FRAC", "BACKOFF", "PINCH_ORIENTATION_WEIGHT", "JAW_WEIGHT", "PINCH_JAW_ACROSS"):
             e.__dict__.pop(k, None)
         if flat:
             e.ARC_HEIGHT, e.ARC_FRAC, e.BACKOFF = FLAT_ARC, 0.0, DRAG_BACKOFF
@@ -103,11 +109,15 @@ class QuarterBatch(PrecisionBatch):
             moving = {p: e for p, e in self.experts[i].items() if p not in self.parked[i]}
             coordinate(moving)
             left, right = self.experts[i]["left_"], self.experts[i]["right_"]
-            wait = self.sequenced[i] and right.phase == 0 and left.phase < left.PHASES.index("descend")
+            wait = set()
+            if self.sequenced[i] and right.phase == 0 and left.phase < left.PHASES.index("descend"):
+                wait.add("right_")
+            if (self.sequenced[i] and left.PHASES[left.phase] == "descend" and left.phase_steps == 0
+                    and right.phase < right.PHASES.index("close")):
+                wait.add("left_")                                       # above the crease end, descend not begun
             waiting.append(wait)
-            hold = np.r_[np.zeros(5), 1.0].astype(np.float32)          # the right arm waits where it is, jaw open
-            acts = [hold if (p == "right_" and wait) else moving[p].act() if p in moving else self._park(i, p)
-                    for p in ARMS]
+            hold = np.r_[np.zeros(5), 1.0].astype(np.float32)          # a waiting arm stays where it is, jaw open
+            acts = [hold if p in wait else moving[p].act() if p in moving else self._park(i, p) for p in ARMS]
             sub.step_submit(self.tasks[i]._expand(np.concatenate(acts)))
         self.batch.advance()
         for sub in self.subs:
@@ -128,8 +138,7 @@ class QuarterBatch(PrecisionBatch):
             for p in ARMS:
                 e, q = self.experts[i][p], sub.joint_positions(p)
                 R = e._ik.site_pose(p, q[:5])[1]
-                phase = ("parked" if p in self.parked[i] else "wait" if p == "right_" and waiting[i]
-                         else e.PHASES[e.phase])
+                phase = "parked" if p in self.parked[i] else "wait" if p in waiting[i] else e.PHASES[e.phase]
                 for k, v in zip(TRACE_KEYS, (phase, "+".join(map(str, e.corners)), q[5], sub._gripper_closed[p],
                                              np.degrees(np.arccos(np.clip(-R[2, 2], -1.0, 1.0))),
                                              sub.gripper_position(p), e._corner(), e.dropped,

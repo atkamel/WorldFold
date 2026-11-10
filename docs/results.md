@@ -3258,3 +3258,16 @@ each count against the Poisson-binomial tail implied by the same seeds' rates ov
 point. The modelled right-arm IK miss was not the cause, as the review suspected (it tracks the corner's distance from
 the base). The higher arc is worse. This closes the Isaac slip work: grip, load, bite, arc, re-grasp and carry weight
 all failed to move the mid-carry slip, which the LeHome 2026 winner's paper names as a simulator artifact.
+
+### quarter2 fold 2: the open jaw, not the tilt (2026-11-10, offline, opus subagent, lead-read)
+
+From 744412's / 744413's traces, replayed offline with mesh hulls and a descend that stops at first contact (it
+reproduces all 16 stalls). The right arm's tilt is set by the reach (27-30° at about 39 cm from its base, 40-52° at
+42-43 cm; nothing reaches past 44 cm), so a tilt target can't help. The open jaw, opening back toward the base, dips its
+open finger 1.2-4.6 cm below the table top at 25-57° tilt, and at 7-16° the right gripper stalls against the left arm's
+closed gripper. New: `PINCH_JAW_ACROSS` (jaw across the reach, on the cloth side; default off, so the half fold is
+unchanged), on for fold 2's right arm in `TWO_IK`, and the left arm waits jaw-open above cloth_5 until the right one has
+closed. Offline: 6 of 16 traced seeds get down within 0.2-0.7 cm of S at 15-41° tilt (pinch error ≤ 0.1 mm, open finger
+1.7-2.3 cm clear, right-left gap 2.9-5.1 cm); the other 10 are blocked because fold 1 left S within 5-8 cm of cloth_5
+(gap 0.0-0.7 cm). Over all 860 traced approach S positions 643 plans land within 5 mm (493/622 as run). Untested in
+Isaac: whether an across-the-edge pinch of both layers holds at 15-41°, and whether the left arm's close pulls S out.
