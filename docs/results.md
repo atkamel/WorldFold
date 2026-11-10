@@ -3215,3 +3215,26 @@ replay (20-iteration steps, then 5 place steps at 0.05) the left arm's max tilt 
 0.05 / 0.01 / 0.005 and the right's 4.6° / 3.8° / 7.5°. At 0.01 jaw yaw drifts at most 0.8°, and the carry-to-place
 switch moves the site at most 4.6 mm and the tilt at most 0.5° per step. Below 0.01 the solver barely holds the
 orientation, so batch J uses 0.01 and 0.02.
+
+### Corrections from the restructure's code review (2026-11-09, opus review, lead re-checked)
+
+- **The pooled control is one set of 32 seeds run four times** (s3, g0, h0, i0), and close_in is identical across the
+  repeats. Per seed, 20 of 32 never pass at the bar, 12 pass at least once, 1 passes in all four. So "28/128
+  [15.6, 29.8]" and every Fisher test against n 96 or 128 overstate the certainty (the repeats aren't independent; the
+  strict-pass ICC is about 0.43, effective n about 56). Read the stiff cloth as passing on 22% of runs, with 12 of the
+  32 seeds ever passing. Candidate tests should be paired per seed with n = 32. No batch G-I verdict changes: no config
+  beat the control in raw counts either.
+- **Batch I's drop-timing table left out a row and overstated a trend.** Drops below 0.3 of the carry: 2, none landing
+  within 4 cm. Drops at 0.8-1.0 land 1 of 5, so "past about 60% of the carry lands" holds for 0.6-0.8 only (9/9).
+- **"73/128 right-arm misses over 5 mm" is modelled, not measured.** It comes from an offline PinchIK replay with a
+  nominal flat corner, the quarter2 corner-site offset and a SEED_Q pinch, not from the runs' own IK error. Its link to
+  early drops (r −0.47) is about the same as the corner's distance from the arm base (−0.45), so it may stand for reach
+  distance. Batch J (`CARRY_WEIGHT`) rests on it.
+- **The cantilever probe measured nothing.** Every flap hangs straight (chord 0.92 / 1.85 / 2.87 / 3.90 / 6.01 cm on
+  1-6 cm flaps), so "on face" means a straight flap hinged at the edge. "Bending length under about 0.5 cm" is the
+  probe's geometric floor, not a reading. The probe can't tell any setting apart.
+- **Batch I tested one re-grasp path only:** IsaacArmExpert's open-loop approach, descend and lift, with no check that
+  the corner rose with the jaw (the path F3b found weak on moved corners). In 7 i3 rows the right corner sat 4.6-6.8 cm
+  below the site after the re-grasp. So the verdict is "this re-grasp doesn't help", not "re-grasping can't".
+- **Two bugs in the recovery code** (6352104): `SLIP_DECIDE` counts hold steps from the drop rather than steps with the
+  partner holding, and a re-grasp doesn't clear `dropped` / `drop_at`. Effect on batch I: one i2r row.

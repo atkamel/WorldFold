@@ -19,12 +19,12 @@ released, still), user 2026-10-22.
   (2.07 / 3.65 cm), and its control repeat 0/32. Nine placement / floor / shift fixes since (batches B, round 2) moved
   the mean but never the pass rate. Earlier one-offs: seed 930005 scripted + touch-up, seed 980008 RL p8 (videos in
   `docs/reports/media/`); RL p8 showed no average gain and predates the audit.
-- **Half fold, stiff cloth** (`bend_stiffness` 5e5, user idea 2026-11-08): **28/128 strict passes [15.6, 29.8]** against
-  1/64 on the current cloth, and 0.74 / 1.32 cm median when both corners are held. The limit is the grip: the right
+- **Half fold, stiff cloth** (`bend_stiffness` 5e5, user idea 2026-11-08): **strict passes on 22% of runs** (28 of 128
+  runs of the same 32 seeds; 12 of 32 seeds ever pass, 20 never) against 1/64 on the current cloth, and 0.74 / 1.32 cm median when both corners are held. The limit is the grip: the right
   corner leaves the shut jaw mid-carry in 90/96 rows, suddenly, as it crosses the crease. Grip, load, bite, arc and
   scripted re-grasp knobs failed (batches G, H, I); the right arm's IK miss at the carry's start goes with early drops,
-  and batch J (`CARRY_WEIGHT`) is running. Open: the cantilever probe shows no measurable bending length at any spring
-  setting, so it is unknown whether 5e5 is faithful to a real cloth.
+  and batch J (`CARRY_WEIGHT`) is running. Open: the cantilever probe can't resolve any bending length (every flap hangs
+  straight), so it is unknown whether 5e5 is faithful to a real cloth.
 - **Quarter fold** has not passed. On `quarter2` the arm-reach fix (`TWO_IK`) puts fold 2's right arm over the stack
   in xy (0.3-2.5 cm against 10-29) but it closes 2-6 cm above it; on the stiff cloth fold 1 also loses a corner.
 - **Gentle release** (user, 2026-10-22) is the place-servo default. The jaw opens 0.02 rad per step to 0.3 rad with
