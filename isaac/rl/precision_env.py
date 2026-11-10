@@ -210,7 +210,8 @@ class PrecisionBatch:
                                  for p, m in self.moves.items()})
         self.state = [None] * n
         self.pre = [None] * n        # per copy, the scripted phase's diagnostics (scripted_to_window), kept in its snapshot
-        self.frames, self.cut = None, [None] * n     # demo video: per copy, the "top" frame after every step
+        self.frames, self.cut = None, [None] * n     # demo video: per copy, the video_cam frame after every step
+        self.video_cam = "top"
         # demo recording (isaac/tools/bc_collect.py): recorder(i, obs, action, images) gets each recording copy's 139-D
         # observation and rig frames before a step and the 12-D action it then executes; a copy records from its reset
         # to its snapshot and from reset_window to the end of its window episode
@@ -258,7 +259,7 @@ class PrecisionBatch:
             sub.step_collect()
         if self.frames is not None:
             for i, sub in enumerate(self.subs):
-                self.frames[i].append(sub.render_rig()["top"].transpose(1, 2, 0))
+                self.frames[i].append(sub.render_rig()[self.video_cam].transpose(1, 2, 0))
 
     def drive(self, actions):
         """One control step of every copy with the given 12-D actions (a student policy) instead of the experts'."""
@@ -269,7 +270,7 @@ class PrecisionBatch:
             sub.step_collect()
         if self.frames is not None:
             for i, sub in enumerate(self.subs):
-                self.frames[i].append(sub.render_rig()["top"].transpose(1, 2, 0))
+                self.frames[i].append(sub.render_rig()[self.video_cam].transpose(1, 2, 0))
 
     def _held(self, i):
         sub = self.subs[i]

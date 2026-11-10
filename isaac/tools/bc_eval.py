@@ -4,7 +4,8 @@ alignment score, and a success when the fold is gate-valid within MEAN_BAR / EDG
 
 Each copy resets from its seed, then the policy alone acts for --steps control steps: it predicts a chunk from the
 last obs_horizon observations (and the rig frames, for a camera policy) and executes the first --replan actions of it.
-Rows go to <out>/eval.jsonl, a top-camera video per seed with --video.
+--ckpt takes several checkpoints (comma-separated), evaluated one after another in one scene that renders every camera
+any of them needs. Rows go to <out>/<run name>/eval.jsonl, a top-camera video per seed with --video.
 
   isaac/watcloud.sbatch isaac/tools/bc_eval.py --ckpt outputs/isaac/bc/runs/state_s0/final.pt \\
       --seeds 2000000:2000064 --out outputs/isaac/bc/eval/state_s0
@@ -46,7 +47,7 @@ def history(hist, obs, horizon):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--ckpt", required=True)
+    ap.add_argument("--ckpt", required=True, help="one or more checkpoints, comma-separated")
     ap.add_argument("--seeds", required=True, help="a:b (a multiple of --copies long)")
     ap.add_argument("--copies", type=int, default=8)
     ap.add_argument("--steps", type=int, default=900, help="control steps per episode")
@@ -60,15 +61,24 @@ def main():
     from imitation.policies.common import load_policy
     from imitation.rollout import padded_predict
     from isaac.rl.precision_env import ARMS, FOLDS, PrecisionBatch
-    policy = load_policy(args.ckpt, device="cpu")          # Kit starts with the scene below; CUDA after it
-    cams = {name: size for name, size in getattr(policy, "cameras", [])} if policy.needs_images else {}
+    ckpts = args.ckpt.split(",")
+    policies = [load_policy(c, device="cpu") for c in ckpts]     # Kit starts with the scene below; CUDA after it
+    cams = {name: size for p in policies if p.needs_images for name, size in p.cameras}
+    video_cam = next(c for c in ("top", "main", "side_left") if c not in cams)    # one no policy reads
     if args.video:
-        cams["top"] = 400
+        cams[video_cam] = 400
     pb = PrecisionBatch(args.copies, cameras=cams or None)
-    policy.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    pb.video_cam = video_cam
     knobs = {k: os.environ.get(k, "") for k in ("WORLDFOLD_GRASP_KNOBS", "WORLDFOLD_PLACE_PARAMS")}
+    for ckpt, policy in zip(ckpts, policies):
+        policy.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        run_policy(pb, policy, ckpt, Path(args.out) / Path(ckpt).parent.name, args, knobs, score, padded_predict, ARMS,
+                   FOLDS)
+    os._exit(0)                                   # Kit can hang on shutdown
+
+
+def run_policy(pb, policy, ckpt, out, args, knobs, score, padded_predict, ARMS, FOLDS):
+    out.mkdir(parents=True, exist_ok=True)
     a, b = (int(v) for v in args.seeds.split(":"))
     for start in range(a, b, pb.n):
         seeds = list(range(start, start + pb.n))
@@ -93,7 +103,7 @@ def main():
                     trace[i].append([t + 1, round(float(s["mean"]), 4), round(float(s["edge_max"]), 4)])
         for i, seed in enumerate(seeds):
             sub = pb.subs[i]
-            row = {"seed": seed, "ckpt": args.ckpt, "steps": args.steps, "replan": args.replan, **knobs,
+            row = {"seed": seed, "ckpt": ckpt, "steps": args.steps, "replan": args.replan, **knobs,
                    "unstable": not alive[i], "trace": trace[i]}
             if alive[i]:
                 row |= score_final(sub.cloth_positions(), prev[i], [sub.gripper_position(p) for p in ARMS],
@@ -108,7 +118,6 @@ def main():
                 import imageio
                 clip = pb.frames[i]
                 imageio.mimwrite(str(out / f"seed{seed}.mp4"), clip + clip[-1:] * 20, fps=20, macro_block_size=1)
-    os._exit(0)                                   # Kit can hang on shutdown
 
 
 if __name__ == "__main__":

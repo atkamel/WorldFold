@@ -122,7 +122,7 @@ def _batch():
     pb.experts = [{"left_": _Arm(0.1), "right_": _Arm(0.2)} for _ in range(2)]
     pb.batch = type("B", (), {"advance": lambda self: None})()
     pb.frames, pb.recorder, pb.record_images, pb.recording = None, None, False, [False, False]
-    pb.snap_frames, pb.resumed = [None, None], [False, False]
+    pb.snap_frames, pb.resumed, pb.video_cam = [None, None], [False, False], "top"
     return pb
 
 
