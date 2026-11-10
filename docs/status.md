@@ -46,9 +46,10 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. **Restructure (user, 2026-11-09): progress has stalled.** An ideation sweep, a critical code review and
-   research run first; no new cluster batch launches without the user's order. Batch J (744869-744870,
-   `CARRY_WEIGHT`, launched before the order) is finishing.
+1. **Restructure (user, 2026-11-09): progress has stalled.** Code review, process critique, research and ideation
+   are done (subagents.md, corrections in results.md); the proposed restructure is real-robot first (real data with
+   LeRobot, a real metric, replay baselines, ACT then DAgger, sim time-boxed). Waiting on the user's order; nothing new
+   launches before it. Batch J read out with no effect, which closes the Isaac slip work.
 2. `quarter2` fold 2: `TWO_IK` ran (744412 / 744413) and fixed the reach in xy. The right arm now stops 2-6 cm
    above the stack (results.md); the pinch's tilt needs holding near 25-35°.
 3. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
@@ -120,6 +121,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-09 · **Restructure review + batch J:** four subagent reports (code review, process critique, research, ideation), corrections to earlier claims (pooled control is one seed set, modelled reach figure, cantilever floor), batch J `CARRY_WEIGHT` no effect; awaiting the user's order; no code change · (this commit)
 - 2026-11-09 · **Batch H read, slip recovery built, batch I launched:** no grip / load / bite knob holds the corner (pooled control 48/96 held, 21/96 strict); low seats in the pads predict the slip; `quarter2` reach fix lands the right arm over the stack in xy but 2-6 cm high; slip recovery in the place expert (`SEAT_MIN` right-arm seat check, `SLIP_REGRASPS` once the other arm holds, carry gate, decision timeout), off by default, reviewed twice; 744458-744459 running; fast 291 passed + 5 skipped (#15 deselected), isaac 114 passed · (this commit)
 - 2026-11-09 · **Batch G, lean B, cantilever read:** stiff cloth repeats (16/64 vs 1/64); no grip knob helps, drops are real mid-carry slips (`drop_at`, videos); slower carry loses almost every right corner; lean B closed without a winner (corners overshoot 5 cm); cantilever: every bend setting hinges at the edge; no code change · (this commit)
 - 2026-11-09 · **Batch S read, batch G reviewed:** stiff bend springs 10/32 at the bar vs 0/32 (results.md); the 8 cm drape withdrawn (it measured the table's side face); drops log their phase and distances (`drop_at`); `drape_probe.py` rewritten as a cantilever test (Peirce bending length); batch G revised after an opus review (pooled control, Fisher rule, HOLD_DIST, outward inset, lean B); fast 278 passed + 5 skipped (#15 deselected), isaac 101 passed · (this commit)

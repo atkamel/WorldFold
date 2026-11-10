@@ -3238,3 +3238,23 @@ orientation, so batch J uses 0.01 and 0.02.
   below the site after the re-grasp. So the verdict is "this re-grasp doesn't help", not "re-grasping can't".
 - **Two bugs in the recovery code** (6352104): `SLIP_DECIDE` counts hold steps from the drop rather than steps with the
   partner holding, and a re-grasp doesn't clear `dropped` / `drop_at`. Effect on batch I: one i2r row.
+
+### Batch J, the carry's IK weight (2026-11-09, WATcloud 744869-744870, code f09e30c)
+
+On s3's settings, seeds 910000-31, window 450. Scored by the fixed rule and, after the review's correction, per seed:
+each count against the Poisson-binomial tail implied by the same seeds' rates over the five control repeats
+(s3, g0, h0, i0, j0; expected 7.0 passes and 16.2 held).
+
+| config | strict pass | held | per-seed p, passes | per-seed p, held | right drops at (median fraction of the carry) |
+|---|---|---|---|---|---|
+| j0 control | 7/32 | 14/32 | 0.63 | 0.91 | 0.46 |
+| j1 `CARRY_WEIGHT=0.01` | 6/32 | 14/32 | 0.84 | 0.91 | 0.46 |
+| j1r repeated | 8/32 | 13/32 | 0.38 | 0.97 | 0.46 |
+| j2 `CARRY_WEIGHT=0.02` | 8/32 | 16/32 | 0.38 | 0.63 | 0.46 |
+| j2r repeated | 7/32 | 15/32 | 0.63 | 0.80 | 0.46 |
+| j3 0.01 + `ARC_FRAC=0.9` | 0/32 | 9/32 | 1.00 | 1.00 | 0.42 |
+
+**No effect.** The softer carry weight holds and passes like the control, and the right corner still drops at the same
+point. The modelled right-arm IK miss was not the cause, as the review suspected (it tracks the corner's distance from
+the base). The higher arc is worse. This closes the Isaac slip work: grip, load, bite, arc, re-grasp and carry weight
+all failed to move the mid-carry slip, which the LeHome 2026 winner's paper names as a simulator artifact.
