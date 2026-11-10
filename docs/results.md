@@ -3279,3 +3279,29 @@ quarter fold still fails 8/8 (final gate-valid 5/8, no pass). Fold 1 on this clo
 half fold's mid-carry slip, and the left arm's crease-end close is then 3-7 cm off cloth_5 in 5 seeds. In fold 2 both
 arms drop their corners in 6/8. The one clean fold 1 (seed 7, 0.9 / 0.9 cm) gives the best quarter fold so far,
 5.9 / 8.6 cm.
+
+### Overnight behaviour cloning, round 1 (2026-11-10, WATcloud 744892-744893 collect, 744901 train, 744902 eval)
+
+Plan: docs/superpowers/plans/2026-11-10-overnight-bc.md. Working = a settled, gate-valid fold within 2 cm mean / 3 cm
+edge (user, 2026-11-09), stiff cloth (bend 5e5), `jaw_open_rate` 0.02 in collection and eval.
+
+**Expert demos** (place-servo expert, `bc_collect.py`, overhead `top` 128 px + wrist cameras 64 px, seeds 1,001,000+).
+By 02:46, 592 episodes, 200 demos (34%; demo = within 2 / 3 cm, gate minus stillness). Episodes run 190-277 steps.
+One 8-episode chunk takes about 7.5 min per collector with two collectors per 3090.
+
+**Students** trained on the first 65 demos (14,146 steps, merged `bc_stiff_m1`), 30k steps each (`bc_train.py`): state
+diffusion (val 0.17, train 0.0007), state chunk-MLP (val 0.092), vision on top + wrists + sensor proprio (val 0.085).
+Evaluated closed loop from reset on held-out seeds 2,000,000-031, 400 steps, replan 4 (`bc_eval.py`):
+
+| student | within 2 / 3 cm, full gate | 1.0 / 1.5 | 3 / 5 | gate-valid | jaw shut at the end | site < 3 cm above |
+|---|---|---|---|---|---|---|
+| **state diffusion** | **10/32 (31.2%) [18.0, 48.6]** | 2/32 | 11/32 | 19/32 | 11 | 11 |
+| state chunk-MLP | 4/32 (12.5%) [5.0, 28.1] | 1/32 | 4/32 | 10/32 | 21 | 15 |
+| vision | 3/32 (9.4%) [3.2, 24.2] | 0/32 | 4/32 | 25/32 | 6 | 6 |
+
+- **The first working learned policy.** The state diffusion student folds about a third of held-out seeds to the working
+  bar, near the expert's demo rate, and every fold of it inside the bar also passes the gate.
+- **The failures are the release.** Jaws left shut or the site left under 3 cm above the cloth end most of the other
+  episodes. The binary gripper reads its command with a ±0.3 hysteresis, so a weak "open" from the student holds the
+  jaw shut; `--grip-gain 3` is being evaluated on the same students.
+- The vision student releases best (25/32 gate-valid) but folds worst on this little data.
