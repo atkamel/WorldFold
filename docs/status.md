@@ -67,12 +67,12 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 1. **Read batch K** (WATcloud 745130-745132, running; results.md "Batch K"): `held_summary.py` over the three output folders, rule as written there.
    A config with held >= 80% goes to a second set of 128 fresh seeds, then to the collection release
    (`jaw_open_rate` + `open_only`) before any demo is recorded from it.
-2. **Hardware replay (needs the user and the arms):** add the second follower to `arms.json` and record its
+2. **Hardware replay, deferred (user, 2026-11-10: no hardware access for now):** add the second follower to `arms.json` and record its
    `limits.json`; `replay.py --check <arm>` to confirm each joint's sign; then `replay.py
    outputs/isaac/replay/s1000000.json --left <arm> --right <arm>` at half speed with the tip positions it prints
    checked against a ruler. Corrections go into `arms/<name>/urdf.json`.
 3. **Camera policy, after 1 gives an expert that holds:** the overhead camera set to the measured iPhone pose (needed
-   from the user: height, offset, tilt, field of view), cloth pose / appearance / camera randomisation in collection,
+   from the user once the rig is available: height, offset, tilt, field of view), cloth pose / appearance / camera randomisation in collection,
    DAgger with the expert labelling, one pre-chosen checkpoint on at least 200 fresh seeds, unpaired.
 4. Not started, from the review: the 2026-11-09 delete list (failed knobs still in `place_servo.py`), the two known
    slip-recovery bugs, the quarter fold's across pinch (it never lifts the stack).
