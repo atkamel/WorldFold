@@ -3209,3 +3209,9 @@ rows (scripts in the session scratchpad, `review_J/`).
 | 0.005 | 0.2 mm (0.8) | 0/32 | 3.7° | 0/32 |
 
   Carry length is unchanged (servo replay 61-63 steps median, right arm). New knob `CARRY_WEIGHT` (carry phase only).
+
+Note on the table above: its tilt column is from the converged 150-iteration solve. In the batch J re-check's servo
+replay (20-iteration steps, then 5 place steps at 0.05) the left arm's max tilt is 0.0° / 0.8° / 5.6° (median) at
+0.05 / 0.01 / 0.005 and the right's 4.6° / 3.8° / 7.5°. At 0.01 jaw yaw drifts at most 0.8°, and the carry-to-place
+switch moves the site at most 4.6 mm and the tilt at most 0.5° per step. Below 0.01 the solver barely holds the
+orientation, so batch J uses 0.01 and 0.02.

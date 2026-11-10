@@ -155,6 +155,21 @@ i0 if it agrees at two-sided p > 0.2), then fresh seeds; p < 0.05 earns a retest
 or 25/32 held. Seat check alone can't clear it even if it works (right-high seeds pass 20/54 in the control, about
 12/32), so i1 is read for its mechanism: how often a re-grasp lands a higher seat (`recover.seats`).
 
+## Batch J. The right arm's reach in the carry (2026-11-09, higher arcs rejected in review, redesigned, re-checked)
+
+The right corner drops as it crosses the crease, and the right arm's IK error on the carry's first waypoints goes with
+earlier drops (results.md). `CARRY_WEIGHT` (carry phase only) at 0.01 puts every s3 seed's right-arm path under 3 mm
+offline. Higher arcs were rejected: 1.25 and 1.6 need more than the 15 cm of edge to the crease and stall the right
+wrist at its limit.
+
+Configs on s3's settings, seeds 910000-31, window 450: j0 control, j1 / j1r `CARRY_WEIGHT=0.01`, j2 / j2r 0.02, j3 0.01
+with `ARC_FRAC=0.9`.
+
+Decision rule, fixed before the results: strict passes over 32 seeds first, held second. Each repeat pair pools to n 64
+if its two runs agree at two-sided Fisher p > 0.05; j0 pools with the control (n 128) on the same test. Candidate at
+one-sided p < 0.01 against the pooled control, then fresh seeds. j3's arc effect is judged against pooled j1 + j1r as
+well as the control. Report bottom_shift, crease-end movement and drops per arm.
+
 ## Batch B. Floor plus placement offset (3 jobs, 9 configs, about 1.5 h). Runs before batch A
 
 Changed after review (2026-11-07 23:20). Round 2's 17 mm floor (r1) leaves an almost rigid translation of the top layer
