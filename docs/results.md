@@ -3334,3 +3334,21 @@ held-out seeds 2,000,000-063, 400 steps, against the expert on the same seeds (7
 - **Two learned policies now fold as well as the scripted expert** at the working bar, and better at 3 / 5 cm.
 - **The camera policy more than doubled** with three times the demos (9% → 20%) and releases cleanly (53/64
   gate-valid), at about 60% of the expert's rate.
+
+### Overnight behaviour cloning, round 3: failures included (2026-11-10, WATcloud 744917 / 744974 collect, 744978 train, 744979 eval)
+
+`bc_collect.py --keep-failures` on seeds 1,003,000-639 (640 episodes, 217 demos, 34%), merged with the earlier demos
+into `bc_stiff_m3` (440 episodes, 96,084 steps when trained; later parts froze after), trained with `--allow-failures`
+(the expert's failed episodes are mostly physics slips; its actions in them are the same policy). Same seeds and
+settings as round 2:
+
+| policy | within 2 / 3 cm, full gate | 1.0 / 1.5 | 3 / 5 | gate-valid | paired with the expert: both / policy only / expert only |
+|---|---|---|---|---|---|
+| expert | 21/64 (32.8%) [22.6, 45.0] | 10/64 | 27/64 | 57/64 | |
+| state diffusion | 21/64 (32.8%) [22.6, 45.0] | 9/64 | 31/64 | 55/64 | 10 / 11 / 11 |
+| state chunk-MLP | 20/64 (31.2%) [21.2, 43.4] | 8/64 | 28/64 | 57/64 | 6 / 14 / 15 |
+| vision | 7/64 (10.9%) [5.4, 20.9] | 1/64 | 7/64 | 51/64 | 3 / 4 / 18 |
+
+The failed episodes taught the state students to release (gate-valid 44 → 55 and 43 → 57 against round 2) but did not
+change how many folds land within the bar; the camera student did worse (13 → 7 of 64). Round 4 goes back to demos
+only, now about 417 of them.
