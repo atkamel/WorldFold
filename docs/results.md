@@ -3271,3 +3271,11 @@ closed. Offline: 6 of 16 traced seeds get down within 0.2-0.7 cm of S at 15-41°
 1.7-2.3 cm clear, right-left gap 2.9-5.1 cm); the other 10 are blocked because fold 1 left S within 5-8 cm of cloth_5
 (gap 0.0-0.7 cm). Over all 860 traced approach S positions 643 plans land within 5 mm (493/622 as run). Untested in
 Isaac: whether an across-the-edge pinch of both layers holds at 15-41°, and whether the left arm's close pulls S out.
+
+**In Isaac** (WATcloud 744900, code f46c3e6, bend 5e5, `quarter_batch.py --copies 8 --seeds 0:8 --profile quarter2
+--fold2 two --drag none --video`, out `outputs/isaac/quarter/q2_across_stiff/`). The fix gets the right arm down: at its
+close it is 0.2-0.9 cm above S in 7/8 seeds (744413, same cloth: 0.8-5.9) and 0.1-2.2 cm from it in xy (one 3.5). The
+quarter fold still fails 8/8 (final gate-valid 5/8, no pass). Fold 1 on this cloth lands a median 6.6 / 25.3 cm, the
+half fold's mid-carry slip, and the left arm's crease-end close is then 3-7 cm off cloth_5 in 5 seeds. In fold 2 both
+arms drop their corners in 6/8. The one clean fold 1 (seed 7, 0.9 / 0.9 cm) gives the best quarter fold so far,
+5.9 / 8.6 cm.
