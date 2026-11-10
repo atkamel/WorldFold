@@ -193,3 +193,10 @@ def test_train_driver_parses_runs_and_finds_only_frozen_versions(tmp_path):
     w.freeze()
     DatasetWriter(tmp_path, "t0_p0_r1").add(build_episode(_steps(3), GOOD, np.zeros(139), 2, {}), 139, 12)  # unfrozen
     assert frozen(tmp_path, "t0_p*_r*") == ["t0_p0_r0"]
+
+
+def test_grip_gain_scales_only_the_gripper_commands():
+    from isaac.tools.bc_eval import grip_gain
+    a = np.full(12, 0.2, np.float32)
+    g = grip_gain(a, 3.0)
+    assert np.allclose(g[[5, 11]], 0.6) and np.allclose(np.delete(g, [5, 11]), 0.2) and np.allclose(a, 0.2)

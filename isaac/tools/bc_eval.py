@@ -36,6 +36,16 @@ def score_final(cloth, prev_cloth, sites, jaws):
             "gate_valid": bool(g["valid"]), "success": ok, "passed_valid": bool(s["passed"] and g["valid"])}
 
 
+GRIPPER_DIMS = (5, 11)          # the 12-D action's left and right gripper commands
+
+
+def grip_gain(action, gain):
+    """The action with its gripper commands scaled by gain (the env clips to [-1, 1]); the demos' are exactly +-1."""
+    a = np.array(action, dtype=np.float32)
+    a[list(GRIPPER_DIMS)] *= gain
+    return a
+
+
 def history(hist, obs, horizon):
     """Append obs to the per-copy history (filled with the first obs at the start); -> [horizon, D]."""
     if not hist:
@@ -54,6 +64,8 @@ def main():
     ap.add_argument("--replan", type=int, default=4)
     ap.add_argument("--out", required=True)
     ap.add_argument("--video", action="store_true")
+    ap.add_argument("--grip-gain", type=float, default=1.0,
+                    help="scale the two gripper outputs before the env's binary hysteresis (+-0.3) reads them")
     args = ap.parse_args()
     sys.argv = sys.argv[:1]
     import torch
@@ -72,8 +84,8 @@ def main():
     knobs = {k: os.environ.get(k, "") for k in ("WORLDFOLD_GRASP_KNOBS", "WORLDFOLD_PLACE_PARAMS")}
     for ckpt, policy in zip(ckpts, policies):
         policy.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-        run_policy(pb, policy, ckpt, Path(args.out) / Path(ckpt).parent.name, args, knobs, score, padded_predict, ARMS,
-                   FOLDS)
+        name = Path(ckpt).parent.name + (f"_g{args.grip_gain:g}" if args.grip_gain != 1.0 else "")
+        run_policy(pb, policy, ckpt, Path(args.out) / name, args, knobs, score, padded_predict, ARMS, FOLDS)
     os._exit(0)                                   # Kit can hang on shutdown
 
 
@@ -93,7 +105,8 @@ def run_policy(pb, policy, ckpt, out, args, knobs, score, padded_predict, ARMS, 
                 images = [pb.subs[i].render_rig() for i in range(pb.n)] if policy.needs_images else None
                 chunk = padded_predict(policy, np.nan_to_num(obs), images)
             prev = [pb.subs[i].cloth_positions().copy() for i in range(pb.n)]
-            pb.drive([chunk[i, t % args.replan] if alive[i] else np.zeros(12) for i in range(pb.n)])
+            pb.drive([grip_gain(chunk[i, t % args.replan], args.grip_gain) if alive[i] else np.zeros(12)
+                      for i in range(pb.n)])
             for i in range(pb.n):
                 if alive[i] and pb.subs[i]._failed():      # a blown-up cloth: park it before it drifts into others
                     pb.subs[i].park()
@@ -103,7 +116,8 @@ def run_policy(pb, policy, ckpt, out, args, knobs, score, padded_predict, ARMS, 
                     trace[i].append([t + 1, round(float(s["mean"]), 4), round(float(s["edge_max"]), 4)])
         for i, seed in enumerate(seeds):
             sub = pb.subs[i]
-            row = {"seed": seed, "ckpt": ckpt, "steps": args.steps, "replan": args.replan, **knobs,
+            row = {"seed": seed, "ckpt": ckpt, "steps": args.steps, "replan": args.replan, "grip_gain": args.grip_gain,
+                   **knobs,
                    "unstable": not alive[i], "trace": trace[i]}
             if alive[i]:
                 row |= score_final(sub.cloth_positions(), prev[i], [sub.gripper_position(p) for p in ARMS],
