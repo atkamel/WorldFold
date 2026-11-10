@@ -83,7 +83,8 @@ def run_parallel(args):
     for j, (lo, hi) in enumerate(split_seeds(a, b, args.parallel, args.copies)):
         cmd = [sys.executable, "-u", __file__, "--seeds", f"{lo}:{hi}", "--copies", str(args.copies),
                "--version", f"{args.version}_p{j}", "--root", args.root, "--cameras", args.cameras,
-               "--freeze-every", str(args.freeze_every)] + (["--resume"] if args.resume else [])
+               "--freeze-every", str(args.freeze_every)] + (["--resume"] if args.resume else []) \
+            + (["--keep-failures"] if args.keep_failures else [])
         log = open(Path(args.root) / f"{args.version}_p{j}.log", "a")
         procs.append(subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT))
         print("BC child", j, lo, hi, flush=True)
@@ -109,6 +110,8 @@ def main():
     ap.add_argument("--child-hours", type=float, default=7.0, help="--parallel: kill children still running after")
     ap.add_argument("--freeze-every", type=int, default=4, help="chunks per frozen version (<version>_r0, _r1, ...)")
     ap.add_argument("--resume", action="store_true", help="skip seeds that already have a row")
+    ap.add_argument("--keep-failures", action="store_true",
+                    help="store every episode that reached its window, demo or not (meta success marks the demos)")
     args = ap.parse_args()
     if args.parallel > 1:
         run_parallel(args)
@@ -165,7 +168,7 @@ def main():
                 if final is not None:
                     row |= {k: final.get(k) for k in ("reason", "mean", "edge_max", "passed_valid", "dropped")}
                     row["gate_valid"] = bool((final.get("gate") or {}).get("valid"))
-                    if row["demo"]:
+                    if row["demo"] or args.keep_failures:
                         ep = build_episode(buf[i], final, pb.tasks[i]._observe(), seed,
                                            {k: final.get(k) for k in ("mean", "edge_max", "passed_valid")})
                         writer.add(ep, OBS_DIM, ACTION_DIM)

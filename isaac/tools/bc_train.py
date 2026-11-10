@@ -38,6 +38,7 @@ def main():
     ap.add_argument("--merged", required=True)
     ap.add_argument("--runs", required=True, help="name:policy:steps[:batch],...")
     ap.add_argument("--out", default="outputs/isaac/bc/runs")
+    ap.add_argument("--allow-failures", action="store_true", help="train on the expert's failed episodes too")
     args = ap.parse_args()
     from imitation.data.schema import merge_versions
     if not (Path(args.root) / args.merged / "manifest.json").exists():
@@ -52,6 +53,8 @@ def main():
                "--root", args.root, "--run", str(run), "--steps", str(r["steps"])]
         if r["batch"]:
             cmd += ["--batch", str(r["batch"])]
+        if args.allow_failures:
+            cmd += ["--allow-failures"]
         run.mkdir(parents=True, exist_ok=True)
         procs.append((r["name"], subprocess.Popen(cmd, stdout=open(run / "train.log", "w"), stderr=subprocess.STDOUT,
                                                   cwd=REPO)))
