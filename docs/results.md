@@ -3305,3 +3305,8 @@ Evaluated closed loop from reset on held-out seeds 2,000,000-031, 400 steps, rep
   episodes. The binary gripper reads its command with a ±0.3 hysteresis, so a weak "open" from the student holds the
   jaw shut; `--grip-gain 3` is being evaluated on the same students.
 - The vision student releases best (25/32 gate-valid) but folds worst on this little data.
+
+**Gripper decoding check** (744904, same round 1 students and seeds, `--grip-gain 3`): within 2 / 3 cm, full gate, state
+diffusion 9/32 (gain 1: 10/32), chunk-MLP 6/32 (4/32), vision 3/32 (3/32); jaws shut at the end 14 / 18 / 4 (11 / 21 /
+6). No effect, so the shut jaws aren't the ±0.3 hysteresis reading a weak command: the students keep holding in the
+states where a fold went wrong, which the success-only demos never show them releasing from.
