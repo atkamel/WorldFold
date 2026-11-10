@@ -46,10 +46,9 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. **Restructure (user, 2026-11-09): progress has stalled.** Code review, process critique, research and ideation
-   are done (subagents.md, corrections in results.md); the proposed restructure is real-robot first (real data with
-   LeRobot, a real metric, replay baselines, ACT then DAgger, sim time-boxed). Waiting on the user's order; nothing new
-   launches before it. Batch J read out with no effect, which closes the Isaac slip work.
+1. **Overnight behaviour cloning (user, 2026-11-09 night):** working learned half-fold policies by morning, working =
+   gate-valid within 2 / 3 cm on the stiff cloth. Plan and pieces in
+   [superpowers/plans/2026-11-10-overnight-bc.md](superpowers/plans/2026-11-10-overnight-bc.md).
 2. `quarter2` fold 2: `TWO_IK` ran (744412 / 744413) and fixed the reach in xy. The right arm now stops 2-6 cm
    above the stack (results.md); the pinch's tilt needs holding near 25-35°.
 3. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
