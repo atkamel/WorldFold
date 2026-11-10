@@ -15,17 +15,18 @@ the revised plan in [reviews/2026-10-22-quarter-fold-reevaluation.md](reviews/20
 with at least one recorded clean demo. Bar: mean ≤ 2.0 cm and edge ≤ 3.0 cm on gated episodes (flat on the table,
 released, still), user 2026-10-22.
 
-- **Half fold** reaches the half-fold bar (1.0 / 1.5 cm) in about 1 of 64 episodes, with the scripted base plus one
-  touch-up (seed 930005, 0.95 / 1.45 cm) and with the RL policy p8 (seed 980008, 0.43 / 1.13 cm). Videos in
-  `docs/reports/media/isaac_half_fold_pass_*.mp4`. RL shows no average gain over the scripted base (p8 hunt 2.65 cm,
-  base hunt 2.62 cm).
-- **Audit (2026-11-07, results.md).** MuJoCo's weld half fold never met the bar either. It scores 2.43 cm with
-  0/97 passing, so it only passed the 5 cm corner test. Isaac's friction expert scores 3.32 cm. The Isaac expert has
-  verified defects: the pinch lands outside the corner, the heights treat the site as the fingertip, the place can't
-  finish, and hold re-aims the jaw. The largest term in both sims is a rigid shift of the top layer of about 2.2 cm,
-  set before release. Removing it takes Isaac to 1.35 cm.
-- **Quarter fold** has not passed. Every one-arm fold 2 tried failed. The first two-arm runs on the `quarter2` layout
-  (n = 2, 2026-10-23) went badly: fold 1 broke in one, and three of four fold-2 grasps slipped.
+- **Half fold, current cloth** (LeHome springs): the audit's kept-jaw base passes 1/32 at the 1.0 / 1.5 cm bar
+  (2.07 / 3.65 cm), and its control repeat 0/32. Nine placement / floor / shift fixes since (batches B, round 2) moved
+  the mean but never the pass rate. Earlier one-offs: seed 930005 scripted + touch-up, seed 980008 RL p8 (videos in
+  `docs/reports/media/`); RL p8 showed no average gain and predates the audit.
+- **Half fold, stiff cloth** (`bend_stiffness` 5e5, user idea 2026-11-08): **28/128 strict passes [15.6, 29.8]** against
+  1/64 on the current cloth, and 0.74 / 1.32 cm median when both corners are held. The limit is the grip: the right
+  corner leaves the shut jaw mid-carry in 90/96 rows, suddenly, as it crosses the crease. Grip, load, bite, arc and
+  scripted re-grasp knobs failed (batches G, H, I); the right arm's IK miss at the carry's start goes with early drops,
+  and batch J (`CARRY_WEIGHT`) is running. Open: the cantilever probe shows no measurable bending length at any spring
+  setting, so it is unknown whether 5e5 is faithful to a real cloth.
+- **Quarter fold** has not passed. On `quarter2` the arm-reach fix (`TWO_IK`) puts fold 2's right arm over the stack
+  in xy (0.3-2.5 cm against 10-29) but it closes 2-6 cm above it; on the stiff cloth fold 1 also loses a corner.
 - **Gentle release** (user, 2026-10-22) is the place-servo default. The jaw opens 0.02 rad per step to 0.3 rad with
   the arm still, the arm lifts 2 mm per step, and the jaw opens fully 5 cm up. It adds about 30 steps per release, so
   window runs need `WORLDFOLD_WINDOW_STEPS=400`. On 20 scripted half folds (job 738561) 35 of 40 arm releases were
@@ -45,16 +46,11 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. Half fold on the stiff cloth. Bend springs 5e5 pass 16/64 at the bar [16.0, 36.8] (batch S + its repeat in G),
-   against 1/64 on LeHome's springs, at 0.74 / 1.32 cm median when both corners are held. The limit is the right arm
-   letting go of its corner mid-carry in about half the seeds (`drop_at`, videos in `outputs/isaac/rl/grip_video/`).
-   No grip knob tried helps (jaw, adhesion, outward pinch, slower carry, drop rule), and batch B on the old cloth has
-   no winner (results.md). Open: whether bend 5e5 is faithful to a real cloth, since the cantilever probe shows no
-   measurable bending length at any setting, and what holds the corner through the carry.
-2. `quarter2` fold 2 rerun with traces. The right arm missed the stack S because S sat past an upright pinch's reach
-   and the IK weights pushed it onto a flipped wrist (results.md). `TWO_IK` (fold 2's right arm at orientation weight
-   0.005, jaw weight 0.02) reaches 24/24 offline within 5 mm, untested in Isaac. Run the 742655 job again with it
-   (command in the plan). Target: fold 2 landing within 3 cm on gated episodes, with video.
+1. **Restructure (user, 2026-11-09): progress has stalled.** An ideation sweep, a critical code review and
+   research run first; no new cluster batch launches without the user's order. Batch J (744869-744870,
+   `CARRY_WEIGHT`, launched before the order) is finishing.
+2. `quarter2` fold 2: `TWO_IK` ran (744412 / 744413) and fixed the reach in xy. The right arm now stops 2-6 cm
+   above the stack (results.md); the pinch's tilt needs holding near 25-35°.
 3. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
    with no drag and the idle arm parked.
 4. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
