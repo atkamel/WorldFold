@@ -181,3 +181,15 @@ def test_demo_jaw_commands_open_without_the_side_channel():
     action = np.zeros(6)
     open_only(e, action, 0.3)
     assert action[5] == 1.0 and base.jaw_open == {}
+
+
+def test_train_driver_parses_runs_and_finds_only_frozen_versions(tmp_path):
+    from isaac.tools.bc_train import frozen, parse_runs
+    assert parse_runs("s:diffusion:300,v:vision:200:64") == [
+        {"name": "s", "policy": "diffusion", "steps": 300, "batch": None},
+        {"name": "v", "policy": "vision", "steps": 200, "batch": 64}]
+    w = DatasetWriter(tmp_path, "t0_p0_r0")
+    w.add(build_episode(_steps(3), GOOD, np.zeros(139), 1, {}), 139, 12)
+    w.freeze()
+    DatasetWriter(tmp_path, "t0_p0_r1").add(build_episode(_steps(3), GOOD, np.zeros(139), 2, {}), 139, 12)  # unfrozen
+    assert frozen(tmp_path, "t0_p*_r*") == ["t0_p0_r0"]
