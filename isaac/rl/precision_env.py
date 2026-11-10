@@ -215,6 +215,9 @@ class PrecisionBatch:
         # observation and rig frames before a step and the 12-D action it then executes; a copy records from its reset
         # to its snapshot and from reset_window to the end of its window episode
         self.recorder, self.record_images, self.recording = None, False, [False] * n
+        # restore_copy doesn't render, so the first window step's frame would show the copy where it was when the last
+        # copy reached its window: the frame taken at the snapshot stands in for it
+        self.snap_frames, self.resumed = [None] * n, [False] * n
         self.warm_up()
 
     def warm_up(self, steps=5):
@@ -241,7 +244,11 @@ class PrecisionBatch:
             coordinate(self.experts[i])
             rec = self.recorder is not None and self.recording[i]
             if rec:
-                obs, images = self.tasks[i]._observe(), (sub.render_rig() if self.record_images else None)
+                obs, images = self.tasks[i]._observe(), None
+                if self.record_images:
+                    images = self.snap_frames[i] if self.resumed[i] and self.snap_frames[i] is not None \
+                        else sub.render_rig()
+                self.resumed[i] = False
             act = np.concatenate([self.experts[i][p].act() for p in ARMS])
             if rec:
                 self.recorder(i, obs, act, images)
@@ -313,6 +320,8 @@ class PrecisionBatch:
                 if all(e.PHASES[e.phase] == "carry" for e in self.experts[i].values()):
                     pending.discard(i)
                     self.recording[i] = False            # resumes from this state at reset_window
+                    if self.record_images:
+                        self.snap_frames[i] = self.subs[i].render_rig()
                     self._pre_window(i)
                     if self._held(i):
                         snaps[i] = self.snapshot(i, int(seeds[i]))
@@ -368,7 +377,7 @@ class PrecisionBatch:
         """Restore snapshot snaps[i] into copy i (len(snaps) == n); returns the (n, OBS_DIM) observation."""
         for i, snap in enumerate(snaps):
             self.restore(i, snap)
-            self.recording[i] = True
+            self.recording[i], self.resumed[i] = True, True
         self._begin(range(self.n))
         return np.stack([self._obs(i) for i in range(self.n)])
 

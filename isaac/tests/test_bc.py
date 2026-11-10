@@ -10,7 +10,8 @@ from isaac.tools.bc_collect import build_episode, success
 from isaac.tools.bc_eval import history, score_final
 from mujoco_sim.cloth_params import TABLE_TOP_Z
 
-GOOD = {"reason": "settled", "gate": {"valid": True}, "mean": 0.015, "edge_max": 0.025}
+GOOD = {"reason": "settled", "mean": 0.015, "edge_max": 0.025,
+        "gate": {"valid": True, "on_table": True, "jaws_open": True, "z_max_cm": 2.0, "clear_cm": 5.0, "still_mm": 0.2}}
 
 
 def test_success_needs_settled_valid_and_the_bar():
@@ -121,6 +122,7 @@ def _batch():
     pb.experts = [{"left_": _Arm(0.1), "right_": _Arm(0.2)} for _ in range(2)]
     pb.batch = type("B", (), {"advance": lambda self: None})()
     pb.frames, pb.recorder, pb.record_images, pb.recording = None, None, False, [False, False]
+    pb.snap_frames, pb.resumed = [None, None], [False, False]
     return pb
 
 
@@ -150,3 +152,32 @@ def test_split_seeds_covers_the_range_in_whole_chunks():
     assert parts[0][0] == 1000 and parts[-1][1] == 1100
     assert all(hi == lo2 for (_, hi), (lo2, _) in zip(parts, parts[1:]))
     assert all((hi - lo) % 8 == 0 for lo, hi in parts[:-1])
+
+
+def test_first_step_after_a_restore_records_the_snapshot_frame():
+    pb = _batch()
+    got = []
+    pb.recorder = lambda i, obs, act, images: got.append(images["main"][0, 0, 0])
+    pb.record_images, pb.recording = True, [True, False]
+    pb.snap_frames[0] = {"main": np.full((3, 2, 2), 9, np.uint8)}
+    pb.resumed[0] = True
+    pb._scripted_step()
+    pb._scripted_step()
+    assert got == [9, 0]                                        # the snapshot frame once, then live renders
+
+
+def test_demo_filter_drops_only_the_stillness_check():
+    moving = dict(GOOD, gate={"valid": False, "on_table": True, "jaws_open": True, "z_max_cm": 2.0, "clear_cm": 5.0,
+                              "still_mm": 1.6})
+    assert success(moving, still=False) and not success(moving)
+    assert not success(dict(moving, gate=dict(moving["gate"], jaws_open=False)), still=False)
+    assert not success(dict(moving, gate=dict(moving["gate"], clear_cm=2.0)), still=False)
+
+
+def test_demo_jaw_commands_open_without_the_side_channel():
+    from isaac.tools.bc_collect import open_only
+    base = type("Base", (), {"jaw_open": {}})()
+    e = type("E", (), {"base": base, "prefix": "left_"})()
+    action = np.zeros(6)
+    open_only(e, action, 0.3)
+    assert action[5] == 1.0 and base.jaw_open == {}

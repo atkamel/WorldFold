@@ -21,7 +21,7 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from isaac.tools.bc_collect import EDGE_BAR, MEAN_BAR, parse_cameras   # noqa: E402
+from isaac.tools.bc_collect import EDGE_BAR, MEAN_BAR   # noqa: E402
 
 
 def score_final(cloth, prev_cloth, sites, jaws):
@@ -47,24 +47,28 @@ def history(hist, obs, horizon):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--ckpt", required=True)
-    ap.add_argument("--seeds", required=True, help="a:b")
+    ap.add_argument("--seeds", required=True, help="a:b (a multiple of --copies long)")
     ap.add_argument("--copies", type=int, default=8)
-    ap.add_argument("--steps", type=int, default=600, help="control steps per episode")
+    ap.add_argument("--steps", type=int, default=900, help="control steps per episode")
     ap.add_argument("--replan", type=int, default=4)
     ap.add_argument("--out", required=True)
     ap.add_argument("--video", action="store_true")
     args = ap.parse_args()
     sys.argv = sys.argv[:1]
+    import torch
+    from cloth_fold_rl.fold_alignment import score
     from imitation.policies.common import load_policy
     from imitation.rollout import padded_predict
-    from isaac.rl.precision_env import ARMS, PrecisionBatch
-    policy = load_policy(args.ckpt)
+    from isaac.rl.precision_env import ARMS, FOLDS, PrecisionBatch
+    policy = load_policy(args.ckpt, device="cpu")          # Kit starts with the scene below; CUDA after it
     cams = {name: size for name, size in getattr(policy, "cameras", [])} if policy.needs_images else {}
     if args.video:
         cams["top"] = 400
     pb = PrecisionBatch(args.copies, cameras=cams or None)
+    policy.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    knobs = {k: os.environ.get(k, "") for k in ("WORLDFOLD_GRASP_KNOBS", "WORLDFOLD_PLACE_PARAMS")}
     a, b = (int(v) for v in args.seeds.split(":"))
     for start in range(a, b, pb.n):
         seeds = list(range(start, start + pb.n))
@@ -72,20 +76,32 @@ def main():
             pb.tasks[i].reset(seed=int(seed))
         pb.frames = [[] for _ in range(pb.n)] if args.video else None
         hists, chunk, prev = [[] for _ in range(pb.n)], None, None
+        alive, trace = [True] * pb.n, [[] for _ in range(pb.n)]
         for t in range(args.steps):
             obs = np.stack([history(hists[i], pb.tasks[i]._observe(), policy.obs_horizon) for i in range(pb.n)])
             if t % args.replan == 0:
                 images = [pb.subs[i].render_rig() for i in range(pb.n)] if policy.needs_images else None
-                chunk = padded_predict(policy, obs, images)
+                chunk = padded_predict(policy, np.nan_to_num(obs), images)
             prev = [pb.subs[i].cloth_positions().copy() for i in range(pb.n)]
-            pb.drive(chunk[:, t % args.replan])
+            pb.drive([chunk[i, t % args.replan] if alive[i] else np.zeros(12) for i in range(pb.n)])
+            for i in range(pb.n):
+                if alive[i] and pb.subs[i]._failed():      # a blown-up cloth: park it before it drifts into others
+                    pb.subs[i].park()
+                    alive[i] = False
+                elif alive[i] and t % 50 == 49:
+                    s = score(pb.subs[i].cloth_positions(), folds=FOLDS)
+                    trace[i].append([t + 1, round(float(s["mean"]), 4), round(float(s["edge_max"]), 4)])
         for i, seed in enumerate(seeds):
             sub = pb.subs[i]
-            row = {"seed": seed, "ckpt": args.ckpt, "steps": args.steps, "replan": args.replan,
-                   **score_final(sub.cloth_positions(), prev[i], [sub.gripper_position(p) for p in ARMS],
-                                 [sub.joint_positions(p)[5] for p in ARMS]),
-                   "cloth": np.round(sub.cloth_positions(), 4).tolist()}
-            print("BCEVAL", json.dumps({k: v for k, v in row.items() if k != "cloth"}), flush=True)
+            row = {"seed": seed, "ckpt": args.ckpt, "steps": args.steps, "replan": args.replan, **knobs,
+                   "unstable": not alive[i], "trace": trace[i]}
+            if alive[i]:
+                row |= score_final(sub.cloth_positions(), prev[i], [sub.gripper_position(p) for p in ARMS],
+                                   [sub.joint_positions(p)[5] for p in ARMS])
+                row["cloth"] = np.round(sub.cloth_positions(), 4).tolist()
+            else:
+                row |= {"success": False, "gate_valid": False, "mean": None, "edge_max": None}
+            print("BCEVAL", json.dumps({k: v for k, v in row.items() if k not in ("cloth", "trace")}), flush=True)
             with open(out / "eval.jsonl", "a") as f:
                 f.write(json.dumps(row) + "\n")
             if args.video:
