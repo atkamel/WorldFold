@@ -57,6 +57,27 @@ def parse_cameras(text):
     return {k: int(v) for k, v in (item.split("=") for item in text.split(","))} if text else {}
 
 
+def split_seeds(a, b, k, chunk):
+    """[a, b) into k contiguous ranges of whole chunks (the last takes the remainder)."""
+    n = -(-(b - a) // chunk)
+    per = -(-n // k)
+    return [(a + j * per * chunk, min(b, a + (j + 1) * per * chunk)) for j in range(k) if a + j * per * chunk < b]
+
+
+def run_parallel(args):
+    import subprocess
+    a, b = (int(v) for v in args.seeds.split(":"))
+    Path(args.root).mkdir(parents=True, exist_ok=True)
+    procs = []
+    for j, (lo, hi) in enumerate(split_seeds(a, b, args.parallel, args.copies)):
+        cmd = [sys.executable, "-u", __file__, "--seeds", f"{lo}:{hi}", "--copies", str(args.copies),
+               "--version", f"{args.version}_p{j}", "--root", args.root, "--cameras", args.cameras]
+        log = open(Path(args.root) / f"{args.version}_p{j}.log", "w")
+        procs.append(subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT))
+        print("BC child", j, lo, hi, flush=True)
+    print("BC children done", [p.wait() for p in procs], flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--seeds", required=True, help="a:b")
@@ -65,7 +86,12 @@ def main():
     ap.add_argument("--root", default=ROOT)
     ap.add_argument("--cameras", default="", help="rig cameras to record, e.g. main=128,left_wrist_cam=64,...")
     ap.add_argument("--merge", default="", help="v1,v2,...: no simulation, write --version as one version listing them")
+    ap.add_argument("--parallel", type=int, default=1, help="k > 1: k child collectors on this GPU, seed ranges and "
+                                                             "versions <version>_p0.. split between them")
     args = ap.parse_args()
+    if args.parallel > 1:
+        run_parallel(args)
+        return
     sys.argv = sys.argv[:1]
     if args.merge:
         from imitation.data.schema import merge_versions

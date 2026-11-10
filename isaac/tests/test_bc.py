@@ -142,3 +142,11 @@ def test_drive_submits_the_students_actions_clipped():
     pb = _batch()
     pb.drive([np.full(12, 2.0), np.full(12, -0.3)])
     assert np.allclose(pb.subs[0].submitted[-1][:12], 1.0) and np.allclose(pb.subs[1].submitted[-1][:12], -0.3)
+
+
+def test_split_seeds_covers_the_range_in_whole_chunks():
+    from isaac.tools.bc_collect import split_seeds
+    parts = split_seeds(1000, 1100, 3, 8)
+    assert parts[0][0] == 1000 and parts[-1][1] == 1100
+    assert all(hi == lo2 for (_, hi), (lo2, _) in zip(parts, parts[1:]))
+    assert all((hi - lo) % 8 == 0 for lo, hi in parts[:-1])
