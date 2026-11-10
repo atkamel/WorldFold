@@ -211,6 +211,10 @@ class PrecisionBatch:
         self.state = [None] * n
         self.pre = [None] * n        # per copy, the scripted phase's diagnostics (scripted_to_window), kept in its snapshot
         self.frames, self.cut = None, [None] * n     # demo video: per copy, the "top" frame after every step
+        # demo recording (isaac/tools/bc_collect.py): recorder(i, obs, action, images) gets each recording copy's 139-D
+        # observation and rig frames before a step and the 12-D action it then executes; a copy records from its reset
+        # to its snapshot and from reset_window to the end of its window episode
+        self.recorder, self.record_images, self.recording = None, False, [False] * n
         self.warm_up()
 
     def warm_up(self, steps=5):
@@ -235,7 +239,24 @@ class PrecisionBatch:
             if actions is not None and actions[i] is not None:
                 apply_action(self.experts[i], actions[i])
             coordinate(self.experts[i])
-            sub.step_submit(self.tasks[i]._expand(np.concatenate([self.experts[i][p].act() for p in ARMS])))
+            rec = self.recorder is not None and self.recording[i]
+            if rec:
+                obs, images = self.tasks[i]._observe(), (sub.render_rig() if self.record_images else None)
+            act = np.concatenate([self.experts[i][p].act() for p in ARMS])
+            if rec:
+                self.recorder(i, obs, act, images)
+            sub.step_submit(self.tasks[i]._expand(act))
+        self.batch.advance()
+        for sub in self.subs:
+            sub.step_collect()
+        if self.frames is not None:
+            for i, sub in enumerate(self.subs):
+                self.frames[i].append(sub.render_rig()["top"].transpose(1, 2, 0))
+
+    def drive(self, actions):
+        """One control step of every copy with the given 12-D actions (a student policy) instead of the experts'."""
+        for i, sub in enumerate(self.subs):
+            sub.step_submit(self.tasks[i]._expand(np.clip(np.asarray(actions[i], np.float32), -1.0, 1.0)))
         self.batch.advance()
         for sub in self.subs:
             sub.step_collect()
@@ -280,6 +301,7 @@ class PrecisionBatch:
         for i, seed in enumerate(seeds):
             self.tasks[i].reset(seed=int(seed))
             self._reset_experts(i, int(seed))
+            self.recording[i] = True
             cloth = self.subs[i].cloth_positions().copy()
             self.pre[i] = {"reset": grid_stats(cloth), "reset_cloth": cloth, "close_in_mm": {}}
         snaps, finals = [None] * self.n, [None] * self.n
@@ -290,6 +312,7 @@ class PrecisionBatch:
                 self._pre_close(i)
                 if all(e.PHASES[e.phase] == "carry" for e in self.experts[i].values()):
                     pending.discard(i)
+                    self.recording[i] = False            # resumes from this state at reset_window
                     self._pre_window(i)
                     if self._held(i):
                         snaps[i] = self.snapshot(i, int(seeds[i]))
@@ -345,6 +368,7 @@ class PrecisionBatch:
         """Restore snapshot snaps[i] into copy i (len(snaps) == n); returns the (n, OBS_DIM) observation."""
         for i, snap in enumerate(snaps):
             self.restore(i, snap)
+            self.recording[i] = True
         self._begin(range(self.n))
         return np.stack([self._obs(i) for i in range(self.n)])
 
@@ -426,4 +450,7 @@ class PrecisionBatch:
                                "cloth": np.round(cloth, 4).tolist(), "start": np.round(st["start"], 4).tolist()}
                 infos[i] = st["final"]
             obs[i] = self._obs(i)
+        for i in range(self.n):
+            if self.state[i] is not None and not self.state[i]["alive"]:
+                self.recording[i] = False
         return np.nan_to_num(obs), np.nan_to_num(rew), term, done, alive, infos

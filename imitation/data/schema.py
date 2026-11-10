@@ -246,6 +246,27 @@ class DatasetWriter:
         return manifest
 
 
+def merge_versions(root, versions, out) -> dict:
+    """A new frozen version `out` listing every episode of the frozen `versions` (files stay where they are; seeds
+    and file names must not repeat). For parallel collection jobs that each froze their own version."""
+    root = Path(root)
+    if (root / out / "manifest.json").exists():
+        raise FileExistsError(f"dataset version {out} is frozen; write a new version instead")
+    entries = [e for v in versions for e in load_manifest(root, v)["episodes"]]
+    names = [Path(e["file"]).name for e in entries]
+    if len(set(names)) != len(names):
+        raise ValueError("an episode appears in more than one version")
+    digest = hashlib.sha256("".join(e["sha256"] + e.get("images_sha256", "") for e in entries).encode()).hexdigest()
+    manifest = {"version": out, "parent": None, "merged_from": list(versions),
+                "created": _dt.datetime.now().isoformat(timespec="seconds"), "content_hash": digest, "config": {},
+                "n_episodes": len(entries), "n_new": 0, "n_success": sum(e["success"] for e in entries),
+                "n_steps": sum(e["steps"] for e in entries), "episodes": entries}
+    (root / out).mkdir(parents=True, exist_ok=True)
+    with open(root / out / "manifest.json", "w") as f:
+        json.dump(manifest, f, indent=1)
+    return manifest
+
+
 def load_manifest(root, version) -> dict:
     with open(Path(root) / version / "manifest.json") as f:
         return json.load(f)
