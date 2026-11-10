@@ -3370,3 +3370,69 @@ same three students, 30k steps. Same 64 held-out seeds and settings:
   p 0.054), so "better than the expert" is not yet established.
 - **More demos help the state students** (chunk-MLP 4/32 → 22/64 → 30/64 across rounds 1, 2 and 4), not yet the camera
   student (9% → 20% → 17%).
+
+### Review of the dual-arm pathway (2026-11-10, offline, lead + two opus subagents, lead re-ran the starred numbers)
+
+Recomputed from the raw rows; scripts were scratch files. Later numbers in this section replace the claims they name.
+
+**The stiff cloth's passes come from dropped corners.** Held = the episode reached its window and no corner left the
+jaws in the carry (`isaac/tools/held_summary.py`; rows from before drops logged their phase count every flag).
+
+| config (seeds 910000-31, n 32 each) | held [Wilson 95%] | right-arm carry drops | within 2 / 3 cm, full gate (of them held) | 1.0 / 1.5 |
+|---|---|---|---|---|
+| r0, LeHome cloth (742669) | 26 (81.2% [64.7, 91.1])* | 5 | 5 (4) | 1 |
+| s0, LeHome cloth (743600) | 23 (71.9% [54.6, 84.4])* | 8 | 7 (7) | 0 |
+| s2, bend 5e4 | 5 (15.6% [6.9, 31.8])* | 26 | 15 (4) | 5 |
+| s3, bend 5e5 | 2 (6.2% [1.7, 20.1])* | 29 | 14 (2) | 10 |
+| g0, bend 5e5 | 1 (3.1% [0.6, 15.7])* | 31 | 17 (1) | 6 |
+| h0, bend 5e5 | 2 (6.2% [1.7, 20.1])* | 29 | 15 (1) | 5 |
+| i0, bend 5e5 | 2 (6.2% [1.7, 20.1])* | 30 | 18 (2) | 7 |
+| j0, bend 5e5 | 1 (3.1% [0.6, 15.7])* | 31 | 14 (1) | 7 |
+| h1, bend 5e5 + `particle_friction` 0.8 | 12 (37.5% [22.9, 54.7])* | 20 | 13 (10) | 6 |
+
+- Of the 35 strict passes on the five bend-5e5 controls, 31 had the right corner flagged dropped in the carry*. The
+  stiff sheet falls flat after the drop. h1 against g0 on held: two-sided Fisher p 0.001*, so "no grip knob moves the
+  slip" (batches H and J) is withdrawn.
+- All of S to J ran the same 32 seeds; the pooled 35/160 strict has a seed-clustered interval of [10.5, 33.3], not
+  [15.6, 29.8]. Stiff against LeHome paired by seed still holds (11 better, 1 worse, sign p 0.006).
+- Exact repeats on the stiff cloth differ by 1.3-2.1 cm per seed (i2 / i2r, i3 / i3r, j1 / j1r, j2 / j2r), not 0.67.
+- "As it crosses the crease" is inferred from the target waypoint; the drop point moves 5-7 cm with carry speed and
+  friction. At carry start the right arm's jaw sits 12.0 mm outside its corner against the left's 8.4, with 0.09 rad
+  of wrist-flex margin against 0.18.
+
+**Behaviour cloning.**
+- The expert on the eval seeds lost the right corner in 60/64 episodes* (`bc_evalexp.rows.jsonl`).
+- Before the collection override (`open_only`, `jaw_open_rate` 0.02) the expert made 79/160 demos (49.4%)* on seeds
+  910000-31 (five runs); with it, 22/64 on the eval seeds* and 433/1,288 in collection (33.6%). Seed sets differ. The
+  unmodified expert was not run on the eval seeds.
+- Chunk-MLP 30/64 against the expert's 21/64: two-sided Fisher p 0.15*, two-sided sign test p 0.11* (17 to 8); the best
+  of twelve evaluations. The same round-1 checkpoints evaluated twice (grip gain 1 and 3, 32 seeds) share 1 of 9
+  (chunk-MLP), 4 of 15 (diffusion) and 0 of 6 (vision) successes, per-seed score SD 2.95-3.70 cm*.
+- Round 3's camera student is 6/64 (9.4% [4.4, 19.0])* from `eval_r3/vision_bc_stiff_m3/eval.jsonl`, not 7/64.
+- The round-4 chunk-MLP ends 20/64 episodes with a jaw shut* (gate-valid 44/64, expert 57/64).
+- Students are within 2 / 3 cm (no gate) in 30 episodes at step 250 and 30 at step 400*, so the fixed 400-step horizon
+  gave no advantage; the stillness check costs the expert one row*.
+- The 0.02 cm rows are flat folds (30 x 15 cm footprint, layers 4.5 mm apart, grid edges 29.9-30.1 mm)* registered
+  to 0.2 mm, a fifteenth of the particle spacing.
+- The state students' 139-D observation holds the cloth's corners, nine vertices, corner-to-goal vectors and progress.
+  The time-left entry is flattened by the normaliser's 0.01 std floor.
+
+**Quarter fold (744900).** The across-reach jaw was reached in 4 of 8 seeds (wrist roll on its limit in seeds 0, 2, 4;
+flipped in 6). In 7 of 7 traced seeds the right gripper rises 5-6 cm while the stack stays on the table. Two runs hit
+fold 2's 400-step cap while the left arm waited. Batch H's "Fisher p 0.59" is 1.00; 744412's seed 5 is +2.0 cm, not +0.2.
+
+### Batch K, a grasp that holds both corners: design (2026-11-10, reviewed by an opus subagent before launch)
+
+Fresh seeds 3,000,000-127 (128 per config), 8 copies, place params `LATCH_GOAL=1,GFOLD_SLOPE=1.2`, window 450, the
+expert's own gentle release. Configs: k0 LeHome cloth; k1 LeHome + `particle_friction` 0.8; k6 LeHome + 0.65; k4
+LeHome + 1.2; k3 bend 5e5 + 1.2; k5 LeHome with the cloth offset ±2 cm and turned ±10° (default friction, read against
+k0 and the offline pinch-plan error, which is over 4 mm on 11-13 of 40 seeds at that range and 0 of 40 at ±1 cm).
+
+Rule, fixed before launch. Primary metric: held (reached the window, no corner left the jaws in the carry), with the
+lenient count (late flags with the corner over 2 cm above the site count as held) reported beside it. Screen: a point
+estimate of held >= 80% (103 of 128); among those, the most episodes held and within 2 / 3 cm with the full gate. The
+screen passes a true-77% config about 18% of the time, so the winner is rerun on 128 new seeds and must again reach
+80% before it is used, then checked once with the collection release. Comparisons against k0 are two-sided Fisher at
+p < 0.01; a non-significant result is not evidence of no effect at this n (a true 85% against 77% is detected 16% of
+the time). Earlier results predict friction above 0.7 costs alignment on LeHome's cloth (sweep 5) and 1.5 pins the sheet
+to the table (IG.2), so k4 and k3 may lose held.

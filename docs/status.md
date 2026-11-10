@@ -1,7 +1,7 @@
 # Status
 
-**Updated:** 2026-11-08 · **Branch:** `fix/half-fold-audit` · **Phase:** Q, the quarter fold on
-Isaac (revised plan of 2026-10-22), half-fold expert fixes first
+**Updated:** 2026-11-10 · **Branch:** `fix/half-fold-audit` · **Phase:** pathway fixes after the 2026-11-10 review:
+a grasp that holds both corners (batch K), a first replay on the real arms, then the camera policy
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
 pass log. The plan is in [roadmap.md](roadmap.md), every number in [results.md](results.md), the re-evaluation and
@@ -15,6 +15,18 @@ the revised plan in [reviews/2026-10-22-quarter-fold-reevaluation.md](reviews/20
 with at least one recorded clean demo. Bar: mean ≤ 2.0 cm and edge ≤ 3.0 cm on gated episodes (flat on the table,
 released, still), user 2026-10-22.
 
+- **Review of the whole pathway (2026-11-10, results.md "Review of the dual-arm pathway"):** nothing here can run on
+  the arms yet. On the stiff cloth the expert loses the right corner in the carry in about 95% of episodes (held 1-2 of
+  32 per control run) and the passes are the dropped sheet falling flat; LeHome's cloth holds 72-81% but folds
+  imprecisely (5-7 of 32 within 2 / 3 cm). The state students read privileged cloth state, the expert they "match" was
+  run with a changed release (49% demos before it, 34% with it), and 30/64 against 21/64 is not significant (p 0.15).
+  The BC claims in the next bullet stand only as "the pipeline runs".
+- **Fixes under way (user go-ahead, 2026-11-10):** (1) the grasp is judged on held corners
+  (`isaac/tools/held_summary.py`), batch K on fresh seeds; (2) a sim demo exported as a joint trajectory
+  (`isaac/tools/export_replay.py`, `outputs/isaac/replay/s1000000.json`) and an open-loop replay tool for the real arms
+  (`hardware/so101/replay.py` in the `../WorldFold-teleop` worktree, 23 tests on a fake bus, never run on hardware; the
+  sim-angle to servo-tick map is a hypothesis: zero at tick 2047, sign +1); (3) cloth-pose randomisation knobs
+  (`WORLDFOLD_CLOTH_JITTER`, `WORLDFOLD_CLOTH_YAW`).
 - **Learned half-fold policies (overnight 2026-11-10, results.md):** behaviour cloning on the scripted place-servo
   expert's demos (stiff cloth, 433 demos) gives students that fold at least as well as the expert at the working bar
   (gate-valid within 2 / 3 cm). On 64 held-out seeds: expert 21/64 (32.8%), state chunk-MLP 30/64 (46.9% [35.2, 58.9]),
@@ -52,15 +64,18 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. **Camera policy and more data.** The state students match the expert; the camera student (17-20%) is the one
-   that can go to hardware. Next: more demos and longer training for it, then DAgger with the expert labelling the
-   student's states, and the camera rig matched to the user's iPhone + wrist cameras once they are measured.
-2. `quarter2` fold 2: the right arm now reaches the stack (jaw across the reach, 744900), but fold 1 on the stiff
-   cloth leaves the stack 3-7 cm off and fold 2's grasps slip (results.md).
-3. The two cheap checks, rerun with the gentle release: adhesion 0 vs 0.1 on the half fold, and the one-arm fold 2
-   with no drag and the idle arm parked.
-4. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
-   the scripted base.
+1. **Read batch K** (results.md "Batch K"): `held_summary.py` over the three output folders, rule as written there.
+   A config with held >= 80% goes to a second set of 128 fresh seeds, then to the collection release
+   (`jaw_open_rate` + `open_only`) before any demo is recorded from it.
+2. **Hardware replay (needs the user and the arms):** add the second follower to `arms.json` and record its
+   `limits.json`; `replay.py --check <arm>` to confirm each joint's sign; then `replay.py
+   outputs/isaac/replay/s1000000.json --left <arm> --right <arm>` at half speed with the tip positions it prints
+   checked against a ruler. Corrections go into `arms/<name>/urdf.json`.
+3. **Camera policy, after 1 gives an expert that holds:** the overhead camera set to the measured iPhone pose (needed
+   from the user: height, offset, tilt, field of view), cloth pose / appearance / camera randomisation in collection,
+   DAgger with the expert labelling, one pre-chosen checkpoint on at least 200 fresh seeds, unpaired.
+4. Not started, from the review: the 2026-11-09 delete list (failed knobs still in `place_servo.py`), the two known
+   slip-recovery bugs, the quarter fold's across pinch (it never lifts the stack).
 
 ## Environment
 
@@ -68,7 +83,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-10: fast 308 passed, 5 skipped (#15 deselected), isaac 131 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-10: fast 314 passed, 5 skipped (#15 deselected), isaac 137 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -126,6 +141,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-10 · **Pathway review and first fixes (user):** review recomputed from raw rows (results.md); held-corner summary tool, replay export, cloth jitter / yaw knobs with two sweep slots, 7 tests; `hardware/so101/replay.py` in the teleop worktree (sonnet, 23 tests, lead re-ran and dry-ran the export); batch K designed, reviewed (opus) and launched; fast 314 passed + 5 skipped (#15 deselected), isaac 137 passed · (this commit)
 - 2026-11-10 · **Overnight behaviour cloning (user):** recording hook + `bc_collect` / `bc_train` / `bc_eval`, 2 reviews; 1,352 expert episodes (433 training demos, plus 64 on the eval seeds); 4 training rounds; state chunk-MLP 30/64 at the working bar vs the expert's 21/64, camera student 11-13/64; quarter2 fold 2 reaches the stack (jaw across the reach); fast 308 passed + 5 skipped (#15 deselected), isaac 131 passed · (this commit)
 - 2026-11-09 · **Restructure review + batch J:** four subagent reports (code review, process critique, research, ideation), corrections to earlier claims (pooled control is one seed set, modelled reach figure, cantilever floor), batch J `CARRY_WEIGHT` no effect; awaiting the user's order; no code change · (this commit)
 - 2026-11-09 · **Batch H read, slip recovery built, batch I launched:** no grip / load / bite knob holds the corner (pooled control 48/96 held, 21/96 strict); low seats in the pads predict the slip; `quarter2` reach fix lands the right arm over the stack in xy but 2-6 cm high; slip recovery in the place expert (`SEAT_MIN` right-arm seat check, `SLIP_REGRASPS` once the other arm holds, carry gate, decision timeout), off by default, reviewed twice; 744458-744459 running; fast 291 passed + 5 skipped (#15 deselected), isaac 114 passed · (this commit)

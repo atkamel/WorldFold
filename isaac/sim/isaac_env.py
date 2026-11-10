@@ -680,13 +680,14 @@ class IsaacClothFoldEnv(gym.Env):
                 scales = {k: float(self.np_random.uniform(*DR_RANGE)) for k in scales}
                 self._domain_params = dict(scales)
 
-        offset = np.zeros(2)
+        offset, yaw_deg = np.zeros(2), 0.0
         if "cloth_pose" in opts:
             pose = np.asarray(opts["cloth_pose"], dtype=float).ravel()
             offset = pose[:2]
+            yaw_deg = float(pose[2]) if pose.size > 2 else 0.0      # optional third entry: deg about z
         tilt_deg = self._prof["drop_tilt_deg"]
         tilt = self.np_random.uniform(-tilt_deg, tilt_deg, size=2) if tilt_deg else np.zeros(2)
-        self._scene_call(self.lab.reset_cloth, offset, self._prof["drop_height"], (tilt[0], tilt[1], 0.0),
+        self._scene_call(self.lab.reset_cloth, offset, self._prof["drop_height"], (tilt[0], tilt[1], yaw_deg),
                          self._copy)
         self._particles = self.lab.particle_positions(self._copy)
         self._particle_vel = np.zeros_like(self._particles)

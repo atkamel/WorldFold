@@ -58,6 +58,10 @@ TOUCH_ROUNDS = int(os.environ.get("WORLDFOLD_TOUCH_ROUNDS") or 1)   # touch-up r
 # cloth's friction against every rigid body, table and jaws alike (PhysX PBD has no table-only coefficient)
 GRASP_KNOBS = os.environ.get("WORLDFOLD_GRASP_KNOBS", "")
 HOLD_DIST = 0.05             # = isaac.sim.isaac_env.HOLD_DIST
+# reset randomisation of the cloth's pose (review 2026-11-10: +-1 cm in xy was the only variation between seeds):
+# +-m in x and y (unset: isaac_env.CLOTH_JITTER) and +-deg about z (unset: none)
+CLOTH_JITTER_M = os.environ.get("WORLDFOLD_CLOTH_JITTER")
+CLOTH_YAW_DEG = float(os.environ.get("WORLDFOLD_CLOTH_YAW") or 0.0)
 # Validity gate on every score (re-evaluation 2026-10-22: a cloth hanging from a gripper scores 0.0 cm on
 # fold_alignment, which is how carried-off sheets looked like near-successes): every grid vertex within GATE_Z of the
 # table and on it, both jaws open and both gripper sites at least GATE_CLEAR from the cloth, the cloth moving less
@@ -199,7 +203,8 @@ class PrecisionBatch:
                                          grasp_radius=GRASP_RADIUS, cameras=cameras,
                                          grasp_knobs=parse_kv(GRASP_KNOBS) or None)
         self.subs = self.batch.envs
-        self.tasks = [QuarterFoldEnv(base_env=s, cloth_jitter=CLOTH_JITTER, stages=(STAGES[0],)) for s in self.subs]
+        self.tasks = [QuarterFoldEnv(base_env=s, cloth_jitter=float(CLOTH_JITTER_M or CLOTH_JITTER), stages=(STAGES[0],),
+                                     cloth_yaw=CLOTH_YAW_DEG) for s in self.subs]
         self.moves = {m.prefix: m for m in STAGES[0].moves}
         self.experts = []
         for task, sub in zip(self.tasks, self.subs):

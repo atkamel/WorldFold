@@ -113,7 +113,7 @@ class QuarterFoldEnv(gym.Wrapper):
     stages = STAGES     # subclasses may run a prefix of the stages (see imitation.tasks.HalfFoldEnv)
 
     def __init__(self, max_episode_steps=MAX_STEPS, seed=None, cloth_jitter=CLOTH_JITTER, base_env=None,
-                 stages=None):
+                 stages=None, cloth_yaw=0.0):
         # base_env: any ClothFoldEnv drop-in (e.g. isaac.sim.isaac_env.IsaacClothFoldEnv) built in joint_delta
         # mode with grasp_corners=GRASP_CORNERS and grasp_radius=GRASP_RADIUS; the wrapper reads it through
         # cloth_positions / gripper_position / grasp_active, plus _get_obs, the goal fields and
@@ -131,6 +131,7 @@ class QuarterFoldEnv(gym.Wrapper):
         if stages is not None:
             self.stages = tuple(stages)
         self.cloth_jitter = cloth_jitter
+        self.cloth_yaw = cloth_yaw       # +-deg about z at reset, a third cloth_pose entry (Isaac base envs only)
         self._rng = np.random.default_rng(seed)
         self._flat = StateOnlyWrapper(env)
         # observation = base flat state minus the task one-hot (constant per env,
@@ -242,6 +243,8 @@ class QuarterFoldEnv(gym.Wrapper):
             self._rng = np.random.default_rng(seed)
         if self.cloth_jitter > 0 and "cloth_pose" not in opts:
             opts["cloth_pose"] = self._rng.uniform(-self.cloth_jitter, self.cloth_jitter, size=2)
+            if self.cloth_yaw > 0:
+                opts["cloth_pose"] = np.r_[opts["cloth_pose"], self._rng.uniform(-self.cloth_yaw, self.cloth_yaw)]
         _, info = self.env.reset(seed=seed, options=opts)
         if "cloth_pose" in opts:
             # the base env only records offsets it draws itself
