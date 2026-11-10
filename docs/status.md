@@ -64,7 +64,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. **Read batch K** (results.md "Batch K"): `held_summary.py` over the three output folders, rule as written there.
+1. **Read batch K** (WATcloud 745130-745132, running; results.md "Batch K"): `held_summary.py` over the three output folders, rule as written there.
    A config with held >= 80% goes to a second set of 128 fresh seeds, then to the collection release
    (`jaw_open_rate` + `open_only`) before any demo is recorded from it.
 2. **Hardware replay (needs the user and the arms):** add the second follower to `arms.json` and record its
@@ -141,7 +141,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
-- 2026-11-10 · **Pathway review and first fixes (user):** review recomputed from raw rows (results.md); held-corner summary tool, replay export, cloth jitter / yaw knobs with two sweep slots, 7 tests; `hardware/so101/replay.py` in the teleop worktree (sonnet, 23 tests, lead re-ran and dry-ran the export); batch K designed, reviewed (opus) and launched; fast 314 passed + 5 skipped (#15 deselected), isaac 137 passed · (this commit)
+- 2026-11-10 · **Pathway review and first fixes (user):** review recomputed from raw rows (results.md); held-corner summary tool, replay export, cloth jitter / yaw knobs with two sweep slots, 7 tests; `hardware/so101/replay.py` in the teleop worktree (sonnet, 23 tests, lead re-ran and dry-ran the export); batch K designed, reviewed (opus) and launched (745130-745132); fast 314 passed + 5 skipped (#15 deselected), isaac 137 passed · af88690
 - 2026-11-10 · **Overnight behaviour cloning (user):** recording hook + `bc_collect` / `bc_train` / `bc_eval`, 2 reviews; 1,352 expert episodes (433 training demos, plus 64 on the eval seeds); 4 training rounds; state chunk-MLP 30/64 at the working bar vs the expert's 21/64, camera student 11-13/64; quarter2 fold 2 reaches the stack (jaw across the reach); fast 308 passed + 5 skipped (#15 deselected), isaac 131 passed · (this commit)
 - 2026-11-09 · **Restructure review + batch J:** four subagent reports (code review, process critique, research, ideation), corrections to earlier claims (pooled control is one seed set, modelled reach figure, cantilever floor), batch J `CARRY_WEIGHT` no effect; awaiting the user's order; no code change · (this commit)
 - 2026-11-09 · **Batch H read, slip recovery built, batch I launched:** no grip / load / bite knob holds the corner (pooled control 48/96 held, 21/96 strict); low seats in the pads predict the slip; `quarter2` reach fix lands the right arm over the stack in xy but 2-6 cm high; slip recovery in the place expert (`SEAT_MIN` right-arm seat check, `SLIP_REGRASPS` once the other arm holds, carry gate, decision timeout), off by default, reviewed twice; 744458-744459 running; fast 291 passed + 5 skipped (#15 deselected), isaac 114 passed · (this commit)

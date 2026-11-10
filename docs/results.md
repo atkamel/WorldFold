@@ -3436,3 +3436,6 @@ screen passes a true-77% config about 18% of the time, so the winner is rerun on
 p < 0.01; a non-significant result is not evidence of no effect at this n (a true 85% against 77% is detected 16% of
 the time). Earlier results predict friction above 0.7 costs alignment on LeHome's cloth (sweep 5) and 1.5 pins the sheet
 to the table (IG.2), so k4 and k3 may lose held.
+
+Launched 2026-11-10 as WATcloud 745130 (k0, k1), 745131 (k3, k6), 745132 (k4, k5), code af88690, out
+`outputs/isaac/rl/grasp_k1` to `grasp_k3`.
