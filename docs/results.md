@@ -3472,3 +3472,35 @@ held and within 2 / 3 cm with the full gate. Fisher is two-sided on held against
 - **Yaw knob check.** Rows hold no grid from the reset, only from the window's start. The bottom edge's angle at that
   point tracks the seed's drawn yaw with correlation 0.96, the right sign and a slope of 1.43 (k0's spread on the same
   measure is 1.7° SD). The knob works. The slope above 1 is unexplained, and the turn at reset has not been measured.
+
+**Correction to the batch K result above (2026-11-12, found by the batch L reviewer, recomputed on K's rows).** The
+carried edge lands past the bottom edge, not short of it. At the window's start the carried edge is a median 25.6 cm
+on the +y side of the bottom edge; at the end it is 1.35 cm (k0), 1.21 cm (k6), 0.82 cm (k4) and 0.42 cm (k3) on the
+-y side, in 117, 119, 116 and 90 of 128 episodes. The four interior row pairs end 1.78, 1.80, 1.61 and 0.47 cm past.
+
+### Batch L, lay-down and release on LeHome's cloth: design (2026-11-12, reviewed by an opus subagent before launch)
+
+Fresh seeds 3,000,128-255 (128 per config), launch as batch K (8 copies, window 450, the expert's own gentle
+release), LeHome cloth, `particle_friction` 0.65, place params `LATCH_GOAL=1,GFOLD_SLOPE=1.2` plus the knobs below.
+A 3 x 2 design: release jaw 0.3 (default) / 0.6 / 1.0 rad, with and without the layer-shift correction capped at
+1.5 cm (`SHIFT_GAIN=0.5,SHIFT_MAX=0.015`).
+
+| | shift off | shift on |
+|---|---|---|
+| `RELEASE_JAW` 0.3 | l0 (the rule's rerun of k6, and the control) | l3 |
+| 0.6 | l1 | l4 |
+| 1.0 | l2 | l5 |
+
+Changes from the first draft after review. `BACKOFF` is dropped: these configs use the pinch grasp, the back-off
+slides along -jaw, and the reviewer reads that as driving the moving finger through the corner and 1.4 cm outward in
+x (not verified in sim). The stuck corner rising with friction points at a part-open jaw, so the jaw opening is the
+knob. The shift is capped at 1.5 cm because the uncapped one overshot the corners in round 2a (mean -0.48 cm, edge
++1.21 cm). The default-friction pair is dropped (k0 and k6 do not differ).
+
+Rule, fixed before launch. l0: held at least 103 of 128, as batch K's rule required of the rerun. Release factor:
+primary is the number of episodes with cloth left over 5 cm up, each jaw level against 0.3 at the same shift level,
+two-sided Fisher at p < 0.01 (39 of 128 must fall to about 20), with good (held, within 2 / 3 cm, full gate) as the
+guard: it must not fall. Shift factor: primary is good against the same jaw level without it, two-sided Fisher at
+p < 0.01 (27 of 128 must reach about 47); median mean error and the signed carried-minus-bottom offset beside it.
+Seeds are shared across the six, so McNemar on pairs is reported as secondary. A non-significant result is not
+evidence of no effect at this n. The best config is rerun on 128 new seeds before any demo is recorded from it.

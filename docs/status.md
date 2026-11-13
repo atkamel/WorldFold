@@ -69,8 +69,8 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 ## Next action
 
 1. **Make LeHome's cloth fold well now that it is held** (batch K, results.md): the carried edge lands 1.2-1.35 cm
-   short and a carried corner stays on the open jaw in 23-67 of 128 episodes. Find the cause of each in the release
-   code and traces, then batch L on fresh seeds (opus review before launch). k6 (friction 0.65) is the config the
+   past the bottom edge and a carried corner stays on the open jaw in 23-67 of 128 episodes. Batch L (results.md, design) crosses the release jaw opening (0.3 / 0.6 / 1.0 rad) with the layer-shift
+   correction capped at 1.5 cm, on seeds 3,000,128-255. k6 (friction 0.65) is the config the
    rule picks for the rerun; k0 is statistically the same. Pose range stays at ±1 cm and no turn until the expert
    handles more (k5 held 52% at ±2 cm and ±10°).
 2. **Hardware replay, deferred (user, 2026-11-10: no hardware access for now):** add the second follower to `arms.json` and record its
