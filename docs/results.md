@@ -3590,3 +3590,32 @@ Launched 2026-11-13 as WATcloud 749858 (m0, out `outputs/isaac/rl/trace_m0`) and
   pinched well up the fingers, the fold is let go from 3 cm up, and the higher it sits the more often it stays on
   the finger. In 25 of the 48 the jaw also took the full 60-step patience to reach 0.25 rad (98 of 208 clean arms
   did too), so a slow jaw does not separate them.
+
+**Correction to the overnight behaviour-cloning results (2026-11-13, found by the batch N reviewer, confirmed on the
+checkpoints).** The "top + wrists" camera students never saw the overhead camera. `imitation/train.py` chose a vision
+policy's cameras from the list main, left wrist, right wrist, and the demos held top, left wrist, right wrist, so
+`top` was dropped without a message. `vision_bc_stiff_m1/final.pt` and `vision_bc_stiff_m4/final.pt` both store
+cameras `left_wrist_cam`, `right_wrist_cam` only. Every vision row in rounds 1 to 4 (6 to 13 of 64) is a
+wrist-cameras-plus-proprio student. Fixed: `top` is in the list.
+
+### Batch N, position gripper mode and a small pose range: design (2026-11-13, reviewed by an opus subagent)
+
+Batch M's rule sends the collection to `gripper_mode=position` (the action's gripper entry is a jaw target, so the
+expert's own release is what gets recorded; the reviewer's stub run reproduces binary mode's jaw targets to 4e-8 and
+replays them exactly from the recorded actions). Both jobs run `bc_collect.py` on l0's seeds 3,000,128-255 with
+`particle_friction=0.65,gripper_mode=position`, `LATCH_GOAL=1,GFOLD_SLOPE=1.2`, window 450.
+
+- n1: with the collection's cameras (`top` 128 px, both wrists 64 px), which also times a chunk on the launch config.
+- n2: no cameras, cloth offset ±1.5 cm and turned ±5° (`WORLDFOLD_CLOTH_JITTER=0.015`, `WORLDFOLD_CLOTH_YAW=5`;
+  batch K's ±2 cm and ±10° held 52%).
+
+Rule, fixed before launch: at least 19 good and at least 103 held of 128, each job on its own. n1 passing starts the
+2,000-episode collection (seeds 4,000,000-4,001,999, three jobs, `--child-hours 11`). If n2 also passes, the
+collection uses n2's pose range, since the camera policy needs pose variety; otherwise it stays at ±1 cm and no turn.
+The camera is fixed at the current overhead pose in either case: the real camera's pose is not measured yet, so
+these images may need recording again, and shift and colour augmentation at training time covers the gap for now.
+
+Collector changes with this batch: a resume no longer fails on a seed whose episode was written before its row, and
+each stored episode's meta holds the measured jaw angles per step (the observation only has the jaw target, and the
+expert times its retreat on the measured angle). Position-mode datasets must not be merged with binary-mode ones,
+and a student trained on them must be evaluated with `gripper_mode=position`.

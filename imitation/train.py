@@ -94,7 +94,7 @@ def train(policy_kind, dataset, run, root=DEFAULT_ROOT, steps=30_000, batch=1024
         train_eps = val_eps
     cfg = POLICY_DEFAULTS.get(policy_kind, {}) | (policy_kwargs or {})
     if needs_images and not init_from and "cameras" not in cfg:   # camera sizes come from the data
-        order = ("main", "left_wrist_cam", "right_wrist_cam")
+        order = ("main", "top", "left_wrist_cam", "right_wrist_cam")
         cfg["cameras"] = [(c, int(episodes[0].images[c].shape[-1])) for c in order if c in episodes[0].images]
     if init_from:                 # warm start keeps the checkpoint's normalizer: its weights expect it
         policy = load_policy(init_from, device).train()

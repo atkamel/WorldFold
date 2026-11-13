@@ -153,8 +153,14 @@ def main():
         part += 1
     writer, chunks = None, 0
     pb = PrecisionBatch(args.copies, cameras=cams or None)
-    buf = [[] for _ in range(pb.n)]
-    pb.recorder = lambda i, obs, act, images: buf[i].append((obs, act, images))
+    buf, jaws = [[] for _ in range(pb.n)], [[] for _ in range(pb.n)]
+
+    def record(i, obs, act, images):
+        buf[i].append((obs, act, images))
+        # the measured jaw angles (rad, left then right): the observation only has the jaw target, and the expert
+        # leaves the release on the measured angle
+        jaws[i].append([round(float(pb.subs[i].joint_positions(p)[5]), 3) for p in ("left_", "right_")])
+    pb.recorder = record
     pb.record_images = bool(cams)
     zero = lambda obs: np.zeros((pb.n, ACT_DIM))
     a, b = (int(v) for v in args.seeds.split(":"))
@@ -166,7 +172,7 @@ def main():
             if writer is None:
                 writer = DatasetWriter(root, f"{args.version}_r{part}", config={"tool": "isaac/tools/bc_collect.py",
                                                                                   **meta}, resume=args.resume)
-            for k in buf:
+            for k in buf + jaws:
                 k.clear()
             snaps, _ = pb.scripted_to_window(seeds)
             ok = [i for i in range(pb.n) if snaps[i] is not None]
@@ -179,9 +185,11 @@ def main():
                 if final is not None:
                     row |= {k: final.get(k) for k in ("reason", "mean", "edge_max", "passed_valid", "dropped", "drop_at", "gate", "release")}
                     row["gate_valid"] = bool((final.get("gate") or {}).get("valid"))
-                    if row["demo"] or args.keep_failures:
+                    # a child killed between the add and the row comes back to this seed on --resume
+                    if (row["demo"] or args.keep_failures) and seed not in writer.done_seeds:
                         ep = build_episode(buf[i], final, pb.tasks[i]._observe(), seed,
-                                           {k: final.get(k) for k in ("mean", "edge_max", "passed_valid")})
+                                           {k: final.get(k) for k in ("mean", "edge_max", "passed_valid")}
+                                           | {"jaw_measured": list(jaws[i])})
                         writer.add(ep, OBS_DIM, ACTION_DIM)
                 print("BC", json.dumps(row), flush=True)
                 with open(rows, "a") as f:

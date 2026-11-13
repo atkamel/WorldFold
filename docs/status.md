@@ -37,6 +37,8 @@ released, still), user 2026-10-22.
   (`hardware/so101/replay.py` in the `../WorldFold-teleop` worktree, 23 tests on a fake bus, never run on hardware; the
   sim-angle to servo-tick map is a hypothesis: zero at tick 2047, sign +1); (3) cloth-pose randomisation knobs
   (`WORLDFOLD_CLOTH_JITTER`, `WORLDFOLD_CLOTH_YAW`).
+- **Correction (2026-11-13):** the overnight camera students below used the two wrist cameras only; the trainer
+  dropped the overhead one (fixed).
 - **Learned half-fold policies (overnight 2026-11-10, results.md):** behaviour cloning on the scripted place-servo
   expert's demos (stiff cloth, 433 demos) gives students that fold at least as well as the expert at the working bar
   (gate-valid within 2 / 3 cm). On 64 held-out seeds: expert 21/64 (32.8%), state chunk-MLP 30/64 (46.9% [35.2, 58.9]),
@@ -76,7 +78,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 1. **Record the camera policy's demos from l0's config, good folds only (user, 2026-11-13).** Batch M
    (results.md): the collection release fails (4 good of 128 against 25 for the same config with the expert's own
-   release; the worst edge rises 1.1 cm). Next, batch N: `bc_collect.py` with `gripper_mode=position` (the action
+   release; the worst edge rises 1.1 cm). Batch N (launched): `bc_collect.py` with `gripper_mode=position` (the action
    carries the jaw target, so the expert's release is recorded as it runs) on the same 128 seeds. At least 19 good
    and 103 held starts the 2,000-episode collection with cameras.
    The release trace: cloth stays on a finger almost only when it sits 3.5 cm or more above the fingertip at the
@@ -156,6 +158,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-13 · **Batch N prepared:** vision trainer no longer drops the `top` camera (the overnight camera students were wrist-only, results.md correction), collector resume fix and measured jaw in episode meta; fast 316 passed + 5 skipped (#15 fails), isaac 139 · this commit
 - 2026-11-13 · **Batch M read:** collection release 4 / 128 good against 25 / 128 (fails its rule), release trace points at cloth seated high in the jaw; `bc_collect` accepts `gripper_mode=position`; isaac 139 passed · this commit
 - 2026-11-13 · **Batch M prepared (user: demos from l0's config):** demo filter requires held corners, per-step release log in the expert and rows, 2 tests; fast 316 passed + 5 skipped (#15 fails), isaac 139 · this commit
 - 2026-11-13 · **Batch L read:** l0 rerun held 126 / 128, good 27 / 128; release jaw 0.6 / 1.0 and the capped shift fail their rules (results.md). Docs only, tests not rerun · this commit
