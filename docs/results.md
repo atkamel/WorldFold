@@ -3504,3 +3504,6 @@ guard: it must not fall. Shift factor: primary is good against the same jaw leve
 p < 0.01 (27 of 128 must reach about 47); median mean error and the signed carried-minus-bottom offset beside it.
 Seeds are shared across the six, so McNemar on pairs is reported as secondary. A non-significant result is not
 evidence of no effect at this n. The best config is rerun on 128 new seeds before any demo is recorded from it.
+
+Launched 2026-11-12 as WATcloud 749123 (l0, l3), 749124 (l1, l4), 749125 (l2, l5), code af88690 (no code change
+since), out `outputs/isaac/rl/lay_l1` to `lay_l3`.

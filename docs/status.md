@@ -70,7 +70,8 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 1. **Make LeHome's cloth fold well now that it is held** (batch K, results.md): the carried edge lands 1.2-1.35 cm
    past the bottom edge and a carried corner stays on the open jaw in 23-67 of 128 episodes. Batch L (results.md, design) crosses the release jaw opening (0.3 / 0.6 / 1.0 rad) with the layer-shift
-   correction capped at 1.5 cm, on seeds 3,000,128-255. k6 (friction 0.65) is the config the
+   correction capped at 1.5 cm, on seeds 3,000,128-255. Launched as WATcloud 749123-749125; read with `held_summary.py` and the rule
+   in results.md. k6 (friction 0.65) is the config the
    rule picks for the rerun; k0 is statistically the same. Pose range stays at ±1 cm and no turn until the expert
    handles more (k5 held 52% at ±2 cm and ±10°).
 2. **Hardware replay, deferred (user, 2026-11-10: no hardware access for now):** add the second follower to `arms.json` and record its
@@ -147,6 +148,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-12 · **Batch L launched (749123-749125):** release jaw 0.3 / 0.6 / 1.0 with and without a 1.5 cm layer shift, 128 new seeds; batch K's landing error corrected to past, not short. Docs only · this commit
 - 2026-11-12 · **Batch K read:** held 93-100% on LeHome's cloth, good folds 11-21%; stiff + friction 1.2 held 73%, good 56%; pose range ±2 cm / ±10° held 52% (results.md). Docs only, no code change, tests not rerun · this commit
 - 2026-11-10 · **Pathway review and first fixes (user):** review recomputed from raw rows (results.md); held-corner summary tool, replay export, cloth jitter / yaw knobs with two sweep slots, 7 tests; `hardware/so101/replay.py` in the teleop worktree (sonnet, 23 tests, lead re-ran and dry-ran the export); batch K designed, reviewed (opus) and launched (745130-745132); fast 314 passed + 5 skipped (#15 deselected), isaac 137 passed · af88690
 - 2026-11-10 · **Overnight behaviour cloning (user):** recording hook + `bc_collect` / `bc_train` / `bc_eval`, 2 reviews; 1,352 expert episodes (433 training demos, plus 64 on the eval seeds); 4 training rounds; state chunk-MLP 30/64 at the working bar vs the expert's 21/64, camera student 11-13/64; quarter2 fold 2 reaches the stack (jaw across the reach); fast 308 passed + 5 skipped (#15 deselected), isaac 131 passed · (this commit)
