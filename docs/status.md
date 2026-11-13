@@ -71,7 +71,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. **Record the camera policy's demos from l0's config, good folds only (user, 2026-11-13).** First batch M
+1. **Record the camera policy's demos from l0's config, good folds only (user, 2026-11-13).** First batch M, WATcloud 749858 and 749859,
    (results.md): the collection release on l0's 128 seeds, and l0 again with a per-step release log. At least 19
    good of 128 with the collection release starts the 2,000-episode collection (overhead + wrist cameras); under
    that, `gripper_mode=position` is tested first. The release log is read for why cloth stays on the finger. If it

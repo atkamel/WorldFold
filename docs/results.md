@@ -3562,3 +3562,6 @@ which cloth beside the corner leaves the table and whether it follows the site.
 
 The dataset filter now also requires both corners held through the carry (`bc_collect.demo`). On l0's rows it admits
 30 episodes against 27 good: 3 are still moving at the end, and held excludes none.
+
+Launched 2026-11-13 as WATcloud 749858 (m0, out `outputs/isaac/rl/trace_m0`) and 749859 (m1, version `chk_m1` under
+`outputs/isaac/bc/datasets_m`), code e160c5f, both on `thor-slurm1`.
