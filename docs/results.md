@@ -3507,3 +3507,7 @@ evidence of no effect at this n. The best config is rerun on 128 new seeds befor
 
 Launched 2026-11-12 as WATcloud 749123 (l0, l3), 749124 (l1, l4), 749125 (l2, l5), code af88690 (no code change
 since), out `outputs/isaac/rl/lay_l1` to `lay_l3`.
+
+749123 and 749125 failed before any simulation: `trpro-slurm1` rebuilt the Docker image and the Isaac Sim wheel
+download timed out. 749124 (l1, l4) completed on `thor-slurm1`. Resubmitted unchanged on `thor-slurm1` on 2026-11-13
+as 749639 (l0, l3) and 749640 (l2, l5).
