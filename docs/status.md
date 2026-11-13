@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-10 · **Branch:** `fix/half-fold-audit` · **Phase:** pathway fixes after the 2026-11-10 review:
+**Updated:** 2026-11-12 · **Branch:** `fix/half-fold-audit` · **Phase:** pathway fixes after the 2026-11-10 review:
 a grasp that holds both corners (batch K), a first replay on the real arms, then the camera policy
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -21,6 +21,10 @@ released, still), user 2026-10-22.
   imprecisely (5-7 of 32 within 2 / 3 cm). The state students read privileged cloth state, the expert they "match" was
   run with a changed release (49% demos before it, 34% with it), and 30/64 against 21/64 is not significant (p 0.15).
   The BC claims in the next bullet stand only as "the pipeline runs".
+- **Batch K (read 2026-11-12, 128 fresh seeds per config):** LeHome's cloth holds both corners in 93% of episodes at
+  default friction and 100% at 0.8 and 1.2, so the grasp is no longer the limit there. Only 11-21% are held and
+  within 2 / 3 cm with the gate. The stiff cloth with friction 1.2 holds 73% and gives 56% good folds, short of the
+  80% held screen. With the cloth offset ±2 cm and turned ±10° held falls to 52%.
 - **Fixes under way (user go-ahead, 2026-11-10):** (1) the grasp is judged on held corners
   (`isaac/tools/held_summary.py`), batch K on fresh seeds; (2) a sim demo exported as a joint trajectory
   (`isaac/tools/export_replay.py`, `outputs/isaac/replay/s1000000.json`) and an open-loop replay tool for the real arms
@@ -64,9 +68,11 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. **Read batch K** (WATcloud 745130-745132, running; results.md "Batch K"): `held_summary.py` over the three output folders, rule as written there.
-   A config with held >= 80% goes to a second set of 128 fresh seeds, then to the collection release
-   (`jaw_open_rate` + `open_only`) before any demo is recorded from it.
+1. **Make LeHome's cloth fold well now that it is held** (batch K, results.md): the carried edge lands 1.2-1.35 cm
+   short and a carried corner stays on the open jaw in 23-67 of 128 episodes. Find the cause of each in the release
+   code and traces, then batch L on fresh seeds (opus review before launch). k6 (friction 0.65) is the config the
+   rule picks for the rerun; k0 is statistically the same. Pose range stays at ±1 cm and no turn until the expert
+   handles more (k5 held 52% at ±2 cm and ±10°).
 2. **Hardware replay, deferred (user, 2026-11-10: no hardware access for now):** add the second follower to `arms.json` and record its
    `limits.json`; `replay.py --check <arm>` to confirm each joint's sign; then `replay.py
    outputs/isaac/replay/s1000000.json --left <arm> --right <arm>` at half speed with the tip positions it prints
@@ -141,6 +147,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-12 · **Batch K read:** held 93-100% on LeHome's cloth, good folds 11-21%; stiff + friction 1.2 held 73%, good 56%; pose range ±2 cm / ±10° held 52% (results.md). Docs only, no code change, tests not rerun · this commit
 - 2026-11-10 · **Pathway review and first fixes (user):** review recomputed from raw rows (results.md); held-corner summary tool, replay export, cloth jitter / yaw knobs with two sweep slots, 7 tests; `hardware/so101/replay.py` in the teleop worktree (sonnet, 23 tests, lead re-ran and dry-ran the export); batch K designed, reviewed (opus) and launched (745130-745132); fast 314 passed + 5 skipped (#15 deselected), isaac 137 passed · af88690
 - 2026-11-10 · **Overnight behaviour cloning (user):** recording hook + `bc_collect` / `bc_train` / `bc_eval`, 2 reviews; 1,352 expert episodes (433 training demos, plus 64 on the eval seeds); 4 training rounds; state chunk-MLP 30/64 at the working bar vs the expert's 21/64, camera student 11-13/64; quarter2 fold 2 reaches the stack (jaw across the reach); fast 308 passed + 5 skipped (#15 deselected), isaac 131 passed · (this commit)
 - 2026-11-09 · **Restructure review + batch J:** four subagent reports (code review, process critique, research, ideation), corrections to earlier claims (pooled control is one seed set, modelled reach figure, cantilever floor), batch J `CARRY_WEIGHT` no effect; awaiting the user's order; no code change · (this commit)

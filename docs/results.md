@@ -3439,3 +3439,36 @@ to the table (IG.2), so k4 and k3 may lose held.
 
 Launched 2026-11-10 as WATcloud 745130 (k0, k1), 745131 (k3, k6), 745132 (k4, k5), code af88690, out
 `outputs/isaac/rl/grasp_k1` to `grasp_k3`.
+
+### Batch K, result (read 2026-11-12, jobs 745130-745132, code af88690, seeds 3,000,000-127, n 128 per config)
+
+All six children exited 0 with 128 rows each. `held_summary.py` over the three output folders, control k0. "Good" is
+held and within 2 / 3 cm with the full gate. Fisher is two-sided on held against k0.
+
+| config | held | lenient | carry drops L / R | good | cloth left over 5 cm up | median mean error | Fisher p |
+|---|---|---|---|---|---|---|---|
+| k0 LeHome, friction 0.5 | 119 (93.0% [87.2, 96.3]) | 127 | 2 / 7 | 22 (17.2% [11.6, 24.7]) | 23 | 2.13 cm | |
+| k6 LeHome, 0.65 | 126 (98.4% [94.5, 99.6]) | 128 | 0 / 2 | 27 (21.1% [14.9, 29.0]) | 39 | 2.12 cm | 0.060 |
+| k1 LeHome, 0.8 | 128 (100% [97.1, 100]) | 128 | 0 / 0 | 19 (14.8% [9.7, 22.0]) | 50 | 2.06 cm | 0.003 |
+| k4 LeHome, 1.2 | 128 (100% [97.1, 100]) | 128 | 0 / 0 | 14 (10.9% [6.6, 17.5]) | 67 | 1.81 cm | 0.003 |
+| k3 bend 5e5, 1.2 | 93 (72.7% [64.4, 79.6]) | 94 | 1 / 35 | 72 (56.3% [47.6, 64.5]) | 5 | 0.71 cm | < 0.001 |
+| k5 LeHome, ±2 cm and ±10° | 66 (51.6% [43.0, 60.0]) | 79 | 21 / 36 | 12 (9.4% [5.4, 15.7]) | 10 | n/a | < 0.001 |
+
+- **Screen (held at least 103).** k0, k6, k1 and k4 pass. k3 and k5 fail. Among the passers k6 has the most good
+  episodes (27), so by the rule k6 is the config to rerun. Its 27 against k0's 22 is inside the noise.
+- **Holding is solved on LeHome's cloth.** The control already holds 93%, and friction 0.8 or 1.2 holds 128 of 128.
+  The review's 72-81% came from 32 reused seeds.
+- **LeHome's cloth still folds badly with both corners held.** Good is 11-21% in every LeHome config. Two causes show
+  in the final grids. The carried edge lands short of the bottom edge by a median 1.2-1.35 cm along the fold direction
+  (0.82 cm at friction 1.2). The cloth's highest point at the end is at a carried corner, 6.7-7.3 cm up, in 23 (0.5),
+  39 (0.65), 50 (0.8) and 67 (1.2) episodes, so the corner stays on the open jaw more often as friction rises.
+  Ignoring the gate, 29 / 35 / 51 episodes are within 2 / 3 cm at friction 0.5 / 0.65 / 1.2.
+- **Stiff cloth with friction 1.2 (k3)** holds 72.7% against 3-6% at friction 0.5 and 12 of 32 at 0.8 (earlier
+  batches, other seeds). It has the most good episodes of the batch (72) and 51 gate-valid strict passes. It misses the
+  held screen, and 13 of its 85 gate-valid 2 / 3 cm folds had a dropped corner.
+- **Pose range (k5).** Held falls with the turn drawn for the seed: 27 of 36 under 3.3°, 29 of 55 from 3.3° to 6.7°,
+  10 of 37 above. 18 episodes never reached the window (0 in every other config), all with a turn over 3.3°. One
+  episode failed the on-table gate. The expert does not handle ±10°.
+- **Yaw knob check.** Rows hold no grid from the reset, only from the window's start. The bottom edge's angle at that
+  point tracks the seed's drawn yaw with correlation 0.96, the right sign and a slope of 1.43 (k0's spread on the same
+  measure is 1.7° SD). The knob works. The slope above 1 is unexplained, and the turn at reset has not been measured.
