@@ -8,8 +8,9 @@ gate). Only demos go into the dataset (the trainer clones successes); every seed
 Versions roll every --freeze-every chunks (<version>_r0, _r1, ...) so training can start on the frozen ones.
 
 The expert's gentle release normally sets the jaw's open target through a side channel (base.jaw_open) that its
-action doesn't carry; here it only commands "open" and WORLDFOLD_GRASP_KNOBS must set jaw_open_rate, so the env ramps
-the jaw exactly as it will for a student (review 2026-11-09).
+action doesn't carry. With gripper_mode=position in WORLDFOLD_GRASP_KNOBS the action carries the jaw target and the
+expert runs unchanged. Otherwise it only commands "open" and jaw_open_rate must be set, so the env ramps the jaw as
+it will for a student (review 2026-11-09); batch M: that release costs the worst edge 1.1 cm on LeHome's cloth.
 
   isaac/watcloud.sbatch isaac/tools/bc_collect.py --seeds 1000000:1000200 --version bc_stiff_c1 \\
       --cameras main=128,left_wrist_cam=64,right_wrist_cam=64
@@ -134,9 +135,12 @@ def main():
     from isaac.experts.place_servo import IsaacPlaceServoExpert
     from isaac.rl.precision_env import ACT_DIM, PrecisionBatch
     from isaac.rl.precision_rl import run_episodes
-    if "jaw_open_rate" not in os.environ.get("WORLDFOLD_GRASP_KNOBS", ""):
-        sys.exit("bc_collect needs jaw_open_rate in WORLDFOLD_GRASP_KNOBS (the release ramp a student can reproduce)")
-    IsaacPlaceServoExpert._set_jaw = open_only
+    knobs = os.environ.get("WORLDFOLD_GRASP_KNOBS", "")
+    if "gripper_mode=position" not in knobs:     # position mode: the action carries the jaw target, nothing to change
+        if "jaw_open_rate" not in knobs:
+            sys.exit("bc_collect needs jaw_open_rate or gripper_mode=position in WORLDFOLD_GRASP_KNOBS (a release a "
+                     "student can reproduce)")
+        IsaacPlaceServoExpert._set_jaw = open_only
     cams = parse_cameras(args.cameras)
     root = Path(args.root)
     root.mkdir(parents=True, exist_ok=True)

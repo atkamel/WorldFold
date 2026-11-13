@@ -28,6 +28,9 @@ released, still), user 2026-10-22.
 - **Batch L (read 2026-11-13, 128 new seeds per config):** the rerun confirms LeHome's cloth at friction 0.65: held
   98%, good 21%. Opening the jaw wider at release (0.6, 1.0 rad) did not free the corner and 0.6 cut good folds to 3%.
   The layer shift capped at 1.5 cm halved the edge overshoot with no gain in good folds.
+- **Batch M (read 2026-11-13):** the demo collector's release (jaw ramped open by the env) gives 4 good folds of 128
+  where the expert's own release gives 25-27, so no demos are recorded with it. The same config run twice on the same
+  seeds agrees on the rate and disagrees on which seeds pass. Cloth is pinched 2.5-4 cm up the fingers at release.
 - **Fixes under way (user go-ahead, 2026-11-10):** (1) the grasp is judged on held corners
   (`isaac/tools/held_summary.py`), batch K on fresh seeds; (2) a sim demo exported as a joint trajectory
   (`isaac/tools/export_replay.py`, `outputs/isaac/replay/s1000000.json`) and an open-loop replay tool for the real arms
@@ -71,11 +74,14 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. **Record the camera policy's demos from l0's config, good folds only (user, 2026-11-13).** First batch M, WATcloud 749858 and 749859,
-   (results.md): the collection release on l0's 128 seeds, and l0 again with a per-step release log. At least 19
-   good of 128 with the collection release starts the 2,000-episode collection (overhead + wrist cameras); under
-   that, `gripper_mode=position` is tested first. The release log is read for why cloth stays on the finger. If it
-   gives no scripted fix, a residual RL on place and release against the held-corner metric is next (user).
+1. **Record the camera policy's demos from l0's config, good folds only (user, 2026-11-13).** Batch M
+   (results.md): the collection release fails (4 good of 128 against 25 for the same config with the expert's own
+   release; the worst edge rises 1.1 cm). Next, batch N: `bc_collect.py` with `gripper_mode=position` (the action
+   carries the jaw target, so the expert's release is recorded as it runs) on the same 128 seeds. At least 19 good
+   and 103 held starts the 2,000-episode collection with cameras.
+   The release trace: cloth stays on a finger almost only when it sits 3.5 cm or more above the fingertip at the
+   start of the release (46 of 48 arms), mostly the right arm. A lower seat in the jaw is the lead for a scripted
+   fix; if none works, a residual RL on place and release against the held-corner metric (user).
 2. **Hardware replay, deferred (user, 2026-11-10: no hardware access for now):** add the second follower to `arms.json` and record its
    `limits.json`; `replay.py --check <arm>` to confirm each joint's sign; then `replay.py
    outputs/isaac/replay/s1000000.json --left <arm> --right <arm>` at half speed with the tip positions it prints
@@ -150,6 +156,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-13 · **Batch M read:** collection release 4 / 128 good against 25 / 128 (fails its rule), release trace points at cloth seated high in the jaw; `bc_collect` accepts `gripper_mode=position`; isaac 139 passed · this commit
 - 2026-11-13 · **Batch M prepared (user: demos from l0's config):** demo filter requires held corners, per-step release log in the expert and rows, 2 tests; fast 316 passed + 5 skipped (#15 fails), isaac 139 · this commit
 - 2026-11-13 · **Batch L read:** l0 rerun held 126 / 128, good 27 / 128; release jaw 0.6 / 1.0 and the capped shift fail their rules (results.md). Docs only, tests not rerun · this commit
 - 2026-11-12 · **Batch L launched (749123-749125):** release jaw 0.3 / 0.6 / 1.0 with and without a 1.5 cm layer shift, 128 new seeds; batch K's landing error corrected to past, not short. Docs only · this commit

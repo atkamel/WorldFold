@@ -3565,3 +3565,28 @@ The dataset filter now also requires both corners held through the carry (`bc_co
 
 Launched 2026-11-13 as WATcloud 749858 (m0, out `outputs/isaac/rl/trace_m0`) and 749859 (m1, version `chk_m1` under
 `outputs/isaac/bc/datasets_m`), code e160c5f, both on `thor-slurm1`.
+
+### Batch M, result (read 2026-11-13, jobs 749858 and 749859, code e160c5f, seeds 3,000,128-255, n 128)
+
+| run | held | good | within 2 / 3 cm, no gate | worst edge under 3 cm | cloth left up | median mean / edge |
+|---|---|---|---|---|---|---|
+| l0 (batch L) | 126 | 27 (21.1% [14.9, 29.0]) | 30 | | 34 | 2.22 / 3.61 cm |
+| m0, same config again | 124 | 25 (19.5% [13.6, 27.2]) | 28 | 37 | 36 | 2.32 / 3.54 |
+| m1, collection release | 123 | 4 (3.1% [1.2, 7.8]) | 5 | 9 | 45 | 2.31 / 4.33 |
+
+- **The collection release fails the rule** (4 good against the 19 needed). Against m0 on the same seeds 23 good
+  folds are lost and 2 gained (McNemar p < 0.001). 22 of the 23 lost ones fail on the worst edge, which rises a
+  paired 1.09 cm (SD 1.92) while the mean moves 0.10 cm. With this release the jaw is at a median 0.79-0.93 rad by the
+  top of the lift against 0.30. The dataset filter passed 5 episodes. No collection from this release; the earlier
+  stiff-cloth demos were all recorded with it.
+- **Test-retest.** m0 against l0, same config and seeds: 25 and 27 good, with 14 and 16 seeds good in only one of
+  the two (McNemar p 0.86). Cloth left up changes state on 42 seeds. A single episode's outcome is mostly run-to-run
+  variation; the rates repeat.
+- **Release trace (m0, per arm, 256 arm releases).** Cloth is carried up by the retreat in 48 (right 34, left 14).
+  In 46 of those 48 the highest tracked vertex beside the corner was already at least 3.5 cm above the release site
+  when the release began; of the 128 arms that started that high 46 carried cloth up, against 2 of 128 that started
+  lower. Clean arms also start high: the corner sits a median 2.5 cm above the fingertip site at the start of the
+  release (3.8 cm in arms that carry cloth up) and 2.2-2.8 cm from it in xy, then falls to the table. The corner is
+  pinched well up the fingers, the fold is let go from 3 cm up, and the higher it sits the more often it stays on
+  the finger. In 25 of the 48 the jaw also took the full 60-step patience to reach 0.25 rad (98 of 208 clean arms
+  did too), so a slow jaw does not separate them.
