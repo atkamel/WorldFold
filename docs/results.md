@@ -3511,3 +3511,31 @@ since), out `outputs/isaac/rl/lay_l1` to `lay_l3`.
 749123 and 749125 failed before any simulation: `trpro-slurm1` rebuilt the Docker image and the Isaac Sim wheel
 download timed out. 749124 (l1, l4) completed on `thor-slurm1`. Resubmitted unchanged on `thor-slurm1` on 2026-11-13
 as 749639 (l0, l3) and 749640 (l2, l5).
+
+### Batch L, result (read 2026-11-13, jobs 749124, 749639, 749640, code af88690, seeds 3,000,128-255, n 128 per config)
+
+All six children exited 0 with 128 rows each. Good is held and within 2 / 3 cm with the full gate; "up" is cloth left
+over 5 cm above the table at the end; the offset is the carried edge minus the bottom edge along the carry (negative
+is past it), median.
+
+| config | held | good | up | within 2 / 3 cm, no gate | median mean / edge | offset edge / interior |
+|---|---|---|---|---|---|---|
+| l0 jaw 0.3 | 126 | 27 (21.1% [14.9, 29.0]) | 34 | 30 | 2.22 / 3.61 cm | -1.47 / -2.10 cm |
+| l1 jaw 0.6 | 126 | 4 (3.1% [1.2, 7.8]) | 39 | 5 | 2.41 / 4.50 | -1.34 / -2.04 |
+| l2 jaw 1.0 | 123 | 14 (10.9% [6.6, 17.5]) | 36 | 21 | 2.54 / 4.22 | -1.21 / -1.70 |
+| l3 jaw 0.3 + shift | 122 | 25 (19.5% [13.6, 27.2]) | 46 | 30 | 1.95 / 4.22 | -0.67 / -1.66 |
+| l4 jaw 0.6 + shift | 124 | 7 (5.5% [2.7, 10.9]) | 43 | 13 | 1.93 / 4.31 | -0.62 / -1.50 |
+| l5 jaw 1.0 + shift | 126 | 20 (15.6% [10.3, 22.9]) | 38 | 28 | 1.90 / 4.39 | -0.81 / -1.26 |
+
+- **The rerun holds.** l0 is k6's config on new seeds: held 126 of 128 (screen 103) and good 27 of 128, the same count
+  as k6. LeHome's cloth at friction 0.65 folds well in about a fifth of episodes.
+- **A wider release jaw does not free the corner.** Up is 39 (0.6) and 36 (1.0) against 34, Fisher p 0.58 and 0.89;
+  with the shift 43 and 38 against 46, p 0.79 and 0.35. The part-open jaw is not the cause. Opening to 0.6 costs good
+  folds: 4 against 27 (p < 0.001, discordant pairs 3 to 26) and 7 against 25 with the shift (p 0.001). 1.0 gives 14
+  against 27 (p 0.04, over the 0.01 line).
+- **The capped shift halves the edge overshoot and changes nothing that counts.** The offset goes from -1.47 to
+  -0.67 cm and the median mean from 2.22 to 1.95 cm; good is 25 against 27 (p 0.88), the worst edge rises from 3.61
+  to 4.22 cm, and up is 46 against 34 (p 0.14). The interior stays 1.3-1.7 cm past in every shift config.
+- **Up does not follow the seed.** Between l0 and l1 39 seeds change state (22 one way, 17 the other) against 34 and
+  39 totals, so most of it is run-to-run variation, not a property of the start pose.
+- Neither knob passes its rule. The base config (l0) stays the best on LeHome's cloth.

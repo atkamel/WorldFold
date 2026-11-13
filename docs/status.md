@@ -25,6 +25,9 @@ released, still), user 2026-10-22.
   default friction and 100% at 0.8 and 1.2, so the grasp is no longer the limit there. Only 11-21% are held and
   within 2 / 3 cm with the gate. The stiff cloth with friction 1.2 holds 73% and gives 56% good folds, short of the
   80% held screen. With the cloth offset ±2 cm and turned ±10° held falls to 52%.
+- **Batch L (read 2026-11-13, 128 new seeds per config):** the rerun confirms LeHome's cloth at friction 0.65: held
+  98%, good 21%. Opening the jaw wider at release (0.6, 1.0 rad) did not free the corner and 0.6 cut good folds to 3%.
+  The layer shift capped at 1.5 cm halved the edge overshoot with no gain in good folds.
 - **Fixes under way (user go-ahead, 2026-11-10):** (1) the grasp is judged on held corners
   (`isaac/tools/held_summary.py`), batch K on fresh seeds; (2) a sim demo exported as a joint trajectory
   (`isaac/tools/export_replay.py`, `outputs/isaac/replay/s1000000.json`) and an open-loop replay tool for the real arms
@@ -68,12 +71,13 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. **Make LeHome's cloth fold well now that it is held** (batch K, results.md): the carried edge lands 1.2-1.35 cm
-   past the bottom edge and a carried corner stays on the open jaw in 23-67 of 128 episodes. Batch L (results.md, design) crosses the release jaw opening (0.3 / 0.6 / 1.0 rad) with the layer-shift
-   correction capped at 1.5 cm, on seeds 3,000,128-255. Launched as WATcloud 749124 (done), 749639 and 749640 (resubmitted after an image build failure); read with `held_summary.py` and the rule
-   in results.md. k6 (friction 0.65) is the config the
-   rule picks for the rerun; k0 is statistically the same. Pose range stays at ±1 cm and no turn until the expert
-   handles more (k5 held 52% at ±2 cm and ±10°).
+1. **Decide the demo source (user).** Batch L (results.md): the base config on LeHome's cloth at friction 0.65
+   reran at held 126 / 128 and good 27 / 128 (21%). A wider release jaw and a capped layer shift both failed their
+   rules. Open causes: a carried corner ends about 7 cm up in 34-46 of 128 episodes (not the jaw opening, not tied
+   to the seed) and the top layer lies 1.3-2.1 cm past the bottom one. Options: record demos from the 21% config
+   and keep only held, gate-valid folds; or first trace the release step by step (corner height against the site,
+   a side camera) to find why the corner stays up. Pose range stays at ±1 cm and no turn (k5 held 52% at ±2 cm and
+   ±10°).
 2. **Hardware replay, deferred (user, 2026-11-10: no hardware access for now):** add the second follower to `arms.json` and record its
    `limits.json`; `replay.py --check <arm>` to confirm each joint's sign; then `replay.py
    outputs/isaac/replay/s1000000.json --left <arm> --right <arm>` at half speed with the tip positions it prints
@@ -148,6 +152,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-13 · **Batch L read:** l0 rerun held 126 / 128, good 27 / 128; release jaw 0.6 / 1.0 and the capped shift fail their rules (results.md). Docs only, tests not rerun · this commit
 - 2026-11-12 · **Batch L launched (749123-749125):** release jaw 0.3 / 0.6 / 1.0 with and without a 1.5 cm layer shift, 128 new seeds; batch K's landing error corrected to past, not short. Docs only · this commit
 - 2026-11-12 · **Batch K read:** held 93-100% on LeHome's cloth, good folds 11-21%; stiff + friction 1.2 held 73%, good 56%; pose range ±2 cm / ±10° held 52% (results.md). Docs only, no code change, tests not rerun · this commit
 - 2026-11-10 · **Pathway review and first fixes (user):** review recomputed from raw rows (results.md); held-corner summary tool, replay export, cloth jitter / yaw knobs with two sweep slots, 7 tests; `hardware/so101/replay.py` in the teleop worktree (sonnet, 23 tests, lead re-ran and dry-ran the export); batch K designed, reviewed (opus) and launched (745130-745132); fast 314 passed + 5 skipped (#15 deselected), isaac 137 passed · af88690
