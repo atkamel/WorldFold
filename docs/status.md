@@ -78,7 +78,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 1. **Record the camera policy's demos from l0's config, good folds only (user, 2026-11-13).** Batch M
    (results.md): the collection release fails (4 good of 128 against 25 for the same config with the expert's own
-   release; the worst edge rises 1.1 cm). Batch N (launched): `bc_collect.py` with `gripper_mode=position` (the action
+   release; the worst edge rises 1.1 cm). Batch N (WATcloud 749909, 749910): `bc_collect.py` with `gripper_mode=position` (the action
    carries the jaw target, so the expert's release is recorded as it runs) on the same 128 seeds. At least 19 good
    and 103 held starts the 2,000-episode collection with cameras.
    The release trace: cloth stays on a finger almost only when it sits 3.5 cm or more above the fingertip at the

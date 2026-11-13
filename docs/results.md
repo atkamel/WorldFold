@@ -3619,3 +3619,6 @@ Collector changes with this batch: a resume no longer fails on a seed whose epis
 each stored episode's meta holds the measured jaw angles per step (the observation only has the jaw target, and the
 expert times its retreat on the measured angle). Position-mode datasets must not be merged with binary-mode ones,
 and a student trained on them must be evaluated with `gripper_mode=position`.
+
+Launched 2026-11-13 as WATcloud 749909 (n1, version `chk_n1`) and 749910 (n2, `chk_n2`), root
+`outputs/isaac/bc/datasets_n`, code 00af711, both on `thor-slurm1`.
