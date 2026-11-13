@@ -2,7 +2,7 @@
 precision env (PrecisionBatch, the same env the expert's numbers come from), recorded from each copy's reset to the end
 of its window episode as imitation-pipeline episodes (139-D observation, 12-D action, optional rig camera frames).
 
-An episode is a demo when it ends settled, passes the validity gate except its stillness check, and lands within
+An episode is a demo when both corners stay in the jaws through the carry, it ends settled, passes the validity gate except its stillness check, and lands within
 MEAN_BAR / EDGE_BAR (the user's working bar, 2026-11-09: a gate-valid fold within 2 / 3 cm; evaluation keeps the full
 gate). Only demos go into the dataset (the trainer clones successes); every seed gets a row in <root>/<version>.rows.jsonl.
 Versions roll every --freeze-every chunks (<version>_r0, _r1, ...) so training can start on the frozen ones.
@@ -43,6 +43,13 @@ def success(final, mean_bar=MEAN_BAR, edge_bar=EDGE_BAR, still=True):
     return bool(valid and final["mean"] <= mean_bar and final["edge_max"] <= edge_bar)
 
 
+def demo(final):
+    """The dataset filter: success without the stillness check, with both corners held through the carry (review
+    2026-11-10: on the stiff cloth most passes were a dropped corner falling flat)."""
+    from isaac.tools.held_summary import held
+    return success(final, still=False) and held(final)
+
+
 def build_episode(steps, final, final_obs, seed, meta):
     """steps: [(obs 139, action 12, images {cam: uint8 [3, H, W]} or None)] -> an imitation Episode (source expert)."""
     from imitation.data.schema import Episode
@@ -59,7 +66,7 @@ def build_episode(steps, final, final_obs, seed, meta):
                    grasped=np.zeros((T, 2), bool), actor=np.zeros(T, np.int8),
                    final_obs=np.asarray(final_obs, np.float32), terminated=terminated, truncated=truncated,
                    discount=np.where(terminated, 0.0, 1.0).astype(np.float32),
-                   meta={"seed": int(seed), "source": "expert", "success": success(final, still=False),
+                   meta={"seed": int(seed), "source": "expert", "success": demo(final),
                          "termination_reason": final.get("reason"), **meta}, images=images)
 
 
@@ -164,9 +171,9 @@ def main():
             for i, seed in enumerate(seeds):
                 final = finals[i] if i in ok else None
                 row = {"seed": seed, "no_window": final is None, "steps": len(buf[i]),
-                       "demo": success(final, still=False), "success": success(final)}
+                       "demo": demo(final), "success": success(final)}
                 if final is not None:
-                    row |= {k: final.get(k) for k in ("reason", "mean", "edge_max", "passed_valid", "dropped")}
+                    row |= {k: final.get(k) for k in ("reason", "mean", "edge_max", "passed_valid", "dropped", "drop_at", "gate", "release")}
                     row["gate_valid"] = bool((final.get("gate") or {}).get("valid"))
                     if row["demo"] or args.keep_failures:
                         ep = build_episode(buf[i], final, pb.tasks[i]._observe(), seed,

@@ -200,3 +200,11 @@ def test_grip_gain_scales_only_the_gripper_commands():
     a = np.full(12, 0.2, np.float32)
     g = grip_gain(a, 3.0)
     assert np.allclose(g[[5, 11]], 0.6) and np.allclose(np.delete(g, [5, 11]), 0.2) and np.allclose(a, 0.2)
+
+
+def test_demo_needs_both_corners_held():
+    from isaac.tools.bc_collect import demo
+    assert demo(dict(GOOD, drop_at={}))
+    assert not demo(dict(GOOD, drop_at={"right_": {"phase": "carry"}}))
+    assert demo(dict(GOOD, drop_at={"right_": {"phase": "place"}}))
+    assert not demo(None)

@@ -495,3 +495,14 @@ def test_carry_weight_sets_the_carry_ik_only():
     e._go("place")
     e.act()
     assert e._ik.weights[-1] == e._carry_w                      # the place keeps the old weight
+
+
+def test_release_log_has_a_row_per_release_and_retreat_step():
+    e = _releasing()
+    steps = 0
+    while e.PHASES[e.phase] in ("release", "retreat"):
+        e.base.apply(e.act())
+        steps += 1
+    log = np.array(e.release_log)
+    assert log.shape == (steps, 6) and set(log[:, 0]) == {0.0, 1.0}
+    assert np.all(np.diff(log[:, 0]) >= 0)                  # release rows, then retreat rows

@@ -109,7 +109,7 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
 
     PHASE_FIELDS = IsaacServoExpert.PHASE_FIELDS + ("residual", "release_vote", "hold_site", "dropped", "latched", "touch",
                                                     "release_site", "hold_offset", "shift", "drop_at", "seat_regrasps",
-                                                    "slip_regrasps", "slipped", "corner_hist", "seats")
+                                                    "slip_regrasps", "slipped", "corner_hist", "seats", "release_log")
 
     def __init__(self, *args, live_goal=None, layer_offset=None, **kwargs):
         self.live_goal = live_goal       # callable -> the partner vertex's current position; None: self.goal
@@ -129,6 +129,10 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         self.slipped = False             # the corner left the jaw since the last grasp: a re-grasp decision is pending
         self.corner_hist = []
         self.seats = []                  # cm, the corner above the site at each lift's end
+        # per release / retreat step: [0 release / 1 retreat, corner above the release site cm, site above it cm,
+        # corner to site in xy cm, jaw rad, highest tracked vertex next to the corner above the release site cm]
+        # (batch L: cloth at a carried corner ends ~7 cm up in a quarter of episodes, half of them beside the corner)
+        self.release_log = []
         self.latched = None
         self.touch = None
         self.release_site = None
@@ -378,6 +382,16 @@ class IsaacPlaceServoExpert(IsaacServoExpert):
         jaw = self.plan["jaw"]
         if self.release_site is None:            # put into release / retreat by infer_phase, not by hold
             self.release_site = self._site()
+        corner, site = self._corner(), self._site()
+        cloth = np.asarray(self.base.cloth_positions())
+        n = int(round(len(cloth) ** 0.5))
+        ix, iy = divmod(int(self.corners[0]), n)
+        block = cloth.reshape(n, n, 3)[max(ix - 1, 0):ix + 2, max(iy - 1, 0):iy + 2, 2].max()
+        self.release_log.append([int(name == "retreat"), round(100 * float(corner[2] - self.release_site[2]), 1),
+                                 round(100 * float(site[2] - self.release_site[2]), 1),
+                                 round(100 * float(np.linalg.norm(corner[:2] - site[:2])), 1),
+                                 round(float(self.base.joint_positions(self.prefix)[5]), 2),
+                                 round(100 * float(block - self.release_site[2]), 1)])
         if name == "release":
             q = min(self.RELEASE_JAW, float(self.base._joint_targets[self.prefix][5]) + self.RELEASE_STEP)
             self._set_jaw(action, q)

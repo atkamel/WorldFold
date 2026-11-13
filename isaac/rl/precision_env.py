@@ -405,7 +405,8 @@ class PrecisionBatch:
                 # a blown-up cloth: park it at once so it can't drift into the other copies, its arms idle
                 st["final"] = {"reason": "unstable", "steps": st["t"], "mean": None, "edge_max": None, "passed": False,
                                "dropped": [p for p in ARMS if ex[p].dropped], "drop_at": {p: ex[p].drop_at for p in ARMS if ex[p].dropped},
-                               "recover": {p: {"seats": ex[p].seats, "seat": ex[p].seat_regrasps, "slip": ex[p].slip_regrasps} for p in ARMS}, "instability": instability(sub),
+                               "recover": {p: {"seats": ex[p].seats, "seat": ex[p].seat_regrasps, "slip": ex[p].slip_regrasps} for p in ARMS},
+                               "release": {p: list(ex[p].release_log) for p in ARMS}, "instability": instability(sub),
                                "residual": {p: np.round(ex[p].residual, 4).tolist() for p in ARMS}}
                 sub.park()
                 for e in ex.values():
@@ -455,7 +456,8 @@ class PrecisionBatch:
                 st["final"] = {"reason": reason, "steps": st["t"], "mean": round(s["mean"], 4),
                                "bottom_shift": round(bottom_shift(cloth, st["start"]), 4),
                                "dropped": [p for p in ARMS if ex[p].dropped], "drop_at": {p: ex[p].drop_at for p in ARMS if ex[p].dropped},
-                               "recover": {p: {"seats": ex[p].seats, "seat": ex[p].seat_regrasps, "slip": ex[p].slip_regrasps} for p in ARMS}, "instability": None,
+                               "recover": {p: {"seats": ex[p].seats, "seat": ex[p].seat_regrasps, "slip": ex[p].slip_regrasps} for p in ARMS},
+                               "release": {p: list(ex[p].release_log) for p in ARMS}, "instability": None,
                                "touch": st.get("touch") or None,
                                "edge_max": round(s["edge_max"], 4), "passed": bool(s["passed"]),
                                "gate": g, "passed_valid": bool(s["passed"] and g["valid"] and reason == "settled"),

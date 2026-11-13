@@ -3539,3 +3539,26 @@ is past it), median.
 - **Up does not follow the seed.** Between l0 and l1 39 seeds change state (22 one way, 17 the other) against 34 and
   39 totals, so most of it is run-to-run variation, not a property of the start pose.
 - Neither knob passes its rule. The base config (l0) stays the best on LeHome's cloth.
+
+### Batch M, the collection release and a release trace: design (2026-11-13, reviewed by an opus subagent before launch)
+
+The user chose to record the camera policy's demos from l0's config and keep only good folds. Batch K's rule asks for
+one check with the collection release first (`bc_collect.py`: the expert only commands "open" and the env ramps the
+jaw at `jaw_open_rate`, which a student can reproduce). Both jobs use l0's seeds 3,000,128-255, LeHome cloth,
+`particle_friction` 0.65, `LATCH_GOAL=1,GFOLD_SLOPE=1.2`, window 450.
+
+- m0: l0 again through `precision_rl.py sweep`, with the new per-step release log (corner, site, jaw, and the highest
+  tracked vertex beside the corner). A test-retest of l0 and the control for m1.
+- m1: `bc_collect.py`, `jaw_open_rate=0.02`, no cameras. With this release the jaw is the same while the arm is
+  still and keeps opening in the lift, to about 0.8 rad at the top (reviewer's stub run), so batch L's wide-jaw
+  configs do not predict it.
+
+Rule, fixed before launch. Good is held and within 2 / 3 cm with the full gate. If m1 has at least 19 good of 128,
+the 2,000-episode collection goes ahead with this release. Under 19, `gripper_mode=position` (the action carries the
+0.3 rad cap; never run on the half fold) is tested before collecting. The threshold passes a true 21% config 97% of
+the time and a true 10% config 5% of the time. Reported beside it: the demo count (the dataset filter, which drops
+the stillness check), McNemar against m0, and cloth left over 5 cm up. m0's logs are read descriptively: the step at
+which cloth beside the corner leaves the table and whether it follows the site.
+
+The dataset filter now also requires both corners held through the carry (`bc_collect.demo`). On l0's rows it admits
+30 episodes against 27 good: 3 are still moving at the end, and held excludes none.
