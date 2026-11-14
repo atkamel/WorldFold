@@ -16,7 +16,7 @@ HERE = Path(__file__).parent
 
 PORTS = {
     "arm1": "/dev/tty.usbmodem5B790153891",
-    "arm2": None,  # not known yet: plug in arm 2 alone, run ls /dev/tty.usbmodem*, paste it here
+    "arm2": "/dev/tty.usbmodem5B8E1131611",
 }
 
 
