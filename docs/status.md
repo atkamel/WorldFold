@@ -1,7 +1,7 @@
 # Status
 
 **Updated:** 2026-11-13 · **Branch:** `fix/half-fold-audit` · **Phase:** pathway fixes after the 2026-11-10 review:
-a grasp that holds both corners (batch K), a first replay on the real arms, then the camera policy
+the grasp holds both corners (batch K), camera-policy demos collecting (`lh_c1`), hardware replay deferred
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
 pass log. The plan is in [roadmap.md](roadmap.md), every number in [results.md](results.md), the re-evaluation and
@@ -76,11 +76,11 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 ## Next action
 
-1. **Record the camera policy's demos from l0's config, good folds only (user, 2026-11-13).** Batch M
-   (results.md): the collection release fails (4 good of 128 against 25 for the same config with the expert's own
-   release; the worst edge rises 1.1 cm). Batch N (WATcloud 749909, 749910): `bc_collect.py` with `gripper_mode=position` (the action
-   carries the jaw target, so the expert's release is recorded as it runs) on the same 128 seeds. At least 19 good
-   and 103 held starts the 2,000-episode collection with cameras.
+1. **Camera-policy demos are collecting (user, 2026-11-13).** Batch N passed (results.md): position gripper mode
+   gives 28 good and 125 held of 128 with cameras, and 21 good and 103 held with the cloth offset ±1.5 cm and turned
+   ±5°. Collection `lh_c1` (WATcloud 750310 to 750313, seeds 4,000,000-4,001,999, that pose range, cameras, demos
+   only) should keep about 330 demos. When it ends: count demos per job, freeze, train the camera policy with `top`
+   and both wrists, evaluate with `gripper_mode=position`.
    The release trace: cloth stays on a finger almost only when it sits 3.5 cm or more above the fingertip at the
    start of the release (46 of 48 arms), mostly the right arm. A lower seat in the jaw is the lead for a scripted
    fix; if none works, a residual RL on place and release against the held-corner metric (user).
@@ -158,6 +158,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-13 · **Batch N read, collection launched:** position mode passes (28 good, 125 held of 128; 21 and 103 at ±1.5 cm, ±5°); `lh_c1` submitted as 750310 to 750313; docs only, no code change · this commit
 - 2026-11-13 · **Batch N prepared:** vision trainer no longer drops the `top` camera (the overnight camera students were wrist-only, results.md correction), collector resume fix and measured jaw in episode meta; fast 316 passed + 5 skipped (#15 fails), isaac 139 · this commit
 - 2026-11-13 · **Batch M read:** collection release 4 / 128 good against 25 / 128 (fails its rule), release trace points at cloth seated high in the jaw; `bc_collect` accepts `gripper_mode=position`; isaac 139 passed · this commit
 - 2026-11-13 · **Batch M prepared (user: demos from l0's config):** demo filter requires held corners, per-step release log in the expert and rows, 2 tests; fast 316 passed + 5 skipped (#15 fails), isaac 139 · this commit

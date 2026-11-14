@@ -3622,3 +3622,26 @@ and a student trained on them must be evaluated with `gripper_mode=position`.
 
 Launched 2026-11-13 as WATcloud 749909 (n1, version `chk_n1`) and 749910 (n2, `chk_n2`), root
 `outputs/isaac/bc/datasets_n`, code 00af711, both on `thor-slurm1`.
+
+### Batch N result (2026-11-13, seeds 3,000,128-255, n 128 each, code 00af711)
+
+| job | held | good (Wilson 95%) | cloth left up | demos kept |
+|---|---|---|---|---|
+| m0, binary mode, same seeds (reference) | 124 | 25 (13.6-27.2%) | 36 | n/a |
+| n1, position mode, cameras | 125 (93.3-99.2%) | 28 (15.6-29.8%) | 24 | 29 |
+| n2, position mode, ±1.5 cm and ±5° | 103 (72.8-86.4%) | 21 (11.0-23.8%) | 24 | 21 |
+
+Both jobs pass the rule (at least 19 good and at least 103 held). n2 passes held at the threshold exactly, and its
+held rate is below m0's on the shared seeds (24 seeds held only in m0, 3 only in n2, McNemar p < 0.001), so the pose
+range costs held corners; the median worst edge is 4.21 cm against 3.36 cm for n1. Position mode matches binary mode
+on good folds (n1 against m0: 18 seeds good only in n1, 15 only in m0, McNemar p 0.73; paired worst edge −0.06 cm
+median). Cloth left up is 24 against 36 (14 only in n1, 26 only in m0, p 0.08, below the p < 0.01 bar). n1 took
+1 h 43 min for 128 episodes with cameras and stored 265 MB for 29 demos.
+
+By the rule the collection uses n2's pose range. Expected yield at 21 of 128 (Wilson 11.0-23.8%) is about 330 demos
+from 2,000 episodes, range 220 to 475. Job layout changed from three jobs to four of 500 seeds: 672 seeds would take
+about 9 h against the 11 h child limit, and 500 take about 6.7 h.
+
+Collection `lh_c1` launched 2026-11-13 as WATcloud 750310 to 750313 (versions `lh_c1_0` to `lh_c1_3`, seeds
+4,000,000-4,001,999 in blocks of 500, root `outputs/isaac/bc/datasets`, code 00af711, `thor-slurm1`), position mode,
+friction 0.65, cloth offset ±1.5 cm and turned ±5°, cameras `top` 128 px and both wrists 64 px, demos only.
