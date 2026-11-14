@@ -9,6 +9,7 @@ Merges every frozen version matching --versions into --merged (unless it exists)
 
 import argparse
 import glob
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,18 @@ from isaac.tools.bc_collect import ROOT   # noqa: E402
 
 def frozen(root, pattern):
     return sorted(Path(p).parent.name for p in glob.glob(str(Path(root) / pattern / "manifest.json")))
+
+
+def position_mode(root, version):
+    """Whether a frozen version, or every version merged into it, was collected with gripper_mode=position (the
+    action's gripper entry is then a jaw target, which a binary-mode env would read as open/close)."""
+    from imitation.data.schema import load_manifest
+    m = load_manifest(root, version)
+    modes = {position_mode(root, v) for v in m.get("merged_from") or []} \
+        or {"gripper_mode=position" in m["config"].get("grasp_knobs", "")}
+    if len(modes) > 1:
+        sys.exit(f"{version} mixes position-mode and binary-mode demos")
+    return modes.pop()
 
 
 def parse_runs(text):
@@ -46,6 +59,7 @@ def main():
         m = merge_versions(args.root, versions, args.merged)
         print("BCTRAIN merged", len(versions), "versions:", m["n_episodes"], "episodes", m["n_steps"], "steps",
               flush=True)
+    mode = {"gripper_mode": "position" if position_mode(args.root, args.merged) else "binary"}
     procs = []
     for r in parse_runs(args.runs):
         run = Path(args.out) / f"{r['name']}_{args.merged}"
@@ -56,6 +70,7 @@ def main():
         if args.allow_failures:
             cmd += ["--allow-failures"]
         run.mkdir(parents=True, exist_ok=True)
+        (run / "collect.json").write_text(json.dumps(mode))        # bc_eval checks its env against this
         procs.append((r["name"], subprocess.Popen(cmd, stdout=open(run / "train.log", "w"), stderr=subprocess.STDOUT,
                                                   cwd=REPO)))
         print("BCTRAIN start", r["name"], " ".join(cmd), flush=True)

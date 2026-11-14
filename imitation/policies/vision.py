@@ -49,6 +49,14 @@ def random_shift(x, pad=4):
     return x.permute(0, 2, 3, 1)[idx, rows[:, :, None], cols[:, None, :]].permute(0, 3, 1, 2)
 
 
+def color_jitter(x, gain=0.2, offset=0.2):
+    """Per sample: a gain per channel and one brightness offset, on normalized pixels (the real camera's exposure
+    and white balance differ from the renderer's)."""
+    n = x.shape[0]
+    g = 1 + gain * (2 * torch.rand(n, x.shape[1], 1, 1, device=x.device) - 1)
+    return x * g + offset * (2 * torch.rand(n, 1, 1, 1, device=x.device) - 1)
+
+
 class VisionChunkPolicy(ChunkPolicy):
     kind = "vision"
     needs_images = True
@@ -89,7 +97,7 @@ class VisionChunkPolicy(ChunkPolicy):
         for name, _ in self.cameras:
             x = self.normalize_image(name, images[name])
             if augment:
-                x = random_shift(x)
+                x = color_jitter(random_shift(x))
             feats.append(self.encoders[name](x))
         y = self.out(self.blocks(self.inp(torch.cat(feats, -1))))
         return torch.tanh(y).view(-1, self.chunk, self.action_dim)

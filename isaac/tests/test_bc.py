@@ -208,3 +208,25 @@ def test_demo_needs_both_corners_held():
     assert not demo(dict(GOOD, drop_at={"right_": {"phase": "carry"}}))
     assert demo(dict(GOOD, drop_at={"right_": {"phase": "place"}}))
     assert not demo(None)
+
+
+def test_gripper_mode_follows_the_demos_from_merge_to_eval(tmp_path):
+    from isaac.tools.bc_eval import check_mode
+    from isaac.tools.bc_train import position_mode
+    for seed, (name, knobs) in enumerate((("pos_r0", "particle_friction=0.65,gripper_mode=position"),
+                                          ("bin_r0", "jaw_open_rate=0.02"))):
+        w = DatasetWriter(tmp_path, name, config={"grasp_knobs": knobs})
+        w.add(build_episode(_steps(3), GOOD, np.zeros(139), seed, {}), 139, 12)
+        w.freeze()
+    merge_versions(tmp_path, ["pos_r0"], "pos")
+    assert position_mode(tmp_path, "pos") and not position_mode(tmp_path, "bin_r0")
+    merge_versions(tmp_path, ["pos_r0", "bin_r0"], "mixed")
+    with pytest.raises(SystemExit):
+        position_mode(tmp_path, "mixed")
+    (tmp_path / "collect.json").write_text('{"gripper_mode": "position"}')
+    ckpt = tmp_path / "final.pt"
+    check_mode(ckpt, "gripper_mode=position", 1.0)
+    with pytest.raises(SystemExit):
+        check_mode(ckpt, "jaw_open_rate=0.02", 1.0)
+    with pytest.raises(SystemExit):
+        check_mode(ckpt, "gripper_mode=position", 2.0)

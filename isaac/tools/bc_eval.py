@@ -46,6 +46,18 @@ def grip_gain(action, gain):
     return a
 
 
+def check_mode(ckpt, knobs, gain):
+    """Exit when the env's gripper mode differs from the one the checkpoint's demos were collected in (bc_train
+    writes it beside the run), or when --grip-gain would rescale position-mode jaw targets."""
+    position = "gripper_mode=position" in knobs
+    if position and gain != 1.0:
+        sys.exit("--grip-gain scales binary gripper commands; position mode's are jaw targets")
+    f = Path(ckpt).parent / "collect.json"
+    if f.exists() and (json.loads(f.read_text())["gripper_mode"] == "position") != position:
+        sys.exit(f"{ckpt}: demos were collected in {json.loads(f.read_text())['gripper_mode']} gripper mode; "
+                 f"WORLDFOLD_GRASP_KNOBS is '{knobs}'")
+
+
 def history(hist, obs, horizon):
     """Append obs to the per-copy history (filled with the first obs at the start); -> [horizon, D]."""
     if not hist:
@@ -74,6 +86,8 @@ def main():
     from imitation.rollout import padded_predict
     from isaac.rl.precision_env import ARMS, FOLDS, PrecisionBatch
     ckpts = args.ckpt.split(",")
+    for c in ckpts:
+        check_mode(c, os.environ.get("WORLDFOLD_GRASP_KNOBS", ""), args.grip_gain)
     policies = [load_policy(c, device="cpu") for c in ckpts]     # Kit starts with the scene below; CUDA after it
     cams = {name: size for p in policies if p.needs_images for name, size in p.cameras}
     video_cam = next(c for c in ("top", "main", "side_left") if c not in cams)    # one no policy reads

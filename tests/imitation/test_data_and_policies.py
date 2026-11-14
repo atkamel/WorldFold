@@ -375,3 +375,14 @@ def test_cuda_graph_diffusion_sampling_matches_eager_exactly():
     eager = ChunkPolicy.predict(p, x)
     np.testing.assert_array_equal(p.predict(x), eager)          # first call captures the graph
     np.testing.assert_array_equal(p.predict(x * 0.5), ChunkPolicy.predict(p, x * 0.5))   # replay, new input
+
+
+def test_color_jitter_changes_gain_and_offset_per_sample_within_bounds():
+    import torch
+    from imitation.policies.vision import color_jitter
+    torch.manual_seed(0)
+    x = torch.ones(16, 3, 8, 8)
+    y = color_jitter(x)
+    assert y.shape == x.shape and (y - 1).abs().max() <= 0.4 + 1e-6
+    assert torch.allclose(y, y[:, :, :1, :1].expand_as(y))            # constant over pixels
+    assert y[:, 0, 0, 0].std() > 0.05 and (y[:, 0] - y[:, 1]).abs().max() > 0.01

@@ -100,7 +100,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-13: fast 316 passed, 5 skipped (#15 fails), isaac 139 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-13: fast 318 passed, 5 skipped (#15 fails), isaac 140 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -158,6 +158,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-13 · **Camera-policy training prep:** `bc_train` refuses a merge that mixes position-mode and binary-mode demos and writes the mode beside each run, `bc_eval` exits on a mode mismatch or on `--grip-gain` in position mode; vision training adds colour jitter to its shift augmentation (applies to every later vision run); fast 318 passed + 5 skipped (#15 fails), isaac 140 · this commit
 - 2026-11-13 · **Batch N read, collection launched:** position mode passes (28 good, 125 held of 128; 21 and 103 at ±1.5 cm, ±5°); `lh_c1` submitted as 750310 to 750313; docs only, no code change · this commit
 - 2026-11-13 · **Batch N prepared:** vision trainer no longer drops the `top` camera (the overnight camera students were wrist-only, results.md correction), collector resume fix and measured jaw in episode meta; fast 316 passed + 5 skipped (#15 fails), isaac 139 · this commit
 - 2026-11-13 · **Batch M read:** collection release 4 / 128 good against 25 / 128 (fails its rule), release trace points at cloth seated high in the jaw; `bc_collect` accepts `gripper_mode=position`; isaac 139 passed · this commit
