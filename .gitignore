@@ -33,3 +33,7 @@ renders/
 .claude/
 .venv
 .venv-hw
+hardware/so101/camera.json
+hardware/so101/look.png
+hardware/so101/last_look.json
+outputs/hardware/

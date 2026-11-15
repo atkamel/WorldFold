@@ -4,16 +4,21 @@ What is here, what state it is in, and how to run it on a machine that has never
 
 ## Status (2026-11-14)
 
-- **What runs** is a scripted, open-loop two-arm half fold with no camera. `fold_traj.py` plans it on the SO-101 arm
-  model and `replay.py` plays the joint trajectory on two followers. The cloth goes where a ruler puts it.
-- **What it is not** is the Isaac half-fold expert (`isaac/experts/place_servo.py`). That one reads the live cloth
-  state and needs a camera pipeline that is not written yet.
-- **Verified** by 36 tests on a fake servo bus, and a dry run against both arms' recorded limits (0 clamped steps).
-- **Never run on a real arm.** The radian-to-tick map is a hypothesis until `replay.py --check` passes on each arm.
+- **Two ways to fold.** `fold_camera.py` looks once through the iPhone, finds the cloth's corners and folds from
+  where the cloth lies. `replay.py` on the committed trajectory is the blind fallback, with the cloth placed by ruler.
+- **The camera is used for one look before the fold.** Nothing tracks the cloth while the arms move, and LiDAR depth
+  is not used yet. The grasp check (jaw readings) is the only feedback during the fold.
+- **What it is not** is the Isaac half-fold expert (`isaac/experts/place_servo.py`), which reads the live cloth state.
+- **Verified** by 41 tests on a fake servo bus and synthetic camera frames, and a dry run of the blind trajectory
+  against both arms' recorded limits (0 clamped steps).
+- **Never run on a real arm or a real phone.** The radian-to-tick map is a hypothesis until `replay.py --check`
+  passes on each arm. The Record3D connection follows `hardware/iphone_lidar/usb_viewer.py` (branch
+  `feat/iphone-lidar`), which has not seen a phone either.
 - **Both followers are configured**, with `main`'s names and folders. `arm2` is the left arm and `arm1` the right,
   seen from behind. Arm 2's motors 2 and 3 have identical limits, so watch its elbow in the check.
-- **Known risks.** The far pinch is at the edge of reach (fingers tilted about 25 degrees). The jaw target is the
-  closed limit, so the squeeze on thin cloth may be weak. Nothing detects a missed or slipped corner.
+- **Known risks.** The far pinch is at the edge of reach (fingers tilted about 25 degrees, more if the cloth sits
+  further out). The jaw target is the closed limit, so the squeeze on thin cloth may be weak. A dark arm or a shadow
+  touching the cloth's outline in the image makes the look fail or, worse, find the wrong corners.
 
 ## Rig
 
@@ -82,6 +87,42 @@ What to look for
 - **Step 4.** Each arm pinches its far corner, carries it over in an arc, opens part way, lifts 5 cm, opens fully
   and stands back up. Before the pinch each jaw shuts once in the air, which is the grasp check's empty reading.
 
+## Folding with the camera
+
+Extra packages on the rig machine, on top of `feetech-servo-sdk`.
+
+```bash
+.venv-hw/bin/pip install numpy scipy pillow mujoco==3.10.0 record3d==1.4.1
+.venv-hw/bin/pip install --no-deps so101-nexus==0.4.8
+```
+
+`record3d` builds from source and needs CMake and a C++ compiler. On the phone, open the Record3D app, turn on USB
+Streaming mode in its settings, and do not record (the record button pauses the stream).
+
+Phone placement. Centred between the arms and behind them, lens 60 to 80 cm above the table, tilted 45 to 60 degrees
+down, on a rigid mount, with the whole cloth and a margin around it in view. The edge of the image nearest the arms
+is `--near` (default `bottom`). Use even light, since a hard shadow reads as cloth.
+
+Do steps 0 to 3 of the run order first. Then, from `hardware/so101/`, with both arms standing over their bases.
+
+```bash
+# a. once per camera position: cloth at the ruler position from the Rig section
+../../.venv-hw/bin/python fold_camera.py calibrate
+
+# b. no motion: move the cloth a few cm, look, and open look.png
+../../.venv-hw/bin/python fold_camera.py look
+
+# c. fold from where the cloth is; flags after the mode's own go to replay.py
+../../.venv-hw/bin/python fold_camera.py fold --left arm2 --right arm1 --grasp-check --log run1.json
+```
+
+- `look.png` shows the outline it found in green, each arm's pinch point in red and place point in blue. The red
+  circles must sit just inside the two far corners. `fold` waits for Enter after writing it.
+- The look refuses a dark shape whose sides are more than 15% off the cloth's side, and a pinch the arm model cannot
+  reach.
+- `--image photo.jpg` runs any mode on a saved frame.
+- Calibration is only as good as the ruler placement of the cloth and the joint map. Redo it if the phone moves.
+
 ## Grasp check and run log
 
 - Above the far corner each jaw shuts once on nothing. That reading is the empty reference.
@@ -134,6 +175,7 @@ python fold_traj.py --out trajectories/my_fold.json --cloth 0.30 --near 0.08 --c
 
 | file | what |
 |---|---|
+| `fold_camera.py` | one look through the iPhone, then the fold from where the cloth lies |
 | `fold_traj.py` | plans the half fold, writes a trajectory |
 | `replay.py` | plays a trajectory, with `--check`, `--dry-run`, `--only`, `--speed`, `--no-gripper` |
 | `trajectories/half_fold_30cm.json` | the fold for the rig above |

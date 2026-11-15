@@ -69,17 +69,20 @@ class Arm:
         return q, float(np.linalg.norm(target - p)), float(np.degrees(np.arccos(np.clip(-z[2], -1.0, 1.0))))
 
 
-def plan(arm, y, near, cloth, closed):
-    """One arm's fold for the corner column at lateral offset y (m, left positive): target rows [T, 6], the worst
-    (tip error, tilt), and marks {"empty": the jaw shut in the air, "hover": above the corner with the jaw open again,
-    "check": 2 cm into the lift} as row indices."""
-    far = near + cloth
+def plan(arm, pinch, place, closed, counts=None):
+    """One arm's fold from `pinch` to `place` ((x, y) m in its base frame, x forward, y left): target rows [T, 6],
+    the worst (tip error, tilt), marks {"empty": the jaw shut in the air, "hover": above the corner with the jaw open
+    again, "pinch": down on the corner, "check": 2 cm into the lift} as row indices, and the step counts of its three variable moves. `counts`
+    stretches those moves to given lengths, so two arms' plans line up row for row."""
+    pinch, place = np.asarray(pinch, float), np.asarray(place, float)
+    reach = float(np.linalg.norm(place - pinch))
     seed = np.radians([0.0, 40.0, -30.0, 80.0, 0.0])     # arm out, forearm level, fingers down
-    rows, worst = [], [0.0, 0.0]
+    rows, worst, used = [], [0.0, 0.0], {}
 
-    def joint_move(q_goal, jaw):
+    def joint_move(name, q_goal, jaw):
         q0 = np.array(rows[-1][:5]) if rows else STAND
-        n = max(1, int(np.ceil(np.max(np.abs(q_goal - q0)) / JOINT_STEP)))
+        used[name] = max(1, int(np.ceil(np.max(np.abs(q_goal - q0)) / JOINT_STEP)))
+        n = max(used[name], (counts or {}).get(name, 0))
         rows.extend([*(q0 + (q_goal - q0) * k / n), jaw] for k in range(1, n + 1))
 
     def line(points, jaw):
@@ -98,47 +101,63 @@ def plan(arm, y, near, cloth, closed):
 
     rows.append([*STAND, OPEN])
     q = seed                                                # the pinch first, then up from it: one branch
-    for p in [np.array([far, y, PINCH_Z])] + segment((far, y, PINCH_Z), (far, y, HOVER)):
+    for p in [np.array([*pinch, PINCH_Z])] + segment((*pinch, PINCH_Z), (*pinch, HOVER)):
         q, err, _ = arm.solve(p, q)
         worst[0] = max(worst[0], err)
-    joint_move(q, OPEN)
+    joint_move("approach", q, OPEN)
     hold(10, np.linspace(OPEN, closed, 10))
     hold(6, closed)
     marks = {"empty": len(rows) - 1}
     hold(10, np.linspace(closed, OPEN, 10))
     marks["hover"] = len(rows) - 1
-    line(segment((far, y, HOVER), (far, y, PINCH_Z)), OPEN)
+    line(segment((*pinch, HOVER), (*pinch, PINCH_Z)), OPEN)
+    marks["pinch"] = len(rows) - 1
     hold(12, np.linspace(OPEN, closed, 12))
     hold(8, closed)
     lift = len(rows)
-    peak = min(0.10, 0.45 * cloth)                          # under the cloth's half length: the carry never pulls it
-    n = int(np.ceil(1.3 * cloth / STEP))
+    peak = min(0.10, 0.45 * reach)                          # under the cloth's half length: the carry never pulls it
+    used["carry"] = int(np.ceil(1.3 * reach / STEP))
+    n = max(used["carry"], (counts or {}).get("carry", 0))
     s = np.arange(1, n + 1) / n
-    line([(far - cloth * k, y, PINCH_Z + (PLACE_Z - PINCH_Z) * k + peak * np.sin(np.pi * k)) for k in s], closed)
+    line([(*(pinch + (place - pinch) * k), PINCH_Z + (PLACE_Z - PINCH_Z) * k + peak * np.sin(np.pi * k)) for k in s],
+         closed)
     marks["check"] = next(k for k in range(lift, len(rows)) if arm.tip(rows[k][:5])[0][2] >= PINCH_Z + 0.02)
     hold(10, closed)
     hold(14, np.linspace(closed, PART_OPEN, 14))            # gentle release: the jaw opens part way, arm still
-    line(segment((near, y, PLACE_Z), (near, y, PLACE_Z + RETREAT)), PART_OPEN)
+    line(segment((*place, PLACE_Z), (*place, PLACE_Z + RETREAT)), PART_OPEN)
     hold(8, np.linspace(PART_OPEN, OPEN, 8))
-    joint_move(STAND, OPEN)
-    return np.array(rows), worst, marks
+    joint_move("back", STAND, OPEN)
+    return np.array(rows), worst, marks, used
+
+
+def fold(points, closed=-0.17):
+    """A two-arm trajectory for replay.py from {"left": (pinch, place), "right": (pinch, place)}, each (x, y) m in
+    that arm's base frame. Both plans get the same step counts; the grasp check comes when both have lifted 2 cm."""
+    arm = Arm()
+    natural = [plan(arm, *points[side], closed)[3] for side in ("left", "right")]
+    counts = {name: max(n[name] for n in natural) for name in natural[0]}
+    arms, report, checks = {}, {}, []
+    for side in ("left", "right"):
+        target, (err, tilt), marks, _ = plan(arm, *points[side], closed, counts)
+        checks.append(marks["check"])
+        q = np.vstack([target[:1], target])                  # replay.py wants T + 1 rows; open loop, q = the targets
+        tips = np.array([arm.tip(r[:5])[0] for r in q])
+        pinch_err = float(np.linalg.norm(tips[marks["pinch"] + 1, :2] - np.asarray(points[side][0])))
+        arms[side] = {"target": target.tolist(), "q": q.tolist(),
+                      "tip": [[-p[1], p[0], p[2]] for p in tips.tolist()]}   # right, forward, up
+        report[side] = {"tip_error_mm": round(err * 1000, 1), "max_tilt_deg": round(tilt, 1),
+                        "pinch_error_mm": round(pinch_err * 1000, 1)}
+    return {"dt": DT, "joints": JOINTS, "arms": arms, "marks": marks | {"check": max(checks)},
+            "source": {"tool": "hardware/so101/fold_traj.py", "closed_rad": closed, **report}}
 
 
 def trajectory(cloth=0.24, near=0.10, spacing=0.30, closed=-0.17):
-    arm = Arm()
+    """The fold for a cloth placed by ruler: square, centred between the bases, near edge `near` in front of them."""
     inset = spacing / 2 - cloth / 2          # the cloth's corner column sits this far toward the middle of the rig
-    arms, report = {}, {}
-    for side, y in (("left", -inset), ("right", inset)):
-        target, (err, tilt), marks = plan(arm, y, near, cloth, closed)     # the same marks for both: mirror plans
-        q = np.vstack([target[:1], target])                  # replay.py wants T + 1 rows; open loop, q = the targets
-        tips = [arm.tip(r[:5])[0] for r in q]
-        arms[side] = {"target": target.tolist(), "q": q.tolist(),
-                      "tip": [[-p[1], p[0], p[2]] for p in np.array(tips).tolist()]}   # right, forward, up
-        report[side] = {"tip_error_mm": round(err * 1000, 1), "max_tilt_deg": round(tilt, 1)}
-    return {"dt": DT, "joints": JOINTS, "arms": arms, "marks": marks,
-            "layout": {"frame": "each arm's base, on the table", "base_spacing": spacing, "cloth_side": cloth,
-                       "near_edge_from_base_origin": near, "near_edge_from_base_front": round(near - BASE_FRONT, 3)},
-            "source": {"tool": "hardware/so101/fold_traj.py", "closed_rad": closed, **report}}
+    traj = fold({side: ((near + cloth, y), (near, y)) for side, y in (("left", -inset), ("right", inset))}, closed)
+    traj["layout"] = {"frame": "each arm's base, on the table", "base_spacing": spacing, "cloth_side": cloth,
+                      "near_edge_from_base_origin": near, "near_edge_from_base_front": round(near - BASE_FRONT, 3)}
+    return traj
 
 
 def main():
