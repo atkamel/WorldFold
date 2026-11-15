@@ -1,6 +1,6 @@
 """Real-time control panel + live 3D twin for the SO-101 follower.
 
-    .venv/bin/python ui.py        # then open http://localhost:8101
+    .venv/bin/python ui.py --arm arm1   # then open http://localhost:8101
                                   # phone: open the https link it prints
 
 One background thread owns the serial port: 50 times a second it reads every
@@ -8,6 +8,7 @@ motor's position and, with torque on, nudges each goal toward its slider. The
 browser only talks to this server, never to the motors directly.
 """
 
+import argparse
 import json
 import secrets
 import socket
@@ -22,7 +23,13 @@ from urllib.parse import parse_qs, urlparse
 
 import scservo_sdk as scs
 
-PORT = "/dev/tty.usbmodem5B790153891"
+import arms
+
+parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+arms.add_arm_argument(parser)
+args = parser.parse_args()
+
+PORT, ARM_DIR = arms.resolve(args.arm)
 BAUDRATE = 1_000_000
 HTTP_PORT = 8101  # laptop only (127.0.0.1)
 PHONE_PORT = 8102  # HTTPS on the Wi-Fi: phones only give motion sensors to secure pages
@@ -35,10 +42,10 @@ MAX_SPEED = 180  # deg/s ceiling for the speed slider
 MAX_BURST_SPEED = 270  # deg/s ceiling for one-off fast moves (punches); near the motor's top speed
 
 HERE = Path(__file__).parent
-LIMITS_FILE = HERE / "limits.json"
-POSE_FILE = HERE / "idle_pose.json"
-TWIN_FILE = HERE / "twin.json"
-PRESETS_FILE = HERE / "presets.json"
+LIMITS_FILE = ARM_DIR / "limits.json"
+POSE_FILE = ARM_DIR / "idle_pose.json"
+TWIN_FILE = ARM_DIR / "twin.json"
+PRESETS_FILE = ARM_DIR / "presets.json"
 PAGE_FILE = HERE / "ui.html"
 PHONE_PAGE_FILE = HERE / "phone.html"
 CERT_FILE = HERE / "certs" / "cert.pem"

@@ -1,7 +1,7 @@
 # Status
 
-**Updated:** 2026-11-07 · **Branch:** `isaac` (PR #20, to be merged into `main`) · **Phase:** Q, the quarter fold on
-Isaac (revised plan of 2026-10-22, steps 1 to 3)
+**Updated:** 2026-11-14 · **Branch:** `feat/so101-arm2-calibration` (SO-101 hardware side track) · **Phase:** Q, the
+quarter fold on Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
 pass log. The plan is in [roadmap.md](roadmap.md), every number in [results.md](results.md), the re-evaluation and
@@ -112,6 +112,8 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **SO-101 arm 2 calibrated:** port `/dev/tty.usbmodem5B8E1131611` in `arms.py`; servos 1-6 given IDs and limits one at a time (`hardware/so101/arm2/limits.json`, spans within 7% of arm 1); full-chain scan: all 6 IDs answer, offsets and limits match the file, 12.2-12.4 V; pytest not run (not installed in the macOS `.venv`), no test touches `hardware/` · (this commit)
+- 2026-11-14 · **SO-101 arm 2 scaffolding:** `hardware/so101/arms.py` maps each arm to its serial port and config folder; arm 1's limits/idle pose/twin moved to `hardware/so101/arm1/`; `set_limits.py`, `idle.py`, `ui.py` take a required `--arm` (and `set_limits.py --motor`); arm 2's port still unset; checked with a stub servo SDK (no hardware on this Mac); pytest not run (not installed in the macOS `.venv`), no test touches `hardware/` · (this commit)
 - 2026-11-07 · **World model full data, then parked (user):** 738561-63 done (260 episodes, 119,764 transitions); model beats persistence on every held-out group, grasp head predicts releases not slips, reward check 1.5e-6, imagination exploits (return up, grasp rate 0.22 → 0.01); release check on the gentle release (35/40 clean); merged main (#21) into `isaac`; fast 256 passed + #15 · (this commit)
 - 2026-11-05 · **World model smoke on Isaac:** collection (738554), live predictor (738556) and evaluator (738557) ran, python exit 0; train, benchmark, reward check (1.3e-6), clone + imagination ran locally on the smoke store (results.md); full collection submitted as 738561-63; no code change · (this commit)
 - 2026-11-05 · **World model phase B (sim-free):** learned grasp head (change-weighted BCE, trained with the model, grasp metrics in the benchmark), imagination on HALF with the head's soft flags and per-joint bias logging, FoldReward check vs env rewards (<1e-4 on a scripted fold), Isaac evaluator with a shared release + settle finish before the gate; weld rule (`gripper_transition`, `weld_corners`, `Task.grasp_radius`) deleted; fast 256 passed + #15 · (this commit)
