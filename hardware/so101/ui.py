@@ -3,6 +3,11 @@
     .venv/bin/python ui.py             # every arm in arms.json; open http://localhost:8101
     .venv/bin/python ui.py arm2        # just one of them
                                        # phone: open the https link it prints
+    On Windows the interpreter is .venv/Scripts/python.exe; set PLATFORM in arms.py.
+
+The page also shows the iPhone LiDAR point cloud and has a record button: a recording saves
+every arm's joints plus the phone's color and depth to runs/ (teleop_record.py). The phone
+is optional; without it the arms run and a recording holds joints only.
 
 One background thread per arm owns that arm's serial port: 50 times a second
 it reads every motor's position and, with torque on, nudges each goal toward
@@ -32,7 +37,14 @@ from urllib.parse import parse_qs, urlparse
 
 import scservo_sdk as scs
 
-import arms
+HERE = Path(__file__).parent
+# This file runs as a script, so the repo root is not on the path; hardware.iphone_lidar needs it.
+sys.path.insert(0, str(HERE.parent.parent))
+
+import arms  # noqa: E402
+import rgbd  # noqa: E402
+import teleop_record  # noqa: E402
+from hardware.iphone_lidar.pointcloud import pack_frame, pack_no_points  # noqa: E402
 
 BAUDRATE = 1_000_000
 HTTP_PORT = 8101  # laptop only (127.0.0.1)
@@ -45,11 +57,19 @@ DEFAULT_SPEED = 50  # deg/s; adjustable live from the page
 MAX_SPEED = 180  # deg/s ceiling for the speed slider
 MAX_BURST_SPEED = 270  # deg/s ceiling for one-off fast moves (punches); near the motor's top speed
 
-HERE = Path(__file__).parent
+CAMERA_RETRY_SECONDS = 5  # how often to look for the iPhone until it streams
+
 PAGE_FILE = HERE / "ui.html"
 PHONE_PAGE_FILE = HERE / "phone.html"
 CERT_FILE = HERE / "certs" / "cert.pem"
 KEY_FILE = HERE / "certs" / "key.pem"
+LIDAR_DIR = HERE.parent / "iphone_lidar"
+CLOUD_PAGE_FILE = LIDAR_DIR / "viewer.html"
+# The only files the cloud page loads; anything else under /vendor/ is refused.
+VENDOR_FILES = {
+    "three.module.js": LIDAR_DIR / "vendor" / "three.module.js",
+    "OrbitControls.js": LIDAR_DIR / "vendor" / "OrbitControls.js",
+}
 
 # STS3215 control table addresses
 ADDR_TORQUE_ENABLE = 40
@@ -265,6 +285,51 @@ class Arm:
                 "presets": self.load_presets(),
             }
 
+    def joints(self):
+        """(measured, target) encoder positions in motor id order, for teleop_record."""
+        with self.lock:
+            measured = []
+            target = []
+            for m in MOTOR_IDS:
+                measured.append(self.present[m])
+                target.append(self.target[m])
+            return measured, target
+
+
+class Camera:
+    """The iPhone LiDAR for the panel. Optional: the arms run without it, and status says what is missing."""
+
+    def __init__(self):
+        self.phone = None
+        self.status = "looking for the iPhone"
+
+    def connect_loop(self):
+        while self.phone is None:
+            phone = rgbd.Phone()
+            try:
+                phone.start()
+            except ImportError:
+                self.status = "record3d is not installed"
+                return
+            except SystemExit as reason:  # rgbd.Phone reports a missing or idle phone by exiting
+                self.status = str(reason)
+                time.sleep(CAMERA_RETRY_SECONDS)
+                continue
+            self.phone = phone
+            self.status = "streaming"
+
+    def latest(self):
+        if self.phone is None:
+            return None
+        return self.phone.latest()
+
+    def cloud(self):
+        """The latest frame as packed points for the cloud page."""
+        frame = self.latest()
+        if frame is None:
+            return pack_no_points()
+        return pack_frame(frame.rgb, frame.depth, frame.K)
+
 
 def run(arm):
     """The arm's control loop. A lost USB link ends the whole server: a page
@@ -296,7 +361,7 @@ def lan_ip():
         return s.getsockname()[0]
 
 
-def make_handler(arms_by_name, token=None):
+def make_handler(arms_by_name, camera, recording, token=None):
     # follower -> leader arm, for the pairs whose arms are both running
     leaders = {f: arms_by_name[l] for f, l in arms.CONFIG.get("leaders", {}).items()
                if f in arms_by_name and l in arms_by_name}
@@ -337,6 +402,20 @@ def make_handler(arms_by_name, token=None):
                 })
             elif path == "/phone":
                 self.reply(PHONE_PAGE_FILE.read_bytes(), "text/html")
+            elif path == "/cloud":
+                self.reply(CLOUD_PAGE_FILE.read_bytes(), "text/html")
+            elif path == "/frame":
+                self.reply(camera.cloud(), "application/octet-stream")
+            elif path.startswith("/vendor/"):
+                file_name = path[len("/vendor/"):]
+                if file_name in VENDOR_FILES:
+                    self.reply(VENDOR_FILES[file_name].read_bytes(), "text/javascript")
+                else:
+                    self.reply({"error": "not found"}, status=404)
+            elif path == "/record":
+                status = recording.status()
+                status["camera"] = camera.status
+                self.reply(status)
             else:
                 self.reply(PAGE_FILE.read_bytes(), "text/html")
 
@@ -382,6 +461,10 @@ def make_handler(arms_by_name, token=None):
                 arm.go_idle()
             elif self.path == "/twin":
                 arm.save_twin(body["twin"])
+            elif self.path == "/record/start":
+                recording.start()
+            elif self.path == "/record/stop":
+                recording.stop()
             self.reply({"ok": True})
 
         def log_message(self, *args):
@@ -398,19 +481,38 @@ def main():
     arms_by_name = {name: Arm(name) for name in names}
     for arm in arms_by_name.values():
         threading.Thread(target=run, args=(arm,), daemon=True).start()
-    server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name))
+    camera = Camera()
+    # On its own thread: looking for the phone can block, and the arms must not wait for it.
+    threading.Thread(target=camera.connect_loop, daemon=True).start()
+    recording = teleop_record.TeleopRecording(arms_by_name, camera)
+    server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name, camera, recording))
 
-    ensure_certificate()
+    print(f"Arms: {', '.join(f'{n} ({arms.port(n)})' for n in names)}")
+    print(f"Laptop: http://localhost:{HTTP_PORT}")
+    start_phone_server(arms_by_name, camera, recording)
+    print("Ctrl+C to stop; torque state is left as is.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print()
+    recording.stop()
+
+
+def start_phone_server(arms_by_name, camera, recording):
+    """The phone teleop page over HTTPS. Skipped when openssl is missing (a stock Windows install)."""
+    try:
+        ensure_certificate()
+    except (FileNotFoundError, subprocess.CalledProcessError) as err:
+        print(f"Phone teleop is off: could not make its HTTPS certificate with openssl ({err})")
+        return
     token = secrets.token_urlsafe(8)
-    phone_server = ThreadingHTTPServer(("0.0.0.0", PHONE_PORT), make_handler(arms_by_name, token))
+    phone_server = ThreadingHTTPServer(("0.0.0.0", PHONE_PORT), make_handler(arms_by_name, camera, recording, token))
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(CERT_FILE, KEY_FILE)
     phone_server.socket = context.wrap_socket(phone_server.socket, server_side=True)
     threading.Thread(target=phone_server.serve_forever, daemon=True).start()
 
     phone_url = f"https://{lan_ip()}:{PHONE_PORT}/phone?t={token}"
-    print(f"Arms: {', '.join(f'{n} ({arms.port(n)})' for n in names)}")
-    print(f"Laptop: http://localhost:{HTTP_PORT}")
     print(f"Phone (same Wi-Fi): {phone_url}")
     try:
         import qrcode
@@ -420,11 +522,6 @@ def main():
         qr.print_ascii(invert=True)
     except ImportError:
         pass
-    print("Ctrl+C to stop; torque state is left as is.")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print()
 
 
 if __name__ == "__main__":

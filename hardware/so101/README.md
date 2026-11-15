@@ -48,8 +48,9 @@ That is all `replay.py` needs. The trajectory is committed at `hardware/so101/tr
 
 Then tell the repo about this machine's arms.
 
-1. Find each arm's port with `ls /dev/tty.usbmodem*` (plug one arm in at a time) and put the ports in
-   `hardware/so101/arms.json` under `"left"` and `"right"`. Ports differ per machine.
+1. Set `PLATFORM` at the top of `hardware/so101/arms.py` to `"mac"` or `"windows"`. Find each arm's port (plug one
+   arm in at a time): `ls /dev/tty.usbmodem*` on a Mac, Device Manager > Ports (COM & LPT) on Windows. Put it in
+   `hardware/so101/arms.json` under that arm's name and platform. An arm with `null` for a platform is left out there.
 2. Limits for both followers travel with the repo (`arm2/limits.json`, `arm1/limits.json`). To redo one,
    set `MOTOR_ID` in `set_limits.py`, run `.venv-hw/bin/python set_limits.py <arm>` per motor, and sweep the joint to
    both hard stops. For the gripper, record the fully closed end too, because the map takes its lower tick as closed.
@@ -188,8 +189,8 @@ python fold_traj.py --out trajectories/my_fold.json --cloth 0.30 --near 0.08 --c
 
 ## Arm configuration
 
-- `arms.json` names every arm and its serial port, in order. The first follower listed is the left one, seen from
-  behind the arms. It also holds `layout` (`side_by_side` or `facing`), `spacing_cm` between the bases, and `leaders`,
+- `arms.json` names every arm and its serial port per platform (`mac`, `windows`), in order; `PLATFORM` in `arms.py`
+  picks the set. The first follower listed is the left one, seen from behind the arms. It also holds `layout` (`side_by_side` or `facing`), `spacing_cm` between the bases, and `leaders`,
   which pairs a follower with a limp leader arm for teleop.
 - `arms.py` reads it. `arms.port(name)` and `arms.folder(name)` are what the scripts use, and `add_arm_argument` and
   `resolve` give `idle.py` and `set_limits.py` their required `--arm`.
@@ -273,5 +274,6 @@ kinematics against MuJoCo when `mujoco` and `so101-nexus` are installed.
 | `fold_score.py` | scores a fold from a before and an after photo |
 | `arms.py`, `arms.json`, `arm1/`, `arm2/`, `leader/` | ports, limits, per-arm overrides |
 | `set_limits.py`, `idle.py` | limit recording, idle pose |
-| `ui.py`, `ui.html`, `phone.html` | teleop |
+| `ui.py`, `ui.html`, `phone.html` | teleop; the page also shows the iPhone LiDAR point cloud and has a record button |
+| `teleop_record.py` | what the record button saves: every arm's joints (encoder steps) plus phone color and depth, 10 Hz, into `runs/` |
 | `test_*.py` | tests, see above |

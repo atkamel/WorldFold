@@ -27,6 +27,9 @@
   aside { background: var(--panel); border-left: 1px solid var(--line); padding: 16px;
           overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
   h1 { font-size: 16px; margin: 0; }
+  #cloud { width: 100%; height: 240px; border: 1px solid var(--line); border-radius: 8px; }
+  #record.on { background: var(--stop); color: #fff; border-color: var(--stop); font-weight: 600; }
+  #camera a { color: inherit; }
   .buttons { display: flex; gap: 8px; }
   button { flex: 1; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
            background: var(--bg); color: var(--ink); font: inherit; cursor: pointer; }
@@ -78,6 +81,14 @@
     <button id="idle">Go to idle</button>
     <button id="stop" class="stop">Stop <kbd>Esc</kbd></button>
   </div>
+  <section id="camera">
+    <strong>iPhone LiDAR</strong>
+    <iframe id="cloud" src="/cloud" title="iPhone LiDAR point cloud"></iframe>
+    <p class="hint"><span id="camera-status" role="status">Camera: connecting…</span> ·
+      <a href="/cloud" target="_blank" rel="noopener">open large</a></p>
+    <button id="record">Start recording</button>
+    <p class="hint" id="record-status" role="status">Not recording</p>
+  </section>
   <button id="mirror" hidden>Mirror: off</button>
   <button id="leader" hidden>Leader arm: off</button>
   <p class="hint" id="mode-hint"></p>
@@ -819,6 +830,34 @@ setInterval(async () => {
     if (!(err instanceof TypeError)) console.error(err);
   } finally { inFlight = false; }
 }, 33);
+</script>
+<script>
+// The camera and the recording have their own slower poll, apart from the arm state above.
+const recordButton = document.getElementById("record");
+let recording = false;
+
+async function refreshRecording() {
+  try {
+    const status = await (await fetch("/record")).json();
+    recording = status.recording;
+    recordButton.textContent = recording ? "Stop recording" : "Start recording";
+    recordButton.classList.toggle("on", recording);
+    document.getElementById("record-status").textContent = recording
+      ? `Recording: ${status.steps} steps to ${status.folder}`
+      : "Not recording";
+    document.getElementById("camera-status").textContent = `Camera: ${status.camera}`;
+  } catch {
+    document.getElementById("camera-status").textContent = "Camera: no answer from ui.py";
+  }
+}
+
+recordButton.onclick = async () => {
+  await fetch(recording ? "/record/stop" : "/record/start",
+              { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  refreshRecording();
+};
+refreshRecording();
+setInterval(refreshRecording, 500);
 </script>
 </body>
 </html>

@@ -47,9 +47,11 @@ released, still), user 2026-10-22.
   `hardware/iphone_lidar/pointcloud.py` is the depth-to-points math for later Python use. Checked with synthetic
   frames only: this laptop has no Apple Mobile Device Support yet, so `record3d` finds no phone.
   `wifi_viewer.html` is the Wi-Fi version for networks that let the laptop reach the phone.
-- **Two-arm teleop panel** (user, 2026-11-14): `python hardware/so101/ui.py` opens one panel at
-  `http://localhost:8101` with both followers, the LiDAR point cloud and episode recording. Run on both real arms
-  with the phone streaming (user, 2026-11-14). Arm 2's twin is a copy of arm 1's, not calibrated on the arm itself.
+- **Two-arm teleop panel** (user, 2026-11-14): `python hardware/so101/ui.py` is main's two-arm panel (#24) plus
+  the LiDAR point cloud and a record button (joints of every arm, phone colour and depth, into
+  `hardware/so101/runs/`). `PLATFORM` in `arms.py` picks mac or windows ports. The merged panel has run only
+  against a stand-in servo SDK (with the real phone streaming); the earlier panel ran on both real arms.
+  Arm 2's twin is a copy of arm 1's, not calibrated on the arm itself.
 
 The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Best policies: DAgger diffusion at replan 4
 (privileged, 99.5 / 77.0 / 79.5 on id_easy / id_hard / recovery) and the vision student at replan 2 (sensor-only,
@@ -130,6 +132,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **Merged main (#24) into `feat/iphone-lidar` (user):** `ui.py`, `ui.html`, `arms.py`, `recorder.py` taken from main; this branch's `panel.html`, recorder and `iphone_lidar/camera.py` deleted; re-added on main's code: `PLATFORM` toggle with per-platform ports in `arms.json` (arms with no port are left out, so the leader is skipped on Windows), LiDAR cloud and record button in the page (`teleop_record.py` through `recorder.Recorder` and `rgbd.Phone`), phone teleop skipped when openssl is missing; `usb_viewer.py` reads through `rgbd.Phone`; checked in Chrome with a stand-in servo SDK and the real phone (17 steps and 17 frames recorded); not run on the real arms; hardware 71 passed; fast on Windows 263 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **SO-101 calibration on the real arms (user):** panel run on both arms with the phone streaming (user: works); idle poses recorded for arm 1 (replaces the earlier pose) and arm 2; arm 2's `twin.json` copied from arm 1's (same model, mid-range homing on both; wrist roll may be half a turn off, not yet checked against the arm); data files only, pytest not re-run since 1ad5193 · (this commit)
 - 2026-11-14 · **`idle.py record` shows the encoders live (user):** all six positions on one line, 10 times a second, until Enter; checked with a stand-in servo SDK; both real arms now answer (read only: arm 1 on COM3, arm 2 on COM5); fast on Windows 265 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **Two-arm teleop panel with the LiDAR camera (user):** merged main (#22); `hardware/so101/ui.py` drives every arm from one server (`?arm=` per request, `panel.html` = one control page per arm + point cloud + record button + stop-all), phone teleop is opt-in (`--phone`); `arms.py` has a `PLATFORM` toggle (mac names / COM3, COM5); `recorder.py` writes episodes (joints of both arms, colour JPEG, depth npy, 10 Hz) to `outputs/so101_teleop/`; `iphone_lidar/camera.py` shared by the panel and `usb_viewer.py`; `feetech-servo-sdk` 1.0.0 in `.venv`; checked with a stand-in servo SDK in Chrome (two arms driven separately, 21-step episode); on the real arms, read only: arm 2 answers on COM5, arm 1 does not answer on COM3; camera path in the panel not run with the phone (Record3D was not serving); fast on Windows 265 passed, 1 failed (#17), 5 skipped · (this commit)
