@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-14 · **Branch:** `feat/so101-arm2-calibration` (SO-101 hardware side track) · **Phase:** Q, the
+**Updated:** 2026-11-14 · **Branch:** `main` (SO-101 hardware and iPhone LiDAR side tracks merged) · **Phase:** Q, the
 quarter fold on Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -15,6 +15,15 @@ the revised plan in [reviews/2026-10-22-quarter-fold-reevaluation.md](reviews/20
 with at least one recorded clean demo. Bar: mean ≤ 2.0 cm and edge ≤ 3.0 cm on gated episodes (flat on the table,
 released, still), user 2026-10-22.
 
+- **Hardware (user, 2026-11-14), `hardware/so101/`, nothing run on an arm or a phone yet:** a scripted two-arm half
+  fold planned with numpy kinematics, in three forms: blind from a committed trajectory (`replay.py`), one look
+  through the iPhone (`fold_camera.py`), and watched throughout with RGB and LiDAR over Record3D USB (`fold_live.py`:
+  arms masked out by height above the table, the cloth's near edge tracked, the place moved with it mid-carry, every
+  frame and control step recorded). Grasp check on the jaw readings with a retry. Two-arm teleop with a leader arm
+  (`ui.py`). Both followers configured (`arm2` left, `arm1` right). Steps in `hardware/so101/README.md`. First run, in
+  order: `replay.py --read` and `--check` on both arms (the tick map is unverified), one arm with no cloth,
+  `fold_camera.py calibrate`, `fold_live.py --dry-run` for the first real frames, then `fold_live.py --grasp-check`.
+  The 30 cm cloth does not fit the reach at both ends (results.md).
 - **Half fold** reaches the half-fold bar (1.0 / 1.5 cm) in about 1 of 64 episodes, with the scripted base plus one
   touch-up (seed 930005, 0.95 / 1.45 cm) and with the RL policy p8 (seed 980008, 0.43 / 1.13 cm). Videos in
   `docs/reports/media/isaac_half_fold_pass_*.mp4`. RL shows no average gain over the scripted base (p8 hunt 2.65 cm,
@@ -33,6 +42,11 @@ released, still), user 2026-10-22.
   check 1.5e-6; live predictor; evaluator). The model beats persistence on held-out windows (task, grasped, 10 steps:
   24.3 vs 39.1 mm), the grasp head predicts releases but not slips, and imagination raised its return by letting go
   of the cloth. Parked because folding fails on grasp physics the model can't predict (results.md, 2026-11-06).
+- **iPhone LiDAR viewer** (user, 2026-11-14, branch `feat/iphone-lidar`): `python -m hardware.iphone_lidar.usb_viewer`
+  reads Record3D over USB (eduroam blocks the Wi-Fi mode) and shows a live point cloud at `http://localhost:8000`.
+  `hardware/iphone_lidar/pointcloud.py` is the depth-to-points math for later Python use. Checked with synthetic
+  frames only: this laptop has no Apple Mobile Device Support yet, so `record3d` finds no phone.
+  `wifi_viewer.html` is the Wi-Fi version for networks that let the laptop reach the phone.
 
 The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Best policies: DAgger diffusion at replan 4
 (privileged, 99.5 / 77.0 / 79.5 on id_easy / id_hard / recovery) and the vision student at replan 2 (sensor-only,
@@ -54,7 +68,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-10-29: fast 227 passed, 1 failed (#15), 5 skipped; slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-14: fast 262 passed, 1 failed (#15), 5 skipped; hardware (`pytest hardware/so101`) 65 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -91,6 +105,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
+| 17 | `isaac/tests/test_rlpd.py::test_learns_toy_placement` fails on Windows (2026-11-14, twice in a row): learned mean 0.0667 against the 0.05 bar; cause not looked into | fast suite on Windows | Q |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujoco_sim/` first on `sys.path`; `mujoco_sim/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
@@ -112,6 +127,11 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **Hardware half fold and teleop (user):** `hardware/so101/` from `feat/half-fold-deploy` without that branch's sim audit work: two-arm teleop with a leader arm (`ui.py`, `arms.json`), `replay.py` (`--read`, `--check`, `--grasp-check`, `--log`), `fold_traj.py` + `kinematics.py` (numpy), `fold_camera.py`, `fold_live.py` (continuous RGB + LiDAR, place correction, recorded runs), `rgbd.py`, `recorder.py`, `fold_score.py`, README; `feat/iphone-lidar` (PR #23) merged in; hardware tests 65 passed (`pytest hardware/so101`), fast 262 passed, 5 skipped (#15 fails); slow not run (sim untouched); not run on an arm or a phone · this commit
+- 2026-11-14 · **iPhone LiDAR, Wi-Fi page back (user):** `wifi_viewer.html` restored from 32616b9 for networks without client isolation; `usb_viewer.py` exits with a message when Record3D refuses the connection, and its notes say not to record (the record button pauses USB); still no phone seen on this laptop (iTunes installed without Apple Mobile Device Support); fast on Windows 262 passed, 1 failed (#17), 5 skipped · (this commit)
+- 2026-11-14 · **iPhone LiDAR over USB (user: eduroam blocks Wi-Fi mode):** `usb_viewer.py` (record3d 1.4.1 → local server), `pointcloud.py` (depth to points, 6 tests), page polls `/frame`; Wi-Fi/WebRTC code deleted; `record3d` built into `.venv` (numpy pin unchanged, `hardware/iphone_lidar/requirements.txt`); checked in Chrome with synthetic frames, no phone seen (Apple drivers missing); fast on Windows 262 passed, 1 failed (#17), 5 skipped · (this commit)
+- 2026-11-14 · **iPhone LiDAR viewer, three.js vendored:** three 0.147.0 and OrbitControls in `hardware/iphone_lidar/vendor/` (MIT), no CDN at runtime; re-checked in Chrome with a simulated stream; fast on Windows 256 passed, 1 failed (#17), 5 skipped · (this commit)
+- 2026-11-14 · **iPhone LiDAR viewer (user, off the next action):** `hardware/iphone_lidar/viewer.html`, Record3D Wi-Fi stream (WebRTC) as a live browser point cloud, logic adapted from the Record3D demo (MIT); checked in Chrome with a simulated stream, not with a phone; no tests added (browser page); fast on Windows 256 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **SO-101 arm 2 calibrated:** port `/dev/tty.usbmodem5B8E1131611` in `arms.py`; servos 1-6 given IDs and limits one at a time (`hardware/so101/arm2/limits.json`, spans within 7% of arm 1); full-chain scan: all 6 IDs answer, offsets and limits match the file, 12.2-12.4 V; pytest not run (not installed in the macOS `.venv`), no test touches `hardware/` · (this commit)
 - 2026-11-14 · **SO-101 arm 2 scaffolding:** `hardware/so101/arms.py` maps each arm to its serial port and config folder; arm 1's limits/idle pose/twin moved to `hardware/so101/arm1/`; `set_limits.py`, `idle.py`, `ui.py` take a required `--arm` (and `set_limits.py --motor`); arm 2's port still unset; checked with a stub servo SDK (no hardware on this Mac); pytest not run (not installed in the macOS `.venv`), no test touches `hardware/` · (this commit)
 - 2026-11-07 · **World model full data, then parked (user):** 738561-63 done (260 episodes, 119,764 transitions); model beats persistence on every held-out group, grasp head predicts releases not slips, reward check 1.5e-6, imagination exploits (return up, grasp rate 0.22 → 0.01); release check on the gentle release (35/40 clean); merged main (#21) into `isaac`; fast 256 passed + #15 · (this commit)

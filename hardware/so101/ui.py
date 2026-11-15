@@ -1,15 +1,24 @@
-"""Real-time control panel + live 3D twin for the SO-101 follower.
+"""Real-time control panel + live 3D twin for one or two SO-101 followers.
 
-    .venv/bin/python ui.py --arm arm1   # then open http://localhost:8101
-                                  # phone: open the https link it prints
+    .venv/bin/python ui.py             # every arm in arms.json; open http://localhost:8101
+    .venv/bin/python ui.py arm2        # just one of them
+                                       # phone: open the https link it prints
 
-One background thread owns the serial port: 50 times a second it reads every
-motor's position and, with torque on, nudges each goal toward its slider. The
-browser only talks to this server, never to the motors directly.
+One background thread per arm owns that arm's serial port: 50 times a second
+it reads every motor's position and, with torque on, nudges each goal toward
+its target. The browser only talks to this server, never to the motors.
+
+Mirror mode: one arm leads and the other copies its target as a mirror image
+(pan and wrist roll flipped), so any input that moves the leader moves both.
+With the leader limp, moving it by hand drives the other arm.
+
+Leader arm: arms.json "leaders" pairs a follower with a leader arm (a limp
+SO-101 moved by hand), e.g. {"arm1": "leader"}. With it on, the follower
+copies the leader's joint angles.
 """
 
-import argparse
 import json
+import os
 import secrets
 import socket
 import ssl
@@ -25,11 +34,6 @@ import scservo_sdk as scs
 
 import arms
 
-parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-arms.add_arm_argument(parser)
-args = parser.parse_args()
-
-PORT, ARM_DIR = arms.resolve(args.arm)
 BAUDRATE = 1_000_000
 HTTP_PORT = 8101  # laptop only (127.0.0.1)
 PHONE_PORT = 8102  # HTTPS on the Wi-Fi: phones only give motion sensors to secure pages
@@ -42,10 +46,6 @@ MAX_SPEED = 180  # deg/s ceiling for the speed slider
 MAX_BURST_SPEED = 270  # deg/s ceiling for one-off fast moves (punches); near the motor's top speed
 
 HERE = Path(__file__).parent
-LIMITS_FILE = ARM_DIR / "limits.json"
-POSE_FILE = ARM_DIR / "idle_pose.json"
-TWIN_FILE = ARM_DIR / "twin.json"
-PRESETS_FILE = ARM_DIR / "presets.json"
 PAGE_FILE = HERE / "ui.html"
 PHONE_PAGE_FILE = HERE / "phone.html"
 CERT_FILE = HERE / "certs" / "cert.pem"
@@ -58,16 +58,44 @@ ADDR_TORQUE_LIMIT = 48
 ADDR_PRESENT_POSITION = 56
 
 GRIPPER_TORQUE_LIMIT = 500  # 50% of max, as lerobot does, so it can't burn out squeezing
+MIRROR_SIGN = {1: -1, 5: -1}  # a mirror image swaps left and right: pan and wrist roll change sign
+
+
+def copy_pose(pose, twin_from, twin_to, mirror):
+    """One arm's encoder pose -> the same joint angles on another arm (or their
+    mirror image), through each arm's straight-up reference (same convention as
+    the pages: angle = sign * (encoder - zero))."""
+    def zero(twin, m):
+        return twin.get("zero", {}).get(str(m), 2047)
+
+    def sign(twin, m):
+        return -1 if twin.get("flip", {}).get(str(m)) else 1
+
+    out = {}
+    for m, pos in pose.items():
+        center = twin_from.get("center", {}).get(str(m))
+        if center is not None:
+            # A leader arm's encoder can roll over 4095 -> 0 (its wrist roll turns all the way
+            # round): read it within half a turn of the pose it was matched to its follower in.
+            pos = center + (pos - center + 2048) % 4096 - 2048
+        angle = sign(twin_from, m) * (pos - zero(twin_from, m)) * (MIRROR_SIGN.get(m, 1) if mirror else 1)
+        out[m] = zero(twin_to, m) + sign(twin_to, m) * angle
+    return out
 
 
 class Arm:
-    def __init__(self):
-        self.port = scs.PortHandler(PORT)
+    def __init__(self, name):
+        self.name = name
+        folder = arms.folder(name)
+        self.pose_file = folder / "idle_pose.json"
+        self.twin_file = folder / "twin.json"
+        self.presets_file = folder / "presets.json"
+        self.port = scs.PortHandler(arms.port(name))
         self.packet = scs.PacketHandler(0)  # protocol 0 = Feetech STS series
         if not self.port.openPort() or not self.port.setBaudRate(BAUDRATE):
-            sys.exit(f"Could not open {PORT}")
+            sys.exit(f"Could not open {arms.port(name)} ({name} arm)")
 
-        limits = json.loads(LIMITS_FILE.read_text())
+        limits = json.loads((folder / "limits.json").read_text())
         self.limits = {m: (limits[str(m)]["true"]["min"], limits[str(m)]["true"]["max"]) for m in MOTOR_IDS}
 
         # Sync read: one request, every motor answers in turn. Much faster
@@ -83,7 +111,7 @@ class Arm:
             if None not in self.present.values():
                 break
         else:
-            sys.exit(f"Could not read all motors: {self.present}")
+            sys.exit(f"Could not read all motors of the {name} arm: {self.present}")
         self.target = dict(self.present)  # where the sliders want each joint
         self.command = dict(self.present)  # goal actually sent, eased toward target
         # Keep whatever torque state the arm is in (idle.py may have left it holding).
@@ -93,6 +121,8 @@ class Arm:
         self.speed = DEFAULT_SPEED
         self.burst_speed = None  # temporary faster speed until the current pose is reached
         self.pending_burst = None
+        self.twin = json.loads(self.twin_file.read_text()) if self.twin_file.exists() else None
+        self.follows = None  # (leading Arm, mirror?) while this arm copies another
 
     # --- bus access: only ever called from the control thread (or __init__) ---
 
@@ -142,6 +172,10 @@ class Arm:
 
     def control_loop(self):
         while True:
+            follows = self.follows
+            if follows:
+                with follows[0].lock:
+                    lead_target = dict(follows[0].target)
             with self.lock:
                 pending, self.pending_torque = self.pending_torque, None
                 if pending is not None:
@@ -155,6 +189,9 @@ class Arm:
 
                 self.read_present()
                 if self.torque:
+                    if follows:
+                        leader, mirror = follows
+                        self.target = self.clamp(copy_pose(lead_target, leader.twin or {}, self.twin or {}, mirror))
                     # Speed = how far a goal may move per tick. 50 deg/s is
                     # ~11.4 steps per 20 ms tick; fractions carry over.
                     max_step = (self.burst_speed or self.speed) * STEPS_PER_DEGREE * TICK_SECONDS
@@ -174,10 +211,14 @@ class Arm:
 
     # --- called from HTTP threads: only touch shared state, never the bus ---
 
-    def set_target(self, motor_id, pos):
-        lo, hi = self.limits[motor_id]
+    def clamp(self, pose):
+        return {m: max(self.limits[m][0], min(self.limits[m][1], int(p))) for m, p in pose.items()}
+
+    def set_target(self, pose):
+        """Aim the listed joints ({motor id: encoder value}) at new targets."""
+        pose = self.clamp({int(m): p for m, p in pose.items()})
         with self.lock:
-            self.target[motor_id] = max(lo, min(hi, int(pos)))
+            self.target.update(pose)
 
     def request_torque(self, on):
         with self.lock:
@@ -194,13 +235,24 @@ class Arm:
             self.pending_burst = min(MAX_BURST_SPEED, float(speed)) if speed else None
 
     def go_idle(self):
-        self.go_pose(json.loads(POSE_FILE.read_text()))
+        self.go_pose(json.loads(self.pose_file.read_text()))
 
     def hold(self):
         """Stop: aim every joint at the goal it's already been sent, so the
         easing has nowhere left to go and the arm freezes where it is."""
         with self.lock:
             self.target = dict(self.command)
+
+    def save_twin(self, twin):
+        self.twin_file.write_text(json.dumps(twin, indent=2))
+        self.twin = twin
+
+    def load_presets(self):
+        """Saved poses, by name: {motor id: encoder value}."""
+        return json.loads(self.presets_file.read_text()) if self.presets_file.exists() else {}
+
+    def save_presets(self, presets):
+        self.presets_file.write_text(json.dumps(presets, indent=2))
 
     def state(self):
         with self.lock:
@@ -209,15 +261,19 @@ class Arm:
                 "target": self.target,
                 "torque": self.torque,
                 "limits": self.limits,
-                "twin": json.loads(TWIN_FILE.read_text()) if TWIN_FILE.exists() else None,
-                "presets": load_presets(),
-                "speed": self.speed,
+                "twin": self.twin,
+                "presets": self.load_presets(),
             }
 
 
-def load_presets():
-    """Saved poses, by name: {motor id: encoder value}."""
-    return json.loads(PRESETS_FILE.read_text()) if PRESETS_FILE.exists() else {}
+def run(arm):
+    """The arm's control loop. A lost USB link ends the whole server: a page
+    that keeps showing frozen readings as live is worse than no page."""
+    try:
+        arm.control_loop()
+    except OSError as err:  # pyserial's SerialException is an OSError
+        print(f"\nLost the {arm.name} arm's USB connection ({err}). Stopping; torque is left as is.", flush=True)
+        os._exit(1)
 
 
 def ensure_certificate():
@@ -240,7 +296,11 @@ def lan_ip():
         return s.getsockname()[0]
 
 
-def make_handler(arm, token=None):
+def make_handler(arms_by_name, token=None):
+    # follower -> leader arm, for the pairs whose arms are both running
+    leaders = {f: arms_by_name[l] for f, l in arms.CONFIG.get("leaders", {}).items()
+               if f in arms_by_name and l in arms_by_name}
+
     """token=None: trusted (localhost). Otherwise every request must carry ?t=token,
     so only someone with the printed link can drive the arm over Wi-Fi."""
 
@@ -265,7 +325,16 @@ def make_handler(arm, token=None):
             if path is None:
                 return
             if path == "/state":
-                self.reply(arm.state())
+                first = next(iter(arms_by_name.values()))
+                self.reply({
+                    "arms": {name: arm.state() for name, arm in arms_by_name.items()},
+                    "layout": arms.CONFIG.get("layout", "side_by_side"),
+                    "spacing_cm": arms.CONFIG.get("spacing_cm", 40),
+                    "leaders": {f: l.name for f, l in leaders.items()},
+                    "follow": {a.name: {"leader": a.follows[0].name, "mirror": a.follows[1]}
+                               for a in arms_by_name.values() if a.follows},
+                    "speed": first.speed,
+                })
             elif path == "/phone":
                 self.reply(PHONE_PAGE_FILE.read_bytes(), "text/html")
             else:
@@ -277,28 +346,42 @@ def make_handler(arm, token=None):
                 return
             self.path = path
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])) or "{}")
+            arm = arms_by_name.get(body.get("arm"))
             if self.path == "/goal":
-                arm.set_target(int(body["id"]), body["pos"])
+                arm.set_target(body["pose"])
             elif self.path == "/torque":
                 arm.request_torque(bool(body["on"]))
             elif self.path == "/speed":
-                arm.speed = max(1, min(MAX_SPEED, float(body["speed"])))
+                for a in arms_by_name.values():
+                    a.speed = max(1, min(MAX_SPEED, float(body["speed"])))
             elif self.path == "/hold":
-                arm.hold()
+                # Stop everything, mirror and leader arm included, so no arm keeps chasing another.
+                for a in arms_by_name.values():
+                    a.follows = None
+                    a.hold()
+            elif self.path == "/mirror":
+                # Every other arm that isn't a leader arm mirrors this one.
+                leader = arms_by_name.get(body.get("leader"))
+                lead_arms = set(leaders.values())
+                for a in arms_by_name.values():
+                    a.follows = (leader, True) if leader and a is not leader and a not in lead_arms else None
+            elif self.path == "/leader":
+                for follower, leader in leaders.items():
+                    arms_by_name[follower].follows = (leader, False) if body["on"] else None
             elif self.path == "/pose":
                 arm.go_pose(body["pose"], body.get("speed"))
             elif self.path == "/preset/save":
-                presets = load_presets()
+                presets = arm.load_presets()
                 presets[body["name"]] = body["pose"]
-                PRESETS_FILE.write_text(json.dumps(presets, indent=2))
+                arm.save_presets(presets)
             elif self.path == "/preset/delete":
-                presets = load_presets()
+                presets = arm.load_presets()
                 presets.pop(body["name"], None)
-                PRESETS_FILE.write_text(json.dumps(presets, indent=2))
+                arm.save_presets(presets)
             elif self.path == "/idle":
                 arm.go_idle()
             elif self.path == "/twin":
-                TWIN_FILE.write_text(json.dumps(body, indent=2))
+                arm.save_twin(body["twin"])
             self.reply({"ok": True})
 
         def log_message(self, *args):
@@ -308,19 +391,25 @@ def make_handler(arm, token=None):
 
 
 def main():
-    arm = Arm()
-    threading.Thread(target=arm.control_loop, daemon=True).start()
-    server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arm))
+    names = sys.argv[1:] or list(arms.ARMS)
+    unknown = [n for n in names if n not in arms.ARMS]
+    if unknown:
+        sys.exit(f"Unknown arm {unknown}; arms.json has {', '.join(arms.ARMS)}")
+    arms_by_name = {name: Arm(name) for name in names}
+    for arm in arms_by_name.values():
+        threading.Thread(target=run, args=(arm,), daemon=True).start()
+    server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name))
 
     ensure_certificate()
     token = secrets.token_urlsafe(8)
-    phone_server = ThreadingHTTPServer(("0.0.0.0", PHONE_PORT), make_handler(arm, token))
+    phone_server = ThreadingHTTPServer(("0.0.0.0", PHONE_PORT), make_handler(arms_by_name, token))
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(CERT_FILE, KEY_FILE)
     phone_server.socket = context.wrap_socket(phone_server.socket, server_side=True)
     threading.Thread(target=phone_server.serve_forever, daemon=True).start()
 
     phone_url = f"https://{lan_ip()}:{PHONE_PORT}/phone?t={token}"
+    print(f"Arms: {', '.join(f'{n} ({arms.port(n)})' for n in names)}")
     print(f"Laptop: http://localhost:{HTTP_PORT}")
     print(f"Phone (same Wi-Fi): {phone_url}")
     try:

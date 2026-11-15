@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<!--
+  Live point cloud from an iPhone LiDAR. Served by usb_viewer.py, which reads the phone
+  over USB and exposes the latest points at /frame (format: pointcloud.pack_points).
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>iPhone LiDAR point cloud</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+    body { margin: 0; background: #222; color: #eee; font-family: sans-serif; overflow: hidden; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    #bar { position: fixed; top: 0; left: 0; padding: 8px; display: flex; gap: 8px; align-items: center; background: rgba(0, 0, 0, 0.6); }
+</style>
+</head>
+<body>
+<div id="bar">
+    <label for="point-size">Point size</label>
+    <input id="point-size" type="range" min="0.5" max="10" step="0.5" value="2">
+    <span id="status" role="status">Waiting for frames from the phone ...</span>
+</div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "./vendor/three.module.js"
+    }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from './vendor/OrbitControls.js';
+
+const POLL_INTERVAL_MS = 33;
+
+const statusLabel = document.getElementById('status');
+const pointSizeInput = document.getElementById('point-size');
+
+function setStatus(text) {
+    statusLabel.textContent = text;
+}
+
+const renderer = new THREE.WebGLRenderer();
+renderer.setClearColor(0x222222);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, 1, 1e-3, 100);
+camera.position.set(0, 0, 0.2);
+
+// The cloud sits along -z in front of the phone, so orbit around a point half a meter out.
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, -0.5);
+controls.update();
+
+const material = new THREE.PointsMaterial({
+    size: Number(pointSizeInput.value),
+    sizeAttenuation: false,
+    vertexColors: true,
+});
+const points = new THREE.Points(new THREE.BufferGeometry(), material);
+// Frames are in the camera frame (y down, z forward); three.js looks down -z with y up.
+points.scale.set(1, -1, -1);
+points.frustumCulled = false;
+scene.add(points);
+
+function resizeRenderer() {
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resizeRenderer);
+resizeRenderer();
+
+renderer.setAnimationLoop(() => {
+    renderer.render(scene, camera);
+});
+
+pointSizeInput.addEventListener('input', () => {
+    material.size = Number(pointSizeInput.value);
+});
+
+let capacity = 0;
+
+function makeGeometry(numPoints) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(numPoints * 3), 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(new Uint8Array(numPoints * 3), 3, true));
+    return geometry;
+}
+
+function showFrame(buffer) {
+    const count = new DataView(buffer).getInt32(0, true);
+    const positions = new Float32Array(buffer, 4, count * 3);
+    const colors = new Uint8Array(buffer, 4 + count * 12, count * 3);
+
+    if (count > capacity) {
+        points.geometry.dispose();
+        points.geometry = makeGeometry(count);
+        capacity = count;
+    }
+    const geometry = points.geometry;
+    if (count > 0) {
+        geometry.attributes.position.array.set(positions);
+        geometry.attributes.color.array.set(colors);
+        geometry.attributes.position.needsUpdate = true;
+        geometry.attributes.color.needsUpdate = true;
+    }
+    geometry.setDrawRange(0, count);
+
+    if (count === 0) {
+        setStatus('Waiting for frames from the phone ...');
+    } else {
+        setStatus(count + ' points');
+    }
+}
+
+async function pollFrame() {
+    try {
+        const response = await fetch('/frame');
+        const buffer = await response.arrayBuffer();
+        showFrame(buffer);
+    } catch (error) {
+        setStatus('Lost the connection to usb_viewer.py (' + error.message + ')');
+    }
+    setTimeout(pollFrame, POLL_INTERVAL_MS);
+}
+pollFrame();
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "layout": "side_by_side",
+  "spacing_cm": 30,
+  "arms": {
+    "arm2": "/dev/tty.usbmodem5B8E1131611",
+    "arm1": "/dev/tty.usbmodem5B790153891",
+    "leader": "/dev/tty.usbmodem5AE70494271"
+  },
+  "leaders": {
+    "arm1": "leader"
+  }
+}
