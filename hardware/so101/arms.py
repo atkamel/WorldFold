@@ -1,52 +1,45 @@
-"""Which serial port and config folder belong to each SO-101 follower.
+"""Which SO-101 arms exist, and where each one's files live.
 
-Each arm has its own USB serial adapter, so each is its own bus and both arms
+arms.json names every arm and its serial port, plus how the arms stand:
+    "layout": "side_by_side"  both face the same way, the first arm listed on the left
+    "layout": "facing"        they face each other across the table
+    "spacing_cm"              distance between the two bases
+    "leaders"                 optional {follower: leader arm}: a limp SO-101 moved by
+                              hand whose joint angles the follower copies (ui.py)
+Left is seen from behind the arms (side_by_side) or from the side of the
+table between them (facing). Find a port with `ls /dev/tty.usbmodem*`: plug in
+only that arm; the name carries the adapter's serial number, so it stays the
+same across replugs and reboots.
+
+Each arm has its own USB serial adapter, so each is its own bus and all arms
 use motor IDs 1-6 without clashing. An arm's calibration lives in its own
-folder (arm1/, arm2/): limits.json, idle_pose.json, twin.json, presets.json.
-
-Set PLATFORM to the computer the arms are plugged into.
-
-To find an arm's port, plug in only that arm, then:
-  mac:      ls /dev/tty.usbmodem*   (the name carries the adapter's serial number,
-            so it stays the same across replugs and reboots)
-  windows:  Device Manager > Ports (COM & LPT). Windows gives a COM number per
-            adapter and USB socket, so it can change when an arm moves to another socket.
+folder (arm1/, arm2/, leader/): limits.json (set_limits.py), idle_pose.json
+(idle.py record), twin.json and presets.json (ui.py).
 """
 
-import sys
+import json
 from pathlib import Path
 
 HERE = Path(__file__).parent
+CONFIG = json.loads((HERE / "arms.json").read_text())
+ARMS = CONFIG["arms"]
 
-PLATFORM = "windows"  # "windows" or "mac"
 
-PORTS = {
-    "mac": {
-        "arm1": "/dev/tty.usbmodem5B790153891",
-        "arm2": "/dev/tty.usbmodem5B8E1131611",
-    },
-    "windows": {
-        "arm1": "COM3",
-        "arm2": "COM5",
-    },
-}
+def port(name):
+    return ARMS[name]
 
-ARM_NAMES = ["arm1", "arm2"]
+
+def folder(name):
+    return HERE / name
 
 
 def add_arm_argument(parser):
     # Required on purpose: a default arm would let a forgotten flag write one
     # arm's calibration into the other arm's motors and files.
-    parser.add_argument("--arm", required=True, choices=ARM_NAMES, help="which follower to talk to")
+    parser.add_argument("--arm", required=True, choices=ARMS, help="which arm to talk to")
 
 
 def resolve(name):
     """Return (serial port, config folder) for an arm."""
-    if PLATFORM not in PORTS:
-        sys.exit(f"PLATFORM in arms.py is {PLATFORM!r}; it must be one of {list(PORTS)}")
-    port = PORTS[PLATFORM][name]
-    if port is None:
-        sys.exit(f"No {PLATFORM} port set for {name}. Plug in only {name}, find its port, add it to arms.py")
-    folder = HERE / name
-    folder.mkdir(exist_ok=True)
-    return port, folder
+    folder(name).mkdir(exist_ok=True)
+    return port(name), folder(name)

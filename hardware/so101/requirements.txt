@@ -1,5 +1,0 @@
-# Servo bus driver (imported as scservo_sdk); pulls in pyserial.
-feetech-servo-sdk==1.0.0
-# JPEG frames in recorded episodes.
-pillow
-# The iPhone LiDAR view is optional: see ../iphone_lidar/requirements.txt

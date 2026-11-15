@@ -1,20 +1,24 @@
-"""Real-time control panel + live 3D twin for the SO-101 followers, with the iPhone
-LiDAR point cloud and episode recording.
+"""Real-time control panel + live 3D twin for one or two SO-101 followers.
 
-    python ui.py                  # every arm in arms.py; then open http://localhost:8101
-    python ui.py --arms arm1      # only some arms
-    python ui.py --phone          # also serve the phone teleop page (drives the first arm)
+    .venv/bin/python ui.py             # every arm in arms.json; open http://localhost:8101
+    .venv/bin/python ui.py arm2        # just one of them
+                                       # phone: open the https link it prints
 
-One background thread per arm owns its serial port: 50 times a second it reads every
-motor's position and, with torque on, nudges each goal toward its slider. The
-browser only talks to this server, never to the motors directly.
+One background thread per arm owns that arm's serial port: 50 times a second
+it reads every motor's position and, with torque on, nudges each goal toward
+its target. The browser only talks to this server, never to the motors.
 
-The camera is optional: without a phone the panel still runs and records joints only.
-Recorded episodes go to outputs/so101_teleop/ (format: recorder.py).
+Mirror mode: one arm leads and the other copies its target as a mirror image
+(pan and wrist roll flipped), so any input that moves the leader moves both.
+With the leader limp, moving it by hand drives the other arm.
+
+Leader arm: arms.json "leaders" pairs a follower with a leader arm (a limp
+SO-101 moved by hand), e.g. {"arm1": "leader"}. With it on, the follower
+copies the leader's joint angles.
 """
 
-import argparse
 import json
+import os
 import secrets
 import socket
 import ssl
@@ -28,12 +32,7 @@ from urllib.parse import parse_qs, urlparse
 
 import scservo_sdk as scs
 
-HERE = Path(__file__).parent
-# This file runs as a script, so the repo root is not on the path; hardware.iphone_lidar needs it.
-sys.path.insert(0, str(HERE.parent.parent))
-
-import arms  # noqa: E402
-from recorder import Recorder  # noqa: E402
+import arms
 
 BAUDRATE = 1_000_000
 HTTP_PORT = 8101  # laptop only (127.0.0.1)
@@ -46,20 +45,11 @@ DEFAULT_SPEED = 50  # deg/s; adjustable live from the page
 MAX_SPEED = 180  # deg/s ceiling for the speed slider
 MAX_BURST_SPEED = 270  # deg/s ceiling for one-off fast moves (punches); near the motor's top speed
 
-CAMERA_RETRY_SECONDS = 3  # how often to look for the phone until it starts streaming
-
-PANEL_PAGE_FILE = HERE / "panel.html"
+HERE = Path(__file__).parent
 PAGE_FILE = HERE / "ui.html"
 PHONE_PAGE_FILE = HERE / "phone.html"
 CERT_FILE = HERE / "certs" / "cert.pem"
 KEY_FILE = HERE / "certs" / "key.pem"
-LIDAR_DIR = HERE.parent / "iphone_lidar"
-CLOUD_PAGE_FILE = LIDAR_DIR / "viewer.html"
-# The only files the cloud page loads; anything else under /vendor/ is refused.
-VENDOR_FILES = {
-    "three.module.js": LIDAR_DIR / "vendor" / "three.module.js",
-    "OrbitControls.js": LIDAR_DIR / "vendor" / "OrbitControls.js",
-}
 
 # STS3215 control table addresses
 ADDR_TORQUE_ENABLE = 40
@@ -68,23 +58,44 @@ ADDR_TORQUE_LIMIT = 48
 ADDR_PRESENT_POSITION = 56
 
 GRIPPER_TORQUE_LIMIT = 500  # 50% of max, as lerobot does, so it can't burn out squeezing
+MIRROR_SIGN = {1: -1, 5: -1}  # a mirror image swaps left and right: pan and wrist roll change sign
+
+
+def copy_pose(pose, twin_from, twin_to, mirror):
+    """One arm's encoder pose -> the same joint angles on another arm (or their
+    mirror image), through each arm's straight-up reference (same convention as
+    the pages: angle = sign * (encoder - zero))."""
+    def zero(twin, m):
+        return twin.get("zero", {}).get(str(m), 2047)
+
+    def sign(twin, m):
+        return -1 if twin.get("flip", {}).get(str(m)) else 1
+
+    out = {}
+    for m, pos in pose.items():
+        center = twin_from.get("center", {}).get(str(m))
+        if center is not None:
+            # A leader arm's encoder can roll over 4095 -> 0 (its wrist roll turns all the way
+            # round): read it within half a turn of the pose it was matched to its follower in.
+            pos = center + (pos - center + 2048) % 4096 - 2048
+        angle = sign(twin_from, m) * (pos - zero(twin_from, m)) * (MIRROR_SIGN.get(m, 1) if mirror else 1)
+        out[m] = zero(twin_to, m) + sign(twin_to, m) * angle
+    return out
 
 
 class Arm:
     def __init__(self, name):
         self.name = name
-        port_name, folder = arms.resolve(name)
-        self.limits_file = folder / "limits.json"
+        folder = arms.folder(name)
         self.pose_file = folder / "idle_pose.json"
         self.twin_file = folder / "twin.json"
         self.presets_file = folder / "presets.json"
-
-        self.port = scs.PortHandler(port_name)
+        self.port = scs.PortHandler(arms.port(name))
         self.packet = scs.PacketHandler(0)  # protocol 0 = Feetech STS series
         if not self.port.openPort() or not self.port.setBaudRate(BAUDRATE):
-            sys.exit(f"Could not open {port_name} for {name}. Check PLATFORM and PORTS in arms.py")
+            sys.exit(f"Could not open {arms.port(name)} ({name} arm)")
 
-        limits = json.loads(self.limits_file.read_text())
+        limits = json.loads((folder / "limits.json").read_text())
         self.limits = {m: (limits[str(m)]["true"]["min"], limits[str(m)]["true"]["max"]) for m in MOTOR_IDS}
 
         # Sync read: one request, every motor answers in turn. Much faster
@@ -100,7 +111,7 @@ class Arm:
             if None not in self.present.values():
                 break
         else:
-            sys.exit(f"Could not read all motors of {name}: {self.present}")
+            sys.exit(f"Could not read all motors of the {name} arm: {self.present}")
         self.target = dict(self.present)  # where the sliders want each joint
         self.command = dict(self.present)  # goal actually sent, eased toward target
         # Keep whatever torque state the arm is in (idle.py may have left it holding).
@@ -110,6 +121,8 @@ class Arm:
         self.speed = DEFAULT_SPEED
         self.burst_speed = None  # temporary faster speed until the current pose is reached
         self.pending_burst = None
+        self.twin = json.loads(self.twin_file.read_text()) if self.twin_file.exists() else None
+        self.follows = None  # (leading Arm, mirror?) while this arm copies another
 
     # --- bus access: only ever called from the control thread (or __init__) ---
 
@@ -159,6 +172,10 @@ class Arm:
 
     def control_loop(self):
         while True:
+            follows = self.follows
+            if follows:
+                with follows[0].lock:
+                    lead_target = dict(follows[0].target)
             with self.lock:
                 pending, self.pending_torque = self.pending_torque, None
                 if pending is not None:
@@ -172,6 +189,9 @@ class Arm:
 
                 self.read_present()
                 if self.torque:
+                    if follows:
+                        leader, mirror = follows
+                        self.target = self.clamp(copy_pose(lead_target, leader.twin or {}, self.twin or {}, mirror))
                     # Speed = how far a goal may move per tick. 50 deg/s is
                     # ~11.4 steps per 20 ms tick; fractions carry over.
                     max_step = (self.burst_speed or self.speed) * STEPS_PER_DEGREE * TICK_SECONDS
@@ -191,10 +211,14 @@ class Arm:
 
     # --- called from HTTP threads: only touch shared state, never the bus ---
 
-    def set_target(self, motor_id, pos):
-        lo, hi = self.limits[motor_id]
+    def clamp(self, pose):
+        return {m: max(self.limits[m][0], min(self.limits[m][1], int(p))) for m, p in pose.items()}
+
+    def set_target(self, pose):
+        """Aim the listed joints ({motor id: encoder value}) at new targets."""
+        pose = self.clamp({int(m): p for m, p in pose.items()})
         with self.lock:
-            self.target[motor_id] = max(lo, min(hi, int(pos)))
+            self.target.update(pose)
 
     def request_torque(self, on):
         with self.lock:
@@ -211,9 +235,6 @@ class Arm:
             self.pending_burst = min(MAX_BURST_SPEED, float(speed)) if speed else None
 
     def go_idle(self):
-        if not self.pose_file.exists():
-            print(f"No idle pose for {self.name} yet. Run: python idle.py --arm {self.name} record")
-            return
         self.go_pose(json.loads(self.pose_file.read_text()))
 
     def hold(self):
@@ -222,6 +243,17 @@ class Arm:
         with self.lock:
             self.target = dict(self.command)
 
+    def save_twin(self, twin):
+        self.twin_file.write_text(json.dumps(twin, indent=2))
+        self.twin = twin
+
+    def load_presets(self):
+        """Saved poses, by name: {motor id: encoder value}."""
+        return json.loads(self.presets_file.read_text()) if self.presets_file.exists() else {}
+
+    def save_presets(self, presets):
+        self.presets_file.write_text(json.dumps(presets, indent=2))
+
     def state(self):
         with self.lock:
             return {
@@ -229,24 +261,19 @@ class Arm:
                 "target": self.target,
                 "torque": self.torque,
                 "limits": self.limits,
-                "twin": json.loads(self.twin_file.read_text()) if self.twin_file.exists() else None,
+                "twin": self.twin,
                 "presets": self.load_presets(),
-                "speed": self.speed,
             }
 
-    def joints(self):
-        """Present and target positions in motor id order, for the recorder."""
-        with self.lock:
-            present = []
-            target = []
-            for m in MOTOR_IDS:
-                present.append(self.present[m])
-                target.append(self.target[m])
-            return {"present": present, "target": target}
 
-    def load_presets(self):
-        """Saved poses, by name: {motor id: encoder value}."""
-        return json.loads(self.presets_file.read_text()) if self.presets_file.exists() else {}
+def run(arm):
+    """The arm's control loop. A lost USB link ends the whole server: a page
+    that keeps showing frozen readings as live is worse than no page."""
+    try:
+        arm.control_loop()
+    except OSError as err:  # pyserial's SerialException is an OSError
+        print(f"\nLost the {arm.name} arm's USB connection ({err}). Stopping; torque is left as is.", flush=True)
+        os._exit(1)
 
 
 def ensure_certificate():
@@ -269,12 +296,13 @@ def lan_ip():
         return s.getsockname()[0]
 
 
-def make_handler(arms_by_name, camera, recorder, token=None):
-    """token=None: trusted (localhost). Otherwise every request must carry ?t=token,
-    so only someone with the printed link can drive the arm over Wi-Fi.
+def make_handler(arms_by_name, token=None):
+    # follower -> leader arm, for the pairs whose arms are both running
+    leaders = {f: arms_by_name[l] for f, l in arms.CONFIG.get("leaders", {}).items()
+               if f in arms_by_name and l in arms_by_name}
 
-    A request picks its arm with ?arm=name; without it, the first arm is used."""
-    default_arm = list(arms_by_name)[0]
+    """token=None: trusted (localhost). Otherwise every request must carry ?t=token,
+    so only someone with the printed link can drive the arm over Wi-Fi."""
 
     class Handler(BaseHTTPRequestHandler):
         def reply(self, body, content_type="application/json", status=200):
@@ -285,81 +313,75 @@ def make_handler(arms_by_name, camera, recorder, token=None):
             self.wfile.write(data)
 
         def route(self):
-            """Return (request path, arm), or (None, None) after replying with the error."""
+            """Return the request path, or None (after replying 403) if the token is wrong."""
             url = urlparse(self.path)
-            query = parse_qs(url.query)
-            if token and not secrets.compare_digest(query.get("t", [""])[0], token):
+            if token and not secrets.compare_digest(parse_qs(url.query).get("t", [""])[0], token):
                 self.reply({"error": "bad token"}, status=403)
-                return None, None
-            name = query.get("arm", [default_arm])[0]
-            if name not in arms_by_name:
-                self.reply({"error": "unknown arm"}, status=404)
-                return None, None
-            return url.path, arms_by_name[name]
+                return None
+            return url.path
 
         def do_GET(self):
-            path, arm = self.route()
+            path = self.route()
             if path is None:
                 return
             if path == "/state":
-                self.reply(arm.state())
+                first = next(iter(arms_by_name.values()))
+                self.reply({
+                    "arms": {name: arm.state() for name, arm in arms_by_name.items()},
+                    "layout": arms.CONFIG.get("layout", "side_by_side"),
+                    "spacing_cm": arms.CONFIG.get("spacing_cm", 40),
+                    "leaders": {f: l.name for f, l in leaders.items()},
+                    "follow": {a.name: {"leader": a.follows[0].name, "mirror": a.follows[1]}
+                               for a in arms_by_name.values() if a.follows},
+                    "speed": first.speed,
+                })
             elif path == "/phone":
                 self.reply(PHONE_PAGE_FILE.read_bytes(), "text/html")
-            elif path == "/arm":
-                self.reply(PAGE_FILE.read_bytes(), "text/html")
-            elif path == "/cloud":
-                self.reply(CLOUD_PAGE_FILE.read_bytes(), "text/html")
-            elif path == "/frame":
-                self.reply(cloud_blob(camera), "application/octet-stream")
-            elif path.startswith("/vendor/"):
-                file_name = path[len("/vendor/"):]
-                if file_name in VENDOR_FILES:
-                    self.reply(VENDOR_FILES[file_name].read_bytes(), "text/javascript")
-                else:
-                    self.reply({"error": "not found"}, status=404)
-            elif path == "/record":
-                status = recorder.status()
-                status["arms"] = list(arms_by_name)
-                status["camera"] = camera_status(camera)
-                self.reply(status)
             else:
-                self.reply(PANEL_PAGE_FILE.read_bytes(), "text/html")
+                self.reply(PAGE_FILE.read_bytes(), "text/html")
 
         def do_POST(self):
-            path, arm = self.route()
+            path = self.route()
             if path is None:
                 return
             self.path = path
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])) or "{}")
+            arm = arms_by_name.get(body.get("arm"))
             if self.path == "/goal":
-                arm.set_target(int(body["id"]), body["pos"])
+                arm.set_target(body["pose"])
             elif self.path == "/torque":
                 arm.request_torque(bool(body["on"]))
             elif self.path == "/speed":
-                arm.speed = max(1, min(MAX_SPEED, float(body["speed"])))
+                for a in arms_by_name.values():
+                    a.speed = max(1, min(MAX_SPEED, float(body["speed"])))
             elif self.path == "/hold":
-                arm.hold()
-            elif self.path == "/hold-all":
-                for other in arms_by_name.values():
-                    other.hold()
+                # Stop everything, mirror and leader arm included, so no arm keeps chasing another.
+                for a in arms_by_name.values():
+                    a.follows = None
+                    a.hold()
+            elif self.path == "/mirror":
+                # Every other arm that isn't a leader arm mirrors this one.
+                leader = arms_by_name.get(body.get("leader"))
+                lead_arms = set(leaders.values())
+                for a in arms_by_name.values():
+                    a.follows = (leader, True) if leader and a is not leader and a not in lead_arms else None
+            elif self.path == "/leader":
+                for follower, leader in leaders.items():
+                    arms_by_name[follower].follows = (leader, False) if body["on"] else None
             elif self.path == "/pose":
                 arm.go_pose(body["pose"], body.get("speed"))
             elif self.path == "/preset/save":
                 presets = arm.load_presets()
                 presets[body["name"]] = body["pose"]
-                arm.presets_file.write_text(json.dumps(presets, indent=2))
+                arm.save_presets(presets)
             elif self.path == "/preset/delete":
                 presets = arm.load_presets()
                 presets.pop(body["name"], None)
-                arm.presets_file.write_text(json.dumps(presets, indent=2))
+                arm.save_presets(presets)
             elif self.path == "/idle":
                 arm.go_idle()
             elif self.path == "/twin":
-                arm.twin_file.write_text(json.dumps(body, indent=2))
-            elif self.path == "/record/start":
-                recorder.start()
-            elif self.path == "/record/stop":
-                recorder.stop()
+                arm.save_twin(body["twin"])
             self.reply({"ok": True})
 
         def log_message(self, *args):
@@ -368,48 +390,27 @@ def make_handler(arms_by_name, camera, recorder, token=None):
     return Handler
 
 
-def start_camera():
-    """The iPhone LiDAR, or None when its library is not installed on this computer."""
-    try:
-        from hardware.iphone_lidar.camera import IphoneCamera
-    except ImportError:
-        print("Camera: record3d is not installed, running without the point cloud")
-        return None
-    camera = IphoneCamera()
+def main():
+    names = sys.argv[1:] or list(arms.ARMS)
+    unknown = [n for n in names if n not in arms.ARMS]
+    if unknown:
+        sys.exit(f"Unknown arm {unknown}; arms.json has {', '.join(arms.ARMS)}")
+    arms_by_name = {name: Arm(name) for name in names}
+    for arm in arms_by_name.values():
+        threading.Thread(target=run, args=(arm,), daemon=True).start()
+    server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name))
 
-    def connect_until_streaming():
-        while not camera.start():
-            time.sleep(CAMERA_RETRY_SECONDS)
-
-    # On its own thread: looking for the phone can block, and the arms must not wait for it.
-    threading.Thread(target=connect_until_streaming, daemon=True).start()
-    return camera
-
-
-def camera_status(camera):
-    if camera is None:
-        return "record3d is not installed"
-    return camera.status
-
-
-def cloud_blob(camera):
-    if camera is None:
-        return (0).to_bytes(4, "little")  # a frame with zero points
-    from hardware.iphone_lidar.usb_viewer import frame_blob
-
-    return frame_blob(camera)
-
-
-def start_phone_server(arms_by_name, camera, recorder):
     ensure_certificate()
     token = secrets.token_urlsafe(8)
-    phone_server = ThreadingHTTPServer(("0.0.0.0", PHONE_PORT), make_handler(arms_by_name, camera, recorder, token))
+    phone_server = ThreadingHTTPServer(("0.0.0.0", PHONE_PORT), make_handler(arms_by_name, token))
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(CERT_FILE, KEY_FILE)
     phone_server.socket = context.wrap_socket(phone_server.socket, server_side=True)
     threading.Thread(target=phone_server.serve_forever, daemon=True).start()
 
     phone_url = f"https://{lan_ip()}:{PHONE_PORT}/phone?t={token}"
+    print(f"Arms: {', '.join(f'{n} ({arms.port(n)})' for n in names)}")
+    print(f"Laptop: http://localhost:{HTTP_PORT}")
     print(f"Phone (same Wi-Fi): {phone_url}")
     try:
         import qrcode
@@ -419,35 +420,11 @@ def start_phone_server(arms_by_name, camera, recorder):
         qr.print_ascii(invert=True)
     except ImportError:
         pass
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--arms", nargs="+", default=arms.ARM_NAMES, choices=arms.ARM_NAMES,
-                        help="which followers to drive (default: all)")
-    parser.add_argument("--phone", action="store_true", help="also serve the phone teleop page over Wi-Fi")
-    args = parser.parse_args()
-
-    arms_by_name = {}
-    for name in args.arms:
-        arm = Arm(name)
-        threading.Thread(target=arm.control_loop, daemon=True).start()
-        arms_by_name[name] = arm
-        print(f"{name}: connected, torque {'on' if arm.torque else 'off'}")
-
-    camera = start_camera()
-    recorder = Recorder(arms_by_name, camera)
-    server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name, camera, recorder))
-    if args.phone:
-        start_phone_server(arms_by_name, camera, recorder)
-
-    print(f"Laptop: http://localhost:{HTTP_PORT}")
     print("Ctrl+C to stop; torque state is left as is.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print()
-    recorder.stop()
 
 
 if __name__ == "__main__":

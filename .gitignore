@@ -27,8 +27,14 @@ outputs/isaac/
 outputs/videos/
 outputs/cloth_fold_rl/
 outputs/imitation/smoke/
-outputs/so101_teleop/
 renders/
 *.mp4
 !docs/reports/media/*.mp4
 .claude/
+.venv
+.venv-hw
+hardware/so101/camera.json
+hardware/so101/look.png
+hardware/so101/last_look.json
+hardware/so101/runs/
+outputs/hardware/
