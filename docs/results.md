@@ -3645,3 +3645,8 @@ about 9 h against the 11 h child limit, and 500 take about 6.7 h.
 Collection `lh_c1` launched 2026-11-13 as WATcloud 750310 to 750313 (versions `lh_c1_0` to `lh_c1_3`, seeds
 4,000,000-4,001,999 in blocks of 500, root `outputs/isaac/bc/datasets`, code 00af711, `thor-slurm1`), position mode,
 friction 0.65, cloth offset ±1.5 cm and turned ±5°, cameras `top` 128 px and both wrists 64 px, demos only.
+
+Correction (2026-11-14): jobs 750310 to 750313 failed at start (exit 6, 0 s, empty logs) because the submit command
+left out `--gres=gpu:rtx_3090:1,tmpdisk:200000`, so the job had no GPU and `nvidia-smi` failed. No episodes were
+collected. Resubmitted unchanged with the GPU request as 750891 to 750894 (same versions, seeds and settings), pending
+on `thor-slurm1` at submission.

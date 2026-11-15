@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-13 · **Branch:** `fix/half-fold-audit` · **Phase:** pathway fixes after the 2026-11-10 review:
+**Updated:** 2026-11-14 · **Branch:** `fix/half-fold-audit` · **Phase:** pathway fixes after the 2026-11-10 review:
 the grasp holds both corners (batch K), camera-policy demos collecting (`lh_c1`), hardware replay deferred
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -78,7 +78,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 
 1. **Camera-policy demos are collecting (user, 2026-11-13).** Batch N passed (results.md): position gripper mode
    gives 28 good and 125 held of 128 with cameras, and 21 good and 103 held with the cloth offset ±1.5 cm and turned
-   ±5°. Collection `lh_c1` (WATcloud 750310 to 750313, seeds 4,000,000-4,001,999, that pose range, cameras, demos
+   ±5°. Collection `lh_c1` (WATcloud 750891 to 750894 after 750310 to 750313 failed at start without a GPU request, seeds 4,000,000-4,001,999, that pose range, cameras, demos
    only) should keep about 330 demos. When it ends: count demos per job, freeze, train the camera policy with `top`
    and both wrists, evaluate with `gripper_mode=position`.
    The release trace: cloth stays on a finger almost only when it sits 3.5 cm or more above the fingertip at the
@@ -158,6 +158,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **Collection resubmitted:** 750310 to 750313 failed at start (submit command lacked `--gres`), no data; resubmitted as 750891 to 750894; ssh to the login host was blocked off campus for about 18 hours, so the failure went unseen; docs only · this commit
 - 2026-11-13 · **Camera-policy training prep:** `bc_train` refuses a merge that mixes position-mode and binary-mode demos and writes the mode beside each run, `bc_eval` exits on a mode mismatch or on `--grip-gain` in position mode; vision training adds colour jitter to its shift augmentation (applies to every later vision run); fast 318 passed + 5 skipped (#15 fails), isaac 140 · this commit
 - 2026-11-13 · **Batch N read, collection launched:** position mode passes (28 good, 125 held of 128; 21 and 103 at ±1.5 cm, ±5°); `lh_c1` submitted as 750310 to 750313; docs only, no code change · this commit
 - 2026-11-13 · **Batch N prepared:** vision trainer no longer drops the `top` camera (the overnight camera students were wrist-only, results.md correction), collector resume fix and measured jaw in episode meta; fast 316 passed + 5 skipped (#15 fails), isaac 139 · this commit
