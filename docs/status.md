@@ -36,7 +36,8 @@ released, still), user 2026-10-22.
 - **iPhone LiDAR viewer** (user, 2026-11-14, branch `feat/iphone-lidar`): `python -m hardware.iphone_lidar.usb_viewer`
   reads Record3D over USB (eduroam blocks the Wi-Fi mode) and shows a live point cloud at `http://localhost:8000`.
   `hardware/iphone_lidar/pointcloud.py` is the depth-to-points math for later Python use. Checked with synthetic
-  frames only: this laptop has no Apple device drivers yet, so `record3d` finds no phone.
+  frames only: this laptop has no Apple Mobile Device Support yet, so `record3d` finds no phone.
+  `wifi_viewer.html` is the Wi-Fi version for networks that let the laptop reach the phone.
 
 The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Best policies: DAgger diffusion at replan 4
 (privileged, 99.5 / 77.0 / 79.5 on id_easy / id_hard / recovery) and the vision student at replan 2 (sensor-only,
@@ -117,6 +118,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **iPhone LiDAR, Wi-Fi page back (user):** `wifi_viewer.html` restored from 32616b9 for networks without client isolation; `usb_viewer.py` exits with a message when Record3D refuses the connection, and its notes say not to record (the record button pauses USB); still no phone seen on this laptop (iTunes installed without Apple Mobile Device Support); fast on Windows 262 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **iPhone LiDAR over USB (user: eduroam blocks Wi-Fi mode):** `usb_viewer.py` (record3d 1.4.1 → local server), `pointcloud.py` (depth to points, 6 tests), page polls `/frame`; Wi-Fi/WebRTC code deleted; `record3d` built into `.venv` (numpy pin unchanged, `hardware/iphone_lidar/requirements.txt`); checked in Chrome with synthetic frames, no phone seen (Apple drivers missing); fast on Windows 262 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **iPhone LiDAR viewer, three.js vendored:** three 0.147.0 and OrbitControls in `hardware/iphone_lidar/vendor/` (MIT), no CDN at runtime; re-checked in Chrome with a simulated stream; fast on Windows 256 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **iPhone LiDAR viewer (user, off the next action):** `hardware/iphone_lidar/viewer.html`, Record3D Wi-Fi stream (WebRTC) as a live browser point cloud, logic adapted from the Record3D demo (MIT); checked in Chrome with a simulated stream, not with a phone; no tests added (browser page); fast on Windows 256 passed, 1 failed (#17), 5 skipped · (this commit)

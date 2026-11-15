@@ -3,8 +3,9 @@
 Run from the repo root:  python -m hardware.iphone_lidar.usb_viewer
 Then open:               http://localhost:8000
 
-The phone needs Record3D with streaming mode set to USB and the record button pressed.
-Windows needs Apple's device drivers (installed with iTunes or the Apple Devices app).
+The phone needs Record3D open with USB Streaming mode on and NOT recording: the red record
+button pauses the USB stream. Windows needs Apple Mobile Device Support (ships with iTunes).
+Off eduroam, wifi_viewer.html does the same over Wi-Fi with no Apple software.
 """
 
 import sys
@@ -83,7 +84,10 @@ def stream_phone(store, device_index):
     session = Record3DStream()
     session.on_new_frame = new_frame.set
     session.on_stream_stopped = stopped.set
-    session.connect(devices[device_index])
+    connected = session.connect(devices[device_index])
+    if connected is False:
+        sys.exit("Record3D is not serving USB. Open the app, turn on USB Streaming mode in its settings, "
+                 "and make sure it is not recording.")
 
     while not stopped.is_set():
         # The timeout keeps Ctrl+C responsive while the phone is not sending.
