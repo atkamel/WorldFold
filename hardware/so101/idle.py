@@ -1,14 +1,13 @@
 """Move the SO-101 follower to an idle pose and hold it with torque on.
 
-    .venv/bin/python idle.py [arm] record    # torque off, pose the arm by hand, Enter to save
-    .venv/bin/python idle.py [arm]           # glide to the saved pose and hold it
-    .venv/bin/python idle.py [arm] release   # torque off, arm goes limp (support it!)
+    .venv/bin/python idle.py --arm arm1 record    # torque off, pose the arm by hand, Enter to save
+    .venv/bin/python idle.py --arm arm1           # glide to the saved pose and hold it
+    .venv/bin/python idle.py --arm arm1 release   # torque off, arm goes limp (support it!)
 
-[arm] is a name from arms.json, needed only when it lists more than one arm.
-The pose is saved to arms/<arm>/idle_pose.json. Targets are clamped to
-arms/<arm>/limits.json.
+The pose is saved to <arm>/idle_pose.json. Targets are clamped to <arm>/limits.json.
 """
 
+import argparse
 import json
 import sys
 import time
@@ -17,16 +16,20 @@ import scservo_sdk as scs
 
 import arms
 
+parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+arms.add_arm_argument(parser)
+parser.add_argument("mode", nargs="?", default="go", choices=["go", "record", "release"])
+args = parser.parse_args()
+
+PORT, ARM_DIR = arms.resolve(args.arm)
 BAUDRATE = 1_000_000
 MOTOR_IDS = [1, 2, 3, 4, 5, 6]
 GRIPPER_ID = 6
 MOVE_SECONDS = 3.0  # how long the glide to the idle pose takes
 STEP_SECONDS = 0.02  # 50 goal updates per second
 
-ARGS = sys.argv[1:]
-ARM = arms.choose(ARGS)  # arm name first (e.g. `idle.py right record`); optional with one arm
-LIMITS_FILE = arms.folder(ARM) / "limits.json"
-POSE_FILE = arms.folder(ARM) / "idle_pose.json"
+LIMITS_FILE = ARM_DIR / "limits.json"
+POSE_FILE = ARM_DIR / "idle_pose.json"
 
 # STS3215 control table addresses
 ADDR_TORQUE_ENABLE = 40
@@ -96,7 +99,7 @@ def record(port, packet):
 
 def go_idle(port, packet):
     if not POSE_FILE.exists():
-        sys.exit(f"No idle pose yet. Run: .venv/bin/python idle.py {ARM} record")
+        sys.exit(f"No idle pose yet. Run: .venv/bin/python idle.py --arm {args.arm} record")
     target = clamp_to_limits({int(m): p for m, p in json.loads(POSE_FILE.read_text()).items()})
     start = present_positions(port, packet)
 
@@ -124,15 +127,14 @@ def go_idle(port, packet):
 
 
 def main():
-    port = scs.PortHandler(arms.port(ARM))
+    port = scs.PortHandler(PORT)
     packet = scs.PacketHandler(0)  # protocol 0 = Feetech STS series
     if not port.openPort() or not port.setBaudRate(BAUDRATE):
-        sys.exit(f"Could not open {arms.port(ARM)} ({ARM} arm)")
+        sys.exit(f"Could not open {PORT}")
 
-    mode = ARGS[0] if ARGS else "go"
-    if mode == "record":
+    if args.mode == "record":
         record(port, packet)
-    elif mode == "release":
+    elif args.mode == "release":
         set_torque(port, packet, False)
         print("Torque off: the arm is limp.")
     else:

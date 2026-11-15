@@ -1,15 +1,16 @@
 """Set the min/max position limits for ONE Feetech STS3215 servo by hand.
 
-Plug in only the motor you want, set MOTOR_ID, then run (whatever ID the
-motor currently has is overwritten with MOTOR_ID):
-    .venv/bin/python set_limits.py [arm]     # arm from arms.json; optional with one arm
+Plug in only the motor you want, then run (whatever ID the motor currently
+has is overwritten with --motor):
+    .venv/bin/python set_limits.py --arm arm2 --motor 3
 
 Move the joint to one boundary and press SPACE, then to the other and press
 SPACE. The homing offset is set so the middle of that range reads 2047,
 keeping it clear of the 4095 -> 0 rollover. The offset and limits are written
-to the motor and saved to arms/<arm>/limits.json. Press q to quit without saving.
+to the motor and saved to <arm>/limits.json. Press q to quit without saving.
 """
 
+import argparse
 import json
 import select
 import sys
@@ -21,10 +22,15 @@ import scservo_sdk as scs
 
 import arms
 
-MOTOR_ID = 6
+parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+arms.add_arm_argument(parser)
+parser.add_argument("--motor", type=int, required=True, choices=range(1, 7), help="ID to give this servo (1 = base ... 6 = gripper)")
+args = parser.parse_args()
+
+MOTOR_ID = args.motor
+PORT, ARM_DIR = arms.resolve(args.arm)
 BAUDRATE = 1_000_000
-ARM = arms.choose(sys.argv[1:])  # which arm this motor belongs to; optional with one arm
-LIMITS_FILE = arms.folder(ARM) / "limits.json"
+LIMITS_FILE = ARM_DIR / "limits.json"
 
 # STS3215 control table addresses
 ADDR_ID = 5
@@ -185,19 +191,18 @@ def limits_entry(offset, lo, hi):
 
 
 def save_limits(offset, lo, hi):
-    LIMITS_FILE.parent.mkdir(parents=True, exist_ok=True)
     limits = json.loads(LIMITS_FILE.read_text()) if LIMITS_FILE.exists() else {}
     limits[str(MOTOR_ID)] = limits_entry(offset, lo, hi)
     LIMITS_FILE.write_text(json.dumps(limits, indent=2))
 
 
 def main():
-    port = scs.PortHandler(arms.port(ARM))
+    port = scs.PortHandler(PORT)
     packet = scs.PacketHandler(0)  # protocol 0 = Feetech STS series
     if not port.openPort() or not port.setBaudRate(BAUDRATE):
-        sys.exit(f"Could not open {arms.port(ARM)} ({ARM} arm)")
+        sys.exit(f"Could not open {PORT}")
 
-    print(f"\n========== {ARM.upper()} ARM, MOTOR ID: {MOTOR_ID} ==========\n")
+    print(f"\n========== {args.arm} MOTOR ID: {MOTOR_ID} ==========\n")
     assign_id(port, packet)
 
     # Torque off so the joint moves freely by hand.
@@ -223,7 +228,7 @@ def main():
     print(f"Motor {MOTOR_ID}: homing offset = {offset}")
     print(f"  raw:  min = {entry['raw']['min']}, max = {entry['raw']['max']}")
     print(f"  true: min = {lo}, max = {hi}")
-    print(f"Written to the motor and saved to {LIMITS_FILE.name}")
+    print(f"Written to the motor and saved to {args.arm}/{LIMITS_FILE.name}")
 
 
 if __name__ == "__main__":

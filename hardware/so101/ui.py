@@ -1,7 +1,7 @@
 """Real-time control panel + live 3D twin for one or two SO-101 followers.
 
     .venv/bin/python ui.py             # every arm in arms.json; open http://localhost:8101
-    .venv/bin/python ui.py left        # just one of them
+    .venv/bin/python ui.py arm2        # just one of them
                                        # phone: open the https link it prints
 
 One background thread per arm owns that arm's serial port: 50 times a second
@@ -13,7 +13,7 @@ Mirror mode: one arm leads and the other copies its target as a mirror image
 With the leader limp, moving it by hand drives the other arm.
 
 Leader arm: arms.json "leaders" pairs a follower with a leader arm (a limp
-SO-101 moved by hand), e.g. {"left": "leader"}. With it on, the follower
+SO-101 moved by hand), e.g. {"arm1": "leader"}. With it on, the follower
 copies the leader's joint angles.
 """
 

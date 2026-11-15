@@ -18,7 +18,6 @@ folder (arm1/, arm2/, leader/): limits.json (set_limits.py), idle_pose.json
 """
 
 import json
-import sys
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -44,13 +43,3 @@ def resolve(name):
     """Return (serial port, config folder) for an arm."""
     folder(name).mkdir(exist_ok=True)
     return port(name), folder(name)
-
-
-def choose(args):
-    """Pop an arm name off the front of args. With none given, use the only
-    arm in arms.json, so single-arm commands stay as they were."""
-    if args and args[0] in ARMS:
-        return args.pop(0)
-    if len(ARMS) == 1:
-        return next(iter(ARMS))
-    sys.exit(f"Name an arm first: one of {', '.join(ARMS)}")

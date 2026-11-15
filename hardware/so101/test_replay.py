@@ -305,3 +305,12 @@ def test_check_mode_moves_each_joint_in_urdf_positive_direction(env, monkeypatch
         assert abs(peak - 8 * 4096 / 360) < 1
     assert all(w[6] == 2047 for w in writes if 6 in w)  # check never moves the gripper
     assert all(v == 1 for _, v in env.ports["devL"].torque)
+
+
+def test_read_mode_prints_model_angles_and_sends_nothing(env, monkeypatch, capsys):
+    def stop(seconds):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(env.replay.time, "sleep", stop)
+    assert env.replay.main(["--read", "L"]) == 0
+    assert env.ports["devL"].writes == []
+    assert "shoulder_pan" in capsys.readouterr().out

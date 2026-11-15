@@ -1,18 +1,19 @@
 """Open-loop replay of a simulator trajectory on one or two real SO-101 followers.
 
-    .venv-hw/bin/python replay.py traj.json --left left --right right [--dry-run]
+    .venv-hw/bin/python replay.py traj.json --left arm2 --right arm1 [--dry-run]
         [--speed 0.5] [--only left|right] [--no-gripper] [--allow-clamp]
-    .venv-hw/bin/python replay.py --check left     # confirm each joint's sign, one joint at a time
+    .venv-hw/bin/python replay.py --check arm2     # confirm each joint's sign, one joint at a time
+    .venv-hw/bin/python replay.py --read arm2      # no motion: print the joint angles the map gives, live
 
 The trajectory (exported from the simulator) holds joint targets in radians in the SO-101
-URDF convention. Per arm they become servo ticks, are clamped to arms/<name>/limits.json,
+URDF convention. Per arm they become servo ticks, are clamped to <name>/limits.json,
 and are sent at dt / speed per step. No feedback: the arm is told where to go and nothing
 checks that it got there, except the measured final pose printed at the end.
 
 Map (an unverified hypothesis, see docs): q_urdf_rad = sign * (encoder - zero) * 2*pi/4096,
 zero = 2047 and sign = +1 for motors 1-5 (set_limits.py puts the middle of each swept range at 2047, and the URDF's
 arm joints are symmetric about 0). The gripper's URDF range is -10 to 100 deg, so its zero is 10 deg above the
-closed end of its limits, taken to be the lower tick. arms/<name>/urdf.json overrides per motor:
+closed end of its limits, taken to be the lower tick. <name>/urdf.json overrides per motor:
     {"zero": {"1": 2047, ...}, "sign": {"1": 1, "2": -1, ...}}
 twin.json is not used. Use --check to confirm the signs before trusting a replay.
 
@@ -278,11 +279,12 @@ def parse(argv):
     p.add_argument("--no-gripper", action="store_true")
     p.add_argument("--allow-clamp", action="store_true")
     p.add_argument("--check", metavar="ARM")
+    p.add_argument("--read", metavar="ARM")
     args = p.parse_args(argv)
-    for name in (args.left, args.right, args.check):
+    for name in (args.left, args.right, args.check, args.read):
         if name is not None and name not in arms.ARMS:
             p.error(f"unknown arm {name!r}; arms.json has {', '.join(arms.ARMS)}")
-    if args.check is None:
+    if args.check is None and args.read is None:
         if not args.trajectory:
             p.error("a trajectory file is required")
         if not (args.left or args.right):
@@ -298,6 +300,8 @@ def main(argv=None):
     args = parse(sys.argv[1:] if argv is None else argv)
     progress = {"step": "before playing"}
     try:
+        if args.read:
+            return read(args)
         if args.check:
             return check(args, progress)
         return replay(args, progress)
@@ -305,6 +309,23 @@ def main(argv=None):
         reason = "Ctrl-C" if isinstance(err, KeyboardInterrupt) else f"bus error: {err}"
         print(f"\nStopped ({reason}) at step {progress['step']}. No more targets sent; torque left on, arms hold.")
         return 1
+
+
+def read(args):
+    """Print the arm's joint angles (model degrees, through the map) until Ctrl-C. Sends nothing: torque stays as it
+    is, so a limp arm can be posed by hand against known angles (stretched straight forward = all 0)."""
+    f = Follower(args.read)
+    print("Map in use:", f.describe())
+    f.connect()
+    print("  ".join(f"{name:>13}" for name in JOINTS))
+    try:
+        while True:
+            present = f.read_present()
+            print("  ".join(f"{math.degrees(f.to_rad(m, present[m])):13.1f}" for m in MOTOR_IDS), end="\r", flush=True)
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        print()
+    return 0
 
 
 def check(args, progress):
