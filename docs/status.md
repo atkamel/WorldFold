@@ -31,11 +31,17 @@ released, still), user 2026-10-22.
 - **Batch M (read 2026-11-13):** the demo collector's release (jaw ramped open by the env) gives 4 good folds of 128
   where the expert's own release gives 25-27, so no demos are recorded with it. The same config run twice on the same
   seeds agrees on the rate and disagrees on which seeds pass. Cloth is pinched 2.5-4 cm up the fingers at release.
+- **Hardware (user, 2026-11-14), `hardware/so101/`, nothing run on an arm or a phone yet:** a scripted two-arm half
+  fold planned with numpy kinematics, in three forms: blind from a committed trajectory (`replay.py`), one look
+  through the iPhone (`fold_camera.py`), and watched throughout with RGB and LiDAR over Record3D USB (`fold_live.py`:
+  arms masked out by height above the table, the cloth's near edge tracked, the place moved with it mid-carry, every
+  frame and control step recorded). Grasp check on the jaw readings with a retry. Both followers configured with
+  `main`'s names (`arm2` left, `arm1` right). 65 tests on a fake bus and synthetic frames.
 - **Fixes under way (user go-ahead, 2026-11-10):** (1) the grasp is judged on held corners
   (`isaac/tools/held_summary.py`), batch K on fresh seeds; (2) a sim demo exported as a joint trajectory
   (`isaac/tools/export_replay.py`, `outputs/isaac/replay/s1000000.json`) and an open-loop replay tool for the real arms
-  (`hardware/so101/replay.py` in the `../WorldFold-teleop` worktree, 23 tests on a fake bus, never run on hardware; the
-  sim-angle to servo-tick map is a hypothesis: zero at tick 2047, sign +1); (3) cloth-pose randomisation knobs
+  (`hardware/so101/replay.py`, never run on hardware; the sim-angle to servo-tick map is a hypothesis: zero at tick
+  2047 and sign +1 for the arm joints, the gripper's zero 10° above its closed limit); (3) cloth-pose randomisation knobs
   (`WORLDFOLD_CLOTH_JITTER`, `WORLDFOLD_CLOTH_YAW`).
 - **Correction (2026-11-13):** the overnight camera students below used the two wrist cameras only; the trainer
   dropped the overhead one (fixed).
@@ -84,11 +90,12 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
    The release trace: cloth stays on a finger almost only when it sits 3.5 cm or more above the fingertip at the
    start of the release (46 of 48 arms), mostly the right arm. A lower seat in the jaw is the lead for a scripted
    fix; if none works, a residual RL on place and release against the held-corner metric (user).
-2. **Hardware, open-loop half fold (user, 2026-11-14: deploy something now):** `hardware/so101/fold_traj.py` plans a
-   camera-free two-arm half fold on the arm model for the user's rig (bases on the table 30 cm apart, 30 cm cloth) and
-   `replay.py` plays `hardware/so101/trajectories/half_fold_30cm.json`; steps in `hardware/so101/README.md`. Never run
-   on an arm; the far pinch is at the edge of reach (about 25° tilt). The camera version of the Isaac expert (one
-   iPhone behind the arms, RGB corners, look once then fold) is planned and not started.
+2. **Hardware half fold, first run (user, 2026-11-14):** steps in `hardware/so101/README.md`. In order: `replay.py
+   --read` and `--check` on both arms (the tick map is unverified), one arm with no cloth, `fold_camera.py calibrate`,
+   `fold_live.py --dry-run` (the first real RGB and depth frames, sent back for tuning), then `fold_live.py
+   --grasp-check`. Open after that: the 30 cm cloth does not fit the reach at both ends (results.md), so the layout
+   needs changing; coarse normals or a height map of the lifted cloth from the recorded depth; the Isaac expert itself
+   on the arms through an env adapter.
    **Sim demo replay, deferred (user, 2026-11-10):** add the second follower to `arms.json` and record its
    `limits.json`; `replay.py --check <arm>` to confirm each joint's sign; then `replay.py
    outputs/isaac/replay/s1000000.json --left <arm> --right <arm>` at half speed with the tip positions it prints
@@ -163,6 +170,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **Hardware docs:** README sections for the arm config, teleop, remaining flags, the run folder and the tests; root README points to it; status "Where we are" and next action 2 rewritten; hardware numbers in results.md; docs only, hardware tests 65 passed · this commit
 - 2026-11-14 · **Continuous RGB + LiDAR, recorded (user):** `fold_live.py` (table plane from the first depth frame, pixels over 2 cm above it masked out, near edge tracked every frame, place moved with it at 60% of the carry up to 3 cm and the fold replanned, run recorded to `runs/`), `rgbd.py`, `recorder.py`, `kinematics.py` (numpy, FK within 1e-15 of MuJoCo, committed trajectory regenerates within 1e-6 rad; MuJoCo and so101-nexus no longer needed on the rig), three sonnet subagents; found: with the 30 cm cloth 8 cm out the release lands 2.4 cm past the near corner (top-down reach starts at 10 cm); hardware tests 65 passed, fast 318 passed + 5 skipped (#15 fails); no real frame or arm yet · this commit
 - 2026-11-14 · **Camera look (user: it must not be blind):** `fold_camera.py` (Record3D USB frame as `feat/iphone-lidar` connects, dark-cloth quad inside the table region, pixel-to-table map calibrated on the cloth at the ruler position, fold planned from the detected corners, `look.png`, refuses a wrong-sized outline or an unreachable pinch); `fold_traj.fold` takes pinch and place points per arm; hardware tests 41 passed, fast 318 passed + 5 skipped (#15 fails); one look only, no tracking during the fold, LiDAR depth unused; not run on a phone or an arm · this commit
 - 2026-11-14 · **Grasp check, run log, photo score:** `replay.py --grasp-check` (jaw 2 cm into the lift against its reading shut in the air, both arms pinch again on a miss, `--retries`), `--log` (measured angles per step), `fold_traj.py` marks and the air close, `fold_score.py` (fold error from a before and an after photo, sonnet subagent); hardware tests 36 passed; fast suite not rerun (only `hardware/so101` changed); not run on an arm · this commit

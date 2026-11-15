@@ -186,6 +186,68 @@ python fold_traj.py --out trajectories/my_fold.json --cloth 0.30 --near 0.08 --c
 - `--near 0.07` cuts the far pinch's tilt to about 21 degrees and puts the release 3 cm inside the near edge.
 - `--closed` is the jaw target at the pinch (rad). -0.1745 is the model's closed limit.
 
+## Arm configuration
+
+- `arms.json` names every arm and its serial port, in order. The first follower listed is the left one, seen from
+  behind the arms. It also holds `layout` (`side_by_side` or `facing`), `spacing_cm` between the bases, and `leaders`,
+  which pairs a follower with a limp leader arm for teleop.
+- `arms.py` reads it. `arms.port(name)` and `arms.folder(name)` are what the scripts use, and `add_arm_argument` and
+  `resolve` give `idle.py` and `set_limits.py` their required `--arm`.
+- Each arm has a folder (`arm1/`, `arm2/`, `leader/`) with `limits.json` from `set_limits.py`, `idle_pose.json` from
+  `idle.py record`, `twin.json` and `presets.json` from the teleop page, and an optional `urdf.json` that overrides
+  the tick map below.
+- Ports differ per machine. Find one with `ls /dev/tty.usbmodem*` with only that arm plugged in.
+
+## Teleop and idle
+
+```bash
+../../.venv-hw/bin/python ui.py                       # control page for every arm, http://localhost:8101
+../../.venv-hw/bin/python ui.py arm2                  # one arm
+../../.venv-hw/bin/python idle.py --arm arm2 record   # torque off, pose by hand, Enter saves the idle pose
+../../.venv-hw/bin/python idle.py --arm arm2          # glide to the idle pose and hold
+../../.venv-hw/bin/python idle.py --arm arm2 release  # torque off, support the arm
+```
+
+The page has keyboard and drag control of the gripper position, a mirror mode, leader-arm mode, and a phone page.
+The docstring at the top of `ui.py` has the details.
+
+## Flags not shown above
+
+Every script prints its flags with `--help`. The ones the sections above do not use.
+
+| script | flag | what |
+|---|---|---|
+| `replay.py`, `fold_live.py` | `--allow-clamp` | play a fold the arm's limits clamp by more than 2 degrees |
+| `replay.py` | `--no-gripper` | leave the jaws alone |
+| `fold_camera.py` | `--device N` | which Record3D phone, if more than one |
+| `fold_camera.py` | `--dark N` | calibrate with a fixed grey threshold for the cloth, in place of the automatic one |
+| `fold_camera.py` | `--near-edge M`, `--cloth M`, `--spacing M` | the ruler position the calibration assumes, the cloth side and the base spacing, in metres |
+| `fold_camera.py` | `--out FILE` | where the look image goes |
+| `fold_live.py` | `--yes` | do not wait for Enter after the look |
+| `fold_live.py` | `--settle S` | seconds to wait before the last frame, and the length of a dry run |
+| `fold_live.py` | `--runs DIR` | where run folders go |
+| `fold_score.py` | `--side M`, `--dark N` | the cloth side and a fixed grey threshold |
+
+## What a run folder holds
+
+| file | what |
+|---|---|
+| `meta.json` | the command's arguments and the camera calibration |
+| `frames/000000.jpg`, `.npz` | each RGB frame, and its depth in millimetres (0 where there is no reading) |
+| `frames.jsonl` | per frame, its number, time and camera intrinsics |
+| `steps.jsonl` | per control step, the row, which plan, the targets and the measured joints in model radians |
+| `events.jsonl` | `look`, `look_failed`, `grasp_check`, `place_correction`, `score`, `dry_run`, `stopped` |
+| `look.png`, `plan_1.json`, `plan_2.json` | the look image, the first plan, and the corrected plan if there was one |
+| `summary.json` | counts of frames written and dropped, steps and events |
+
+`recorder.load(path)` returns all of it, and `recorder.load_frame(path, i)` returns one frame's RGB and depth in metres.
+
+## Tests
+
+`python -m pytest hardware/so101` from the repo root, in the pinned `.venv`. They use a fake servo bus, synthetic
+camera frames and a fake `record3d`, so they need no arm and no phone. `test_kinematics.py` also checks the numpy
+kinematics against MuJoCo when `mujoco` and `so101-nexus` are installed.
+
 ## The tick map
 
 `q_model_rad = sign * (ticks - zero) * 2*pi/4096`.
@@ -209,7 +271,7 @@ python fold_traj.py --out trajectories/my_fold.json --cloth 0.30 --near 0.08 --c
 | `replay.py` | plays a trajectory, with `--check`, `--dry-run`, `--only`, `--speed`, `--no-gripper` |
 | `trajectories/half_fold_30cm.json` | the fold for the rig above |
 | `fold_score.py` | scores a fold from a before and an after photo |
-| `arms.json`, `arm1/`, `arm2/`, `leader/` | ports, limits, per-arm overrides |
+| `arms.py`, `arms.json`, `arm1/`, `arm2/`, `leader/` | ports, limits, per-arm overrides |
 | `set_limits.py`, `idle.py` | limit recording, idle pose |
 | `ui.py`, `ui.html`, `phone.html` | teleop |
-| `test_replay.py`, `test_fold_traj.py` | tests on a fake bus, run with `python -m pytest hardware/so101` from the repo root |
+| `test_*.py` | tests, see above |

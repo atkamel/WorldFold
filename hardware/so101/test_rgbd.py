@@ -1,3 +1,5 @@
+"""rgbd on synthetic depth and a fake record3d: back-projection, the table plane, heights, the phone stream."""
+
 import sys
 import types
 from pathlib import Path

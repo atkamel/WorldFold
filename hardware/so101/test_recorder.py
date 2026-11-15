@@ -1,3 +1,5 @@
+"""recorder in a temporary folder: a run written and read back, dropped frames, a killed run, writer errors."""
+
 import sys
 import threading
 import time
