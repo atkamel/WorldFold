@@ -42,7 +42,7 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent.parent))
 
 import arms  # noqa: E402
-import rgbd  # noqa: E402
+import panel_camera  # noqa: E402
 import teleop_record  # noqa: E402
 from hardware.iphone_lidar.pointcloud import pack_frame, pack_no_points  # noqa: E402
 
@@ -56,8 +56,6 @@ STEPS_PER_DEGREE = 4096 / 360
 DEFAULT_SPEED = 50  # deg/s; adjustable live from the page
 MAX_SPEED = 180  # deg/s ceiling for the speed slider
 MAX_BURST_SPEED = 270  # deg/s ceiling for one-off fast moves (punches); near the motor's top speed
-
-CAMERA_RETRY_SECONDS = 5  # how often to look for the iPhone until it streams
 
 PAGE_FILE = HERE / "ui.html"
 PHONE_PAGE_FILE = HERE / "phone.html"
@@ -296,39 +294,12 @@ class Arm:
             return measured, target
 
 
-class Camera:
-    """The iPhone LiDAR for the panel. Optional: the arms run without it, and status says what is missing."""
-
-    def __init__(self):
-        self.phone = None
-        self.status = "looking for the iPhone"
-
-    def connect_loop(self):
-        while self.phone is None:
-            phone = rgbd.Phone()
-            try:
-                phone.start()
-            except ImportError:
-                self.status = "record3d is not installed"
-                return
-            except SystemExit as reason:  # rgbd.Phone reports a missing or idle phone by exiting
-                self.status = str(reason)
-                time.sleep(CAMERA_RETRY_SECONDS)
-                continue
-            self.phone = phone
-            self.status = "streaming"
-
-    def latest(self):
-        if self.phone is None:
-            return None
-        return self.phone.latest()
-
-    def cloud(self):
-        """The latest frame as packed points for the cloud page."""
-        frame = self.latest()
-        if frame is None:
-            return pack_no_points()
-        return pack_frame(frame.rgb, frame.depth, frame.K)
+def cloud_blob(camera):
+    """The camera's latest frame as packed points for the cloud page."""
+    frame = camera.latest()
+    if frame is None:
+        return pack_no_points()
+    return pack_frame(frame.rgb, frame.depth, frame.K)
 
 
 def run(arm):
@@ -405,7 +376,7 @@ def make_handler(arms_by_name, camera, recording, token=None):
             elif path == "/cloud":
                 self.reply(CLOUD_PAGE_FILE.read_bytes(), "text/html")
             elif path == "/frame":
-                self.reply(camera.cloud(), "application/octet-stream")
+                self.reply(cloud_blob(camera), "application/octet-stream")
             elif path.startswith("/vendor/"):
                 file_name = path[len("/vendor/"):]
                 if file_name in VENDOR_FILES:
@@ -414,7 +385,7 @@ def make_handler(arms_by_name, camera, recording, token=None):
                     self.reply({"error": "not found"}, status=404)
             elif path == "/record":
                 status = recording.status()
-                status["camera"] = camera.status
+                status["camera"] = camera.status()
                 self.reply(status)
             else:
                 self.reply(PAGE_FILE.read_bytes(), "text/html")
@@ -481,7 +452,7 @@ def main():
     arms_by_name = {name: Arm(name) for name in names}
     for arm in arms_by_name.values():
         threading.Thread(target=run, args=(arm,), daemon=True).start()
-    camera = Camera()
+    camera = panel_camera.Camera()
     # On its own thread: looking for the phone can block, and the arms must not wait for it.
     threading.Thread(target=camera.connect_loop, daemon=True).start()
     recording = teleop_record.TeleopRecording(arms_by_name, camera)
