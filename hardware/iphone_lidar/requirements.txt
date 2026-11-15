@@ -1,0 +1,2 @@
+# Builds from source: needs CMake and a C++ compiler on the PATH.
+record3d==1.4.1
