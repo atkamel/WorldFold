@@ -15,7 +15,12 @@ the revised plan in [reviews/2026-10-22-quarter-fold-reevaluation.md](reviews/20
 with at least one recorded clean demo. Bar: mean ≤ 2.0 cm and edge ≤ 3.0 cm on gated episodes (flat on the table,
 released, still), user 2026-10-22.
 
-- **Hardware (user, 2026-11-14), `hardware/so101/`, nothing run on an arm or a phone yet:** a scripted two-arm half
+- **Hardware bring-up (user, 2026-11-14), stopped at the tick map:** both followers and the iPhone run on the Windows
+  laptop (panel driven on both arms, limits verified on the motors, idle poses recorded). `replay.py` moved arm 2
+  only: the first fold pose and the model's zero pose are about 15 degrees off on two joints (elbow and wrist, or
+  shoulder and wrist), so the fold has not been played. Progress, measurements and next steps are in the bring-up
+  log at the top of `hardware/so101/README.md`.
+- **Hardware code (user, 2026-11-14), `hardware/so101/`:** a scripted two-arm half
   fold planned with numpy kinematics, in three forms: blind from a committed trajectory (`replay.py`), one look
   through the iPhone (`fold_camera.py`), and watched throughout with RGB and LiDAR over Record3D USB (`fold_live.py`:
   arms masked out by height above the table, the cloth's near edge tracked, the place moved with it mid-carry, every
@@ -44,14 +49,14 @@ released, still), user 2026-10-22.
   of the cloth. Parked because folding fails on grasp physics the model can't predict (results.md, 2026-11-06).
 - **iPhone LiDAR viewer** (user, 2026-11-14, branch `feat/iphone-lidar`): `python -m hardware.iphone_lidar.usb_viewer`
   reads Record3D over USB (eduroam blocks the Wi-Fi mode) and shows a live point cloud at `http://localhost:8000`.
-  `hardware/iphone_lidar/pointcloud.py` is the depth-to-points math for later Python use. Checked with synthetic
-  frames only: this laptop has no Apple Mobile Device Support yet, so `record3d` finds no phone.
-  `wifi_viewer.html` is the Wi-Fi version for networks that let the laptop reach the phone.
+  `hardware/iphone_lidar/pointcloud.py` is the depth-to-points math for later Python use. Streams from the real phone
+  on the Windows laptop (needs Apple Mobile Device Support). `wifi_viewer.html` is the Wi-Fi version for networks
+  that let the laptop reach the phone.
 - **Two-arm teleop panel** (user, 2026-11-14): `python hardware/so101/ui.py` is main's two-arm panel (#24) plus
   the LiDAR point cloud and a record button (joints of every arm, phone colour and depth, into
-  `hardware/so101/runs/`). `PLATFORM` in `arms.py` picks mac or windows ports. The merged panel has run only
-  against a stand-in servo SDK (with the real phone streaming); the earlier panel ran on both real arms.
-  Arm 2's twin is a copy of arm 1's, not calibrated on the arm itself.
+  `hardware/so101/runs/`). `PLATFORM` in `arms.py` picks mac or windows ports. Run on both real arms (user); the
+  record button only with a stand-in servo SDK and the real phone. Arm 2's twin is a copy of arm 1's, not
+  calibrated on the arm itself.
 
 The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Best policies: DAgger diffusion at replan 4
 (privileged, 99.5 / 77.0 / 79.5 on id_easy / id_hard / recovery) and the vision student at replan 2 (sensor-only,
@@ -66,6 +71,10 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
    with no drag and the idle arm parked.
 3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
+
+Hardware side track (user, 2026-11-14), in order: measure arm 2 in the zero pose (four ruler readings) and write the
+correction to `hardware/so101/arm2/urdf.json`; the same on arm 1; check both grippers sit the same way round at the
+first fold pose; one arm with no cloth; both arms with the cloth. Commands in `hardware/so101/README.md`.
 
 ## Environment
 
@@ -132,6 +141,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **First replay motion on a real arm, bring-up log written (user):** arm 2, no cloth, speed 0.3: first fold pose reached with the gripper pointing back as modelled, fingertip about 40 to 42 cm up (model 43.7); `trajectories/zero_pose.json` (all joints 0, idle-to-pose move at least 11.6 cm above the table in the model) held: forearm about 15 deg up, gripper level, upper arm looked upright, so the default tick map is off by about 15 deg on two joints of arm 2, which pair not settled, no `urdf.json` written; arm 2 sent back to idle with `idle.py`, torque on; progress and next steps at the top of `hardware/so101/README.md`; no code changed since 21a6d6e, tests not re-run · (this commit)
 - 2026-11-14 · **Replay starts and ends at the idle pose (user):** `replay.py` glides each arm to its `idle_pose.json` before the first target and back after the last row (clamped to limits, `--no-gripper` respected); through `kinematics.py` the idle-to-first-pose move only rises for both arms' idle poses; the tick map is unchanged: an idle-based map was looked at and dropped because the real stops sit 4 to 7 deg past the model's joint limits, so it would move the zeros the wrong way; the two arms' wrist-roll encoders read 180 deg apart at idle, not resolved; dry run 0 clamped steps; no arm moved; hardware 78 passed · (this commit)
 - 2026-11-14 · **Limits check on both real arms (user):** `hardware/so101/check_limits.py` (read only) compares each motor's min, max and homing offset registers with `limits.json`: arm 1 and arm 2 match on all six motors; arm 2's joints 2 and 3 hold the same limits (870 / 3225), consistent with its folded rest readings (868, 3214) but not swept by hand today; tests not re-run (new script only) · (this commit)
 - 2026-11-14 · **Fixes after the #24 merge (user: renders off, camera not streaming):** the merge had replaced `arm1/twin.json` with main's values (flips inverted on joints 1, 2, 3, 5), restored to the calibration the user had checked on this arm; camera status moved to `panel_camera.py` and reports "connected but no frames" and "frames stopped" (it said "streaming" as soon as Record3D accepted the connection); cause of the missing frames not found on the laptop side (same code streamed 5 minutes earlier); hardware 75 passed; fast suite not re-run (no file under its test paths changed) · (this commit)

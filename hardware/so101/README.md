@@ -2,6 +2,66 @@
 
 What is here, what state it is in, and how to run it on a machine that has never seen this repo.
 
+## Bring-up log (2026-11-14, Windows laptop, branch `feat/iphone-lidar`)
+
+Where the first session on the real arms stopped, and what to do next. The sections below it are the reference.
+
+### Set up and checked
+
+- **Arms.** Both followers on one Windows laptop: `arm1` on COM3, `arm2` on COM5 (`arms.json`, `PLATFORM = "windows"`
+  in `arms.py`). `arm2` is the left arm. The leader arm has no Windows port and is left out.
+- **Limits.** `check_limits.py` read every motor on both arms: min, max and homing offset match `limits.json`.
+  Arm 2's joints 2 and 3 hold identical limits (870 / 3225); not swept by hand to confirm.
+- **Idle poses.** Recorded for both arms in the folded rest pose, where they stay with torque off.
+- **Twin (the 3D render).** `arm1/twin.json` is the calibration checked on the arm; `arm2/twin.json` is a copy of
+  it, not calibrated on arm 2 itself.
+- **Panel (`ui.py`).** Driven on both real arms. It shows the LiDAR point cloud and records runs into `runs/`. The
+  record button was tried with the real phone and a stand-in servo bus, not yet with the real arms.
+- **Phone.** Record3D over USB works on Windows once Apple Mobile Device Support is installed
+  (`winget install Apple.AppleMobileDeviceSupport`). Once it connected but sent no frames; the cause was not found
+  on the laptop. The panel's camera line says when that happens. Fix on the phone, then restart the panel.
+
+### First motion with `replay.py` (arm 2 only, no cloth, `--speed 0.3`)
+
+- `replay.py` glides to the idle pose first and back to it at the end. Dry run of the fold: 0 clamped steps.
+- **First fold pose.** The gripper points back over the base, as the model says. Fingertip about 40 to 42 cm above
+  the table; the model says 43.7.
+- **Zero pose** (`trajectories/zero_pose.json`, every joint at 0). Seen on arm 2: forearm about 15 degrees up toward
+  the wrist (model: level), gripper level, upper arm looked upright, forearm about 23 cm above the table.
+- **So the tick map is wrong on arm 2 by about 15 degrees on two joints**: either elbow and wrist, or shoulder and
+  wrist. The eye could not tell which. Nothing is corrected yet; there is no `arm2/urdf.json`.
+- Arm 1 has not been moved by `replay.py`. The fold itself has not been played on either arm.
+
+### Next
+
+From the repo root, panel stopped, a hand on the power.
+
+1. **Measure arm 2 in the zero pose.** It holds at the "press Enter" prompt.
+   ```
+   .venv\Scripts\python.exe hardware\so101\replay.py hardware\so101\trajectories\zero_pose.json --left arm2 --right arm1 --only left --speed 0.3
+   ```
+   Heights above the table, to the centre of each motor hub. The model's values:
+
+   | measurement | model |
+   |---|---|
+   | centre of the elbow joint | 22.9 cm |
+   | centre of the wrist joint | 23.4 cm |
+   | fingertip | 22.6 cm |
+   | elbow centre in front of the shoulder centre | 2.8 cm |
+
+2. **Write the correction to `arm2/urdf.json`** and repeat step 1 until the pose is within about 1 cm.
+   `{"zero": {"3": 2218}}` is the form. For a joint that sits `e` degrees past where it was told, in the model's
+   positive direction, the new zero is `old zero + e * 11.378` (old zero is 2047 unless already overridden).
+   Positive is: shoulder lift tips the upper arm forward, elbow tips the forearm down, wrist flex tips the gripper
+   down. A forearm 15 degrees too high from the elbow alone is `e = -15` on motor 3.
+3. **Same check on arm 1** with `--only right`.
+4. **Wrist roll.** At idle the two arms' wrist-roll encoders read half a turn apart (1030 and 3076). At the first
+   fold pose both grippers should look the same way round: the fixed finger on top, the swinging finger underneath.
+5. **Then the run order below from step 3**: one arm with no cloth (fingertip touches 37.7 cm in front of the base
+   origin, within about 1 cm), then both arms with the cloth and `--grasp-check`.
+
+Known and not fixed: `set_limits.py` uses Unix-only keyboard handling, so limits cannot be re-recorded on Windows.
+
 ## Status (2026-11-14)
 
 - **Three ways to fold**, most capable first.
@@ -14,8 +74,8 @@ What is here, what state it is in, and how to run it on a machine that has never
 - **What it is not** is the Isaac half-fold expert (`isaac/experts/place_servo.py`), which reads the full cloth state.
 - **Verified** by 65 tests on a fake servo bus and synthetic camera frames, and a dry run of the blind trajectory
   against both arms' recorded limits (0 clamped steps).
-- **Never run on a real arm or a real phone.** The radian-to-tick map is a hypothesis until `replay.py --check`
-  passes on each arm. The Record3D connection follows `hardware/iphone_lidar/usb_viewer.py`, which has
+- **The fold has not been played on a real arm** (bring-up log above). The radian-to-tick map is a hypothesis until
+  `replay.py --check` passes on each arm, and the zero pose on arm 2 shows it is off by about 15 degrees on two joints. The Record3D connection follows `hardware/iphone_lidar/usb_viewer.py`, which has
   not seen a phone either. Frame orientation and how well the depth lines up with
   the RGB are unknown until a real frame is recorded.
 - **Both followers are configured**, with `main`'s names and folders. `arm2` is the left arm and `arm1` the right,
