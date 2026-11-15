@@ -116,6 +116,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **iPhone LiDAR viewer, three.js vendored:** three 0.147.0 and OrbitControls in `hardware/iphone_lidar/vendor/` (MIT), no CDN at runtime; re-checked in Chrome with a simulated stream; fast on Windows 256 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **iPhone LiDAR viewer (user, off the next action):** `hardware/iphone_lidar/viewer.html`, Record3D Wi-Fi stream (WebRTC) as a live browser point cloud, logic adapted from the Record3D demo (MIT); checked in Chrome with a simulated stream, not with a phone; no tests added (browser page); fast on Windows 256 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-07 · **World model full data, then parked (user):** 738561-63 done (260 episodes, 119,764 transitions); model beats persistence on every held-out group, grasp head predicts releases not slips, reward check 1.5e-6, imagination exploits (return up, grasp rate 0.22 → 0.01); release check on the gentle release (35/40 clean); merged main (#21) into `isaac`; fast 256 passed + #15 · (this commit)
 - 2026-11-05 · **World model smoke on Isaac:** collection (738554), live predictor (738556) and evaluator (738557) ran, python exit 0; train, benchmark, reward check (1.3e-6), clone + imagination ran locally on the smoke store (results.md); full collection submitted as 738561-63; no code change · (this commit)

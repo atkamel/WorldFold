@@ -33,15 +33,14 @@
 <script type="importmap">
 {
     "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.module.js",
-        "three/": "https://cdn.jsdelivr.net/npm/three@0.147.0/"
+        "three": "./vendor/three.module.js"
     }
 }
 </script>
 
 <script type="module">
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { OrbitControls } from './vendor/OrbitControls.js';
 
 // Each video frame is two images side by side: left half is depth encoded as hue
 // (depth in meters = 3 * hue), right half is the color image.
