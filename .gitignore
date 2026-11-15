@@ -31,3 +31,5 @@ renders/
 *.mp4
 !docs/reports/media/*.mp4
 .claude/
+.venv
+.venv-hw
