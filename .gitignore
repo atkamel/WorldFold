@@ -27,6 +27,7 @@ outputs/isaac/
 outputs/videos/
 outputs/cloth_fold_rl/
 outputs/imitation/smoke/
+outputs/so101_teleop/
 renders/
 *.mp4
 !docs/reports/media/*.mp4
