@@ -33,7 +33,9 @@ What is here, what state it is in, and how to run it on a machine that has never
   behind the arms).
 - Cloth 30 cm square, centred between the arms, near edge 1.5 cm in front of the bases' front edges. Each side edge
   of the cloth then lines up with the centre of an arm.
-- Start with both arms roughly upright over their bases.
+- Start with both arms in their idle poses (`idle.py --arm <name> record` saves one). `replay.py` glides each arm
+  to its idle pose first and back to it after the fold. An arm with no saved idle pose starts from where it is
+  and stops on the last row, so start that one roughly upright over its base.
 
 ## Setup on a new machine
 

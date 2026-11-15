@@ -392,3 +392,47 @@ def test_log_holds_the_measured_angles_per_step(env):
     assert len(data["measured"]["right"][0]) == 7
     # a perfect fake servo read before each send: step 0 reads the first target, where the arm was seeded
     assert abs(data["measured"]["left"][0][1] - traj["arms"]["left"]["target"][0][0]) < 2 * env.replay.RAD_PER_STEP
+
+
+# --- idle pose: a replay starts from it and returns to it ---
+
+def write_idle(env, name, pose):
+    (env.tmp / "arms" / name / "idle_pose.json").write_text(json.dumps({str(m): p for m, p in pose.items()}))
+
+
+def first_target(env, traj, side):
+    f = env.replay.Follower("L")
+    ticks = env.replay.convert(f, traj["arms"][side]["target"][:1])[0][0]
+    return {m: round(t) for m, t in zip(range(1, 7), ticks)}
+
+
+def test_replay_goes_to_the_idle_pose_first_and_ends_there(env):
+    traj = make_traj()
+    idle = {m: 1500 + 10 * m for m in range(1, 7)}
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 0
+    for side, dev in (("left", "devL"), ("right", "devR")):
+        writes = env.ports[dev].writes
+        assert writes[-1] == idle
+        assert writes.index(idle) < writes.index(first_target(env, traj, side))
+
+
+def test_an_idle_pose_outside_the_limits_is_clamped(env):
+    traj = make_traj()
+    idle = {m: 2047 for m in range(1, 7)}
+    idle[2] = 600  # below the fixture's lower limit of 685
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 0
+    assert env.ports["devL"].writes[-1][2] == 685
+
+
+def test_no_gripper_keeps_the_jaw_out_of_the_idle_moves(env):
+    traj = make_traj()
+    idle = {m: 1500 + 10 * m for m in range(1, 7)}
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--no-gripper", "--speed", "1"]
+    assert env.replay.main(args) == 0
+    assert set(env.ports["devL"].writes[-1]) == {1, 2, 3, 4, 5}

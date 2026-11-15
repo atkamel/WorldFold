@@ -21,6 +21,9 @@ closed end of its limits, taken to be the lower tick. <name>/urdf.json overrides
     {"zero": {"1": 2047, ...}, "sign": {"1": 1, "2": -1, ...}}
 twin.json is not used. Use --check to confirm the signs before trusting a replay.
 
+An arm with a saved <name>/idle_pose.json (idle.py record) glides to it before the first target and back to it
+after the last row, so a run starts and ends in the arm's rest pose.
+
 Ctrl+C or a bus error stops sending and leaves torque on, so the arms hold where they are.
 """
 
@@ -218,6 +221,46 @@ def ramp_points(start, end, speed_deg_s=RAMP_DEG_S, tick=TICK_SECONDS):
     longest = max(abs(end[m] - start[m]) for m in end) / STEPS_PER_DEGREE
     n = math.ceil(longest / (speed_deg_s * tick) - 1e-9)
     return [{m: start[m] + (end[m] - start[m]) * i / n for m in end} for i in range(1, n + 1)]
+
+
+def idle_goals(follower, motors):
+    """The arm's saved idle pose ({motor id: ticks}, inside its limits), or None if it has none."""
+    path = arms.folder(follower.name) / "idle_pose.json"
+    if not path.exists():
+        return None
+    saved = json.loads(path.read_text())
+    goals = {}
+    for m in motors:
+        lo, hi = follower.limits[m]
+        goals[m] = max(lo, min(hi, saved[str(m)]))
+    return goals
+
+
+def ramp_together(followers, start, goal):
+    """Ramp every arm from start[side] to goal[side] in step. An arm whose goal is None stays where it is.
+    Returns where each arm ends up."""
+    end = {}
+    steps = {}
+    for side in followers:
+        if goal[side] is None:
+            end[side] = start[side]
+            continue
+        end[side] = goal[side]
+        points = ramp_points(start[side], goal[side])
+        if points:
+            steps[side] = points
+    longest = 0
+    for side in steps:
+        longest = max(longest, len(steps[side]))
+    poses = []
+    for i in range(longest):
+        pose = {}
+        for side in steps:
+            points = steps[side]
+            pose[side] = points[min(i, len(points) - 1)]
+        poses.append(pose)
+    run_poses(followers, poses)
+    return end
 
 
 def run_poses(followers, poses):
@@ -420,12 +463,14 @@ def replay(args, progress):
     for side, f in followers.items():
         f.torque_on_holding(present[side])
 
+    at = {side: {m: present[side][m] for m in motors} for side in followers}
+    idle = {side: idle_goals(f, motors) for side, f in followers.items()}
+    progress["step"] = "ramp to the idle pose"
+    at = ramp_together(followers, at, idle)
+
     progress["step"] = "ramp to the first target"
     first = {side: {m: ticks[side][0][m - 1] for m in motors} for side in followers}
-    steps = [ramp_points({m: present[s][m] for m in motors}, first[s]) for s in followers]
-    n = max(len(p) for p in steps)
-    poses = [{s: p[min(i, len(p) - 1)] for s, p in zip(followers, steps) if p} for i in range(n)]
-    run_poses(followers, poses)
+    at = ramp_together(followers, at, first)
     input("At the first target. Check the arms are clear, then press Enter to play (Ctrl-C stops) ")
 
     progress["step"] = 0
@@ -450,6 +495,13 @@ def replay(args, progress):
         for m, name in zip(MOTOR_IDS, JOINTS):
             got, want = math.degrees(f.to_rad(m, now[m])), math.degrees(final_q[m - 1])
             print(f"  {name}: {got:7.1f} vs {want:7.1f}  (error {got - want:+.1f})")
+
+    progress["step"] = "ramp back to the idle pose"
+    last = {side: {m: ticks[side][T - 1][m - 1] for m in motors} for side in followers}
+    ramp_together(followers, last, idle)
+    for side, f in followers.items():
+        if idle[side] is not None:
+            print(f"{side} ({f.name}) is back at its idle pose, torque on.")
     return 0
 
 
