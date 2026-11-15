@@ -312,8 +312,12 @@ function flush() {
   for (const [id, pos] of Object.entries(queued)) post("/goal", { id: +id, pos });
   queued = {};
 }
+// The panel opens this page once per arm as /arm?arm=name; every request carries that name.
+const ARM = new URLSearchParams(location.search).get("arm") ?? "";
+const api = path => (ARM ? `${path}?arm=${encodeURIComponent(ARM)}` : path);
+if (ARM) document.querySelector("h1").textContent = `SO-101 follower: ${ARM}`;
 function post(path, body) {
-  return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+  return fetch(api(path), { method: "POST", headers: { "Content-Type": "application/json" },
                        body: JSON.stringify(body ?? {}) });
 }
 function stop() {
@@ -515,7 +519,7 @@ setInterval(async () => {
   if (inFlight) return;
   inFlight = true;
   try {
-    state = await (await fetch("/state")).json();
+    state = await (await fetch(api("/state"))).json();
     if (state.twin) twin = { zero: state.twin.zero ?? {}, flip: state.twin.flip ?? {} };
     if (!state.torque) for (const id of IDS) delete local[id];
     render();

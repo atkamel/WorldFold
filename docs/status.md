@@ -38,6 +38,9 @@ released, still), user 2026-10-22.
   `hardware/iphone_lidar/pointcloud.py` is the depth-to-points math for later Python use. Checked with synthetic
   frames only: this laptop has no Apple Mobile Device Support yet, so `record3d` finds no phone.
   `wifi_viewer.html` is the Wi-Fi version for networks that let the laptop reach the phone.
+- **Two-arm teleop panel** (user, 2026-11-14): `python hardware/so101/ui.py` opens one panel at
+  `http://localhost:8101` with both followers, the LiDAR point cloud and episode recording. Run so far only against
+  a stand-in servo SDK; arm 1's motors did not answer on COM3 (power or cable), arm 2 has no idle pose or twin yet.
 
 The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Best policies: DAgger diffusion at replan 4
 (privileged, 99.5 / 77.0 / 79.5 on id_easy / id_hard / recovery) and the vision student at replan 2 (sensor-only,
@@ -118,6 +121,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **Two-arm teleop panel with the LiDAR camera (user):** merged main (#22); `hardware/so101/ui.py` drives every arm from one server (`?arm=` per request, `panel.html` = one control page per arm + point cloud + record button + stop-all), phone teleop is opt-in (`--phone`); `arms.py` has a `PLATFORM` toggle (mac names / COM3, COM5); `recorder.py` writes episodes (joints of both arms, colour JPEG, depth npy, 10 Hz) to `outputs/so101_teleop/`; `iphone_lidar/camera.py` shared by the panel and `usb_viewer.py`; `feetech-servo-sdk` 1.0.0 in `.venv`; checked with a stand-in servo SDK in Chrome (two arms driven separately, 21-step episode); on the real arms, read only: arm 2 answers on COM5, arm 1 does not answer on COM3; camera path in the panel not run with the phone (Record3D was not serving); fast on Windows 265 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **iPhone LiDAR, Wi-Fi page back (user):** `wifi_viewer.html` restored from 32616b9 for networks without client isolation; `usb_viewer.py` exits with a message when Record3D refuses the connection, and its notes say not to record (the record button pauses USB); still no phone seen on this laptop (iTunes installed without Apple Mobile Device Support); fast on Windows 262 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **iPhone LiDAR over USB (user: eduroam blocks Wi-Fi mode):** `usb_viewer.py` (record3d 1.4.1 → local server), `pointcloud.py` (depth to points, 6 tests), page polls `/frame`; Wi-Fi/WebRTC code deleted; `record3d` built into `.venv` (numpy pin unchanged, `hardware/iphone_lidar/requirements.txt`); checked in Chrome with synthetic frames, no phone seen (Apple drivers missing); fast on Windows 262 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **iPhone LiDAR viewer, three.js vendored:** three 0.147.0 and OrbitControls in `hardware/iphone_lidar/vendor/` (MIT), no CDN at runtime; re-checked in Chrome with a simulated stream; fast on Windows 256 passed, 1 failed (#17), 5 skipped · (this commit)

@@ -1,0 +1,100 @@
+<!doctype html>
+<!-- The teleop panel: one control page per arm, the iPhone LiDAR point cloud, and episode recording. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SO-101 Teleop</title>
+<style>
+  :root { --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e2e0da; --stop: #b8442a; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9892; --line: #33322f; --stop: #e0674a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink);
+         font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 12px;
+           background: var(--panel); border-bottom: 1px solid var(--line); }
+  header strong { font-size: 16px; }
+  button { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg);
+           color: var(--ink); font: inherit; cursor: pointer; }
+  button.stop, button.recording { background: var(--stop); color: #fff; border-color: var(--stop); font-weight: 600; }
+  .note { color: var(--muted); font-size: 12px; }
+  #views { flex: 1; min-height: 0; display: flex; }
+  #views iframe { flex: 1; min-width: 0; border: 0; border-right: 1px solid var(--line); }
+  @media (max-width: 900px) {
+    body { height: auto; }
+    #views { flex-direction: column; }
+    #views iframe { flex: none; height: 90vh; border-right: 0; border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <strong>SO-101 teleop</strong>
+  <button id="record">Start recording</button>
+  <button id="stop" class="stop">Stop all arms</button>
+  <span class="note" id="record-status" role="status"></span>
+  <span class="note" id="camera-status" role="status"></span>
+</header>
+<div id="views"></div>
+
+<script>
+const recordButton = document.getElementById("record");
+const recordStatus = document.getElementById("record-status");
+const cameraStatus = document.getElementById("camera-status");
+const views = document.getElementById("views");
+
+let recording = false;
+let viewsBuilt = false;
+
+function post(path) {
+  return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+}
+
+function addView(src, title) {
+  const frame = document.createElement("iframe");
+  frame.src = src;
+  frame.title = title;
+  views.appendChild(frame);
+}
+
+function buildViews(armNames) {
+  for (const name of armNames) {
+    addView("/arm?arm=" + encodeURIComponent(name), "Controls for " + name);
+  }
+  addView("/cloud", "iPhone LiDAR point cloud");
+  viewsBuilt = true;
+}
+
+async function refresh() {
+  try {
+    const status = await (await fetch("/record")).json();
+    if (!viewsBuilt) {
+      buildViews(status.arms);
+    }
+    recording = status.recording;
+    recordButton.textContent = recording ? "Stop recording" : "Start recording";
+    recordButton.classList.toggle("recording", recording);
+    if (recording) {
+      recordStatus.textContent = "Recording: " + status.steps + " steps to " + status.folder;
+    } else {
+      recordStatus.textContent = "Not recording";
+    }
+    cameraStatus.textContent = "Camera: " + status.camera;
+  } catch (error) {
+    recordStatus.textContent = "Lost the connection to ui.py";
+  }
+}
+
+recordButton.addEventListener("click", async () => {
+  await post(recording ? "/record/stop" : "/record/start");
+  refresh();
+});
+document.getElementById("stop").addEventListener("click", () => post("/hold-all"));
+
+refresh();
+setInterval(refresh, 500);
+</script>
+</body>
+</html>
