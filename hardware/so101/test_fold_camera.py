@@ -94,3 +94,23 @@ def test_cli_calibrates_then_looks(tmp_path, monkeypatch, capsys):
     assert fold_camera.main(["calibrate", "--image", str(before), "--out", str(tmp_path / "a.png")]) == 0
     assert fold_camera.main(["look", "--image", str(after), "--out", str(tmp_path / "b.png")]) == 0
     assert (tmp_path / "b.png").exists() and "far_left" in capsys.readouterr().out
+
+
+def test_depth_mask_takes_an_arm_off_the_outline(cal):
+    arm = [((0.19, 0.36), 0.06)]                                   # a dark arm over the far right corner
+    rgb = render(cloth(), arm)
+    standing = (rgb != render(cloth())).any(axis=2)                # what rgbd.flat would mark as above the table
+    with pytest.raises(ValueError):
+        fold_camera.look(rgb, cal)
+    corners, _ = fold_camera.look(rgb, cal, keep=~standing)
+    assert np.linalg.norm(corners["far_right"] - cloth()[2]) < 0.004
+
+
+def test_near_edge_follows_the_bottom_layer(cal):
+    grid = fold_camera.search_region(cal)
+    moved = cloth()
+    moved[:2, 1] += 0.02
+    slope0, y0 = fold_camera.near_edge(render(cloth(), BASES), cal, grid, (-0.12, 0.12))
+    slope1, y1 = fold_camera.near_edge(render(moved, BASES), cal, grid, (-0.12, 0.12))
+    assert abs(y0 - NEAR_EDGE) < 0.004 and abs((y1 - y0) - 0.02) < 0.004 and abs(slope0) < 0.02 and abs(slope1) < 0.02
+    assert fold_camera.near_edge(np.full((*SHAPE, 3), 200, np.uint8), cal, grid, (-0.12, 0.12)) is None

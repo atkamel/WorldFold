@@ -231,7 +231,8 @@ def run_poses(followers, poses):
 
 def play(followers, ticks, dt, speed, motors, progress, steps=None, log=None):
     """Send the rows `steps` of ticks (default: all, in order), every arm each tick. Returns how many times the rate
-    cap engaged. With `log` (a list), every arm is read each tick: (row, {name: {motor id: ticks}}) is appended."""
+    cap engaged. With `log` (a list), every arm is read each tick: (row, time.monotonic(), {name: {motor id: ticks}})
+    is appended."""
     tick = dt / speed
     cap = MAX_DEG_S * tick * speed * STEPS_PER_DEGREE  # ticks per tick
     steps = range(len(next(iter(ticks.values())))) if steps is None else steps
@@ -242,7 +243,7 @@ def play(followers, ticks, dt, speed, motors, progress, steps=None, log=None):
         sleep_until(t0 + i * tick)
         progress["step"] = k
         if log is not None:
-            log.append((k, {name: f.read_present() for name, f in followers.items()}))
+            log.append((k, time.monotonic(), {name: f.read_present() for name, f in followers.items()}))
         for name, f in followers.items():
             for m in motors:
                 delta = ticks[name][k][m - 1] - command[name][m]
@@ -260,9 +261,10 @@ def jaws(followers):
     return {side: math.degrees(f.to_rad(GRIPPER_ID, f.read_present()[GRIPPER_ID])) for side, f in followers.items()}
 
 
-def play_with_grasp_check(followers, marks, T, run, margin, retries):
-    """The whole trajectory through run(steps), stopping at marks["check"] to compare each jaw with its reading at
-    marks["empty"] (shut on nothing). A missed grasp plays the rows back to marks["hover"] and forward again."""
+def play_with_grasp_check(followers, marks, T, run, margin, retries, note=None):
+    """Rows 0 to T - 1 through run(steps), stopping at marks["check"] to compare each jaw with its reading at
+    marks["empty"] (shut on nothing). A missed grasp plays the rows back to marks["hover"] and forward again.
+    note(attempt, empty, lifted, held), if given, gets each check's readings (degrees per arm)."""
     if not marks:
         sys.exit("--grasp-check needs a trajectory with marks (fold_traj.py)")
     empty_at, hover, check_at = marks["empty"], marks["hover"], marks["check"]
@@ -274,6 +276,8 @@ def play_with_grasp_check(followers, marks, T, run, margin, retries):
         held = {side: lifted[side] - empty[side] > margin for side in followers}
         print("  ".join(f"{side} jaw {lifted[side]:.1f} deg lifted, {empty[side]:.1f} empty: "
                         f"{'holding' if held[side] else 'MISSED'}" for side in followers))
+        if note:
+            note(attempt, empty, lifted, held)
         if all(held.values()) or attempt == retries:
             break
         print(f"Pinching again (retry {attempt + 1} of {retries})")
@@ -434,7 +438,7 @@ def replay(args, progress):
     print(f"Rate cap ({MAX_DEG_S} deg/s) {'engaged ' + str(engaged) + ' times' if engaged else 'never engaged'}.")
     time.sleep(SETTLE_SECONDS)
     if args.log:
-        rows = {side: [[k] + [round(f.to_rad(m, present[side][m]), 4) for m in MOTOR_IDS] for k, present in log]
+        rows = {side: [[k] + [round(f.to_rad(m, present[side][m]), 4) for m in MOTOR_IDS] for k, _, present in log]
                 for side, f in followers.items()}
         with open(args.log, "w") as out:
             json.dump({"trajectory": args.trajectory, "speed": args.speed, "columns": ["row"] + JOINTS,

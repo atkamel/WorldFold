@@ -78,15 +78,51 @@ def calibrate(rgb, side, near_edge, near="bottom", dark=None):
             "shape": list(rgb.shape[:2]), "px": corners.tolist()}
 
 
-def look(rgb, cal):
-    """The cloth's corners on the table (m): {"near_left", "near_right", "far_right", "far_left"}, and in pixels."""
-    if list(rgb.shape[:2]) != cal["shape"]:
-        raise ValueError(f"frame is {rgb.shape[:2]}, the calibration was {cal['shape']}")
-    H = np.array(cal["H"])
-    xy, below = table_grid(H, rgb.shape)
+def search_region(cal):
+    """Per pixel: its table (X, Y) [h, w, 2], and whether it lies in the table area searched for the cloth."""
+    xy, below = table_grid(np.array(cal["H"]), cal["shape"])
     inside = (below & (xy[..., 0] > REGION["x"][0]) & (xy[..., 0] < REGION["x"][1])
               & (xy[..., 1] > REGION["y"][0]) & (xy[..., 1] < REGION["y"][1]))
-    labels, n = ndimage.label((np.asarray(rgb, float).mean(axis=2) < cal["dark"]) & inside)
+    return xy, inside
+
+
+def cloth_pixels(rgb, cal, inside, keep=None):
+    """Dark pixels in the searched area; `keep` (rgbd.flat: nothing standing above the table) drops the arms."""
+    if list(rgb.shape[:2]) != cal["shape"]:
+        raise ValueError(f"frame is {rgb.shape[:2]}, the calibration was {cal['shape']}")
+    dark = (np.asarray(rgb, float).mean(axis=2) < cal["dark"]) & inside
+    return dark if keep is None else dark & keep
+
+
+def near_edge(rgb, cal, grid, x_range, keep=None):
+    """Where the cloth's near edge lies now: (slope, Y at X = 0) of a line through the nearest cloth pixel of each
+    1 cm column of X within x_range (m), or None with under 8 columns. It stays in view through the carry (the
+    bottom layer's edge, nearest the camera), so its movement is how far the bottom layer has slid."""
+    xy, inside = grid
+    cloth = cloth_pixels(rgb, cal, inside, keep)
+    x, y = xy[..., 0][cloth], xy[..., 1][cloth]
+    cols = np.floor((x - x_range[0]) / 0.01).astype(int)
+    n = int(np.ceil((x_range[1] - x_range[0]) / 0.01))
+    centres, nearest = [], []
+    for c in range(n):
+        ys = y[cols == c]
+        if len(ys) >= 5:
+            centres.append(x_range[0] + (c + 0.5) * 0.01)
+            nearest.append(np.percentile(ys, 2))
+    if len(centres) < 8:
+        return None
+    centres, nearest = np.array(centres), np.array(nearest)
+    slope, y0 = np.polyfit(centres, nearest, 1)
+    good = np.abs(nearest - (slope * centres + y0)) < 0.01           # one refit without the columns an arm clipped
+    if good.sum() >= 8:
+        slope, y0 = np.polyfit(centres[good], nearest[good], 1)
+    return float(slope), float(y0)
+
+
+def look(rgb, cal, keep=None):
+    """The cloth's corners on the table (m): {"near_left", "near_right", "far_right", "far_left"}, and in pixels."""
+    H = np.array(cal["H"])
+    labels, n = ndimage.label(cloth_pixels(rgb, cal, search_region(cal)[1], keep))
     if n == 0:
         raise ValueError("no dark cloth in front of the arms")
     mask = ndimage.binary_fill_holes(labels == np.argmax(np.bincount(labels.ravel())[1:]) + 1)
@@ -113,8 +149,8 @@ def fold_points(corners, spacing):
     return points
 
 
-def plan(rgb, cal, spacing, closed):
-    corners, px = look(rgb, cal)
+def plan(rgb, cal, spacing, closed, keep=None):
+    corners, px = look(rgb, cal, keep)
     points = fold_points(corners, spacing)
     traj = fold_traj.fold(points, closed)
     traj["layout"] = {"frame": "table: X right, Y forward from the line of the base origins", "base_spacing": spacing,
@@ -144,8 +180,8 @@ def report(traj, corners):
         r = traj["source"][side]
         reach = r["pinch_error_mm"] <= REACH_TOL * 1000
         ok &= reach
-        print(f"  {side} arm: pinch missed by {r['pinch_error_mm']} mm, fingers tilted up to {r['max_tilt_deg']} deg"
-              f"{'' if reach else '  OUT OF REACH'}")
+        print(f"  {side} arm: pinch missed by {r['pinch_error_mm']} mm, place by {r['place_error_mm']} mm, fingers "
+              f"tilted up to {r['max_tilt_deg']} deg{'' if reach else '  OUT OF REACH'}")
     return ok
 
 

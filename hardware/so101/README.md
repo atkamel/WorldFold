@@ -4,21 +4,28 @@ What is here, what state it is in, and how to run it on a machine that has never
 
 ## Status (2026-11-14)
 
-- **Two ways to fold.** `fold_camera.py` looks once through the iPhone, finds the cloth's corners and folds from
-  where the cloth lies. `replay.py` on the committed trajectory is the blind fallback, with the cloth placed by ruler.
-- **The camera is used for one look before the fold.** Nothing tracks the cloth while the arms move, and LiDAR depth
-  is not used yet. The grasp check (jaw readings) is the only feedback during the fold.
-- **What it is not** is the Isaac half-fold expert (`isaac/experts/place_servo.py`), which reads the live cloth state.
-- **Verified** by 41 tests on a fake servo bus and synthetic camera frames, and a dry run of the blind trajectory
+- **Three ways to fold**, most capable first.
+  - `fold_live.py` watches through the iPhone the whole time (RGB and LiDAR), masks the arms out by height, moves
+    the place point when the bottom layer slides, and records the run.
+  - `fold_camera.py fold` looks once, then folds from where the cloth lies.
+  - `replay.py` on the committed trajectory is blind, with the cloth placed by ruler.
+- **What the camera does not see.** The folded-over half (dark on dark) and the held corners (under the grippers) are
+  not tracked. The grasp check on the jaw readings covers the grasp.
+- **What it is not** is the Isaac half-fold expert (`isaac/experts/place_servo.py`), which reads the full cloth state.
+- **Verified** by 65 tests on a fake servo bus and synthetic camera frames, and a dry run of the blind trajectory
   against both arms' recorded limits (0 clamped steps).
 - **Never run on a real arm or a real phone.** The radian-to-tick map is a hypothesis until `replay.py --check`
   passes on each arm. The Record3D connection follows `hardware/iphone_lidar/usb_viewer.py` (branch
-  `feat/iphone-lidar`), which has not seen a phone either.
+  `feat/iphone-lidar`), which has not seen a phone either. Frame orientation and how well the depth lines up with
+  the RGB are unknown until a real frame is recorded.
 - **Both followers are configured**, with `main`'s names and folders. `arm2` is the left arm and `arm1` the right,
   seen from behind. Arm 2's motors 2 and 3 have identical limits, so watch its elbow in the check.
-- **Known risks.** The far pinch is at the edge of reach (fingers tilted about 25 degrees, more if the cloth sits
-  further out). The jaw target is the closed limit, so the squeeze on thin cloth may be weak. A dark arm or a shadow
-  touching the cloth's outline in the image makes the look fail or, worse, find the wrong corners.
+- **Known risks.**
+  - A 30 cm cloth does not fit the arms' reach at both ends. With the near edge 8 cm in front of the base origins
+    the far pinch is tilted about 25 degrees and the release lands about 2.4 cm past the near corner, because the
+    arms cannot reach closer than 10 cm with the fingers down. Every look prints both misses.
+  - The jaw target is the closed limit, so the squeeze on thin cloth may be weak.
+  - Dark cloth can absorb LiDAR. Pixels with no depth count as flat, so the height mask only removes what it can see.
 
 ## Rig
 
@@ -89,11 +96,11 @@ What to look for
 
 ## Folding with the camera
 
-Extra packages on the rig machine, on top of `feetech-servo-sdk`.
+Extra packages on the rig machine, on top of `feetech-servo-sdk`. The arm kinematics are plain numpy
+(`kinematics.py`), so neither MuJoCo nor so101-nexus is needed.
 
 ```bash
-.venv-hw/bin/pip install numpy scipy pillow mujoco==3.10.0 record3d==1.4.1
-.venv-hw/bin/pip install --no-deps so101-nexus==0.4.8
+.venv-hw/bin/pip install numpy scipy pillow record3d==1.4.1
 ```
 
 `record3d` builds from source and needs CMake and a C++ compiler. On the phone, open the Record3D app, turn on USB
@@ -123,6 +130,25 @@ Do steps 0 to 3 of the run order first. Then, from `hardware/so101/`, with both 
 - `--image photo.jpg` runs any mode on a saved frame.
 - Calibration is only as good as the ruler placement of the cloth and the joint map. Redo it if the phone moves.
 
+## Folding with the camera watching throughout
+
+Same setup and calibration as the single look. Start with a dry run, which moves nothing and records a few seconds.
+
+```bash
+../../.venv-hw/bin/python fold_live.py --left arm2 --right arm1 --dry-run
+../../.venv-hw/bin/python fold_live.py --left arm2 --right arm1 --grasp-check
+```
+
+- **Look.** Corners from the first frame. With depth, the table plane is fitted from that frame and every pixel more
+  than 2 cm above it is left out, so the arms may be in view. Keep the table mostly clear for that first frame.
+- **Track.** Every frame, it follows the cloth's near edge, which stays in view through the carry.
+- **Correct.** At 60% of the carry, if the near edge has moved 3 mm or more, the place point moves with it (at most
+  3 cm), the fold is planned again and the arms continue on the new plan.
+- **Record.** Each run goes to `runs/<time>/` with every frame (`frames/*.jpg`, depth in `*.npz`), every control
+  step's targets and measured joints (`steps.jsonl`), the look, both plans, the grasp readings, the correction and a
+  fold score (`events.jsonl`). About 130 MB per minute at 10 frames per second. `recorder.load(path)` reads a run.
+- `--no-depth` uses RGB only, and then the arms must stay off the cloth's outline in the image.
+
 ## Grasp check and run log
 
 - Above the far corner each jaw shuts once on nothing. That reading is the empty reference.
@@ -149,8 +175,7 @@ wrong `--near`, a shadow or an arm in the frame gives a plausible wrong score.
 
 ## Changing the fold
 
-Planning needs the arm model, so it runs in an environment with `mujoco` and `so101-nexus` (the repo's pinned
-`.venv`, or `pip install mujoco==3.10.0 numpy && pip install --no-deps so101-nexus==0.4.8`).
+Planning needs only `numpy`.
 
 ```bash
 python fold_traj.py --out trajectories/my_fold.json --cloth 0.30 --near 0.08 --closed -0.17
@@ -175,7 +200,11 @@ python fold_traj.py --out trajectories/my_fold.json --cloth 0.30 --near 0.08 --c
 
 | file | what |
 |---|---|
+| `fold_live.py` | the fold with the iPhone watching throughout, recorded |
 | `fold_camera.py` | one look through the iPhone, then the fold from where the cloth lies |
+| `rgbd.py` | Record3D stream (RGB, depth), table plane, height above the table |
+| `recorder.py` | saves a run, `load` reads it back |
+| `kinematics.py` | the arm's forward and inverse kinematics in numpy |
 | `fold_traj.py` | plans the half fold, writes a trajectory |
 | `replay.py` | plays a trajectory, with `--check`, `--dry-run`, `--only`, `--speed`, `--no-gripper` |
 | `trajectories/half_fold_30cm.json` | the fold for the rig above |

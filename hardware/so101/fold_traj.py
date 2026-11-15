@@ -12,13 +12,11 @@ Angles are so101_new_calib's (so101_nexus), radians, the convention replay.py ma
 """
 
 import argparse
-import importlib.util
 import json
-import os
 from pathlib import Path
 
-import mujoco
 import numpy as np
+from kinematics import Arm
 
 JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
 DT = 0.05
@@ -31,48 +29,12 @@ RETREAT = 0.05        # straight lift after the release
 STEP = 0.004          # m of fingertip travel per step (8 cm/s at dt; replay.py's default speed halves it)
 JOINT_STEP = 0.04     # rad per step on joint-space moves
 BASE_FRONT = 0.065    # m from the base's origin to its front edge
-TILT_WEIGHT = 0.03    # IK: metres of tip error per unit of finger-direction error (soft: far pinches may tilt)
-
-
-class Arm:
-    def __init__(self):
-        root = importlib.util.find_spec("so101_nexus").submodule_search_locations[0]
-        self.model = mujoco.MjModel.from_xml_path(os.path.join(root, "assets", "SO101", "so101_new_calib.xml"))
-        self.data = mujoco.MjData(self.model)
-        self.site = self.model.site("gripperframe").id
-        self.low, self.high = self.model.jnt_range[:5].T
-
-    def tip(self, q):
-        self.data.qpos[:5] = q
-        mujoco.mj_kinematics(self.model, self.data)
-        return self.data.site_xpos[self.site].copy(), self.data.site_xmat[self.site].reshape(3, 3)[:, 2].copy()
-
-    def solve(self, target, seed, iters=200):
-        """Arm angles for the fingertip at `target` (base frame: x forward, y left, z up), fingers as near straight
-        down as the reach allows, on the seed's branch; wrist_roll stays 0 (free, it flipped half a turn at the edge
-        of reach). Returns (q, tip error m, tilt deg)."""
-        down = np.array([0.0, 0.0, -1.0])
-
-        def error(q):
-            p, z = self.tip(q)
-            return np.concatenate([target - p, TILT_WEIGHT * (down - z)])
-
-        q = np.clip(np.asarray(seed, float), self.low, self.high)
-        q[4] = 0.0
-        for _ in range(iters):
-            e = error(q)
-            J = np.column_stack([(e - error(q + dq)) / 1e-6 for dq in np.eye(5)[:4] * 1e-6])
-            dq = J.T @ np.linalg.solve(J @ J.T + 1e-4 * np.eye(6), e)
-            dq *= min(1.0, 0.1 / max(float(np.max(np.abs(dq))), 1e-12))
-            q[:4] = np.clip(q[:4] + dq, self.low[:4], self.high[:4])
-        p, z = self.tip(q)
-        return q, float(np.linalg.norm(target - p)), float(np.degrees(np.arccos(np.clip(-z[2], -1.0, 1.0))))
 
 
 def plan(arm, pinch, place, closed, counts=None):
     """One arm's fold from `pinch` to `place` ((x, y) m in its base frame, x forward, y left): target rows [T, 6],
     the worst (tip error, tilt), marks {"empty": the jaw shut in the air, "hover": above the corner with the jaw open
-    again, "pinch": down on the corner, "check": 2 cm into the lift} as row indices, and the step counts of its three variable moves. `counts`
+    again, "pinch": down on the corner, "check": 2 cm into the lift, "placed": the carry's end} as row indices, and the step counts of its three variable moves. `counts`
     stretches those moves to given lengths, so two arms' plans line up row for row."""
     pinch, place = np.asarray(pinch, float), np.asarray(place, float)
     reach = float(np.linalg.norm(place - pinch))
@@ -122,6 +84,7 @@ def plan(arm, pinch, place, closed, counts=None):
     line([(*(pinch + (place - pinch) * k), PINCH_Z + (PLACE_Z - PINCH_Z) * k + peak * np.sin(np.pi * k)) for k in s],
          closed)
     marks["check"] = next(k for k in range(lift, len(rows)) if arm.tip(rows[k][:5])[0][2] >= PINCH_Z + 0.02)
+    marks["placed"] = len(rows) - 1
     hold(10, closed)
     hold(14, np.linspace(closed, PART_OPEN, 14))            # gentle release: the jaw opens part way, arm still
     line(segment((*place, PLACE_Z), (*place, PLACE_Z + RETREAT)), PART_OPEN)
@@ -145,8 +108,9 @@ def fold(points, closed=-0.17):
         pinch_err = float(np.linalg.norm(tips[marks["pinch"] + 1, :2] - np.asarray(points[side][0])))
         arms[side] = {"target": target.tolist(), "q": q.tolist(),
                       "tip": [[-p[1], p[0], p[2]] for p in tips.tolist()]}   # right, forward, up
+        place_err = float(np.linalg.norm(tips[marks["placed"] + 1, :2] - np.asarray(points[side][1])))
         report[side] = {"tip_error_mm": round(err * 1000, 1), "max_tilt_deg": round(tilt, 1),
-                        "pinch_error_mm": round(pinch_err * 1000, 1)}
+                        "pinch_error_mm": round(pinch_err * 1000, 1), "place_error_mm": round(place_err * 1000, 1)}
     return {"dt": DT, "joints": JOINTS, "arms": arms, "marks": marks | {"check": max(checks)},
             "source": {"tool": "hardware/so101/fold_traj.py", "closed_rad": closed, **report}}
 
