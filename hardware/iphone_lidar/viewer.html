@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<!--
+  Live point cloud from an iPhone LiDAR streamed by the Record3D app over Wi-Fi (WebRTC).
+  Logic adapted from https://github.com/marek-simonik/record3d-wifi-streaming-and-rgbd-mp4-3d-video-demo (MIT).
+
+  Run:  python -m http.server 8000 --directory hardware/iphone_lidar
+  Open: http://localhost:8000/viewer.html  (Chrome or Safari, http only, not https)
+
+  The laptop must be able to reach the phone's IP. eduroam isolates clients, so turn on
+  Windows "Mobile hotspot" (laptop stays on eduroam) and join the iPhone to that hotspot.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>iPhone LiDAR point cloud</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+    body { margin: 0; background: #222; color: #eee; font-family: sans-serif; overflow: hidden; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    #bar { position: fixed; top: 0; left: 0; padding: 8px; display: flex; gap: 8px; align-items: center; background: rgba(0, 0, 0, 0.6); }
+</style>
+</head>
+<body>
+<form id="bar">
+    <label for="address">iPhone address</label>
+    <input id="address" placeholder="192.168.137.x" required>
+    <button type="submit">Connect</button>
+    <label for="point-size">Point size</label>
+    <input id="point-size" type="range" min="0.5" max="10" step="0.5" value="2">
+    <span id="status" role="status">Start Wi-Fi streaming in Record3D, then enter the address it shows.</span>
+</form>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.module.js",
+        "three/": "https://cdn.jsdelivr.net/npm/three@0.147.0/"
+    }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+// Each video frame is two images side by side: left half is depth encoded as hue
+// (depth in meters = 3 * hue), right half is the color image.
+const VERTEX_SHADER = `
+    attribute float vertexIdx;
+
+    varying vec2 vPtPos;
+    varying float vShouldDiscard;
+
+    uniform ivec2 texSize;
+    uniform sampler2D texImg;
+    uniform vec4 iK;
+    uniform float ptSize;
+
+    // Calibration knobs, in meters.
+    const float maxDepth = 3.0;                           // depth that hue 1.0 stands for
+    const vec2 depthRange = vec2(0.1, 2.8);               // points outside are dropped
+    const float neighbourDepthJump = 0.05;                // smaller = more edge points dropped
+
+    // Hue of an RGB color, from https://stackoverflow.com/a/17897228
+    float rgb2hue(vec3 c)
+    {
+        vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+        vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+        vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+        float d = q.x - min(q.w, q.y);
+        float e = 1.0e-10;
+        return abs(q.z + (q.w - q.y) / (6.0 * d + e));
+    }
+
+    float getPixelDepth(ivec2 pixel)
+    {
+        vec2 lookupPt = (vec2(pixel) + vec2(0.5)) / vec2(texSize);
+        return maxDepth * rgb2hue(texture2D(texImg, lookupPt).rgb);
+    }
+
+    bool shouldDiscard(ivec2 pixel)
+    {
+        float centerDepth = getPixelDepth(pixel);
+        for (int i = -1; i <= 1; i++) {
+            for (int j = -1; j <= 1; j++) {
+                if (i == 0 && j == 0) {
+                    continue;
+                }
+                float depth = getPixelDepth(pixel + ivec2(j, i));
+                if (depth < depthRange.x || depth >= depthRange.y || abs(centerDepth - depth) > neighbourDepthJump) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    void main()
+    {
+        int frameWidth = texSize.x / 2;
+        int vertIdx = int(vertexIdx);
+        int ptY = vertIdx / frameWidth;
+        int ptX = vertIdx - ptY * frameWidth;
+        ivec2 pt = ivec2(ptX, ptY);
+
+        if (shouldDiscard(pt)) {
+            vShouldDiscard = 1.0;
+            gl_Position = vec4(0.0);
+            return;
+        }
+        vShouldDiscard = 0.0;
+
+        float depth = getPixelDepth(pt);
+        vec3 ptPos = vec3(
+            (iK.x * float(ptX) + iK.z) * depth,
+            (iK.y * float(ptY) + iK.w) * depth,
+            -depth
+        );
+
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(ptPos, 1.0);
+        gl_PointSize = ptSize;
+        vPtPos = vec2(float(ptX), float(ptY));
+    }
+`;
+
+const FRAGMENT_SHADER = `
+    varying vec2 vPtPos;
+    varying float vShouldDiscard;
+
+    uniform ivec2 texSize;
+    uniform sampler2D texImg;
+
+    void main()
+    {
+        if (vShouldDiscard != 0.0) {
+            discard;
+        }
+        float frameWidth = float(texSize.x / 2);
+        vec2 lookupPt = (vec2(vPtPos.x + frameWidth, vPtPos.y) + vec2(0.5)) / vec2(texSize);
+        gl_FragColor = vec4(texture2D(texImg, lookupPt).rgb, 1.0);
+    }
+`;
+
+const statusLabel = document.getElementById('status');
+const addressInput = document.getElementById('address');
+const pointSizeInput = document.getElementById('point-size');
+
+function setStatus(text) {
+    statusLabel.textContent = text;
+}
+
+// ---- Scene ----
+
+const renderer = new THREE.WebGLRenderer();
+renderer.setClearColor(0x222222);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, 1, 1e-3, 100);
+camera.position.set(0, 0, 0.2);
+
+// The cloud sits along -z in front of the phone, so orbit around a point half a meter out.
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, -0.5);
+controls.update();
+
+const video = document.createElement('video');
+video.autoplay = true;
+video.muted = true;
+video.playsInline = true;
+
+const videoTexture = new THREE.VideoTexture(video);
+videoTexture.minFilter = THREE.LinearFilter;
+videoTexture.magFilter = THREE.LinearFilter;
+
+const material = new THREE.ShaderMaterial({
+    uniforms: {
+        texImg: { value: videoTexture },
+        texSize: { value: [0, 0] },
+        iK: { value: [0, 0, 0, 0] },
+        ptSize: { value: Number(pointSizeInput.value) },
+    },
+    vertexShader: VERTEX_SHADER,
+    fragmentShader: FRAGMENT_SHADER,
+});
+
+const points = new THREE.Points(new THREE.BufferGeometry(), material);
+points.frustumCulled = false;
+points.visible = false;
+scene.add(points);
+
+function resizeRenderer() {
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resizeRenderer);
+resizeRenderer();
+
+renderer.setAnimationLoop(() => {
+    renderer.render(scene, camera);
+});
+
+pointSizeInput.addEventListener('input', () => {
+    material.uniforms.ptSize.value = Number(pointSizeInput.value);
+});
+
+// One vertex per depth pixel; the shader turns the vertex index into a pixel and a 3D point.
+function buildPointGeometry(numPoints) {
+    const vertexIdx = new Float32Array(numPoints);
+    const indices = new Uint32Array(numPoints);
+    for (let i = 0; i < numPoints; i++) {
+        vertexIdx[i] = i;
+        indices[i] = i;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('vertexIdx', new THREE.BufferAttribute(vertexIdx, 1));
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    return geometry;
+}
+
+// ---- Record3D Wi-Fi stream ----
+
+let peerAddress = null;
+let peerConnection = null;
+
+// Record3D sends K as 9 numbers in column-major order, for a frame of metadata.originalSize.
+function inverseIntrinsics(metadata, frameHeight) {
+    const K = metadata.K;
+    let originalHeight = 640;
+    if (metadata.originalSize !== undefined) {
+        originalHeight = metadata.originalSize[1];
+    } else if (K[7] < 256) {
+        originalHeight = 256;
+    }
+    const scale = frameHeight / originalHeight;
+    const fx = K[0] * scale;
+    const fy = K[4] * scale;
+    const cx = K[6] * scale;
+    const cy = K[7] * scale;
+    return [1 / fx, 1 / fy, -cx / fx, -cy / fy];
+}
+
+async function onVideoSizeChanged() {
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+    if (videoWidth === 0 || videoHeight === 0) {
+        return;
+    }
+
+    let metadata;
+    try {
+        const response = await fetch(peerAddress + '/metadata');
+        metadata = await response.json();
+    } catch (error) {
+        setStatus('Could not fetch camera intrinsics: ' + error.message);
+        return;
+    }
+
+    const frameWidth = videoWidth / 2;
+    material.uniforms.texSize.value = [videoWidth, videoHeight];
+    material.uniforms.iK.value = inverseIntrinsics(metadata, videoHeight);
+    points.geometry.dispose();
+    points.geometry = buildPointGeometry(frameWidth * videoHeight);
+    points.visible = true;
+    setStatus('Streaming ' + frameWidth + 'x' + videoHeight);
+}
+video.addEventListener('loadeddata', onVideoSizeChanged);
+video.addEventListener('resize', onVideoSizeChanged);
+
+async function sendAnswer() {
+    const answer = { type: 'answer', data: peerConnection.localDescription.sdp };
+    try {
+        await fetch(peerAddress + '/answer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(answer),
+        });
+    } catch (error) {
+        setStatus('Could not send the WebRTC answer: ' + error.message);
+    }
+}
+
+async function connect(address) {
+    peerAddress = address;
+    if (!peerAddress.startsWith('http://')) {
+        peerAddress = 'http://' + peerAddress;
+    }
+    if (peerConnection !== null) {
+        peerConnection.close();
+    }
+    points.visible = false;
+    setStatus('Connecting to ' + peerAddress + ' ...');
+
+    const connection = new RTCPeerConnection();
+    peerConnection = connection;
+
+    // Record3D wants a single answer with all ICE candidates in it, so wait for the last one.
+    connection.onicecandidate = (event) => {
+        if (event.candidate === null) {
+            sendAnswer();
+        }
+    };
+    connection.ontrack = (event) => {
+        video.srcObject = event.streams[0];
+        // autoplay alone leaves a video that is not in the page paused.
+        video.play().catch((error) => {
+            setStatus('Could not start the video: ' + error.message);
+        });
+    };
+    connection.onconnectionstatechange = () => {
+        if (connection.connectionState === 'failed' || connection.connectionState === 'disconnected') {
+            setStatus('WebRTC connection ' + connection.connectionState + '. Is the phone still streaming?');
+        }
+    };
+
+    try {
+        const response = await fetch(peerAddress + '/getOffer');
+        const offer = await response.json();
+        await connection.setRemoteDescription(offer);
+        const answer = await connection.createAnswer();
+        await connection.setLocalDescription(answer);
+    } catch (error) {
+        setStatus('Cannot reach the iPhone at ' + peerAddress + ' (' + error.message + '). '
+            + 'Check the address, that Record3D is streaming, and that this network lets the laptop reach the phone.');
+    }
+}
+
+// Remembering the address is a convenience; the page works without storage.
+try {
+    const saved = localStorage.getItem('iphone-address');
+    if (saved !== null) {
+        addressInput.value = saved;
+    }
+} catch (error) {
+}
+
+document.getElementById('bar').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const address = addressInput.value.trim();
+    try {
+        localStorage.setItem('iphone-address', address);
+    } catch (error) {
+    }
+    connect(address);
+});
+</script>
+</body>
+</html>
