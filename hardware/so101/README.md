@@ -274,6 +274,7 @@ kinematics against MuJoCo when `mujoco` and `so101-nexus` are installed.
 | `fold_score.py` | scores a fold from a before and an after photo |
 | `arms.py`, `arms.json`, `arm1/`, `arm2/`, `leader/` | ports, limits, per-arm overrides |
 | `set_limits.py`, `idle.py` | limit recording, idle pose |
+| `check_limits.py` | read-only check that an arm's motors hold the limits and offsets in its `limits.json` |
 | `ui.py`, `ui.html`, `phone.html` | teleop; the page also shows the iPhone LiDAR point cloud and has a record button |
 | `teleop_record.py` | what the record button saves: every arm's joints (encoder steps) plus phone color and depth, 10 Hz, into `runs/` |
 | `test_*.py` | tests, see above |
