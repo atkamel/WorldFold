@@ -33,9 +33,10 @@ released, still), user 2026-10-22.
   check 1.5e-6; live predictor; evaluator). The model beats persistence on held-out windows (task, grasped, 10 steps:
   24.3 vs 39.1 mm), the grasp head predicts releases but not slips, and imagination raised its return by letting go
   of the cloth. Parked because folding fails on grasp physics the model can't predict (results.md, 2026-11-06).
-- **iPhone LiDAR viewer** (user, 2026-11-14, branch `feat/iphone-lidar`): `hardware/iphone_lidar/viewer.html` shows
-  the Record3D Wi-Fi stream as a live point cloud in the browser. Checked with a simulated stream only, not yet with a
-  phone. Nothing feeds Python yet.
+- **iPhone LiDAR viewer** (user, 2026-11-14, branch `feat/iphone-lidar`): `python -m hardware.iphone_lidar.usb_viewer`
+  reads Record3D over USB (eduroam blocks the Wi-Fi mode) and shows a live point cloud at `http://localhost:8000`.
+  `hardware/iphone_lidar/pointcloud.py` is the depth-to-points math for later Python use. Checked with synthetic
+  frames only: this laptop has no Apple device drivers yet, so `record3d` finds no phone.
 
 The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Best policies: DAgger diffusion at replan 4
 (privileged, 99.5 / 77.0 / 79.5 on id_easy / id_hard / recovery) and the vision student at replan 2 (sensor-only,
@@ -116,6 +117,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **iPhone LiDAR over USB (user: eduroam blocks Wi-Fi mode):** `usb_viewer.py` (record3d 1.4.1 → local server), `pointcloud.py` (depth to points, 6 tests), page polls `/frame`; Wi-Fi/WebRTC code deleted; `record3d` built into `.venv` (numpy pin unchanged, `hardware/iphone_lidar/requirements.txt`); checked in Chrome with synthetic frames, no phone seen (Apple drivers missing); fast on Windows 262 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **iPhone LiDAR viewer, three.js vendored:** three 0.147.0 and OrbitControls in `hardware/iphone_lidar/vendor/` (MIT), no CDN at runtime; re-checked in Chrome with a simulated stream; fast on Windows 256 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **iPhone LiDAR viewer (user, off the next action):** `hardware/iphone_lidar/viewer.html`, Record3D Wi-Fi stream (WebRTC) as a live browser point cloud, logic adapted from the Record3D demo (MIT); checked in Chrome with a simulated stream, not with a phone; no tests added (browser page); fast on Windows 256 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-07 · **World model full data, then parked (user):** 738561-63 done (260 episodes, 119,764 transitions); model beats persistence on every held-out group, grasp head predicts releases not slips, reward check 1.5e-6, imagination exploits (return up, grasp rate 0.22 → 0.01); release check on the gentle release (35/40 clean); merged main (#21) into `isaac`; fast 256 passed + #15 · (this commit)
