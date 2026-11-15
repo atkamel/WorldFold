@@ -1,14 +1,18 @@
 """Open-loop replay of a simulator trajectory on one or two real SO-101 followers.
 
     .venv-hw/bin/python replay.py traj.json --left arm2 --right arm1 [--dry-run]
-        [--speed 0.5] [--only left|right] [--no-gripper] [--allow-clamp]
+        [--speed 0.5] [--only left|right] [--no-gripper] [--allow-clamp] [--log run.json] [--grasp-check]
     .venv-hw/bin/python replay.py --check arm2     # confirm each joint's sign, one joint at a time
     .venv-hw/bin/python replay.py --read arm2      # no motion: print the joint angles the map gives, live
 
 The trajectory (exported from the simulator) holds joint targets in radians in the SO-101
 URDF convention. Per arm they become servo ticks, are clamped to <name>/limits.json,
 and are sent at dt / speed per step. No feedback: the arm is told where to go and nothing
-checks that it got there, except the measured final pose printed at the end.
+checks that it got there, except the measured final pose printed at the end, and:
+  --log FILE     reads every arm each step and writes the measured angles (model radians) beside the targets
+  --grasp-check  for a trajectory with "marks" (fold_traj.py): compares each jaw 2 cm into the lift with its reading
+                 shut on nothing; a jaw no further open than --grasp-margin deg has no cloth, and both arms go back
+                 down, open, and pinch again, up to --retries times, then carry on regardless
 
 Map (an unverified hypothesis, see docs): q_urdf_rad = sign * (encoder - zero) * 2*pi/4096,
 zero = 2047 and sign = +1 for motors 1-5 (set_limits.py puts the middle of each swept range at 2047, and the URDF's
@@ -225,16 +229,20 @@ def run_poses(followers, poses):
             followers[name].send_goals(goals)
 
 
-def play(followers, ticks, dt, speed, motors, progress):
-    """Send len(ticks) ticks, every arm each tick. Returns how many times the rate cap engaged."""
+def play(followers, ticks, dt, speed, motors, progress, steps=None, log=None):
+    """Send the rows `steps` of ticks (default: all, in order), every arm each tick. Returns how many times the rate
+    cap engaged. With `log` (a list), every arm is read each tick: (row, {name: {motor id: ticks}}) is appended."""
     tick = dt / speed
     cap = MAX_DEG_S * tick * speed * STEPS_PER_DEGREE  # ticks per tick
-    command = {name: {m: ticks[name][0][m - 1] for m in motors} for name in followers}
+    steps = range(len(next(iter(ticks.values())))) if steps is None else steps
+    command = {name: {m: ticks[name][steps[0]][m - 1] for m in motors} for name in followers}
     engaged = 0
     t0 = time.monotonic()
-    for k in range(len(next(iter(ticks.values())))):
-        sleep_until(t0 + k * tick)
+    for i, k in enumerate(steps):
+        sleep_until(t0 + i * tick)
         progress["step"] = k
+        if log is not None:
+            log.append((k, {name: f.read_present() for name, f in followers.items()}))
         for name, f in followers.items():
             for m in motors:
                 delta = ticks[name][k][m - 1] - command[name][m]
@@ -244,6 +252,34 @@ def play(followers, ticks, dt, speed, motors, progress):
                 command[name][m] += delta
             f.send_goals(command[name])
     return engaged
+
+
+def jaws(followers):
+    """Each arm's jaw angle (model degrees) after a short settle."""
+    time.sleep(SETTLE_SECONDS)
+    return {side: math.degrees(f.to_rad(GRIPPER_ID, f.read_present()[GRIPPER_ID])) for side, f in followers.items()}
+
+
+def play_with_grasp_check(followers, marks, T, run, margin, retries):
+    """The whole trajectory through run(steps), stopping at marks["check"] to compare each jaw with its reading at
+    marks["empty"] (shut on nothing). A missed grasp plays the rows back to marks["hover"] and forward again."""
+    if not marks:
+        sys.exit("--grasp-check needs a trajectory with marks (fold_traj.py)")
+    empty_at, hover, check_at = marks["empty"], marks["hover"], marks["check"]
+    engaged = run(range(empty_at + 1))
+    empty = jaws(followers)
+    engaged += run(range(empty_at + 1, check_at + 1))
+    for attempt in range(retries + 1):
+        lifted = jaws(followers)
+        held = {side: lifted[side] - empty[side] > margin for side in followers}
+        print("  ".join(f"{side} jaw {lifted[side]:.1f} deg lifted, {empty[side]:.1f} empty: "
+                        f"{'holding' if held[side] else 'MISSED'}" for side in followers))
+        if all(held.values()) or attempt == retries:
+            break
+        print(f"Pinching again (retry {attempt + 1} of {retries})")
+        engaged += run(range(check_at, hover - 1, -1))
+        engaged += run(range(hover, check_at + 1))
+    return engaged + run(range(check_at + 1, T))
 
 
 def check_joints(follower, present, motors, progress):
@@ -278,6 +314,10 @@ def parse(argv):
     p.add_argument("--only", choices=["left", "right"])
     p.add_argument("--no-gripper", action="store_true")
     p.add_argument("--allow-clamp", action="store_true")
+    p.add_argument("--log", metavar="FILE")
+    p.add_argument("--grasp-check", action="store_true")
+    p.add_argument("--grasp-margin", type=float, default=0.5, help="deg the jaw must stay open past its empty reading")
+    p.add_argument("--retries", type=int, default=2)
     p.add_argument("--check", metavar="ARM")
     p.add_argument("--read", metavar="ARM")
     args = p.parse_args(argv)
@@ -293,6 +333,8 @@ def parse(argv):
             p.error(f"--only {args.only} needs --{args.only} <arm name>")
         if args.left and args.left == args.right:
             p.error("--left and --right name the same arm")
+        if args.grasp_check and args.no_gripper:
+            p.error("--grasp-check needs the gripper")
     return args
 
 
@@ -383,9 +425,21 @@ def replay(args, progress):
     input("At the first target. Check the arms are clear, then press Enter to play (Ctrl-C stops) ")
 
     progress["step"] = 0
-    engaged = play(followers, ticks, dt, args.speed, motors, progress)
+    log = [] if args.log else None
+    run = lambda steps: play(followers, ticks, dt, args.speed, motors, progress, steps, log)   # noqa: E731
+    if args.grasp_check:
+        engaged = play_with_grasp_check(followers, traj.get("marks"), T, run, args.grasp_margin, args.retries)
+    else:
+        engaged = run(range(T))
     print(f"Rate cap ({MAX_DEG_S} deg/s) {'engaged ' + str(engaged) + ' times' if engaged else 'never engaged'}.")
     time.sleep(SETTLE_SECONDS)
+    if args.log:
+        rows = {side: [[k] + [round(f.to_rad(m, present[side][m]), 4) for m in MOTOR_IDS] for k, present in log]
+                for side, f in followers.items()}
+        with open(args.log, "w") as out:
+            json.dump({"trajectory": args.trajectory, "speed": args.speed, "columns": ["row"] + JOINTS,
+                       "measured": rows}, out)
+        print(f"Measured angles for {len(log)} steps written to {args.log}")
     for side, f in followers.items():
         now, final_q = f.read_present(), traj["arms"][side]["q"][-1]
         print(f"{side} final (deg), measured vs trajectory q:")

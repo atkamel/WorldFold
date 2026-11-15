@@ -314,3 +314,81 @@ def test_read_mode_prints_model_angles_and_sends_nothing(env, monkeypatch, capsy
     assert env.replay.main(["--read", "L"]) == 0
     assert env.ports["devL"].writes == []
     assert "shoulder_pan" in capsys.readouterr().out
+
+
+def fold_like_traj():
+    """Rows: 0-2 above, jaw open; 3 jaw shut in the air ("empty"); 4 open again ("hover"); 5 down; 6 down, jaw shut;
+    7 lifted ("check"); 8-9 carried; 10 jaw open."""
+    jaw = [0.5, 0.5, 0.5, -0.1, 0.5, 0.5, -0.1, -0.1, -0.1, -0.1, 0.5]
+    down = [0, 0, 0, 0, 0, 0.2, 0.2, 0.1, 0, 0, 0]
+    target = [[0.0, d, 0.0, 0.0, 0.0, j] for d, j in zip(down, jaw)]
+    arm = {"target": target, "q": target + [target[-1]]}
+    # dt 1 s: the rate cap (60 deg per step) never holds a jaw back, so each row is reached in its own step
+    return {"dt": 1.0, "joints": JOINTS, "arms": {"left": arm, "right": copy.deepcopy(arm)},
+            "marks": {"empty": 3, "hover": 4, "check": 7}}
+
+
+def add_cloth(env, dev, catches):
+    """The fake arm's jaw stops 40 ticks short of shut on cloth: on the pinch attempts listed in `catches` (0 = the
+    first time it shuts while down), until it opens again."""
+    f = env.replay.Follower("L")
+    shut, down = f.to_ticks(6, -0.1), f.to_ticks(2, 0.2)
+    port = env.ports.setdefault(dev, FakePort(dev))
+    state = {"attempt": -1, "was_shut": False, "holding": False}
+
+    def on_write(n):
+        goal = port.writes[-1]
+        is_shut = goal[6] < shut + 20
+        if is_shut and not state["was_shut"] and abs(goal[2] - down) < 2:
+            state["attempt"] += 1
+            state["holding"] = state["attempt"] in catches
+        state["holding"] &= is_shut
+        state["was_shut"] = is_shut
+        if state["holding"]:
+            port.pos[6] = round(shut) + 40
+    port.on_write = on_write
+    return state
+
+
+def run_fold(env, capsys, monkeypatch, *extra):
+    monkeypatch.setattr(env.replay, "sleep_until", lambda t: None)
+    traj = fold_like_traj()
+    seed_at_first_target(env, traj)
+    code = env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--grasp-check",
+                            *extra])
+    return code, capsys.readouterr().out
+
+
+def test_grasp_check_passes_when_both_jaws_stop_on_cloth(env, capsys, monkeypatch):
+    states = [add_cloth(env, dev, {0}) for dev in ("devL", "devR")]
+    code, out = run_fold(env, capsys, monkeypatch)
+    assert code == 0 and out.count("holding") == 2 and "MISSED" not in out
+    assert [s["attempt"] for s in states] == [0, 0]
+
+
+def test_grasp_check_pinches_again_after_a_miss(env, capsys, monkeypatch):
+    left, right = add_cloth(env, "devL", {0, 1}), add_cloth(env, "devR", {1})      # the right arm misses once
+    code, out = run_fold(env, capsys, monkeypatch)
+    assert code == 0 and out.count("MISSED") == 1 and "retry 1 of 2" in out
+    assert (left["attempt"], right["attempt"]) == (1, 1)                           # both went back down together
+    jaw_open = env.replay.Follower("L").to_ticks(6, 0.5)
+    assert env.ports["devR"].writes[-1][6] == round(jaw_open)                      # and the fold finished
+
+
+def test_grasp_check_gives_up_after_its_retries_and_finishes(env, capsys, monkeypatch):
+    state = add_cloth(env, "devL", {0, 1, 2})
+    add_cloth(env, "devR", set())
+    code, out = run_fold(env, capsys, monkeypatch, "--retries", "1")
+    assert code == 0 and out.count("MISSED") == 2 and state["attempt"] == 1
+
+
+def test_log_holds_the_measured_angles_per_step(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+    log = env.tmp / "run.json"
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--log", str(log)]) == 0
+    data = json.loads(log.read_text())
+    assert [row[0] for row in data["measured"]["left"]] == list(range(T))
+    assert len(data["measured"]["right"][0]) == 7
+    # a perfect fake servo read before each send: step 0 reads the first target, where the arm was seeded
+    assert abs(data["measured"]["left"][0][1] - traj["arms"]["left"]["target"][0][0]) < 2 * env.replay.RAD_PER_STEP

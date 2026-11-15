@@ -8,7 +8,7 @@ What is here, what state it is in, and how to run it on a machine that has never
   model and `replay.py` plays the joint trajectory on two followers. The cloth goes where a ruler puts it.
 - **What it is not** is the Isaac half-fold expert (`isaac/experts/place_servo.py`). That one reads the live cloth
   state and needs a camera pipeline that is not written yet.
-- **Verified** by 26 tests on a fake servo bus, and a dry run against both arms' recorded limits (0 clamped steps).
+- **Verified** by 36 tests on a fake servo bus, and a dry run against both arms' recorded limits (0 clamped steps).
 - **Never run on a real arm.** The radian-to-tick map is a hypothesis until `replay.py --check` passes on each arm.
 - **Both followers are configured**, with `main`'s names and folders. `arm2` is the left arm and `arm1` the right,
   seen from behind. Arm 2's motors 2 and 3 have identical limits, so watch its elbow in the check.
@@ -63,8 +63,9 @@ the torque on, so the arms hold where they are.
 # 3. one arm, no cloth, slow
 ../../.venv-hw/bin/python replay.py trajectories/half_fold_30cm.json --left arm2 --right arm1 --only left --speed 0.3
 
-# 4. both arms with the cloth (about 31 s at the default half speed)
-../../.venv-hw/bin/python replay.py trajectories/half_fold_30cm.json --left arm2 --right arm1
+# 4. both arms with the cloth (about 34 s at the default half speed), with the run log and the grasp check
+../../.venv-hw/bin/python replay.py trajectories/half_fold_30cm.json --left arm2 --right arm1 \
+    --log run1.json --grasp-check
 ```
 
 What to look for
@@ -79,7 +80,31 @@ What to look for
 - **Step 3, at the far pinch.** The fingers are tilted, so the model puts the fixed fingertip 2.6 mm below the table
   there. The arm presses on the table at that point, which is expected. Stop if it bows or stalls.
 - **Step 4.** Each arm pinches its far corner, carries it over in an arc, opens part way, lifts 5 cm, opens fully
-  and stands back up.
+  and stands back up. Before the pinch each jaw shuts once in the air, which is the grasp check's empty reading.
+
+## Grasp check and run log
+
+- Above the far corner each jaw shuts once on nothing. That reading is the empty reference.
+- `--grasp-check` reads each jaw 2 cm into the lift. A jaw that is not at least `--grasp-margin` degrees (default 0.5)
+  further open than its empty reading has no cloth. Both arms then go back down, open, and pinch again, up to
+  `--retries` times (default 2), and carry on regardless after that.
+- The printed readings from the first run say whether 0.5 degrees is the right margin for this cloth. A thin cloth
+  may read almost the same as empty, in which case the check reports misses that are not real.
+- `--log FILE` writes the measured joint angles for every step, to compare with the trajectory afterwards.
+
+## Scoring a fold from photos
+
+Take one photo before the fold and one after, from a camera that does not move, with the arms out of the frame.
+JPEG or PNG (an iPhone's HEIC needs converting). This runs on any machine with `numpy`, `scipy` and `pillow`.
+
+```bash
+python fold_score.py before.jpg after.jpg --near bottom --out overlay.png
+```
+
+`--near` says which side of the image the cloth's near edge is on. It prints, in cm, how far the folded edge is from
+the middle of the cloth (`far_edge_mean`, `far_edge_max`), how far the cloth pokes outside its starting square
+(`overhang_max`), and the area and coverage of the folded half. Look at the overlay before trusting the numbers. A
+wrong `--near`, a shadow or an arm in the frame gives a plausible wrong score.
 
 ## Changing the fold
 
@@ -112,6 +137,7 @@ python fold_traj.py --out trajectories/my_fold.json --cloth 0.30 --near 0.08 --c
 | `fold_traj.py` | plans the half fold, writes a trajectory |
 | `replay.py` | plays a trajectory, with `--check`, `--dry-run`, `--only`, `--speed`, `--no-gripper` |
 | `trajectories/half_fold_30cm.json` | the fold for the rig above |
+| `fold_score.py` | scores a fold from a before and an after photo |
 | `arms.json`, `arm1/`, `arm2/`, `leader/` | ports, limits, per-arm overrides |
 | `set_limits.py`, `idle.py` | limit recording, idle pose |
 | `ui.py`, `ui.html`, `phone.html` | teleop |

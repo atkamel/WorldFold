@@ -19,7 +19,11 @@ def test_half_fold_trajectory():
     replay.validate(traj)
     for side, right in (("left", 0.03), ("right", -0.03)):
         t, tip = np.array(traj["arms"][side]["target"]), np.array(traj["arms"][side]["tip"])[1:]
-        shut = np.flatnonzero(t[:, 5] < replay.GRASP_RAD)
+        marks = traj["marks"]
+        assert t[marks["empty"], 5] < replay.GRASP_RAD and t[marks["hover"], 5] == fold_traj.OPEN    # shut in the air
+        assert np.allclose(tip[marks["empty"]], tip[marks["hover"]]) and tip[marks["hover"], 2] > 0.04
+        assert 0.02 < tip[marks["check"], 2] < 0.04 and t[marks["check"], 5] < replay.GRASP_RAD
+        shut = marks["hover"] + np.flatnonzero(t[marks["hover"]:, 5] < replay.GRASP_RAD)
         assert np.allclose(tip[shut[0]], (right, 0.34, fold_traj.PINCH_Z), atol=0.003)       # the pinch
         assert np.allclose(tip[shut[-1]], (right, 0.10, fold_traj.PLACE_Z), atol=0.003)      # the release
         assert tip[:, 2].min() > 0.004                                   # the fingertip never goes into the table

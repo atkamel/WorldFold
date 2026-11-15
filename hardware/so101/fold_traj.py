@@ -1,6 +1,7 @@
 """An open-loop two-arm half fold as a joint trajectory for replay.py, planned on the SO-101 model alone (no camera,
 no simulator): each arm pinches its far corner from above, carries it in an arc onto the near corner on its side,
-opens slowly, lifts and stands back up. The cloth is placed by ruler where this prints.
+opens slowly, lifts and stands back up. The cloth is placed by ruler where this prints. Above the far corner the jaw
+shuts once on nothing, so replay.py --grasp-check has an empty reading to compare the lifted jaw against ("marks").
 
     .venv/bin/python hardware/so101/fold_traj.py --out outputs/hardware/half_fold.json [--cloth 0.24] [--near 0.10]
     .venv-hw/bin/python hardware/so101/replay.py outputs/hardware/half_fold.json --left left --right right --dry-run
@@ -69,7 +70,9 @@ class Arm:
 
 
 def plan(arm, y, near, cloth, closed):
-    """One arm's fold: target rows [T, 6] for the corner column at lateral offset y (m, left positive)."""
+    """One arm's fold for the corner column at lateral offset y (m, left positive): target rows [T, 6], the worst
+    (tip error, tilt), and marks {"empty": the jaw shut in the air, "hover": above the corner with the jaw open again,
+    "check": 2 cm into the lift} as row indices."""
     far = near + cloth
     seed = np.radians([0.0, 40.0, -30.0, 80.0, 0.0])     # arm out, forearm level, fingers down
     rows, worst = [], [0.0, 0.0]
@@ -99,19 +102,26 @@ def plan(arm, y, near, cloth, closed):
         q, err, _ = arm.solve(p, q)
         worst[0] = max(worst[0], err)
     joint_move(q, OPEN)
+    hold(10, np.linspace(OPEN, closed, 10))
+    hold(6, closed)
+    marks = {"empty": len(rows) - 1}
+    hold(10, np.linspace(closed, OPEN, 10))
+    marks["hover"] = len(rows) - 1
     line(segment((far, y, HOVER), (far, y, PINCH_Z)), OPEN)
     hold(12, np.linspace(OPEN, closed, 12))
     hold(8, closed)
+    lift = len(rows)
     peak = min(0.10, 0.45 * cloth)                          # under the cloth's half length: the carry never pulls it
     n = int(np.ceil(1.3 * cloth / STEP))
     s = np.arange(1, n + 1) / n
     line([(far - cloth * k, y, PINCH_Z + (PLACE_Z - PINCH_Z) * k + peak * np.sin(np.pi * k)) for k in s], closed)
+    marks["check"] = next(k for k in range(lift, len(rows)) if arm.tip(rows[k][:5])[0][2] >= PINCH_Z + 0.02)
     hold(10, closed)
     hold(14, np.linspace(closed, PART_OPEN, 14))            # gentle release: the jaw opens part way, arm still
     line(segment((near, y, PLACE_Z), (near, y, PLACE_Z + RETREAT)), PART_OPEN)
     hold(8, np.linspace(PART_OPEN, OPEN, 8))
     joint_move(STAND, OPEN)
-    return np.array(rows), worst
+    return np.array(rows), worst, marks
 
 
 def trajectory(cloth=0.24, near=0.10, spacing=0.30, closed=-0.17):
@@ -119,13 +129,13 @@ def trajectory(cloth=0.24, near=0.10, spacing=0.30, closed=-0.17):
     inset = spacing / 2 - cloth / 2          # the cloth's corner column sits this far toward the middle of the rig
     arms, report = {}, {}
     for side, y in (("left", -inset), ("right", inset)):
-        target, (err, tilt) = plan(arm, y, near, cloth, closed)
+        target, (err, tilt), marks = plan(arm, y, near, cloth, closed)     # the same marks for both: mirror plans
         q = np.vstack([target[:1], target])                  # replay.py wants T + 1 rows; open loop, q = the targets
         tips = [arm.tip(r[:5])[0] for r in q]
         arms[side] = {"target": target.tolist(), "q": q.tolist(),
                       "tip": [[-p[1], p[0], p[2]] for p in np.array(tips).tolist()]}   # right, forward, up
         report[side] = {"tip_error_mm": round(err * 1000, 1), "max_tilt_deg": round(tilt, 1)}
-    return {"dt": DT, "joints": JOINTS, "arms": arms,
+    return {"dt": DT, "joints": JOINTS, "arms": arms, "marks": marks,
             "layout": {"frame": "each arm's base, on the table", "base_spacing": spacing, "cloth_side": cloth,
                        "near_edge_from_base_origin": near, "near_edge_from_base_front": round(near - BASE_FRONT, 3)},
             "source": {"tool": "hardware/so101/fold_traj.py", "closed_rad": closed, **report}}
