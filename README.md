@@ -5,6 +5,9 @@ stack, PhysX particle cloth, a friction gripper with no weld) to do a quarter fo
 Earlier phases built the half fold in MuJoCo with an imitation pipeline (BC, DAgger, diffusion, a vision student) and
 a world model over the cloth's surface-angle field.
 
+The real arms have their own code in [hardware/so101](hardware/so101/README.md), a scripted half fold driven by an
+iPhone's camera and LiDAR. It has not run on the arms yet.
+
 WatAI, 2026
 
 ## Where things stand
@@ -26,6 +29,7 @@ mujoco_sim/            MuJoCo ClothFoldEnv and the shared cloth, arm and camera 
 cloth_fold_rl/         fold-task wrappers, scripted experts and the fold alignment score (both simulators)
 imitation/             imitation pipeline on MuJoCo and Isaac (spec in docs/imitation.md)
 cloth_angles/          RSSM world model over cloth angle fields (parked)
+hardware/so101/        the real arms (teleop, calibration, the half fold with the iPhone watching), see its README
 docs/                  status, roadmap, results, design docs, dated reports
 docs/reports/media/    showcase videos
 ```

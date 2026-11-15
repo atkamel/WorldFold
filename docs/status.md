@@ -15,6 +15,15 @@ the revised plan in [reviews/2026-10-22-quarter-fold-reevaluation.md](reviews/20
 with at least one recorded clean demo. Bar: mean ≤ 2.0 cm and edge ≤ 3.0 cm on gated episodes (flat on the table,
 released, still), user 2026-10-22.
 
+- **Hardware (user, 2026-11-14), `hardware/so101/`, nothing run on an arm or a phone yet:** a scripted two-arm half
+  fold planned with numpy kinematics, in three forms: blind from a committed trajectory (`replay.py`), one look
+  through the iPhone (`fold_camera.py`), and watched throughout with RGB and LiDAR over Record3D USB (`fold_live.py`:
+  arms masked out by height above the table, the cloth's near edge tracked, the place moved with it mid-carry, every
+  frame and control step recorded). Grasp check on the jaw readings with a retry. Two-arm teleop with a leader arm
+  (`ui.py`). Both followers configured (`arm2` left, `arm1` right). Steps in `hardware/so101/README.md`. First run, in
+  order: `replay.py --read` and `--check` on both arms (the tick map is unverified), one arm with no cloth,
+  `fold_camera.py calibrate`, `fold_live.py --dry-run` for the first real frames, then `fold_live.py --grasp-check`.
+  The 30 cm cloth does not fit the reach at both ends (results.md).
 - **Half fold** reaches the half-fold bar (1.0 / 1.5 cm) in about 1 of 64 episodes, with the scripted base plus one
   touch-up (seed 930005, 0.95 / 1.45 cm) and with the RL policy p8 (seed 980008, 0.43 / 1.13 cm). Videos in
   `docs/reports/media/isaac_half_fold_pass_*.mp4`. RL shows no average gain over the scripted base (p8 hunt 2.65 cm,
@@ -59,7 +68,7 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-10-29: fast 227 passed, 1 failed (#15), 5 skipped; slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-14: fast 262 passed, 1 failed (#15), 5 skipped; hardware (`pytest hardware/so101`) 65 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -118,6 +127,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **Hardware half fold and teleop (user):** `hardware/so101/` from `feat/half-fold-deploy` without that branch's sim audit work: two-arm teleop with a leader arm (`ui.py`, `arms.json`), `replay.py` (`--read`, `--check`, `--grasp-check`, `--log`), `fold_traj.py` + `kinematics.py` (numpy), `fold_camera.py`, `fold_live.py` (continuous RGB + LiDAR, place correction, recorded runs), `rgbd.py`, `recorder.py`, `fold_score.py`, README; `feat/iphone-lidar` (PR #23) merged in; hardware tests 65 passed (`pytest hardware/so101`), fast 262 passed, 5 skipped (#15 fails); slow not run (sim untouched); not run on an arm or a phone · this commit
 - 2026-11-14 · **iPhone LiDAR, Wi-Fi page back (user):** `wifi_viewer.html` restored from 32616b9 for networks without client isolation; `usb_viewer.py` exits with a message when Record3D refuses the connection, and its notes say not to record (the record button pauses USB); still no phone seen on this laptop (iTunes installed without Apple Mobile Device Support); fast on Windows 262 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **iPhone LiDAR over USB (user: eduroam blocks Wi-Fi mode):** `usb_viewer.py` (record3d 1.4.1 → local server), `pointcloud.py` (depth to points, 6 tests), page polls `/frame`; Wi-Fi/WebRTC code deleted; `record3d` built into `.venv` (numpy pin unchanged, `hardware/iphone_lidar/requirements.txt`); checked in Chrome with synthetic frames, no phone seen (Apple drivers missing); fast on Windows 262 passed, 1 failed (#17), 5 skipped · (this commit)
 - 2026-11-14 · **iPhone LiDAR viewer, three.js vendored:** three 0.147.0 and OrbitControls in `hardware/iphone_lidar/vendor/` (MIT), no CDN at runtime; re-checked in Chrome with a simulated stream; fast on Windows 256 passed, 1 failed (#17), 5 skipped · (this commit)

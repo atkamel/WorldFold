@@ -31,3 +31,10 @@ renders/
 *.mp4
 !docs/reports/media/*.mp4
 .claude/
+.venv
+.venv-hw
+hardware/so101/camera.json
+hardware/so101/look.png
+hardware/so101/last_look.json
+hardware/so101/runs/
+outputs/hardware/

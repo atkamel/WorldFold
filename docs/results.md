@@ -2748,3 +2748,37 @@ Test windows, vertex MAE / manipulated-vertex error (mm), model vs persistence:
   the actor raised its imagined return by letting go, not by folding: it exploits the model or the reward. Not
   evaluated in Isaac.
 
+## Hardware half fold, numbers from the arm model (2026-11-14)
+
+Nothing here was measured on an arm or a phone. Every number comes from the SO-101 kinematic model
+(so101_new_calib, so101-nexus 0.4.8), synthetic camera frames, or a fake servo bus. No seeds, no intervals.
+
+**Reach with the base on the table** (fingertip 1 cm above the table, fingers as near straight down as the IK allows,
+straight ahead of the base origin): top-down from 10 to 33 cm; 12.9° of tilt at 36 cm, 27° at 40 cm. The base's
+front edge is 6.5 cm in front of its origin.
+
+**The 30 cm cloth on the user's rig** (bases on the table 30 cm apart, near edge 8 cm in front of the base origins):
+
+| | blind trajectory (`fold_traj.trajectory`) | camera plan (`fold_camera`, pinch 1 cm in from the corner) |
+|---|---|---|
+| far pinch, forward of the base origin | 37.8 cm planned 38.0 (2.4 mm short) | 2.2 mm short |
+| finger tilt at the far pinch | about 25° | 25.9° |
+| release | 9.1 cm, planned 8.0 (1.1 cm past the near corner) | about 2.4 cm past the planned point |
+| fixed fingertip mesh at the far pinch | 2.6 mm below the table | not recomputed |
+
+So the cloth does not fit the reach at both ends: the fold comes up 1 to 2.5 cm short at the near corners until the
+bases move apart or up, or the cloth is smaller. A 24 cm cloth with its near edge at 10 cm pinches at 11.6° tilt and
+releases on the corner.
+
+**Numpy kinematics against MuJoCo** (`hardware/so101/kinematics.py`, 2,000 random poses within the limits, seed 1):
+fingertip position within 3.3e-16 m, finger direction within 1.1e-15. The committed trajectory regenerates within
+5.4e-7 rad after the IK's early stop was added (2.0e-9 before it). A two-arm fold plans in about 1 s.
+
+**Camera look on synthetic frames** (480 x 640, a known perspective camera): corners of a cloth moved 2 cm and turned
+8° recovered within 4 mm; the near edge's 2 cm move recovered within 4 mm.
+
+**Tick map correction:** with the gripper's zero at tick 2047 the closed target left the jaw about half open (its
+model range is -10° to 100°, the middle of its travel is 45°). Its zero is now 10° above the lower tick limit.
+
+**Recorder:** about 215 to 245 kB per frame (720 x 960 JPEG and 192 x 256 depth), 130 to 150 MB per minute at 10
+frames per second, on synthetic noisy frames.
