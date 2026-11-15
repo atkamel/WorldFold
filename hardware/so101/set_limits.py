@@ -2,12 +2,12 @@
 
 Plug in only the motor you want, set MOTOR_ID, then run (whatever ID the
 motor currently has is overwritten with MOTOR_ID):
-    .venv/bin/python set_limits.py
+    .venv/bin/python set_limits.py [arm]     # arm from arms.json; optional with one arm
 
 Move the joint to one boundary and press SPACE, then to the other and press
 SPACE. The homing offset is set so the middle of that range reads 2047,
 keeping it clear of the 4095 -> 0 rollover. The offset and limits are written
-to the motor and saved to limits.json. Press q to quit without saving.
+to the motor and saved to arms/<arm>/limits.json. Press q to quit without saving.
 """
 
 import json
@@ -16,14 +16,15 @@ import sys
 import termios
 import time
 import tty
-from pathlib import Path
 
 import scservo_sdk as scs
 
+import arms
+
 MOTOR_ID = 6
-PORT = "/dev/tty.usbmodem5B790153891"
 BAUDRATE = 1_000_000
-LIMITS_FILE = Path(__file__).parent / "limits.json"
+ARM = arms.choose(sys.argv[1:])  # which arm this motor belongs to; optional with one arm
+LIMITS_FILE = arms.folder(ARM) / "limits.json"
 
 # STS3215 control table addresses
 ADDR_ID = 5
@@ -184,18 +185,19 @@ def limits_entry(offset, lo, hi):
 
 
 def save_limits(offset, lo, hi):
+    LIMITS_FILE.parent.mkdir(parents=True, exist_ok=True)
     limits = json.loads(LIMITS_FILE.read_text()) if LIMITS_FILE.exists() else {}
     limits[str(MOTOR_ID)] = limits_entry(offset, lo, hi)
     LIMITS_FILE.write_text(json.dumps(limits, indent=2))
 
 
 def main():
-    port = scs.PortHandler(PORT)
+    port = scs.PortHandler(arms.port(ARM))
     packet = scs.PacketHandler(0)  # protocol 0 = Feetech STS series
     if not port.openPort() or not port.setBaudRate(BAUDRATE):
-        sys.exit(f"Could not open {PORT}")
+        sys.exit(f"Could not open {arms.port(ARM)} ({ARM} arm)")
 
-    print(f"\n========== MOTOR ID: {MOTOR_ID} ==========\n")
+    print(f"\n========== {ARM.upper()} ARM, MOTOR ID: {MOTOR_ID} ==========\n")
     assign_id(port, packet)
 
     # Torque off so the joint moves freely by hand.

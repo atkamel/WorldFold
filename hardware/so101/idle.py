@@ -1,29 +1,32 @@
 """Move the SO-101 follower to an idle pose and hold it with torque on.
 
-    .venv/bin/python idle.py record    # torque off, pose the arm by hand, Enter to save
-    .venv/bin/python idle.py           # glide to the saved pose and hold it
-    .venv/bin/python idle.py release   # torque off, arm goes limp (support it!)
+    .venv/bin/python idle.py [arm] record    # torque off, pose the arm by hand, Enter to save
+    .venv/bin/python idle.py [arm]           # glide to the saved pose and hold it
+    .venv/bin/python idle.py [arm] release   # torque off, arm goes limp (support it!)
 
-The pose is saved to idle_pose.json. Targets are clamped to limits.json.
+[arm] is a name from arms.json, needed only when it lists more than one arm.
+The pose is saved to arms/<arm>/idle_pose.json. Targets are clamped to
+arms/<arm>/limits.json.
 """
 
 import json
 import sys
 import time
-from pathlib import Path
 
 import scservo_sdk as scs
 
-PORT = "/dev/tty.usbmodem5B790153891"
+import arms
+
 BAUDRATE = 1_000_000
 MOTOR_IDS = [1, 2, 3, 4, 5, 6]
 GRIPPER_ID = 6
 MOVE_SECONDS = 3.0  # how long the glide to the idle pose takes
 STEP_SECONDS = 0.02  # 50 goal updates per second
 
-HERE = Path(__file__).parent
-LIMITS_FILE = HERE / "limits.json"
-POSE_FILE = HERE / "idle_pose.json"
+ARGS = sys.argv[1:]
+ARM = arms.choose(ARGS)  # arm name first (e.g. `idle.py right record`); optional with one arm
+LIMITS_FILE = arms.folder(ARM) / "limits.json"
+POSE_FILE = arms.folder(ARM) / "idle_pose.json"
 
 # STS3215 control table addresses
 ADDR_TORQUE_ENABLE = 40
@@ -93,7 +96,7 @@ def record(port, packet):
 
 def go_idle(port, packet):
     if not POSE_FILE.exists():
-        sys.exit("No idle pose yet. Run: .venv/bin/python idle.py record")
+        sys.exit(f"No idle pose yet. Run: .venv/bin/python idle.py {ARM} record")
     target = clamp_to_limits({int(m): p for m, p in json.loads(POSE_FILE.read_text()).items()})
     start = present_positions(port, packet)
 
@@ -121,12 +124,12 @@ def go_idle(port, packet):
 
 
 def main():
-    port = scs.PortHandler(PORT)
+    port = scs.PortHandler(arms.port(ARM))
     packet = scs.PacketHandler(0)  # protocol 0 = Feetech STS series
     if not port.openPort() or not port.setBaudRate(BAUDRATE):
-        sys.exit(f"Could not open {PORT}")
+        sys.exit(f"Could not open {arms.port(ARM)} ({ARM} arm)")
 
-    mode = sys.argv[1] if len(sys.argv) > 1 else "go"
+    mode = ARGS[0] if ARGS else "go"
     if mode == "record":
         record(port, packet)
     elif mode == "release":
