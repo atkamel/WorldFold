@@ -114,7 +114,7 @@ def plan(arm, y, near, cloth, closed):
     return np.array(rows), worst
 
 
-def trajectory(cloth=0.24, near=0.10, spacing=0.30, closed=-0.05):
+def trajectory(cloth=0.24, near=0.10, spacing=0.30, closed=-0.17):
     arm = Arm()
     inset = spacing / 2 - cloth / 2          # the cloth's corner column sits this far toward the middle of the rig
     arms, report = {}, {}
@@ -137,7 +137,7 @@ def main():
     ap.add_argument("--cloth", type=float, default=0.24, help="cloth side (m)")
     ap.add_argument("--near", type=float, default=0.10, help="near edge in front of the base origin (m)")
     ap.add_argument("--spacing", type=float, default=0.30, help="between the two base origins (m)")
-    ap.add_argument("--closed", type=float, default=-0.05, help="jaw target at the pinch (rad)")
+    ap.add_argument("--closed", type=float, default=-0.17, help="jaw target at the pinch (rad); the URDF closed limit is -0.1745")
     args = ap.parse_args()
     traj = trajectory(args.cloth, args.near, args.spacing, args.closed)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)

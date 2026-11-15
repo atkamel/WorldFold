@@ -10,7 +10,9 @@ and are sent at dt / speed per step. No feedback: the arm is told where to go an
 checks that it got there, except the measured final pose printed at the end.
 
 Map (an unverified hypothesis, see docs): q_urdf_rad = sign * (encoder - zero) * 2*pi/4096,
-zero = 2047 and sign = +1 for every motor. arms/<name>/urdf.json overrides per motor:
+zero = 2047 and sign = +1 for motors 1-5 (set_limits.py puts the middle of each swept range at 2047, and the URDF's
+arm joints are symmetric about 0). The gripper's URDF range is -10 to 100 deg, so its zero is 10 deg above the
+closed end of its limits, taken to be the lower tick. arms/<name>/urdf.json overrides per motor:
     {"zero": {"1": 2047, ...}, "sign": {"1": 1, "2": -1, ...}}
 twin.json is not used. Use --check to confirm the signs before trusting a replay.
 
@@ -59,7 +61,8 @@ class Follower:
         self.limits = {m: (limits[str(m)]["true"]["min"], limits[str(m)]["true"]["max"]) for m in MOTOR_IDS}
         urdf = json.loads((folder / "urdf.json").read_text()) if (folder / "urdf.json").exists() else {}
         self.overridden = bool(urdf)
-        self.zero = {m: urdf.get("zero", {}).get(str(m), 2047) for m in MOTOR_IDS}
+        default = {m: 2047 for m in MOTOR_IDS} | {GRIPPER_ID: self.limits[GRIPPER_ID][0] + 10 * STEPS_PER_DEGREE}
+        self.zero = {m: urdf.get("zero", {}).get(str(m), default[m]) for m in MOTOR_IDS}
         self.sign = {m: urdf.get("sign", {}).get(str(m), 1) for m in MOTOR_IDS}
 
     def describe(self):

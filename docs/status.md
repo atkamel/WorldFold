@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-14 · **Branch:** `fix/half-fold-audit` · **Phase:** pathway fixes after the 2026-11-10 review:
+**Updated:** 2026-11-14 · **Branch:** `feat/half-fold-deploy` (`fix/half-fold-audit` + `feat/so101-teleop`) · **Phase:** pathway fixes after the 2026-11-10 review:
 the grasp holds both corners (batch K), camera-policy demos collecting (`lh_c1`), hardware replay deferred
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -84,7 +84,12 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
    The release trace: cloth stays on a finger almost only when it sits 3.5 cm or more above the fingertip at the
    start of the release (46 of 48 arms), mostly the right arm. A lower seat in the jaw is the lead for a scripted
    fix; if none works, a residual RL on place and release against the held-corner metric (user).
-2. **Hardware replay, deferred (user, 2026-11-10: no hardware access for now):** add the second follower to `arms.json` and record its
+2. **Hardware, open-loop half fold (user, 2026-11-14: deploy something now):** `hardware/so101/fold_traj.py` plans a
+   camera-free two-arm half fold on the arm model for the user's rig (bases on the table 30 cm apart, 30 cm cloth) and
+   `replay.py` plays `hardware/so101/trajectories/half_fold_30cm.json`; steps in `hardware/so101/README.md`. Never run
+   on an arm; the far pinch is at the edge of reach (about 25° tilt). The camera version of the Isaac expert (one
+   iPhone behind the arms, RGB corners, look once then fold) is planned and not started.
+   **Sim demo replay, deferred (user, 2026-11-10):** add the second follower to `arms.json` and record its
    `limits.json`; `replay.py --check <arm>` to confirm each joint's sign; then `replay.py
    outputs/isaac/replay/s1000000.json --left <arm> --right <arm>` at half speed with the tip positions it prints
    checked against a ruler. Corrections go into `arms/<name>/urdf.json`.
@@ -158,6 +163,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **Open-loop hardware half fold:** `fold_traj.py` + committed trajectory for the 30 cm rig, `replay.py` gripper zero fixed (10° above the closed limit; at 2047 the jaw closed half way), `hardware/so101/README.md`; branch `feat/half-fold-deploy` merges the teleop branch; hardware tests 25 passed, fast 318 passed + 5 skipped (#15 fails); slow not run (sim untouched); not run on an arm · this commit
 - 2026-11-14 · **Collection resubmitted:** 750310 to 750313 failed at start (submit command lacked `--gres`), no data; resubmitted as 750891 to 750894; ssh to the login host was blocked off campus for about 18 hours, so the failure went unseen; docs only · this commit
 - 2026-11-13 · **Camera-policy training prep:** `bc_train` refuses a merge that mixes position-mode and binary-mode demos and writes the mode beside each run, `bc_eval` exits on a mode mismatch or on `--grip-gain` in position mode; vision training adds colour jitter to its shift augmentation (applies to every later vision run); fast 318 passed + 5 skipped (#15 fails), isaac 140 · this commit
 - 2026-11-13 · **Batch N read, collection launched:** position mode passes (28 good, 125 held of 128; 21 and 103 at ±1.5 cm, ±5°); `lh_c1` submitted as 750310 to 750313; docs only, no code change · this commit

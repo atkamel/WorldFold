@@ -28,3 +28,13 @@ def test_half_fold_trajectory():
         assert np.all(t[:, 4] == 0.0)                                    # wrist_roll never flips
         assert np.allclose(t[0, :5], fold_traj.STAND) and np.allclose(t[-1, :5], fold_traj.STAND)
         assert t[0, 5] == t[-1, 5] == fold_traj.OPEN
+
+
+def test_gripper_zero_is_ten_degrees_above_the_closed_limit(tmp_path, monkeypatch):
+    limits = {str(m): {"true": {"min": 900, "max": 3200}} for m in replay.MOTOR_IDS} | {"6": {"true": {"min": 1316, "max": 2779}}}
+    (tmp_path / "limits.json").write_text(__import__("json").dumps(limits))
+    monkeypatch.setattr(replay.arms, "folder", lambda name: tmp_path)
+    f = replay.Follower("x")
+    assert f.zero[1] == 2047
+    assert abs(f.to_ticks(6, np.radians(-10.0)) - 1316) < 1e-6          # the URDF's closed limit is the closed tick
+    assert 2000 < f.to_ticks(6, 1.0) < 2779                             # the open target stays inside the limits
