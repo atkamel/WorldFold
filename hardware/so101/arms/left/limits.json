@@ -1,68 +1,68 @@
 {
   "1": {
-    "homing_offset": -1872,
+    "homing_offset": -1471,
     "raw": {
-      "min": 2909,
-      "max": 1538
+      "min": 3313,
+      "max": 1936
     },
     "true": {
-      "min": 685,
-      "max": 3410
+      "min": 688,
+      "max": 3407
     }
   },
   "2": {
-    "homing_offset": -1353,
+    "homing_offset": -1118,
     "raw": {
-      "min": 3597,
-      "max": 1888
+      "min": 3848,
+      "max": 2107
     },
     "true": {
-      "min": 854,
-      "max": 3241
+      "min": 870,
+      "max": 3225
     }
   },
   "3": {
-    "homing_offset": -1316,
+    "homing_offset": -1549,
     "raw": {
-      "min": 3728,
-      "max": 1831
+      "min": 3417,
+      "max": 1676
     },
     "true": {
-      "min": 948,
-      "max": 3147
+      "min": 870,
+      "max": 3225
     }
   },
   "4": {
-    "homing_offset": -1323,
+    "homing_offset": -1813,
     "raw": {
-      "min": 3656,
-      "max": 1889
+      "min": 3199,
+      "max": 1366
     },
     "true": {
-      "min": 883,
-      "max": 3212
+      "min": 916,
+      "max": 3179
     }
   },
   "5": {
-    "homing_offset": -1495,
+    "homing_offset": 1909,
     "raw": {
-      "min": 2725,
-      "max": 2475
+      "min": 2046,
+      "max": 1771
     },
     "true": {
-      "min": 124,
-      "max": 3970
+      "min": 137,
+      "max": 3958
     }
   },
   "6": {
-    "homing_offset": -1233,
+    "homing_offset": -1955,
     "raw": {
-      "min": 83,
-      "max": 1546
+      "min": 3438,
+      "max": 842
     },
     "true": {
-      "min": 1316,
-      "max": 2779
+      "min": 1297,
+      "max": 2797
     }
   }
 }

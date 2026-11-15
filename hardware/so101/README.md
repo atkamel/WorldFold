@@ -8,9 +8,11 @@ What is here, what state it is in, and how to run it on a machine that has never
   model and `replay.py` plays the joint trajectory on two followers. The cloth goes where a ruler puts it.
 - **What it is not** is the Isaac half-fold expert (`isaac/experts/place_servo.py`). That one reads the live cloth
   state and needs a camera pipeline that is not written yet.
-- **Verified** by 25 tests on a fake servo bus, and a dry run against the left arm's recorded limits (0 clamped steps).
+- **Verified** by 25 tests on a fake servo bus, and a dry run against both arms' recorded limits (0 clamped steps).
 - **Never run on a real arm.** The radian-to-tick map is a hypothesis until `replay.py --check` passes on each arm.
-- **The right arm** is not set up. `arms.json` has `left` and `leader` only, and only `arms/left/limits.json` exists.
+- **Both followers are configured.** `left` is the team's arm 2 and `right` is arm 1 (names from `main`'s `arm1/` and
+  `arm2/` folders). Arm 2's limits were copied from `main` and its motors 2 and 3 have identical limits, so watch its
+  elbow in the check.
 - **Known risks.** The far pinch is at the edge of reach (fingers tilted about 25 degrees). The jaw target is the
   closed limit, so the squeeze on thin cloth may be weak. Nothing detects a missed or slipped corner.
 
@@ -37,10 +39,9 @@ Then tell the repo about this machine's arms.
 
 1. Find each arm's port with `ls /dev/tty.usbmodem*` (plug one arm in at a time) and put the ports in
    `hardware/so101/arms.json` under `"left"` and `"right"`. Ports differ per machine.
-2. Limits. `arms/left/limits.json` is the left follower's and travels with the repo. The right follower needs its
-   own. For each motor, set `MOTOR_ID` in `set_limits.py`, run `.venv-hw/bin/python set_limits.py right`, and sweep
-   the joint to both hard stops. For the gripper, record the fully closed end too, because the map takes its lower tick as
-   closed.
+2. Limits for both followers travel with the repo (`arms/left/limits.json`, `arms/right/limits.json`). To redo one,
+   set `MOTOR_ID` in `set_limits.py`, run `.venv-hw/bin/python set_limits.py <arm>` per motor, and sweep the joint to
+   both hard stops. For the gripper, record the fully closed end too, because the map takes its lower tick as closed.
 
 ## Run order
 
@@ -65,7 +66,7 @@ the torque on, so the arms hold where they are.
 What to look for
 
 - **Step 1.** With the arm upright, model-positive shoulder_pan turns the arm to its right, seen from
-  behind. The others are easiest to judge against the left arm once it is known good. A joint that goes the wrong way
+  behind. The others are easiest to judge against the other arm once one is known good. A joint that goes the wrong way
   gets `"sign": {"<motor>": -1}` in `arms/<name>/urdf.json`. The check does not move the gripper.
 - **Step 3.** The fingertip touches the table 37.8 cm in front of the base origin (31.3 cm in front of the base's
   front edge), in line with the arm, and the jaw closes fully there. It releases 9 cm in front of the origin. If the

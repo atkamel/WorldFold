@@ -163,6 +163,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-14 · **Both followers configured:** `left` = the team's arm 2 (limits and port from `main`, PR #22), `right` = arm 1 (was `left`), leader paired with `right`; dry run 0 clamped steps on both; hardware tests 25 passed; `main`'s `arms.py` layout not merged yet · this commit
 - 2026-11-14 · **Open-loop hardware half fold:** `fold_traj.py` + committed trajectory for the 30 cm rig, `replay.py` gripper zero fixed (10° above the closed limit; at 2047 the jaw closed half way), `hardware/so101/README.md`; branch `feat/half-fold-deploy` merges the teleop branch; hardware tests 25 passed, fast 318 passed + 5 skipped (#15 fails); slow not run (sim untouched); not run on an arm · this commit
 - 2026-11-14 · **Collection resubmitted:** 750310 to 750313 failed at start (submit command lacked `--gres`), no data; resubmitted as 750891 to 750894; ssh to the login host was blocked off campus for about 18 hours, so the failure went unseen; docs only · this commit
 - 2026-11-13 · **Camera-policy training prep:** `bc_train` refuses a merge that mixes position-mode and binary-mode demos and writes the mode beside each run, `bc_eval` exits on a mode mismatch or on `--grip-gain` in position mode; vision training adds colour jitter to its shift augmentation (applies to every later vision run); fast 318 passed + 5 skipped (#15 fails), isaac 140 · this commit
