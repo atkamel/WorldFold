@@ -83,8 +83,9 @@ def test_the_place_follows_the_near_edge(rig):
         (_, before), (_, after) = look[side], events["place_correction"]["points"][side]
         assert abs((after[0] - before[0]) - shifts[side]) < 1e-9 and after[1] == before[1]      # forward only
     second = json.loads((path / "plan_2.json").read_text())
-    assert second["source"]["left"]["place_error_mm"] < json.loads((path / "plan_1.json").read_text())[
-        "source"]["left"]["place_error_mm"]            # 2 cm further out: nearer the arm's top-down reach (10 cm)
+    first = json.loads((path / "plan_1.json").read_text())
+    assert second["source"]["left"]["place_error_mm"] == first["source"]["left"]["place_error_mm"] == 0.0
+    assert second["source"]["left"]["max_tilt_deg"] <= first["source"]["left"]["max_tilt_deg"]
     plans = [s["plan"] for s in data["steps"]]
     assert plans[0] == "plan_1" and plans[-1] == "plan_2" and (path / "look.png").exists()
     assert len(data["frames"]) >= 3 and "score" in events

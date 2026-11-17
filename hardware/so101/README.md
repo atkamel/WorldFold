@@ -21,9 +21,11 @@ What is here, what state it is in, and how to run it on a machine that has never
 - **Both followers are configured**, with `main`'s names and folders. `arm2` is the left arm and `arm1` the right,
   seen from behind. Arm 2's motors 2 and 3 have identical limits, so watch its elbow in the check.
 - **Known risks.**
-  - A 30 cm cloth does not fit the arms' reach at both ends. With the near edge 8 cm in front of the base origins
-    the far pinch is tilted about 25 degrees and the release lands about 2.4 cm past the near corner, because the
-    arms cannot reach closer than 10 cm with the fingers down. Every look prints both misses.
+  - A 30 cm cloth needs tilted fingers at its far end. The fingers can point straight down from 10 to 31 cm in
+    front of the base origin; outside that the planner leans them by the least that reaches the point (26 degrees at
+    the far pinch with the near edge 8 cm out, 29 at the hover above it). Both corners are reached exactly in the
+    model. Within about 12 cm of its base an arm cannot lift straight up, so the lift after the release leans outward
+    (4 cm over its 5 cm rise at 8 cm). Every look prints the pinch and place misses, which should read 0.
   - The jaw target is the closed limit, so the squeeze on thin cloth may be weak.
   - Dark cloth can absorb LiDAR. Pixels with no depth count as flat, so the height mask only removes what it can see.
 
@@ -85,14 +87,15 @@ What to look for
 - **Step 1.** With the arm upright, model-positive shoulder_pan turns the arm to its right, seen from
   behind. The others are easiest to judge against the other arm once one is known good. A joint that goes the wrong way
   gets `"sign": {"<motor>": -1}` in `<name>/urdf.json`. The check does not move the gripper.
-- **Step 3.** The fingertip touches the table 37.8 cm in front of the base origin (31.3 cm in front of the base's
-  front edge), in line with the arm, and the jaw closes fully there. It releases 9 cm in front of the origin. If the
+- **Step 3.** The fingertip touches the table 38.0 cm in front of the base origin (31.5 cm in front of the base's
+  front edge), in line with the arm, and the jaw closes fully there. It releases 8 cm in front of the origin. If the
   touch-down is off by more than about 1 cm, fix the zero in `<name>/urdf.json` (`"zero": {"<motor>": ticks}`)
   before using a cloth.
 - **Step 3, at the far pinch.** The fingers are tilted, so the model puts the fixed fingertip 2.6 mm below the table
   there. The arm presses on the table at that point, which is expected. Stop if it bows or stalls.
-- **Step 4.** Each arm pinches its far corner, carries it over in an arc, opens part way, lifts 5 cm, opens fully
-  and stands back up. Before the pinch each jaw shuts once in the air, which is the grasp check's empty reading.
+- **Step 4.** Each arm pinches its far corner, carries it over in an arc, opens part way, lifts 5 cm (leaning
+  outward this close to the base), opens fully and stands back up. Before the pinch each jaw shuts once in the air,
+  which is the grasp check's empty reading.
 
 ## Folding with the camera
 
@@ -183,7 +186,7 @@ python fold_traj.py --out trajectories/my_fold.json --cloth 0.30 --near 0.08 --c
 
 - `--cloth` cloth side (m). `--near` near edge in front of the base origin (m). The base's front edge is 6.5 cm in
   front of the origin. `--spacing` between the base origins (m).
-- `--near 0.07` cuts the far pinch's tilt to about 21 degrees and puts the release 3 cm inside the near edge.
+- `--near 0.07` cuts the far pinch's tilt to about 22 degrees.
 - `--closed` is the jaw target at the pinch (rad). -0.1745 is the model's closed limit.
 
 ## Arm configuration

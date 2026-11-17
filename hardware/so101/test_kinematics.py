@@ -50,6 +50,24 @@ def test_solve_reaches_target():
     assert err < 1e-3 and tilt < 1.0 and q[4] == 0.0
 
 
+def test_solve_puts_the_tip_first_and_leans_no_more_than_it_must():
+    arm, seed = Arm(), np.radians([0, 40, -30, 80, 0])
+    for target, lean in (((0.07, 0.0, 0.005), 7.0), ((0.37, 0.0, 0.005), 22.2), ((0.40, 0.10, 0.005), 38.9)):
+        q, err, tilt = arm.solve(np.array(target), seed)        # nearer than 10 cm and farther than 31 cm need a lean
+        assert err < 1e-4 and abs(tilt - lean) < 0.2 and q[4] == 0.0
+        assert np.all(q >= arm.low) and np.all(q <= arm.high)
+        for other in np.random.default_rng(0).uniform(arm.low[:4], arm.high[:4], (10, 4)):     # no seed leans less
+            _, e, t = arm.solve(np.array(target), np.r_[other, 0.0])
+            assert e > 1e-4 or t > tilt - 0.2
+    assert arm.solve(np.array([0.60, 0.0, 0.005]), seed)[1] > 0.1                            # out of reach: says so
+
+
+def test_solve_goes_on_when_a_limit_holds_a_joint():
+    arm = Arm()
+    q, err, _ = arm.solve(np.array([0.30, 0.0, 0.07]), np.radians([0, 40, -30, 80, 0]))     # the wrist ends at its limit
+    assert err < 1e-4 and np.isclose(q[3], arm.high[3])
+
+
 def test_committed_trajectory_regenerates():
     import fold_traj
 
