@@ -76,14 +76,15 @@ Arm 2 alone, no cloth, speed 0.3, torque cap 50%. Stopped by hand at step 244, a
 - **Since then** (not yet run on an arm): the committed trajectory releases at 13.5 cm, 5.5 cm short of the near
   edge (the user's choice: same cloth, short fold), 16 mm clear of the base in the model; `replay.py` reaches each
   row in equal moves 50 times a second; the old trajectory is refused.
-- `idle.py release` then stopped at arm 2's elbow motor with an error; the cause is not known. Look at that motor
-  before the next run.
+- `idle.py release` then stopped at arm 2's elbow motor with an error; the cause is not known. After a power cycle
+  the motor is fine (user).
+- **Arm 2 alone, no cloth, played the new fold as intended** (user, speed 0.3, torque cap 50%).
 
 ### Next
 
 From the repo root, panel stopped, a hand on the power.
 
-1. **The run order below from step 3**, with `--torque-limit 50`: one arm with no cloth (fingertip touches 38.0 cm
+1. **The run order below from step 3**, with `--torque-limit 50`: arm 1 with no cloth, as arm 2 did (fingertip touches 38.0 cm
    in front of the base origin, within about 1 cm; the release comes down 13.5 cm out, watch the gap to the base
    there), then both arms with the cloth and `--grasp-check`. The fold lands 5.5 cm short of the near edge.
 
