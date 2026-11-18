@@ -18,6 +18,9 @@ import time
 mode = sys.argv[1]
 print("mode " + mode)
 print("args " + " ".join(sys.argv[2:]))
+if "--log" in sys.argv:
+    with open(sys.argv[sys.argv.index("--log") + 1], "w") as steps:
+        steps.write('{"t": 1.0, "phase": "fold", "row": 0, "target": {}, "measured": {}}\\n')
 if mode == "fold":
     input("Check the outline. Enter to fold, Ctrl-C to stop ")
     print("folding")
@@ -49,7 +52,8 @@ class StandInCamera:
     def latest(self):
         if not self.has_frame:
             return None
-        return types.SimpleNamespace(rgb=np.zeros((6, 4, 3), np.uint8))
+        return types.SimpleNamespace(rgb=np.zeros((6, 4, 3), np.uint8), depth=np.ones((3, 2), np.float32),
+                                     K=(100.0, 100.0, 2.0, 3.0))
 
 
 @pytest.fixture
@@ -58,8 +62,9 @@ def rig(tmp_path):
     script.write_text(STAND_IN)
     calls = []
     arms = {"arm1": StandInArm("arm1", calls), "arm2": StandInArm("arm2", calls)}
-    job = fold_job.FoldJob(arms, StandInCamera(), command=[sys.executable, "-u", str(script)])
-    return types.SimpleNamespace(job=job, calls=calls, arms=arms)
+    runs = tmp_path / "runs"
+    job = fold_job.FoldJob(arms, StandInCamera(), command=[sys.executable, "-u", str(script)], runs_dir=runs)
+    return types.SimpleNamespace(job=job, calls=calls, arms=arms, runs=runs)
 
 
 def wait_for(job, states, seconds=15):
@@ -102,7 +107,7 @@ def test_a_fold_waits_at_each_prompt_and_borrows_the_arms(rig):
     assert "Enter to play" in status["prompt"]
     rig.job.go_on()
     status = wait_for(rig.job, ["done"])
-    assert status["lines"][-1] == "played"
+    assert "played" in status["lines"]
     assert rig.calls == ["lend arm2", "lend arm1", "take back arm2", "take back arm1"]
     args_line = status["lines"][1]
     for flag in ("--left arm2", "--right arm1", "--speed 0.3", "--torque-limit 50", "--grasp-check"):
@@ -146,3 +151,45 @@ def test_a_fold_is_refused_when_an_arm_is_missing(rig):
     del rig.arms["arm1"]
     assert rig.job.start("fold", {}) is not None
     assert rig.calls == []
+
+
+# --- every fold is recorded ---
+
+def test_a_fold_is_recorded_with_frames_steps_and_its_output(rig):
+    import recorder
+
+    assert rig.job.start("fold", {"speed": 0.3}) is None
+    wait_for(rig.job, ["waiting"])
+    rig.job.go_on()
+    deadline = time.time() + 15
+    while "folding" not in rig.job.status()["lines"] and time.time() < deadline:
+        time.sleep(0.05)
+    wait_for(rig.job, ["waiting"])
+    rig.job.go_on()
+    wait_for(rig.job, ["done"])
+    folders = sorted(rig.runs.iterdir())
+    assert len(folders) == 1
+    saved = recorder.load(folders[0])
+    assert saved["meta"]["mode"] == "fold"
+    assert saved["meta"]["options"] == {"speed": 0.3}
+    assert len(saved["frames"]) >= 1
+    assert saved["frames"][0]["t"] > 1_000_000_000          # wall-clock seconds, the clock the step log uses
+    assert len(saved["steps"]) == 1                         # what the script wrote to the --log it was given
+    names = [event["name"] for event in saved["events"]]
+    assert "waiting" in names and "continue" in names and names[-1] == "ended"
+    assert "played" in (folders[0] / "output.txt").read_text()
+    assert saved["summary"] is not None
+
+
+def test_a_look_is_not_recorded(rig):
+    assert rig.job.start("look", {}) is None
+    wait_for(rig.job, ["done"])
+    assert not rig.runs.exists() or list(rig.runs.iterdir()) == []
+
+
+def test_a_fold_that_cannot_start_gives_the_arms_back(rig):
+    rig.job.command = [str(rig.runs / "no_such_program.exe")]
+    refusal = rig.job.start("fold", {})
+    assert refusal is not None
+    assert rig.calls == ["lend arm2", "lend arm1", "take back arm2", "take back arm1"]
+    assert rig.job.status()["state"] == "failed"

@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-17 · **Branch:** `feat/iphone-lidar` (SO-101 hardware side track) · **Phase:** Q, the
+**Updated:** 2026-11-18 · **Branch:** `feat/iphone-lidar` (SO-101 hardware side track) · **Phase:** Q, the
 quarter fold on Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -29,7 +29,9 @@ released, still), user 2026-10-22.
   cloth is light blue, so `fold_camera.py calibrate --cloth-colour blue` finds it by colour (checked on one saved
   frame); live calibration works, the first camera folds missed the
   corners (the cloth was probably out of position at calibration; not confirmed). The control panel can now run
-  Calibrate, Look and Fold with the live camera picture beside the LiDAR cloud; not yet run on the arms. Progress, measurements and next steps are in the
+  Calibrate, Look and Fold with the live camera picture beside the LiDAR cloud; not yet run on the arms. Every run that moves an arm
+  is logged to `hardware/so101/runs/<date_time>/` (targets and encoder readings per control step), and a fold from
+  the panel also saves the camera picture and depth 5 times a second. Progress, measurements and next steps are in the
   bring-up log at the top of `hardware/so101/README.md`.
 - **Hardware code (user, 2026-11-14), `hardware/so101/`:** a scripted two-arm half
   fold planned with numpy kinematics, in three forms: blind from a committed trajectory (`replay.py`), one look
@@ -94,7 +96,7 @@ Look, Fold) and check the arms come back after a fold and after Stop; find why t
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-14: fast 262 passed, 1 failed (#15), 5 skipped; hardware (`pytest hardware/so101`) 65 passed; Windows 2026-11-17: hardware 117 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-14: fast 262 passed, 1 failed (#15), 5 skipped; hardware (`pytest hardware/so101`) 65 passed; Windows 2026-11-18: hardware 127 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -153,6 +155,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-18 · **Every movement is logged; panel request checks (user: log all movements with images and encoder values):** `replay.py` writes `runs/<date_time>/steps.jsonl` as it goes (time, phase, row, targets and readings per arm in model radians; glides every fifth pose; grasp-check readings), with `replay_meta.json` and `plan.json`; `--log FILE` now names that step file (the old end-of-run JSON is gone); `fold_job.py` records each panel fold through `recorder.Recorder` (picture and depth 5 times a second on the same clock, look, calibration, output, events) and passes the folder's `steps.jsonl` to the script; from the commit review: a fold that cannot start gives the arms back, `/mirror` and `/leader` are refused while an arm is lent and an arm comes back following nothing, the laptop page answers only `localhost` / `127.0.0.1` and only JSON posts; the user reports camera folds going to the same place whatever the cloth's position (the calibration was redone after each move, which makes that the standard position) and nowhere near the corners at the standard position, cause not found; not run on the arms; hardware 127 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-17 · **Cloth fold from the control panel (user; design in `docs/superpowers/specs/2026-11-17-panel-cloth-fold-design.md`):** `fold_job.py` runs `fold_camera.py` as a child process for the panel (output kept, the two prompts answered by a Continue button, Stop ends it); `ui.Arm.lend` / `take_back` close and reopen an arm's serial port around a fold; new endpoints `/fold`, `/fold/start|continue|stop`, `/camera.jpg` (encoded in memory), `/look.png`; `ui.html` has a Cloth fold section with the live picture; checked in Chrome on a fake servo bus with a synthetic picture and a stand-in script (look, both prompts, arms lent and a move refused meanwhile, Stop, arms back), not on the arms or the phone; earlier the same day (user, on the rig): live blue calibration outlines the cloth once an arm's cable is off its corner, a torque-cap write failed once on arm 1's motor 2 and passed on the rerun, the jaw's empty readings are -9.3 and -9.5 deg with the rate cap never engaged, and two camera folds missed the corners with both jaws reading empty; hardware 117 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-17 · **`fold_camera.py` no longer dies silently on a live phone (user: fix it):** it exited with no output (0xc0000374, heap corruption) because the Record3D stream object was freed after one frame while the phone kept streaming; freeing it crashed 2 of 2 trial runs, keeping it survived 3 of 3; `rgbd.Phone` keeps every stream object for the life of the process and `fold_camera.record3d_frame` goes through it (its own copy of the connection code deleted); three live `look` runs ended normally, each refusing the stale test calibration; live calibration still to do; hardware 108 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-17 · **Camera: first real frames, blue cloth setting (user):** Record3D streams over USB without the record button (the earlier "no frame" runs were likely the app in the background); the user's cloth is light blue on a pale table with darker things in view, and the darkness detector outlined the laptop at thresholds 121 (Otsu), 150, 165 and 180 on real frames; `fold_score.cloth_value` and `--cloth-colour blue` (`fold_camera.py calibrate`, `fold_score.py`) find it by blue over red, saved as `colour` in `camera.json` and followed by `look`, `fold` and `fold_live.py`; on one saved frame three corners land on the cloth and the fourth is 4 to 5 cm in because an arm's cable covers it; a missing `camera.json` gives a message, not a traceback; no live calibration yet; hardware 106 passed, fast suite not re-run (no file under its test paths changed) · (this commit)

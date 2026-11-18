@@ -263,6 +263,7 @@ class Arm:
             self.pending_pose = None
             self.pending_burst = None
             self.burst_speed = None
+            self.follows = None
             self.lent = False
 
     # --- called from HTTP threads: only touch shared state, never the bus ---
@@ -410,6 +411,13 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None):
             if token and not secrets.compare_digest(parse_qs(url.query).get("t", [""])[0], token):
                 self.reply({"error": "bad token"}, status=403)
                 return None
+            if not token:
+                # The laptop page has no token, so it only answers requests addressed to this machine by name.
+                # A web page elsewhere that points its own name at 127.0.0.1 arrives with that other name.
+                port = self.server.server_address[1]
+                if self.headers.get("Host", "") not in (f"localhost:{port}", f"127.0.0.1:{port}"):
+                    self.reply({"error": "this panel only answers on localhost"}, status=403)
+                    return None
             return url.path
 
         def do_GET(self):
@@ -467,6 +475,11 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None):
             if path is None:
                 return
             self.path = path
+            # A browser lets any web page send a plain form to this port without asking; JSON it must ask about
+            # first, and this server never says yes.
+            if not self.headers.get("Content-Type", "").startswith("application/json"):
+                self.reply({"error": "send JSON"}, status=415)
+                return
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])) or "{}")
             arm = arms_by_name.get(body.get("arm"))
             if self.path.startswith("/fold/"):
@@ -487,6 +500,11 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None):
             if self.path in ARM_MOVES and arm is not None and arm.lent:
                 self.reply({"error": f"{arm.name} is busy with a cloth fold"}, status=409)
                 return
+            if self.path in ("/mirror", "/leader"):
+                for a in arms_by_name.values():
+                    if a.lent:
+                        self.reply({"error": "the arms are busy with a cloth fold"}, status=409)
+                        return
             if self.path == "/goal":
                 arm.set_target(body["pose"])
             elif self.path == "/torque":

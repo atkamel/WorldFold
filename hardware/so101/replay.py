@@ -9,7 +9,8 @@ The trajectory (exported from the simulator) holds joint targets in radians in t
 URDF convention. Per arm they become servo ticks, are clamped to <name>/limits.json,
 and are sent at dt / speed per step. No feedback: the arm is told where to go and nothing
 checks that it got there, except the measured final pose printed at the end, and:
-  --log FILE     reads every arm each step and writes the measured angles (model radians) beside the targets
+  --log FILE     where the step log goes (default: a new folder under runs/). Every run that moves an arm logs each
+                 control step as it happens: time, targets and encoder readings, as model radians
   --grasp-check  for a trajectory with "marks" (fold_traj.py): compares each jaw 2 cm into the lift with its reading
                  shut on nothing; a jaw no further open than --grasp-margin deg has no cloth, and both arms go back
                  down, open, and pinch again, up to --retries times, then carry on regardless
@@ -32,6 +33,8 @@ import json
 import math
 import sys
 import time
+from datetime import datetime
+from pathlib import Path
 
 import scservo_sdk as scs
 
@@ -50,6 +53,8 @@ CLAMP_REFUSE_DEG = 2
 GRASP_RAD = 0.2  # gripper target below this = the grasp
 CHECK_DEG = 8
 SETTLE_SECONDS = 0.5  # hold before reading the final pose
+RUNS_DIR = Path(__file__).parent / "runs"  # one folder per run, ignored by git
+GLIDE_LOG_EVERY = 5  # a glide sends 50 poses a second; every fifth one is read back and logged
 
 # STS3215 control table addresses (same as ui.py)
 ADDR_TORQUE_ENABLE = 40
@@ -139,6 +144,77 @@ class Follower:
             held, read_result, _ = self.packet.read2ByteTxRx(self.port, m, ADDR_TORQUE_LIMIT)
             if result != scs.COMM_SUCCESS or read_result != scs.COMM_SUCCESS or held != limit:
                 raise OSError(f"Motor {m} on the {self.name} arm did not take the torque limit {limit}")
+
+
+class StepLog:
+    """Every control step of a run as one JSON line, written and flushed as it happens, so a stopped run keeps what
+    it did. Each line: "t" (time.time()), "phase", "row" (the trajectory row while folding), and per arm the "target"
+    sent and the "measured" encoder reading, both as the 6 joint angles in model radians. play() calls append()."""
+
+    def __init__(self, path, followers, ticks):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.file = open(self.path, "w")
+        self.followers = followers
+        self.ticks = ticks
+
+    def angles(self, follower, pose):
+        """The 6 joint angles of `pose` ({motor id: ticks}); None for a motor the pose leaves out."""
+        out = []
+        for m in MOTOR_IDS:
+            if m in pose:
+                out.append(round(follower.to_rad(m, pose[m]), 5))
+            else:
+                out.append(None)
+        return out
+
+    def write(self, line):
+        line["t"] = time.time()
+        self.file.write(json.dumps(line) + "\n")
+        self.file.flush()
+
+    def step(self, phase, row, targets, present):
+        target = {}
+        measured = {}
+        for side, follower in self.followers.items():
+            if side in targets:
+                target[side] = self.angles(follower, targets[side])
+            if side in present:
+                measured[side] = self.angles(follower, present[side])
+        self.write({"phase": phase, "row": row, "target": target, "measured": measured})
+
+    def append(self, entry):
+        row, _, present = entry
+        targets = {}
+        for side in self.followers:
+            targets[side] = {}
+            for m in MOTOR_IDS:
+                targets[side][m] = self.ticks[side][row][m - 1]
+        self.step("fold", row, targets, present)
+
+    def grasp_check(self, attempt, empty, lifted, held):
+        self.write({"phase": "grasp check", "row": None, "attempt": attempt, "empty": empty, "lifted": lifted,
+                    "held": held})
+
+    def close(self):
+        self.file.close()
+
+
+def new_run_folder():
+    """A fresh folder RUNS_DIR/<YYYYmmdd_HHMMSS> (with _2, _3 ... if taken)."""
+    stem = datetime.now().strftime("%Y%m%d_%H%M%S")
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    n = 1
+    while True:
+        name = stem
+        if n > 1:
+            name = f"{stem}_{n}"
+        path = RUNS_DIR / name
+        try:
+            path.mkdir()
+            return path
+        except FileExistsError:
+            n += 1
 
 
 # --- trajectory file ---
@@ -344,9 +420,9 @@ def idle_goals(follower, motors):
     return goals
 
 
-def ramp_together(followers, start, goal):
+def ramp_together(followers, start, goal, log=None, phase=None):
     """Ramp every arm from start[side] to goal[side] in step. An arm whose goal is None stays where it is.
-    Returns where each arm ends up."""
+    Returns where each arm ends up. With `log` (a StepLog), the glide is logged under `phase`."""
     end = {}
     steps = {}
     for side in followers:
@@ -367,15 +443,21 @@ def ramp_together(followers, start, goal):
             points = steps[side]
             pose[side] = points[min(i, len(points) - 1)]
         poses.append(pose)
-    run_poses(followers, poses)
+    run_poses(followers, poses, log, phase)
     return end
 
 
-def run_poses(followers, poses):
-    """Send each pose ({name: {motor id: ticks}}) in step, one per tick, on a monotonic clock."""
+def run_poses(followers, poses, log=None, phase=None):
+    """Send each pose ({name: {motor id: ticks}}) in step, one per tick, on a monotonic clock. With `log` (a
+    StepLog), every GLIDE_LOG_EVERY-th pose and the last are logged with the arms' readings."""
     t0 = time.monotonic()
     for i, pose in enumerate(poses):
         sleep_until(t0 + i * TICK_SECONDS)
+        if log is not None and (i % GLIDE_LOG_EVERY == 0 or i == len(poses) - 1):
+            present = {}
+            for name in pose:
+                present[name] = followers[name].read_present()
+            log.step(phase, None, pose, present)
         for name, goals in pose.items():
             followers[name].send_goals(goals)
 
@@ -617,32 +699,54 @@ def replay(args, progress):
                 if not clear:
                     sys.exit(f"The {side} arm's glide {label} comes within {distance * 1000:.0f} mm of itself "
                              f"({parts}): not moving. Pose the arm by hand nearer its idle pose and run again.")
+    log = open_step_log(args, traj, followers, ticks)
+    try:
+        return move(args, progress, traj, followers, ticks, motors, present, at, idle, first, last, log)
+    finally:
+        log.close()
+
+
+def open_step_log(args, traj, followers, ticks):
+    """The run's StepLog, in --log's place or a new folder under RUNS_DIR, with the plan and the maps beside it."""
+    if args.log:
+        path = Path(args.log)
+    else:
+        path = new_run_folder() / "steps.jsonl"
+    log = StepLog(path, followers, ticks)
+    used = {}
+    for side, f in followers.items():
+        used[side] = {"name": f.name, "zero": [f.zero[m] for m in MOTOR_IDS], "sign": [f.sign[m] for m in MOTOR_IDS]}
+    meta = {"started": datetime.now().isoformat(), "trajectory": args.trajectory, "speed": args.speed,
+            "torque_limit": args.torque_limit, "no_gripper": args.no_gripper, "grasp_check": args.grasp_check,
+            "arms": used, "joints": JOINTS}
+    (path.parent / "replay_meta.json").write_text(json.dumps(meta, indent=1))
+    (path.parent / "plan.json").write_text(json.dumps(traj))
+    print(f"Logging every step to {path}")
+    return log
+
+
+def move(args, progress, traj, followers, ticks, motors, present, at, idle, first, last, log):
+    """Everything that moves the arms: torque on, the glides, the trajectory, the glide back."""
+    T, dt = len(traj["arms"]["left"]["target"]), traj["dt"]
     for side, f in followers.items():
         f.torque_on_holding(present[side], args.torque_limit * 10)
 
     progress["step"] = "ramp to the idle pose"
-    at = ramp_together(followers, at, idle)
+    at = ramp_together(followers, at, idle, log, "glide to the idle pose")
 
     progress["step"] = "ramp to the first target"
-    at = ramp_together(followers, at, first)
+    at = ramp_together(followers, at, first, log, "glide to the first target")
     input("At the first target. Check the arms are clear, then press Enter to play (Ctrl-C stops) ")
 
     progress["step"] = 0
-    log = [] if args.log else None
     run = lambda steps: play(followers, ticks, dt, args.speed, motors, progress, steps, log)   # noqa: E731
     if args.grasp_check:
-        engaged = play_with_grasp_check(followers, traj.get("marks"), T, run, args.grasp_margin, args.retries)
+        engaged = play_with_grasp_check(followers, traj.get("marks"), T, run, args.grasp_margin, args.retries,
+                                        log.grasp_check)
     else:
         engaged = run(range(T))
     print(f"Rate cap ({MAX_DEG_S} deg/s) {'engaged ' + str(engaged) + ' times' if engaged else 'never engaged'}.")
     time.sleep(SETTLE_SECONDS)
-    if args.log:
-        rows = {side: [[k] + [round(f.to_rad(m, present[side][m]), 4) for m in MOTOR_IDS] for k, _, present in log]
-                for side, f in followers.items()}
-        with open(args.log, "w") as out:
-            json.dump({"trajectory": args.trajectory, "speed": args.speed, "columns": ["row"] + JOINTS,
-                       "measured": rows}, out)
-        print(f"Measured angles for {len(log)} steps written to {args.log}")
     for side, f in followers.items():
         now, final_q = f.read_present(), traj["arms"][side]["q"][-1]
         print(f"{side} final (deg), measured vs trajectory q:")
@@ -651,7 +755,7 @@ def replay(args, progress):
             print(f"  {name}: {got:7.1f} vs {want:7.1f}  (error {got - want:+.1f})")
 
     progress["step"] = "ramp back to the idle pose"
-    ramp_together(followers, last, idle)
+    ramp_together(followers, last, idle, log, "glide back to the idle pose")
     for side, f in followers.items():
         if idle[side] is not None:
             print(f"{side} ({f.name}) is back at its idle pose, torque on.")

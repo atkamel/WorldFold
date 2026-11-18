@@ -259,6 +259,10 @@ Stop, the last `look.png`, and the script's output as it prints.
   on the motors until the next fold or a power cycle.
 - Options: cloth colour (for Calibrate), speed, torque cap, grasp check (off by default: on a thin cloth it reads
   a held corner as a miss and pinches again). Left is `arm2`, right is `arm1` (`fold_job.py`).
+- Every fold started here is recorded to `runs/<date_time>/` (see "Run logs"). Calibrate and Look are not.
+- A fold that fails to start gives the arms back. Mirror and Leader are refused while a fold has the arms.
+- The page only answers requests sent to `localhost` or `127.0.0.1` as JSON, so another web page open in the
+  browser cannot drive the arms.
 - Checked in a browser against a fake servo bus, a synthetic picture and a stand-in script. Not run on the arms.
 
 ## Folding with the camera watching throughout
@@ -288,7 +292,30 @@ Same setup and calibration as the single look. Start with a dry run, which moves
   `--retries` times (default 2), and carry on regardless after that.
 - The printed readings from the first run say whether 0.5 degrees is the right margin for this cloth. A thin cloth
   may read almost the same as empty, in which case the check reports misses that are not real.
-- `--log FILE` writes the measured joint angles for every step, to compare with the trajectory afterwards.
+- Every run that moves an arm is logged; see "Run logs" below.
+
+## Run logs
+
+Each `replay.py` run that moves an arm writes a new folder `runs/<date_time>/` (ignored by git); `--log FILE` puts
+the step log somewhere else. A dry run writes nothing. `--check` is not logged.
+
+- `steps.jsonl`: one line per control step, written as it happens, so a stopped run keeps what it did. Each line
+  has `t` (`time.time()`), `phase` (`glide to the idle pose`, `glide to the first target`, `fold`,
+  `glide back to the idle pose`), `row` (the trajectory row while folding) and, per arm, `target` and `measured`:
+  the 6 joint angles sent and read back, in model radians. A glide logs every fifth pose. A grasp check adds a
+  line with its jaw readings.
+- `replay_meta.json`: the trajectory file, speed, torque cap, flags, and each arm's tick map.
+- `plan.json`: the trajectory that was played, with its planned fingertip positions.
+
+A fold started from the control panel is recorded into one such folder in `recorder.py`'s layout, which adds:
+
+- `frames/000000.jpg` and `.npz`: the camera picture and LiDAR depth 5 times a second, with their times in
+  `frames.jsonl`. Frame and step times are the same clock, so a picture can be matched to the joints at that moment.
+- `look.png`, `camera.json`, `output.txt` (the script's printed lines), `events.jsonl` (each prompt, Continue, Stop,
+  and how it ended), `meta.json` (the options chosen), `summary.json`.
+
+`recorder.load(folder)` reads a run; `recorder.load_frame(folder, i)` reads one picture with its depth. About
+60 MB per minute. The pictures hold whatever the phone sees.
 
 ## Scoring a fold from photos
 

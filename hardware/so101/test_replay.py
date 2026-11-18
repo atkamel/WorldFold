@@ -111,6 +111,7 @@ def env(tmp_path, monkeypatch):
         limits = {str(m): {"true": {"min": 685, "max": 3410}} for m in range(1, 7)}  # +-120 deg about 2047
         (tmp_path / "arms" / name / "limits.json").write_text(json.dumps(limits))
     monkeypatch.setattr(replay, "SETTLE_SECONDS", 0)
+    monkeypatch.setattr(replay, "RUNS_DIR", tmp_path / "runs")      # every replay logs its steps to a run folder
     monkeypatch.setattr("builtins.input", lambda *a: "")
     return types.SimpleNamespace(replay=replay, ports=ports, tmp=tmp_path)
 
@@ -391,16 +392,92 @@ def test_grasp_check_gives_up_after_its_retries_and_finishes(env, capsys, monkey
     assert code == 0 and out.count("MISSED") == 2 and state["attempt"] == 1
 
 
-def test_log_holds_the_measured_angles_per_step(env):
+def step_lines(path):
+    lines = []
+    for text in Path(path).read_text().splitlines():
+        if text.strip():
+            lines.append(json.loads(text))
+    return lines
+
+
+def only_run_folder(env):
+    folders = sorted((env.tmp / "runs").iterdir())
+    assert len(folders) == 1
+    return folders[0]
+
+
+def test_every_replay_logs_each_step_with_its_time_targets_and_readings(env):
+    traj = make_traj()
+    idle = {m: 1500 + 10 * m for m in range(1, 7)}
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 0
+    folder = only_run_folder(env)
+    lines = step_lines(folder / "steps.jsonl")
+    fold_rows = []
+    phases = []
+    for line in lines:
+        if line["phase"] not in phases:
+            phases.append(line["phase"])
+        if line["phase"] == "fold":
+            fold_rows.append(line)
+    assert phases[0] != "fold" and phases[-1] != "fold" and "fold" in phases      # the glides are logged too
+    assert [line["row"] for line in fold_rows] == list(range(T))
+    times = [line["t"] for line in lines]
+    assert times == sorted(times)
+    first = fold_rows[0]
+    for side in ("left", "right"):
+        assert len(first["target"][side]) == 6 and len(first["measured"][side]) == 6
+        for j in range(6):
+            assert abs(first["target"][side][j] - traj["arms"][side]["target"][0][j]) < 1e-4
+        # a perfect fake servo, read before each send: row 0 reads the first target, where the glide left the arm
+        assert abs(first["measured"][side][0] - traj["arms"][side]["target"][0][0]) < 2 * env.replay.RAD_PER_STEP
+    meta = json.loads((folder / "replay_meta.json").read_text())
+    assert meta["arms"]["left"]["name"] == "L"
+    assert json.loads((folder / "plan.json").read_text())["dt"] == traj["dt"]
+
+
+def test_log_names_the_step_file(env):
     traj = make_traj()
     seed_at_first_target(env, traj)
-    log = env.tmp / "run.json"
-    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--log", str(log)]) == 0
-    data = json.loads(log.read_text())
-    assert [row[0] for row in data["measured"]["left"]] == list(range(T))
-    assert len(data["measured"]["right"][0]) == 7
-    # a perfect fake servo read before each send: step 0 reads the first target, where the arm was seeded
-    assert abs(data["measured"]["left"][0][1] - traj["arms"]["left"]["target"][0][0]) < 2 * env.replay.RAD_PER_STEP
+    wanted = env.tmp / "my_run" / "steps.jsonl"
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--log", str(wanted)]
+    assert env.replay.main(args) == 0
+    assert len(step_lines(wanted)) >= T
+    assert not (env.tmp / "runs").exists()
+
+
+def test_a_stopped_run_keeps_the_steps_logged_so_far(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+
+    def interrupt(n):
+        if n >= 5:
+            raise KeyboardInterrupt
+
+    env.ports["devL"].on_write = interrupt
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 1
+    lines = step_lines(only_run_folder(env) / "steps.jsonl")
+    assert len(lines) >= 1
+    assert len(lines) < T
+
+
+def test_a_dry_run_logs_nothing(env):
+    assert env.replay.main([write_traj(env, make_traj()), "--left", "L", "--right", "R", "--dry-run"]) == 0
+    assert not (env.tmp / "runs").exists()
+
+
+def test_the_grasp_check_readings_go_into_the_log(env, capsys, monkeypatch):
+    add_cloth(env, "devL", {0})
+    add_cloth(env, "devR", {0})
+    code, out = run_fold(env, capsys, monkeypatch)
+    assert code == 0
+    checks = []
+    for line in step_lines(only_run_folder(env) / "steps.jsonl"):
+        if line["phase"] == "grasp check":
+            checks.append(line)
+    assert len(checks) == 1
+    assert checks[0]["held"] == {"left": True, "right": True}
 
 
 # --- idle pose: a replay starts from it and returns to it ---
