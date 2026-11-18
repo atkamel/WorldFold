@@ -51,6 +51,18 @@ class Arm:
             R = R @ rot @ turn(angle)
         return p + R @ self.site[0], (R @ self.site[1])[:, 2]
 
+    def joint_points(self, q):
+        """(elbow joint centre, wrist joint centre, fingertip), each a position (3,), for the 5 arm angles `q`."""
+        R = np.eye(3)
+        p = np.zeros(3)
+        origins = []
+        for (pos, rot), angle in zip(self.links, q):
+            p = p + R @ pos
+            origins.append(p)
+            R = R @ rot @ turn(angle)
+        fingertip = p + R @ self.site[0]
+        return origins[2], origins[3], fingertip
+
     def solve(self, target, seed, iters=200):
         """Arm angles for the fingertip at `target` (base frame: x forward, y left, z up), on the seed's branch;
         wrist_roll stays 0 (free, it flipped half a turn at the edge of reach). The tip position comes first: the four

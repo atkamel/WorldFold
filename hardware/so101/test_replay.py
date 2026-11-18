@@ -25,6 +25,7 @@ class FakePort:
         self.pos = {m: 2047 for m in range(1, 7)}
         self.writes = []  # one {motor id: goal} per sync write
         self.torque = []  # (motor id, value) per torque-enable write
+        self.words = []  # (motor id, address, value) per two-byte register write
         self.on_write = None  # called with the write count; may raise
         self.ser = types.SimpleNamespace(reset_input_buffer=lambda: None)
 
@@ -52,6 +53,7 @@ def make_fake_sdk(ports):
             return 0, 0
 
         def write2ByteTxRx(self, port, motor, address, value):
+            port.words.append((motor, address, value))
             return 0, 0
 
     class GroupSyncRead:
@@ -436,3 +438,45 @@ def test_no_gripper_keeps_the_jaw_out_of_the_idle_moves(env):
     args = [write_traj(env, traj), "--left", "L", "--right", "R", "--no-gripper", "--speed", "1"]
     assert env.replay.main(args) == 0
     assert set(env.ports["devL"].writes[-1]) == {1, 2, 3, 4, 5}
+
+
+# --- torque cap and the lowest points of a trajectory ---
+
+def torque_limits(port):
+    """{motor id: last value written to the torque limit register}."""
+    limits = {}
+    for motor, address, value in port.words:
+        if address == 48:
+            limits[motor] = value
+    return limits
+
+
+def test_torque_limit_caps_every_joint(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--torque-limit", "40"]
+    assert env.replay.main(args) == 0
+    assert torque_limits(env.ports["devL"]) == {1: 400, 2: 400, 3: 400, 4: 400, 5: 400, 6: 400}
+
+
+def test_without_a_torque_limit_the_arm_joints_get_full_torque(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 0
+    assert torque_limits(env.ports["devR"]) == {1: 1000, 2: 1000, 3: 1000, 4: 1000, 5: 1000, 6: 500}
+
+
+def test_a_torque_limit_too_low_to_hold_the_arm_is_refused(env):
+    with pytest.raises(SystemExit):
+        env.replay.main([write_traj(env, make_traj()), "--left", "L", "--torque-limit", "5"])
+
+
+def test_lowest_points_finds_the_step_that_leans_furthest(env):
+    rows = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(5)]
+    rows[3][1] = 0.9  # shoulder lift tips the whole arm forward and down
+    lowest = env.replay.lowest_points(rows)
+    assert len(lowest) == 3
+    for height, step in lowest:
+        assert step == 3
+    upright_tip = env.replay.lowest_points(rows[:3])[2][0]
+    assert lowest[2][0] < upright_tip

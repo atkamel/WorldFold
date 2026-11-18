@@ -77,3 +77,15 @@ def test_committed_trajectory_regenerates():
         old, new = np.array(committed["arms"][side]["target"]), np.array(fresh["arms"][side]["target"])
         assert old.shape == new.shape
         assert np.max(np.abs(old - new)) < 1e-4
+
+
+def test_joint_points_at_the_zero_pose_and_leaning_forward():
+    arm = Arm()
+    elbow, wrist, tip = arm.joint_points(np.zeros(5))
+    assert abs(elbow[2] - 0.229) < 0.001
+    assert abs(wrist[2] - 0.234) < 0.001
+    assert np.allclose(tip, arm.tip(np.zeros(5))[0])
+    leaning = np.array([0.0, 0.8, 0.0, 0.0, 0.0])
+    elbow_leaning, wrist_leaning, tip_leaning = arm.joint_points(leaning)
+    assert elbow_leaning[2] < elbow[2]
+    assert tip_leaning[2] < tip[2]

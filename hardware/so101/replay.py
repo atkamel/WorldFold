@@ -57,6 +57,8 @@ ADDR_GOAL_POSITION = 42
 ADDR_TORQUE_LIMIT = 48
 ADDR_PRESENT_POSITION = 56
 GRIPPER_TORQUE_LIMIT = 500  # 50% of max, as ui.py
+FULL_TORQUE_LIMIT = 1000
+MIN_TORQUE_PERCENT = 10  # below this an arm cannot hold itself up
 
 
 class Follower:
@@ -116,11 +118,16 @@ class Follower:
         if sync.txPacket() != scs.COMM_SUCCESS:
             raise OSError(f"Write to the {self.name} arm failed")
 
-    def torque_on_holding(self, present):
-        """Goal = where each joint is NOW, then torque on, so it holds still."""
+    def torque_on_holding(self, present, arm_limit=FULL_TORQUE_LIMIT):
+        """Goal = where each joint is NOW, then torque on, so it holds still. `arm_limit` (0 to 1000) caps the torque
+        of every joint; the gripper never gets more than its own cap."""
         self.send_goals(present)
-        self.packet.write2ByteTxRx(self.port, GRIPPER_ID, ADDR_TORQUE_LIMIT, GRIPPER_TORQUE_LIMIT)
         for m in MOTOR_IDS:
+            limit = arm_limit
+            if m == GRIPPER_ID:
+                limit = min(GRIPPER_TORQUE_LIMIT, arm_limit)
+            # written every time: the register keeps the last value until the arm is powered off
+            self.packet.write2ByteTxRx(self.port, m, ADDR_TORQUE_LIMIT, limit)
             self.packet.write1ByteTxRx(self.port, m, ADDR_TORQUE_ENABLE, 1)
 
 
@@ -206,6 +213,31 @@ def print_dry_run(side, arm):
         col = [math.degrees(r[j]) for r in rows]
         step = max((abs(b - a) for a, b in zip(col, col[1:])), default=0.0)
         print(f"  {side} {name}: {min(col):.1f} to {max(col):.1f} deg, max step change {step:.2f} deg")
+
+
+def lowest_points(rows):
+    """[(height above the table in m, step)] for the elbow joint centre, the wrist joint centre and the fingertip:
+    the lowest each one gets over the target rows, from the arm model."""
+    import kinematics  # needs numpy, which playing a trajectory does not
+
+    model = kinematics.Arm()
+    lowest = [None, None, None]
+    for step, row in enumerate(rows):
+        points = model.joint_points(row[:5])
+        for i in range(3):
+            height = float(points[i][2])
+            if lowest[i] is None or height < lowest[i][0]:
+                lowest[i] = (height, step)
+    return lowest
+
+
+def print_lowest(side, arm):
+    names = ["elbow joint centre", "wrist joint centre", "fingertip"]
+    lowest = lowest_points(arm["target"])
+    for i in range(3):
+        height, step = lowest[i]
+        print(f"  {side} lowest {names[i]}: {height * 100:.1f} cm above the table at step {step}")
+    print(f"  {side}: the motor bodies reach about 3 cm below their joint centres")
 
 
 # --- motion ---
@@ -351,6 +383,13 @@ def speed_arg(text):
     return value
 
 
+def torque_arg(text):
+    value = int(text)
+    if not MIN_TORQUE_PERCENT <= value <= 100:
+        raise argparse.ArgumentTypeError(f"must be {MIN_TORQUE_PERCENT} to 100")
+    return value
+
+
 def parse(argv):
     p = argparse.ArgumentParser(description="Replay a simulator trajectory on real SO-101 arms.")
     p.add_argument("trajectory", nargs="?")
@@ -358,6 +397,9 @@ def parse(argv):
     p.add_argument("--right")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--speed", type=speed_arg, default=0.5)
+    p.add_argument("--torque-limit", type=torque_arg, default=100, metavar="PERCENT",
+                   help="cap every joint's torque, so a collision stalls gently; stays on the motors until the next "
+                        "replay or a power cycle")
     p.add_argument("--only", choices=["left", "right"])
     p.add_argument("--no-gripper", action="store_true")
     p.add_argument("--allow-clamp", action="store_true")
@@ -423,7 +465,7 @@ def check(args, progress):
     print("Map in use:", f.describe())
     f.connect()
     present = f.read_present()
-    f.torque_on_holding(present)
+    f.torque_on_holding(present, args.torque_limit * 10)
     check_joints(f, present, MOTOR_IDS[:5], progress)
     print("\nDone. Each joint should have moved the same way as the URDF's positive direction.")
     return 0
@@ -455,6 +497,7 @@ def replay(args, progress):
     if args.dry_run:
         for side in followers:
             print_dry_run(side, traj["arms"][side])
+            print_lowest(side, traj["arms"][side])
         return 0
 
     motors = MOTOR_IDS[:5] if args.no_gripper else MOTOR_IDS
@@ -462,7 +505,7 @@ def replay(args, progress):
         f.connect()
     present = {side: f.read_present() for side, f in followers.items()}
     for side, f in followers.items():
-        f.torque_on_holding(present[side])
+        f.torque_on_holding(present[side], args.torque_limit * 10)
 
     at = {side: {m: present[side][m] for m in motors} for side in followers}
     idle = {side: idle_goals(f, motors) for side, f in followers.items()}

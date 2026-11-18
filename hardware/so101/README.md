@@ -47,6 +47,17 @@ Where the first session on the real arms stopped, and what to do next. The secti
   ways (-89 and +90 degrees), not a difference in the map.
 - Fold dry run with both new zeros: 0 clamped steps.
 
+### Protection against collisions
+
+Per-joint limits do not stop the arm hitting itself, the table or the other arm; nothing here checks for that.
+
+- `replay.py --dry-run` prints the lowest height the elbow joint centre, the wrist joint centre and the fingertip
+  reach over the trajectory (model, table at 0). The fold: fingertip 0.5 cm at the pinch, elbow 13.3, wrist 15.2.
+  It does not cover the glide between the idle pose and the first target.
+- `replay.py --torque-limit PERCENT` (10 to 100, default 100) caps every joint's torque so a collision stalls
+  gently. Not tuned on the arms: too low and the shoulder sags at full reach. The cap stays on the motors until the
+  next replay or a power cycle, so the panel runs capped after a capped replay.
+
 ### Next
 
 From the repo root, panel stopped, a hand on the power.
