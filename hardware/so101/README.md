@@ -245,6 +245,45 @@ Do steps 0 to 3 of the run order first. Then, from `hardware/so101/`, with both 
   `fold_live.py` follow it. Keep other blue things out of the area in front of the arms.
 - Calibration is only as good as the ruler placement of the cloth and the joint map. Redo it if the phone moves.
 
+## Calibrating the camera from the arms (built and checked offline, not yet run on the arms)
+
+`fold_camera.py calibrate` reads the camera's map off the cloth, which it takes to lie at the ruler position. Press
+it after moving the cloth and the arms go back to the ruler position. `arm_calibration.py` makes the map from the
+arms instead, one map per arm, so the cloth plays no part in it and the bases may stand anywhere, at any angle.
+
+```bash
+# table clear, phone streaming; flags after --arm's go to replay.py as for a fold
+../../.venv-hw/bin/python arm_calibration.py touch --arm left --left arm2 --right arm1 --speed 0.3 --torque-limit 50
+../../.venv-hw/bin/python arm_calibration.py touch --arm right --left arm2 --right arm1 --speed 0.3 --torque-limit 50
+../../.venv-hw/bin/python arm_calibration.py click     # then open http://localhost:8011
+../../.venv-hw/bin/python arm_calibration.py fit
+../../.venv-hw/bin/python fold_camera.py calibrate --cloth-colour blue    # the cloth anywhere in view
+```
+
+- **touch.** The arm glides from its idle pose, touches the table at 9 points with the jaw shut, rests 2 s on each
+  (at full speed) and glides back. It is played by `replay.py`, so it gets the same checks, torque cap and step log
+  as a fold; add `--dry-run` to see them without motion. A picture is kept of every rest, in
+  `runs/arm_calibration/<arm>/`. About 50 s of touches at full speed.
+- **`--widest`** is how far to either side of straight ahead the touches span (default 55 degrees, an arm sweeping
+  31 cm to each side). Nothing checks for the other arm. With the bases side by side 30 cm apart use `--widest 25`,
+  which keeps every part of the touching arm within 18 cm of its own centre line. The other arm rests in its idle
+  pose, where it takes up 5.5 cm to each side of its own centre line and 10 cm in front of its origin.
+- **click.** A page on this machine shows each picture. Click the very tip of the closed gripper where it meets
+  the table, or say the fingertip is not in the picture. Four touches per arm are the least; more is better.
+- **fit.** Fits each arm's map and prints how far the touches lie from it, and how far a touch lies from the map
+  made without it. A touch more than 10 mm off stops the fit and names its picture. The maps go into `camera.json`
+  under `"arms"`.
+- **After that** `fold_camera.py look` and `fold` read each arm's pinch and place points through that arm's own
+  map. `--spacing` and `--near-edge` go unused. `fold_camera.py calibrate` (and the panel's Calibrate button) only
+  learns the cloth's colour and leaves the maps alone, so it is safe with the cloth anywhere. Redo the touches when
+  the phone or a base moves.
+- The cloth is searched for in front of both bases' front edges and within 60 cm of a base. The corners are named
+  by the picture as before: the near edge is the one at `--near`, and the left arm takes the left corners.
+- The map pairs each pixel with the point the arm was sent to, so a joint zero that is a little off is folded in.
+  It is for a fingertip 5 mm above the table; a cloth corner lies lower, which the camera's slant turns into a few
+  mm along the table.
+- `fold_live.py` does not read this calibration and says so.
+
 ## Folding from the control panel
 
 `ui.py` (`http://localhost:8101`) has a "Cloth fold" section: the live camera picture, Calibrate, Look, Fold and
@@ -449,6 +488,7 @@ kinematics against MuJoCo when `mujoco` and `so101-nexus` are installed.
 |---|---|
 | `fold_live.py` | the fold with the iPhone watching throughout, recorded |
 | `fold_camera.py` | one look through the iPhone, then the fold from where the cloth lies |
+| `arm_calibration.py` | the camera's map from the arms: touch the table, click the fingertips, fit one map per arm |
 | `rgbd.py` | Record3D stream (RGB, depth), table plane, height above the table |
 | `recorder.py` | saves a run, `load` reads it back |
 | `kinematics.py` | the arm's forward and inverse kinematics in numpy |

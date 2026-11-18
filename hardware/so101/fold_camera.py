@@ -3,6 +3,7 @@ the cloth lies (fold_traj.fold), and play it (replay.py). The cloth may be shift
 after the look.
 
     python fold_camera.py calibrate            # once per camera position, with the cloth at the ruler position
+                                               # (after arm_calibration.py: any time, cloth anywhere; see below)
     python fold_camera.py look                 # no motion: where it sees the cloth and whether the arms reach it
     python fold_camera.py fold --left arm2 --right arm1 [--grasp-check] [--log run.json] [--speed 0.5] [--dry-run]
 
@@ -13,6 +14,10 @@ Frames come from the Record3D app over USB, as hardware/iphone_lidar/usb_viewer.
 calibrate takes the cloth at the place fold_traj.py's ruler layout puts it (square, centred between the bases, near
 edge --near-edge in front of the base origins) and stores the pixel-to-table map in camera.json. Table frame: X to
 the right and Y forward seen from behind the arms, origin midway between the two base origins, metres.
+
+After arm_calibration.py has put each arm's own pixel-to-arm map in camera.json ("arms"), the look reads every pinch
+and place point through the map of the arm that goes there. The cloth's place at `calibrate` then no longer matters
+(it only teaches the cloth's colour), --spacing and --near-edge go unused, and the bases may stand anywhere.
 
 Both arms should stand over their bases during a look, out of the cloth's outline in the image. Every look writes
 look.png (the corners it found, and each arm's pinch and place points): check it before letting the arms move.
@@ -128,6 +133,56 @@ def look(rgb, cal, keep=None):
     return dict(zip(names, table)), dict(zip(names, px))
 
 
+REACH = 0.60          # m from a base: further than this is not searched for the cloth
+
+
+def arm_maps(cal):
+    return {side: np.array(cal["arms"][side]["H"]) for side in ("left", "right")}
+
+
+def arms_region(cal):
+    """Whether each pixel lies in the table area searched for the cloth, from the arms' own maps: in front of both
+    bases' front edges and within REACH of one of them."""
+    in_front, near = np.ones(cal["shape"], bool), np.zeros(cal["shape"], bool)
+    for H in arm_maps(cal).values():
+        xy, below = table_grid(H, cal["shape"])
+        in_front &= below & (xy[..., 0] > fold_traj.BASE_FRONT + 0.005)
+        near |= np.hypot(xy[..., 0], xy[..., 1]) < REACH
+    return in_front & near
+
+
+def look_arms(rgb, cal, keep=None):
+    """The cloth's corners in each arm's own frame, {arm: {"near_left", ...: (x forward, y left) m}}, and in pixels.
+    For a calibration made from the arms (arm_calibration.py)."""
+    labels, n = ndimage.label(cloth_pixels(rgb, cal, arms_region(cal), keep))
+    if n == 0:
+        raise ValueError("no cloth in front of the arms")
+    mask = ndimage.binary_fill_holes(labels == np.argmax(np.bincount(labels.ravel())[1:]) + 1)
+    px = fold_score.square_corners(mask, cal["near"])
+    names = ["near_left", "near_right", "far_right", "far_left"]
+    by_arm = {}
+    for side, H in arm_maps(cal).items():
+        frame = fold_score.apply(H, px)
+        sides = np.linalg.norm(frame - np.roll(frame, -1, axis=0), axis=1)
+        if np.any(np.abs(sides / cal["side"] - 1.0) > SIDE_TOL):
+            raise ValueError(f"the shape has sides {np.round(sides * 100, 1)} cm in the {side} arm's map, not a "
+                             f"{cal['side'] * 100:.0f} cm cloth: an arm or a shadow may be touching its outline")
+        by_arm[side] = dict(zip(names, frame))
+    return by_arm, dict(zip(names, px))
+
+
+def fold_points_arms(by_arm):
+    """Each arm's (pinch, place) from the corners in its own frame (look_arms): as fold_points, with no layout."""
+    points = {}
+    for side, far, near, across in (("left", "far_left", "near_left", "near_right"),
+                                    ("right", "far_right", "near_right", "near_left")):
+        corners = by_arm[side]
+        diagonal = corners[across] - corners[far]
+        offset = INSET * diagonal / np.linalg.norm(diagonal)
+        points[side] = tuple((float(p[0]), float(p[1])) for p in (corners[far] + offset, corners[near] + offset))
+    return points
+
+
 def fold_points(corners, spacing):
     """Each arm's (pinch, place) in its own base frame (x forward, y left): the far corner on its side onto the near
     one, both moved INSET in along the far corner's diagonal so the corner lands on the corner."""
@@ -142,6 +197,15 @@ def fold_points(corners, spacing):
 
 
 def plan(rgb, cal, spacing, closed, keep=None, empty_reading=False):
+    """The fold for the cloth in `rgb`: (trajectory, corners, corners in pixels, each arm's points). With a
+    calibration from the arms the corners returned are in the left arm's frame (x forward, y left)."""
+    if "arms" in cal:
+        by_arm, px = look_arms(rgb, cal, keep)
+        points = fold_points_arms(by_arm)
+        traj = fold_traj.fold(points, closed, empty_reading)
+        traj["layout"] = {"frame": "each arm's base, from its own camera map", "corners":
+                          {side: {k: np.round(v, 4).tolist() for k, v in c.items()} for side, c in by_arm.items()}}
+        return traj, by_arm["left"], px, points
     corners, px = look(rgb, cal, keep)
     points = fold_points(corners, spacing)
     traj = fold_traj.fold(points, closed, empty_reading)
@@ -156,10 +220,13 @@ def overlay(rgb, cal, px, points, spacing):
     draw = ImageDraw.Draw(img)
     quad = [tuple(px[k]) for k in ("near_left", "near_right", "far_right", "far_left")]
     draw.line(quad + quad[:1], fill=(0, 255, 0), width=3)
-    to_px = np.linalg.inv(np.array(cal["H"]))
+    to_px = None if "arms" in cal else np.linalg.inv(np.array(cal["H"]))
     for side, base_x in (("left", -spacing / 2), ("right", spacing / 2)):
         for (x, y), colour in zip(points[side], ((255, 0, 0), (0, 80, 255))):
-            u, v = fold_score.apply(to_px, np.array([[base_x - y, x]]))[0]
+            if to_px is None:
+                u, v = fold_score.apply(np.linalg.inv(arm_maps(cal)[side]), np.array([[x, y]]))[0]
+            else:
+                u, v = fold_score.apply(to_px, np.array([[base_x - y, x]]))[0]
             draw.ellipse([u - 7, v - 7, u + 7, v + 7], outline=colour, width=3)
     return img
 
@@ -195,19 +262,28 @@ def main(argv=None):
     rgb = frame(args)
     if args.mode == "calibrate":
         cal = calibrate(rgb, args.cloth, args.near_edge, args.near, args.dark, args.cloth_colour)
+        kept = json.loads(CAMERA.read_text()).get("arms") if CAMERA.exists() else None
+        if kept is not None:
+            cal["arms"] = kept      # the map came from the arms: this look at the cloth must not move it
         CAMERA.write_text(json.dumps(cal))
         print(f"Saved {CAMERA.name}: {cal['colour']} cloth, threshold {cal['dark']:.0f}, "
               f"corners (px) {np.round(cal['px']).tolist()}")
+        if kept is not None:
+            print("The arms' own maps (arm_calibration.py) are kept: only the cloth's colour was learned.")
     if not CAMERA.exists():
         sys.exit(f"No {CAMERA.name} yet: run `fold_camera.py calibrate` first, with the cloth at the ruler position.")
     cal = json.loads(CAMERA.read_text())
+    if "dark" not in cal:
+        sys.exit(f"{CAMERA.name} has the arms' maps but not the cloth's colour yet: run `fold_camera.py calibrate` "
+                 "once with the cloth in view, anywhere.")
     try:
         traj, corners, px, points = plan(rgb, cal, args.spacing, args.closed,
                                          empty_reading="--grasp-check" in replay_args)
     except ValueError as err:
         sys.exit(f"Look failed: {err}")
     overlay(rgb, cal, px, points, args.spacing).save(args.out)
-    print(f"Cloth corners on the table (drawn in {args.out}):")
+    print(f"Cloth corners {'in the left arm frame, X forward and Y left' if 'arms' in cal else 'on the table'} "
+          f"(drawn in {args.out}):")
     reachable = report(traj, corners)
     if args.mode != "fold":
         return 0
