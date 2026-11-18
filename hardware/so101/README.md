@@ -86,6 +86,10 @@ Arm 2 alone, no cloth, speed 0.3, torque cap 50%. Stopped by hand at step 244, a
   box and a bag in view: the darkness detector outlined the laptop at every threshold tried, the blue setting
   outlines the cloth. An arm's cable over a corner pulls that corner in by 4 to 5 cm, so clear the corners first.
   No calibration from the live phone has been checked yet.
+- **`fold_camera.py` died without a word** on most live runs (Windows error 0xc0000374, heap corruption): it let go
+  of the Record3D stream object after one frame while the phone was still streaming. Letting go crashed 2 of 2
+  trial runs, keeping it survived 3 of 3. `rgbd.Phone` holds every stream object until the process ends, and
+  `fold_camera.py` reads its frame through it. Three live `look` runs then ended normally.
 - **Both arms with the cloth folded it** (user), apart from the grasp check, which printed MISSED three times on
   both arms. The check was blind: the trajectory closed the jaw faster than `replay.py` lets it move, so the empty
   reading was taken mid-close (12.6 deg, shut is -9.7) and the pinch was still closing when the lift began. The

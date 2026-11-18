@@ -21,7 +21,6 @@ look.png (the corners it found, and each arm's pinch and place points): check it
 import argparse
 import json
 import sys
-import threading
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +29,7 @@ from scipy import ndimage
 
 import fold_score
 import fold_traj
+import rgbd
 
 HERE = Path(__file__).parent
 CAMERA = HERE / "camera.json"
@@ -42,19 +42,9 @@ REGION = {"x": (-0.35, 0.35), "y": (fold_traj.BASE_FRONT + 0.005, 0.55)}
 
 def record3d_frame(device=0, timeout=5.0):
     """One RGB frame [H, W, 3] from Record3D over USB."""
-    from record3d import Record3DStream
-    devices = Record3DStream.get_connected_devices()
-    if len(devices) <= device:
-        sys.exit(f"No iPhone at index {device}. Plug it in, unlock it, open Record3D.")
-    new_frame = threading.Event()
-    session = Record3DStream()
-    session.on_new_frame = new_frame.set
-    session.on_stream_stopped = lambda: None
-    if session.connect(devices[device]) is False:
-        sys.exit("Record3D is not serving USB. Turn on USB Streaming mode in its settings and stop any recording.")
-    if not new_frame.wait(timeout):
-        sys.exit("Record3D connected but sent no frame.")
-    return np.array(session.get_rgb_frame())
+    phone = rgbd.Phone(device)
+    phone.start()
+    return phone.wait(timeout).rgb
 
 
 def frame(args):

@@ -152,3 +152,46 @@ def test_a_calibration_saved_without_a_colour_still_looks_for_a_dark_cloth(cal):
     truth = cloth(shift=(0.02, 0.015), turn_deg=8.0)
     corners, _ = fold_camera.look(render(truth, BASES), old_cal)
     assert np.linalg.norm(corners["near_left"] - truth[0]) < 0.004
+
+
+# --- one frame from the phone ---
+
+class OneFrameStream:
+    """A stand-in for record3d.Record3DStream that has a frame ready as soon as it connects."""
+
+    made = []
+
+    def __init__(self):
+        OneFrameStream.made.append(self)
+        self.on_new_frame = None
+
+    @staticmethod
+    def get_connected_devices():
+        return ["phone"]
+
+    def connect(self, device):
+        self.on_new_frame()
+        return True
+
+    def get_rgb_frame(self):
+        return np.full((960, 720, 3), 7, np.uint8)
+
+    def get_depth_frame(self):
+        return np.ones((256, 192), np.float32)
+
+    def get_intrinsic_mat(self):
+        return types.SimpleNamespace(fx=700.0, fy=700.0, tx=360.0, ty=480.0)
+
+
+def test_one_frame_from_the_phone_keeps_its_stream_alive(monkeypatch):
+    import gc
+    import weakref
+
+    OneFrameStream.made.clear()
+    monkeypatch.setitem(sys.modules, "record3d", types.SimpleNamespace(Record3DStream=OneFrameStream))
+    rgb = fold_camera.record3d_frame()
+    assert rgb.shape == (960, 720, 3)
+    stream = weakref.ref(OneFrameStream.made[0])
+    OneFrameStream.made.clear()
+    gc.collect()
+    assert stream() is not None
