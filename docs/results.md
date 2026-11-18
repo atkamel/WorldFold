@@ -2832,3 +2832,31 @@ model's base body has no collision geoms, so the real overlap is at least this.
 
 `replay.py` sends one target per trajectory row, every `dt / speed` seconds: 0.167 s at speed 0.3, with up to
 2.7 deg between rows, so the goals arrive as steps 6 times a second. Not measured on the arm; `--log` was off.
+
+## Self-collision check and the short fold (2026-11-17)
+
+Arm model only (so101_new_calib, so101-nexus 0.4.8, MuJoCo 3.11.0 as installed), nothing here run on an arm.
+`hardware/so101/collision.py`: signed distance between the collision shapes of parts 3 or more joints apart, base
+meshes made solid, `mj_geomDistance` with the native convex routine off. With it on, 99 of 13,098 calls over the old
+fold returned exactly 0 for shapes whose nearest points were up to 4 cm apart; with it off, none did.
+
+One-arm plan, pinch at 38 cm, straight ahead, release at each distance from the base origin, nearest approach over
+the whole plan (always the shoulder housing and the gripper):
+
+| release | nearest approach |
+|---|---|
+| 8 cm (the near edge) | -67.0 mm |
+| 10 cm | -28.1 mm |
+| 11 cm | -13.9 mm |
+| 12 cm | -2.8 mm |
+| 13 cm | 9.6 mm |
+| 14 cm | 21.5 mm |
+| 15 cm | 32.1 mm |
+| 16 cm | 42.7 mm |
+
+The overlap depth differs between the two convex routines (33.9 mm native, 67.0 mm older, same pose); the sign
+agrees. With a 10 mm clearance and 5 mm steps the planner releases at 13.5 cm: 5.5 cm short of the near edge of the
+30 cm cloth, nearest approach 15.6 mm, 325 steps (was 353). The old trajectory is refused by `replay.py`.
+
+Not checked by this: parts 1 or 2 joints apart (both idle poses read as 6 to 8 mm overlaps there, the arm resting
+on itself), the table, the other arm, and the glides to and from the idle pose.

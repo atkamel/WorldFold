@@ -244,6 +244,28 @@ def lowest_points(follower, ticks):
     return lowest
 
 
+def keeps_clear_of_itself(side, follower, ticks):
+    """Print the nearest the arm comes to itself over the clamped tick rows that are sent. False if that is under
+    the clearance."""
+    try:
+        import collision  # needs mujoco and so101_nexus, which playing a trajectory does not
+    except ImportError as err:
+        sys.exit(f"The self-collision check cannot run ({err}). Install mujoco and so101_nexus, or pass "
+                 "--no-collision-check to play without it.")
+    rows = []
+    for row in ticks:
+        angles = []
+        for m in MOTOR_IDS:
+            angles.append(follower.to_rad(m, row[m - 1]))
+        rows.append(angles)
+    distance, step, parts = collision.closest(rows)
+    if distance >= collision.FAR:
+        print(f"  {side} no part of the arm comes within {collision.FAR * 100:.0f} cm of another")
+    else:
+        print(f"  {side} nearest the arm comes to itself: {distance * 1000:.0f} mm ({parts}) at step {step}")
+    return distance >= collision.CLEARANCE
+
+
 def print_lowest(side, follower, ticks):
     names = ["elbow joint centre", "wrist joint centre", "fingertip"]
     lowest = lowest_points(follower, ticks)
@@ -323,23 +345,33 @@ def play(followers, ticks, dt, speed, motors, progress, steps=None, log=None):
     is appended."""
     tick = dt / speed
     cap = MAX_DEG_S * tick * speed * STEPS_PER_DEGREE  # ticks per tick
+    sends = max(1, math.ceil(tick / TICK_SECONDS - 1e-9))  # a row is reached in this many equal moves, not one jump
     steps = range(len(next(iter(ticks.values())))) if steps is None else steps
     command = {name: {m: ticks[name][steps[0]][m - 1] for m in motors} for name in followers}
     engaged = 0
     t0 = time.monotonic()
     for i, k in enumerate(steps):
-        sleep_until(t0 + i * tick)
+        row_start = t0 + i * tick
+        sleep_until(row_start)
         progress["step"] = k
         if log is not None:
             log.append((k, time.monotonic(), {name: f.read_present() for name, f in followers.items()}))
-        for name, f in followers.items():
+        before = {}
+        for name in followers:
+            before[name] = dict(command[name])
             for m in motors:
                 delta = ticks[name][k][m - 1] - command[name][m]
                 if abs(delta) > cap:
                     engaged += 1
                     delta = math.copysign(cap, delta)
                 command[name][m] += delta
-            f.send_goals(command[name])
+        for j in range(1, sends + 1):
+            sleep_until(row_start + (j - 1) * tick / sends)
+            for name, f in followers.items():
+                goal = {}
+                for m in motors:
+                    goal[m] = before[name][m] + (command[name][m] - before[name][m]) * j / sends
+                f.send_goals(goal)
     return engaged
 
 
@@ -416,6 +448,8 @@ def parse(argv):
     p.add_argument("--only", choices=["left", "right"])
     p.add_argument("--no-gripper", action="store_true")
     p.add_argument("--allow-clamp", action="store_true")
+    p.add_argument("--no-collision-check", action="store_true",
+                   help="play even if the arm model passes through itself, or when mujoco is not installed")
     p.add_argument("--log", metavar="FILE")
     p.add_argument("--grasp-check", action="store_true")
     p.add_argument("--grasp-margin", type=float, default=0.5, help="deg the jaw must stay open past its empty reading")
@@ -453,7 +487,8 @@ def main(argv=None):
         reason = "Ctrl-C" if isinstance(err, KeyboardInterrupt) else f"bus error: {err}"
         print(f"\nStopped ({reason}) at step {progress['step']}. No more targets sent; torque left on, arms hold.")
         if args.torque_limit < 100:
-            print(f"The {args.torque_limit}% torque cap is still on the motors, until the next replay or a power cycle.")
+            print(f"A {args.torque_limit}% torque cap was asked for and may be on some or all motors. "
+                  "The next replay or a power cycle sets every motor again.")
         return 1
 
 
@@ -500,12 +535,17 @@ def replay(args, progress):
              if name and args.only in (None, side)}
     followers = {side: Follower(name) for side, name in names.items()}
     ticks, refuse = {}, False
+    hits_itself = False
     for side, f in followers.items():
         print("Map in use:", f.describe())
         ticks[side], stats = convert(f, traj["arms"][side]["target"])
         print_clamps(side, f, stats)
         refuse |= any(worst > CLAMP_REFUSE_DEG for _, worst in stats.values())
         print_tips(side, traj["arms"][side])
+        if not args.no_collision_check and not keeps_clear_of_itself(side, f, ticks[side]):
+            hits_itself = True
+    if hits_itself:
+        sys.exit("The arm would pass through or too close to itself: not playing this trajectory.")
     if refuse and not args.allow_clamp:
         sys.exit(f"Clamped by more than {CLAMP_REFUSE_DEG} deg: the arm cannot do this trajectory. "
                  "Re-run with --allow-clamp to play the clamped version.")
@@ -562,9 +602,12 @@ def replay(args, progress):
         if idle[side] is not None:
             print(f"{side} ({f.name}) is back at its idle pose, torque on.")
     if args.torque_limit < 100:
-        for f in followers.values():
-            f.set_torque_limits(FULL_TORQUE_LIMIT)
-        print("Torque cap lifted: every joint is back at full torque.")
+        for side, f in followers.items():
+            if idle[side] is None:
+                print(f"{side} ({f.name}) has no idle pose to rest in: its {args.torque_limit}% torque cap stays on.")
+            else:
+                f.set_torque_limits(FULL_TORQUE_LIMIT)
+                print(f"{side} ({f.name}): torque cap lifted, every joint is back at full torque.")
     return 0
 
 

@@ -54,6 +54,12 @@ Per-joint limits do not stop the arm hitting itself, the table or the other arm;
 - `replay.py --dry-run` prints the lowest height the elbow joint centre, the wrist joint centre and the fingertip
   reach over the trajectory (model, table at 0). The fold: fingertip 0.5 cm at the pinch, elbow 13.3, wrist 15.2.
   It does not cover the glide between the idle pose and the first target.
+- **Self-collision** (`collision.py`, on the arm model's collision shapes with the base made solid). `fold_traj.py`
+  moves a release that would hit the arm's own base back toward the pinch, by the least that keeps every checked
+  pair of parts 1 cm apart (`release_short_mm` in the trajectory), and refuses a fold it cannot clear. `replay.py`
+  prints the nearest the arm comes to itself and refuses to play under 1 cm; `--no-collision-check` plays anyway.
+  Not checked: parts 1 or 2 joints apart (the folded idle pose rests on them), the table, the other arm, and the
+  glides to and from the idle pose. It needs `mujoco` and `so101_nexus`, which the minimal `.venv-hw` lacks.
 - `replay.py --torque-limit PERCENT` (10 to 100, default 100) caps every joint's torque so a collision stalls
   gently. Each motor's limit is read back, and a motor that did not take it stops the run before torque goes on.
   Full torque is written back when the run ends at the idle pose; after a stop the cap stays on the motors until
@@ -65,18 +71,21 @@ Arm 2 alone, no cloth, speed 0.3, torque cap 50%. Stopped by hand at step 244, a
 
 - **The planned path goes through the base.** In the arm model the gripper is inside the shoulder housing from step
   218 to 269 (34 mm at the deepest), from the moment the fingertip comes within 11.9 cm of the base origin. The
-  release is planned at 8 cm. The planner checks reach and tilt, not the arm's own body. Do not play
-  `half_fold_30cm.json` again until the layout or the planner changes.
-- **The motion was jerky.** `replay.py` sends one target per row, 6 a second at speed 0.3, with nothing in between.
+  release was planned at 8 cm, and the planner checked reach and tilt, not the arm's own body.
+- **The motion was jerky.** `replay.py` sent one target per row, 6 a second at speed 0.3, with nothing in between.
+- **Since then** (not yet run on an arm): the committed trajectory releases at 13.5 cm, 5.5 cm short of the near
+  edge (the user's choice: same cloth, short fold), 16 mm clear of the base in the model; `replay.py` reaches each
+  row in equal moves 50 times a second; the old trajectory is refused.
+- `idle.py release` then stopped at arm 2's elbow motor with an error; the cause is not known. Look at that motor
+  before the next run.
 
 ### Next
 
 From the repo root, panel stopped, a hand on the power.
 
-0. **Before any fold**: a self-collision check in the planner and the dry run, a layout that keeps the release
-   at least 12 cm from the base origin, and targets sent smoothly between rows.
-1. **The run order below from step 3**: one arm with no cloth (fingertip touches 38.0 cm in front of the base
-   origin, within about 1 cm), then both arms with the cloth and `--grasp-check`.
+1. **The run order below from step 3**, with `--torque-limit 50`: one arm with no cloth (fingertip touches 38.0 cm
+   in front of the base origin, within about 1 cm; the release comes down 13.5 cm out, watch the gap to the base
+   there), then both arms with the cloth and `--grasp-check`. The fold lands 5.5 cm short of the near edge.
 
 Known and not fixed: `set_limits.py` uses Unix-only keyboard handling, so limits cannot be re-recorded on Windows.
 

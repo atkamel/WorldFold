@@ -9,7 +9,10 @@ import pytest
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent))
-sys.modules.setdefault("scservo_sdk", types.ModuleType("scservo_sdk"))   # replay imports it; only validate() is used
+try:
+    import scservo_sdk  # noqa: F401
+except ImportError:      # replay imports it; only validate() is used. An empty stand-in must not hide the real SDK
+    sys.modules["scservo_sdk"] = types.ModuleType("scservo_sdk")
 
 import fold_camera  # noqa: E402
 import replay  # noqa: E402

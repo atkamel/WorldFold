@@ -16,6 +16,8 @@ import json
 from pathlib import Path
 
 import numpy as np
+
+import collision
 from kinematics import Arm
 
 JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
@@ -30,6 +32,9 @@ STEP = 0.004          # m of fingertip travel per step (8 cm/s at dt; replay.py'
 JOINT_STEP = 0.04     # rad per step on joint-space moves
 JOINT_RATE = np.radians(55) * DT    # rad per step a joint may be asked for in the carry (replay.py caps at 60 deg/s)
 BASE_FRONT = 0.065    # m from the base's origin to its front edge
+SHORT_STEP = 0.005    # m: the release backs away from the base in steps of this
+MAX_SHORT = 0.10      # m the release may stop short of the place it was asked for
+MIN_FOLD = 0.02       # m of fold that must be left after shortening
 
 
 def plan(arm, pinch, place, closed, counts=None):
@@ -112,15 +117,60 @@ def plan(arm, pinch, place, closed, counts=None):
     return np.array(rows), worst, marks, used
 
 
+def release_pose_is_clear(arm, pinch, place, closed):
+    """True if the arm keeps clear of itself with the fingertip at the release point `place`, jaw shut and jaw open.
+    One pose, reached along the table from `pinch`: a quick test before a whole plan is made and checked."""
+    q = np.radians([0.0, 40.0, -30.0, 80.0, 0.0])
+    start = np.array([pinch[0], pinch[1], PINCH_Z])
+    end = np.array([place[0], place[1], PLACE_Z])
+    steps = max(1, int(np.ceil(np.linalg.norm(end - start) / 0.02)))
+    for k in range(steps + 1):
+        q = arm.solve(start + (end - start) * k / steps, q)[0]
+    angles = [float(angle) for angle in q]
+    distance = collision.closest([angles + [closed], angles + [OPEN]])[0]
+    return distance >= collision.CLEARANCE
+
+
+def clear_release(arm, pinch, place, closed):
+    """(release point, m it stops short of `place`, the plan's step counts): the point nearest `place`, on the line
+    back toward `pinch`, whose whole plan keeps the arm clear of itself. ValueError if there is none."""
+    pinch = np.asarray(pinch, float)
+    place = np.asarray(place, float)
+    reach = float(np.linalg.norm(pinch - place))
+    back = (pinch - place) / reach
+    short = 0.0
+    while short <= MAX_SHORT and reach - short >= MIN_FOLD:
+        candidate = place + short * back
+        if release_pose_is_clear(arm, pinch, candidate, closed):
+            rows, _, _, used = plan(arm, pinch, candidate, closed)
+            if collision.closest(rows.tolist())[0] >= collision.CLEARANCE:
+                return candidate, short, used
+        short += SHORT_STEP
+    raise ValueError(f"no release within {MAX_SHORT * 100:.0f} cm of the place keeps the arm clear of itself")
+
+
 def fold(points, closed=-0.17):
     """A two-arm trajectory for replay.py from {"left": (pinch, place), "right": (pinch, place)}, each (x, y) m in
-    that arm's base frame. Both plans get the same step counts; the grasp check comes when both have lifted 2 cm."""
+    that arm's base frame. A place the arm cannot reach without hitting its own base is moved back toward the pinch
+    ("release_short_mm"). Both plans get the same step counts; the grasp check comes when both have lifted 2 cm."""
     arm = Arm()
-    natural = [plan(arm, *points[side], closed)[3] for side in ("left", "right")]
+    asked = points
+    points = {}
+    shorts = {}
+    natural = []
+    for side in ("left", "right"):
+        pinch, place = asked[side]
+        release, short, used = clear_release(arm, pinch, place, closed)
+        points[side] = (pinch, (float(release[0]), float(release[1])))
+        shorts[side] = short
+        natural.append(used)
     counts = {name: max(n[name] for n in natural) for name in natural[0]}
     arms, report, checks = {}, {}, []
     for side in ("left", "right"):
         target, (err, tilt), marks, _ = plan(arm, *points[side], closed, counts)
+        clearance = collision.closest(target.tolist())[0]
+        if clearance < collision.CLEARANCE:
+            raise ValueError(f"the {side} arm comes within {clearance * 1000:.0f} mm of itself")
         checks.append(marks["check"])
         q = np.vstack([target[:1], target])                  # replay.py wants T + 1 rows; open loop, q = the targets
         tips = np.array([arm.tip(r[:5])[0] for r in q])
@@ -129,7 +179,9 @@ def fold(points, closed=-0.17):
                       "tip": [[-p[1], p[0], p[2]] for p in tips.tolist()]}   # right, forward, up
         place_err = float(np.linalg.norm(tips[marks["placed"] + 1, :2] - np.asarray(points[side][1])))
         report[side] = {"tip_error_mm": round(err * 1000, 1), "max_tilt_deg": round(tilt, 1),
-                        "pinch_error_mm": round(pinch_err * 1000, 1), "place_error_mm": round(place_err * 1000, 1)}
+                        "pinch_error_mm": round(pinch_err * 1000, 1), "place_error_mm": round(place_err * 1000, 1),
+                        "release_short_mm": round(shorts[side] * 1000, 1),
+                        "self_clearance_mm": round(clearance * 1000, 1)}
     return {"dt": DT, "joints": JOINTS, "arms": arms, "marks": marks | {"check": max(checks)},
             "source": {"tool": "hardware/so101/fold_traj.py", "closed_rad": closed, **report}}
 
@@ -158,6 +210,10 @@ def main():
     print(f"{T} steps, {T * DT:.0f} s at full speed. IK: {traj['source']['left']} / {traj['source']['right']}")
     print(f"Cloth: {args.cloth * 100:.0f} cm square, centred between the bases, near edge "
           f"{(args.near - BASE_FRONT) * 100:.1f} cm in front of the bases' front edges.")
+    for side in ("left", "right"):
+        short = traj["source"][side]["release_short_mm"]
+        if short > 0:
+            print(f"The {side} arm releases {short / 10:.1f} cm short of the near edge: nearer, it would hit its own base.")
 
 
 if __name__ == "__main__":

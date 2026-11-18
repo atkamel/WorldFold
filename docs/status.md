@@ -19,9 +19,10 @@ released, still), user 2026-10-22.
   Windows laptop (panel driven on both arms, limits verified on the motors, idle poses recorded). The elbow zeros
   were off by 12.2 degrees on arm 2 and 5.5 on arm 1 (read with the limp arm held in the model's zero pose) and are
   corrected in each arm's `hardware/so101/<arm>/urdf.json`; under power both zero poses now look as modelled, wrist
-  roll included. The first fold on arm 2 (no cloth) struck its own base at the release and moved in jerks: the
-  committed trajectory puts the gripper 34 mm inside the shoulder housing in the model, and `replay.py` sends one
-  target per row. Progress, measurements and next steps are in the
+  roll included. The first fold on arm 2 (no cloth) struck its own base at the release and moved in jerks. Since
+  then, not yet run on an arm: the planner and `replay.py` check the arm against itself (`collision.py`), the
+  committed fold releases 5.5 cm short of the near edge (13.5 cm from the base origin, 16 mm clear in the model),
+  and `replay.py` sends 50 moves a second between rows. Progress, measurements and next steps are in the
   bring-up log at the top of `hardware/so101/README.md`.
 - **Hardware code (user, 2026-11-14), `hardware/so101/`:** a scripted two-arm half
   fold planned with numpy kinematics, in three forms: blind from a committed trajectory (`replay.py`), one look
@@ -75,10 +76,10 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
-Hardware side track (user, 2026-11-17), in order: a self-collision check in the planner and the dry run; a
-layout whose release stays at least 12 cm from the base origin (the user's choice: smaller cloth, bases further
-back, or a short fold); smooth targets between rows in `replay.py`; then one arm with no cloth (fingertip touch
-watched, arm 1 for a sideways miss); both arms with the cloth and `--grasp-check`. Commands in `hardware/so101/README.md`.
+Hardware side track (user, 2026-11-17), in order: look at arm 2's elbow motor (it refused a torque write after the
+collision, cause not known); arm 2 alone with no cloth and `--torque-limit 50` (fingertip touch at 38 cm, the gap
+to the base at the release, smooth motion); the same on arm 1 (watch for a sideways miss); both arms with the cloth
+and `--grasp-check`. Commands in `hardware/so101/README.md`.
 
 ## Environment
 
@@ -86,7 +87,7 @@ watched, arm 1 for a sideways miss); both arms with the cloth and `--grasp-check
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-14: fast 262 passed, 1 failed (#15), 5 skipped; hardware (`pytest hardware/so101`) 65 passed; Windows 2026-11-17: hardware 88 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-14: fast 262 passed, 1 failed (#15), 5 skipped; hardware (`pytest hardware/so101`) 65 passed; Windows 2026-11-17: hardware 99 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -123,7 +124,6 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 18 | `hardware/so101/trajectories/half_fold_30cm.json` drives the gripper into the arm's own base at the release (model: 34 mm inside the shoulder housing, steps 218 to 269); `fold_traj.py` has no self-collision check; seen on arm 2, 2026-11-17 | any fold on the real arms | hardware side track |
 | 17 | `isaac/tests/test_rlpd.py::test_learns_toy_placement` fails on Windows (2026-11-14, twice in a row): learned mean 0.0667 against the 0.05 bar; cause not looked into | fast suite on Windows | Q |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
@@ -146,6 +146,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-17 · **Self-collision check, short fold, smooth playback (user: go with both, same cloth short fold):** `collision.py` measures parts 3 or more joints apart on the arm model with the base solid (native convex routine off: it returned false zeros); `fold_traj.py` backs the release away from the base until the whole plan is 1 cm clear and refuses what it cannot clear; `replay.py` refuses under 1 cm (`--no-collision-check` overrides) and reaches each row in equal moves every 20 ms; committed fold regenerated: release 13.5 cm from the base origin, 5.5 cm short, 15.6 mm clear, 325 steps, old one refused (results.md); torque cap lifted only on an arm that ends at its idle pose; `test_fold_traj.py` and `test_fold_camera.py` no longer hide the real servo SDK behind an empty stand-in (it broke `test_idle.py` in a full run); #18 closed in the model, not run on an arm; MuJoCo here is 3.11.0, the pin says 3.10.0; hardware 99 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-17 · **`idle.py release` reaches every motor (user: arm 2 stayed stiff past the elbow):** `release` on arm 2 stopped at motor 3 ("writing address 40 failed") and left motors 4 to 6 torqued; freed by a power cycle; why motor 3 refused is not known (the message dropped the comm result and error byte); `release` and `record` turn torque off on all six motors, then list each failure with its comm result and servo error byte and exit nonzero; not run on an arm; `test_idle.py` 1 passed; fast on Windows 263 passed, 1 failed (#17), 5 skipped; full hardware run 87 passed, 4 failed in `test_replay.py` with uncommitted edits to `replay.py` from other work in the tree · (this commit)
 - 2026-11-17 · **First fold on arm 2 hit its base; torque cap hardened (user):** arm 2 alone, no cloth, speed 0.3, cap 50%: struck its own base and moved in jerks, stopped at step 244; in the model the gripper is inside the shoulder housing on steps 218 to 269 (34 mm, results.md), so the plan is at fault, new blocker #18; jerks: one target per row, 6 a second at that speed; fixes from the commit review: torque limits read back and a motor that did not take one stops the run before torque on, full torque written back at the idle pose (cap left on after a stop), lowest points computed from the clamped ticks; planner, layout and smoothing not changed; hardware 88 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-17 · **Replay: torque cap and lowest points (user: worried about collisions inside the joint limits):** `replay.py --torque-limit PERCENT` caps every joint (default 100 writes full torque to joints 1 to 5 each run, gripper stays at 50%); the dry run prints the lowest elbow centre, wrist centre and fingertip heights from `kinematics.Arm.joint_points` (fold: 13.3, 15.2, 0.5 cm); no self-collision or arm-to-arm check exists; cap not tried on an arm; hardware 85 passed, fast suite not re-run (no file under its test paths changed) · (this commit)

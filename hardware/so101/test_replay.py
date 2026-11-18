@@ -458,9 +458,11 @@ def torque_limit_writes(port):
     return writes
 
 
-def test_torque_limit_caps_every_joint_and_full_torque_comes_back_at_the_end(env):
+def test_torque_limit_caps_every_joint_and_full_torque_comes_back_at_the_idle_pose(env):
     traj = make_traj()
-    seed_at_first_target(env, traj)
+    idle = {m: 1500 + 10 * m for m in range(1, 7)}
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
     args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--torque-limit", "40"]
     assert env.replay.main(args) == 0
     writes = torque_limit_writes(env.ports["devL"])
@@ -532,3 +534,66 @@ def test_lowest_points_follow_the_clamped_targets(env):
     expected = env.replay.lowest_points(f, env.replay.convert(f, at_limit)[0])
     for i in range(3):
         assert abs(sent[i][0] - expected[i][0]) < 0.002
+
+
+def test_the_torque_cap_stays_on_an_arm_that_does_not_end_at_an_idle_pose(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--torque-limit", "40"]
+    assert env.replay.main(args) == 0
+    writes = torque_limit_writes(env.ports["devL"])
+    for motor in range(1, 7):
+        assert writes[motor] == [400]
+
+
+# --- smooth playback ---
+
+def test_play_moves_in_small_steps_between_rows(env, monkeypatch):
+    r = env.replay
+    monkeypatch.setattr(r, "sleep_until", lambda t: None)
+    traj = make_traj(dt=0.1)  # 0.1 s per row = 5 sends of 20 ms
+    followers = {"left": r.Follower("L"), "right": r.Follower("R")}
+    ticks = {}
+    for side in followers:
+        ticks[side] = r.convert(followers[side], traj["arms"][side]["target"])[0]
+        followers[side].connect()
+    r.play(followers, ticks, 0.1, 1.0, r.MOTOR_IDS, {})
+    sent = followers["left"].port.writes
+    assert len(sent) == T * 5
+    biggest_row_jump = 0.0
+    for k in range(1, T):
+        for j in range(6):
+            biggest_row_jump = max(biggest_row_jump, abs(ticks["left"][k][j] - ticks["left"][k - 1][j]))
+    biggest_sent_jump = 0
+    for a, b in zip(sent, sent[1:]):
+        for m in a:
+            biggest_sent_jump = max(biggest_sent_jump, abs(b[m] - a[m]))
+    assert biggest_sent_jump <= biggest_row_jump / 5 + 1  # +1: goals are rounded to whole ticks
+    for m in range(1, 7):
+        assert sent[-1][m] == round(ticks["left"][T - 1][m - 1])
+
+
+# --- self-collision ---
+
+def through_the_base_traj():
+    traj = make_traj()
+    for side in ("left", "right"):
+        row = traj["arms"][side]["target"][4]
+        row[1] = math.radians(-81)
+        row[2] = math.radians(80)
+        row[3] = math.radians(95)
+    return traj
+
+
+def test_a_trajectory_through_the_arms_own_base_is_refused(env):
+    pytest.importorskip("mujoco")
+    pytest.importorskip("so101_nexus")
+    path = write_traj(env, through_the_base_traj())
+    with pytest.raises(SystemExit):
+        env.replay.main([path, "--left", "L", "--right", "R", "--speed", "1"])
+    assert env.ports == {}  # refused before any bus was opened
+
+
+def test_no_collision_check_plays_it_anyway(env):
+    path = write_traj(env, through_the_base_traj())
+    assert env.replay.main([path, "--left", "L", "--right", "R", "--dry-run", "--no-collision-check"]) == 0
