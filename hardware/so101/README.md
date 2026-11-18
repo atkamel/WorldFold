@@ -58,8 +58,10 @@ Per-joint limits do not stop the arm hitting itself, the table or the other arm;
   moves a release that would hit the arm's own base back toward the pinch, by the least that keeps every checked
   pair of parts 1 cm apart (`release_short_mm` in the trajectory), and refuses a fold it cannot clear. `replay.py`
   prints the nearest the arm comes to itself and refuses to play under 1 cm; `--no-collision-check` plays anyway.
-  Not checked: parts 1 or 2 joints apart (the folded idle pose rests on them), the table, the other arm, and the
-  glides to and from the idle pose. It needs `mujoco` and `so101_nexus`, which the minimal `.venv-hw` lacks.
+  The glides to the idle pose, from it to the first target and back are checked after the arms are read and before
+  torque goes on; a glide is refused only if it comes nearer than both of its ends. With `--no-gripper` the jaw is
+  taken at both ends of its travel. Not checked: parts 1 or 2 joints apart (the folded idle pose rests on them),
+  the table and the other arm. It needs `mujoco` and `so101_nexus`, which the minimal `.venv-hw` lacks.
 - `replay.py --torque-limit PERCENT` (10 to 100, default 100) caps every joint's torque so a collision stalls
   gently. Each motor's limit is read back, and a motor that did not take it stops the run before torque goes on.
   Full torque is written back when the run ends at the idle pose; after a stop the cap stays on the motors until
@@ -79,14 +81,18 @@ Arm 2 alone, no cloth, speed 0.3, torque cap 50%. Stopped by hand at step 244, a
 - `idle.py release` then stopped at arm 2's elbow motor with an error; the cause is not known. After a power cycle
   the motor is fine (user).
 - **Arm 2 alone, no cloth, played the new fold as intended** (user, speed 0.3, torque cap 50%).
+- **Both arms with the cloth folded it** (user), apart from the grasp check, which printed MISSED three times on
+  both arms. The check was blind: the trajectory closed the jaw faster than `replay.py` lets it move, so the empty
+  reading was taken mid-close (12.6 deg, shut is -9.7) and the pinch was still closing when the lift began. The
+  trajectory is regenerated with the jaw inside the rate cap (379 steps); not rerun on the arms.
 
 ### Next
 
 From the repo root, panel stopped, a hand on the power.
 
-1. **The run order below from step 3**, with `--torque-limit 50`: arm 1 with no cloth, as arm 2 did (fingertip touches 38.0 cm
-   in front of the base origin, within about 1 cm; the release comes down 13.5 cm out, watch the gap to the base
-   there), then both arms with the cloth and `--grasp-check`. The fold lands 5.5 cm short of the near edge.
+1. **Both arms with the cloth again**, `--torque-limit 50 --grasp-check`: the empty reading should print near -9.7
+   and a held corner should read wider than that by more than 0.5 deg. The fold lands 5.5 cm short of the near edge.
+2. **The camera versions**: `fold_camera.py calibrate`, `fold_live.py --dry-run`, then `fold_live.py --grasp-check`.
 
 Known and not fixed: `set_limits.py` uses Unix-only keyboard handling, so limits cannot be re-recorded on Windows.
 

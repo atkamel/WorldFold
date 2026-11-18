@@ -244,26 +244,67 @@ def lowest_points(follower, ticks):
     return lowest
 
 
-def keeps_clear_of_itself(side, follower, ticks):
-    """Print the nearest the arm comes to itself over the clamped tick rows that are sent. False if that is under
-    the clearance."""
+def load_collision():
     try:
         import collision  # needs mujoco and so101_nexus, which playing a trajectory does not
     except ImportError as err:
         sys.exit(f"The self-collision check cannot run ({err}). Install mujoco and so101_nexus, or pass "
                  "--no-collision-check to play without it.")
+    return collision
+
+
+def nearest_to_itself(collision, follower, tick_rows, jaw_ticks):
+    """(distance m, row, parts) over rows of ticks ({motor id: ticks} each). A row with no jaw gets `jaw_ticks`.
+    Anything the check cannot measure stops the run."""
     rows = []
-    for row in ticks:
+    for pose in tick_rows:
         angles = []
         for m in MOTOR_IDS:
-            angles.append(follower.to_rad(m, row[m - 1]))
+            angles.append(follower.to_rad(m, pose.get(m, jaw_ticks)))
         rows.append(angles)
-    distance, step, parts = collision.closest(rows)
+    try:
+        return collision.closest(rows)
+    except ValueError as err:
+        sys.exit(f"The self-collision check failed ({err}): not playing.")
+
+
+def keeps_clear_of_itself(side, follower, ticks, jaw_commanded):
+    """Print the nearest the arm comes to itself over the clamped tick rows that are sent. False if that is under
+    the clearance. A jaw that is not commanded could be anywhere, so both ends of its travel are checked."""
+    collision = load_collision()
+    jaw_choices = [None]
+    if not jaw_commanded:
+        jaw_choices = [follower.limits[GRIPPER_ID][0], follower.limits[GRIPPER_ID][1]]
+    worst = None
+    for jaw_ticks in jaw_choices:
+        tick_rows = []
+        for row in ticks:
+            pose = {}
+            for m in MOTOR_IDS:
+                pose[m] = row[m - 1]
+            if jaw_ticks is not None:
+                pose[GRIPPER_ID] = jaw_ticks
+            tick_rows.append(pose)
+        found = nearest_to_itself(collision, follower, tick_rows, jaw_ticks)
+        if worst is None or found[0] < worst[0]:
+            worst = found
+    distance, step, parts = worst
     if distance >= collision.FAR:
         print(f"  {side} no part of the arm comes within {collision.FAR * 100:.0f} cm of another")
     else:
         print(f"  {side} nearest the arm comes to itself: {distance * 1000:.0f} mm ({parts}) at step {step}")
     return distance >= collision.CLEARANCE
+
+
+def glide_keeps_clear(follower, start, goal, jaw_ticks):
+    """(clear, distance m, parts) for the straight glide from `start` to `goal` ({motor id: ticks}). The arm rests
+    at both ends, so the glide is only at fault if it comes nearer than the clearance AND nearer than its ends."""
+    collision = load_collision()
+    poses = [start] + ramp_points(start, goal)
+    distance, _, parts = nearest_to_itself(collision, follower, poses, jaw_ticks)
+    at_the_ends = nearest_to_itself(collision, follower, [poses[0], poses[-1]], jaw_ticks)[0]
+    clear = distance >= collision.CLEARANCE or distance >= at_the_ends - 0.001
+    return clear, distance, parts
 
 
 def print_lowest(side, follower, ticks):
@@ -542,7 +583,7 @@ def replay(args, progress):
         print_clamps(side, f, stats)
         refuse |= any(worst > CLAMP_REFUSE_DEG for _, worst in stats.values())
         print_tips(side, traj["arms"][side])
-        if not args.no_collision_check and not keeps_clear_of_itself(side, f, ticks[side]):
+        if not args.no_collision_check and not keeps_clear_of_itself(side, f, ticks[side], not args.no_gripper):
             hits_itself = True
     if hits_itself:
         sys.exit("The arm would pass through or too close to itself: not playing this trajectory.")
@@ -559,16 +600,30 @@ def replay(args, progress):
     for f in followers.values():
         f.connect()
     present = {side: f.read_present() for side, f in followers.items()}
+    at = {side: {m: present[side][m] for m in motors} for side in followers}
+    idle = {side: idle_goals(f, motors) for side, f in followers.items()}
+    first = {side: {m: ticks[side][0][m - 1] for m in motors} for side in followers}
+    last = {side: {m: ticks[side][T - 1][m - 1] for m in motors} for side in followers}
+    if not args.no_collision_check:
+        for side, f in followers.items():
+            if idle[side] is None:
+                glides = [("to the first target", at[side], first[side])]
+            else:
+                glides = [("to the idle pose", at[side], idle[side]),
+                          ("from the idle pose to the first target", idle[side], first[side]),
+                          ("back to the idle pose", last[side], idle[side])]
+            for label, start, goal in glides:
+                clear, distance, parts = glide_keeps_clear(f, start, goal, present[side][GRIPPER_ID])
+                if not clear:
+                    sys.exit(f"The {side} arm's glide {label} comes within {distance * 1000:.0f} mm of itself "
+                             f"({parts}): not moving. Pose the arm by hand nearer its idle pose and run again.")
     for side, f in followers.items():
         f.torque_on_holding(present[side], args.torque_limit * 10)
 
-    at = {side: {m: present[side][m] for m in motors} for side in followers}
-    idle = {side: idle_goals(f, motors) for side, f in followers.items()}
     progress["step"] = "ramp to the idle pose"
     at = ramp_together(followers, at, idle)
 
     progress["step"] = "ramp to the first target"
-    first = {side: {m: ticks[side][0][m - 1] for m in motors} for side in followers}
     at = ramp_together(followers, at, first)
     input("At the first target. Check the arms are clear, then press Enter to play (Ctrl-C stops) ")
 
@@ -596,7 +651,6 @@ def replay(args, progress):
             print(f"  {name}: {got:7.1f} vs {want:7.1f}  (error {got - want:+.1f})")
 
     progress["step"] = "ramp back to the idle pose"
-    last = {side: {m: ticks[side][T - 1][m - 1] for m in motors} for side in followers}
     ramp_together(followers, last, idle)
     for side, f in followers.items():
         if idle[side] is not None:

@@ -32,7 +32,7 @@ def test_half_fold_trajectory():
         assert np.allclose(tip[shut[-1]], (right, 0.10 + short, fold_traj.PLACE_Z), atol=0.003)   # the release
         assert tip[:, 2].min() > 0.004                                   # the fingertip never goes into the table
         assert tip[shut[0]:shut[-1], 2].max() < 0.12                     # the carry stays under the cloth's half length
-        assert np.abs(np.diff(t[:, :5], axis=0)).max() < np.radians(60) * fold_traj.DT      # under replay's rate cap
+        assert np.abs(np.diff(t, axis=0)).max() < np.radians(60) * fold_traj.DT   # under replay's rate cap, jaw too
         assert np.all(t[:, 4] == 0.0)                                    # wrist_roll never flips
         assert np.allclose(t[0, :5], fold_traj.STAND) and np.allclose(t[-1, :5], fold_traj.STAND)
         assert t[0, 5] == t[-1, 5] == fold_traj.OPEN
@@ -70,3 +70,8 @@ def test_a_release_far_from_the_base_is_not_shortened():
 def test_a_pinch_against_the_base_is_refused():
     with __import__("pytest").raises(ValueError):
         fold_traj.fold({"left": ((0.10, 0.0), (0.06, 0.0)), "right": ((0.10, 0.0), (0.06, 0.0))})
+
+
+def test_a_fold_with_nowhere_to_go_is_refused():
+    with __import__("pytest").raises(ValueError):
+        fold_traj.fold({"left": ((0.30, 0.0), (0.30, 0.0)), "right": ((0.30, 0.0), (0.30, 0.0))})

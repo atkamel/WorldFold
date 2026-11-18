@@ -35,3 +35,15 @@ def test_closest_names_the_worst_row():
     distance, step, pair = collision.closest([ZERO, ZERO, AT_THE_BASE, ZERO])
     assert step == 2
     assert distance < 0
+
+
+def test_a_row_that_is_not_a_number_is_refused():
+    broken = [0.0, float("nan"), 0.0, 0.0, 0.0, 0.0]
+    with pytest.raises(ValueError):
+        collision.closest([ZERO, broken])
+
+
+def test_a_distance_that_is_not_a_number_is_refused(monkeypatch):
+    monkeypatch.setattr(collision.mujoco, "mj_geomDistance", lambda *args: float("nan"))
+    with pytest.raises(ValueError):
+        collision.closest([ZERO])

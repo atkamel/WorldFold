@@ -597,3 +597,49 @@ def test_a_trajectory_through_the_arms_own_base_is_refused(env):
 def test_no_collision_check_plays_it_anyway(env):
     path = write_traj(env, through_the_base_traj())
     assert env.replay.main([path, "--left", "L", "--right", "R", "--dry-run", "--no-collision-check"]) == 0
+
+
+def fake_closest(band):
+    """A stand-in for collision.closest: the arm overlaps itself wherever shoulder lift (rad) is inside `band`.
+    Returns the stand-in and the list of row sets it was asked about."""
+    asked = []
+
+    def closest(rows):
+        asked.append([list(row) for row in rows])
+        for step, row in enumerate(rows):
+            if band[0] <= row[1] <= band[1]:
+                return -0.02, step, "stand-in parts"
+        return 0.05, 0, "nothing"
+
+    return closest, asked
+
+
+def test_a_glide_to_the_idle_pose_through_the_arm_is_refused_before_torque_goes_on(env, monkeypatch):
+    collision = pytest.importorskip("collision")
+    closest, asked = fake_closest((-0.6, -0.4))
+    monkeypatch.setattr(collision, "closest", closest)
+    traj = make_traj()
+    idle = {m: 2047 for m in range(1, 7)}
+    idle[2] = 2047 - round(1.0 / env.replay.RAD_PER_STEP)  # shoulder lift -1 rad: the glide crosses the band
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    with pytest.raises(SystemExit):
+        env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"])
+    assert env.ports["devL"].torque == []
+    assert env.ports["devL"].writes == []
+
+
+def test_without_the_gripper_the_check_takes_the_jaw_at_both_ends_of_its_travel(env, monkeypatch):
+    collision = pytest.importorskip("collision")
+    closest, asked = fake_closest((5.0, 6.0))  # never overlaps
+    monkeypatch.setattr(collision, "closest", closest)
+    traj = make_traj()
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--dry-run", "--no-gripper"]
+    assert env.replay.main(args) == 0
+    f = env.replay.Follower("L")
+    ends = [f.to_rad(6, f.limits[6][0]), f.to_rad(6, f.limits[6][1])]
+    jaws_seen = set()
+    for rows in asked:
+        for row in rows:
+            jaws_seen.add(round(row[5], 6))
+    assert jaws_seen == {round(ends[0], 6), round(ends[1], 6)}

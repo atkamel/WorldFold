@@ -63,6 +63,12 @@ def plan(arm, pinch, place, closed, counts=None):
     def hold(steps, jaws):
         rows.extend([*rows[-1][:5], j] for j in np.broadcast_to(jaws, (steps,)))
 
+    def move_jaw(start, end, least):
+        """The arm still, the jaw from `start` to `end` in at least `least` rows and never faster than JOINT_RATE:
+        replay.py holds a faster jaw back, and it then lags the rest of the plan."""
+        steps = max(least, int(np.ceil(abs(end - start) / JOINT_RATE)) + 1)
+        hold(steps, np.linspace(start, end, steps))
+
     def segment(a, b):
         n = max(1, int(np.ceil(np.linalg.norm(np.subtract(b, a)) / STEP)))
         return [np.asarray(a) + np.subtract(b, a) * k / n for k in range(1, n + 1)]
@@ -73,14 +79,14 @@ def plan(arm, pinch, place, closed, counts=None):
         q, err, _ = arm.solve(p, q)
         worst[0] = max(worst[0], err)
     joint_move("approach", q, OPEN)
-    hold(10, np.linspace(OPEN, closed, 10))
+    move_jaw(OPEN, closed, 10)
     hold(6, closed)
     marks = {"empty": len(rows) - 1}
-    hold(10, np.linspace(closed, OPEN, 10))
+    move_jaw(closed, OPEN, 10)
     marks["hover"] = len(rows) - 1
     line(segment((*pinch, HOVER), (*pinch, PINCH_Z)), OPEN)
     marks["pinch"] = len(rows) - 1
-    hold(12, np.linspace(OPEN, closed, 12))
+    move_jaw(OPEN, closed, 12)
     hold(8, closed)
     lift = len(rows)
     peak = min(0.10, 0.45 * reach)                          # under the cloth's half length: the carry never pulls it
@@ -101,7 +107,7 @@ def plan(arm, pinch, place, closed, counts=None):
     marks["check"] = next(k for k in range(lift, len(rows)) if arm.tip(rows[k][:5])[0][2] >= PINCH_Z + 0.02)
     marks["placed"] = len(rows) - 1
     hold(10, closed)
-    hold(14, np.linspace(closed, PART_OPEN, 14))            # gentle release: the jaw opens part way, arm still
+    move_jaw(closed, PART_OPEN, 14)                         # gentle release: the jaw opens part way, arm still
     out = place / np.linalg.norm(place)                     # away from the base
     for lean in np.arange(0.0, RETREAT + 1e-9, 0.01):       # under ~12 cm from the base the arm cannot lift straight
         lift = segment((*place, PLACE_Z), (*(place + lean * out), PLACE_Z + RETREAT))   # up: lean the lift outward
@@ -112,7 +118,7 @@ def plan(arm, pinch, place, closed, counts=None):
         if miss < 1e-3:
             break
     line(lift, PART_OPEN)
-    hold(8, np.linspace(PART_OPEN, OPEN, 8))
+    move_jaw(PART_OPEN, OPEN, 8)
     joint_move("back", STAND, OPEN)
     return np.array(rows), worst, marks, used
 
@@ -137,6 +143,8 @@ def clear_release(arm, pinch, place, closed):
     pinch = np.asarray(pinch, float)
     place = np.asarray(place, float)
     reach = float(np.linalg.norm(pinch - place))
+    if reach < MIN_FOLD:
+        raise ValueError("the pinch and the place are the same point: nothing to fold")
     back = (pinch - place) / reach
     short = 0.0
     while short <= MAX_SHORT and reach - short >= MIN_FOLD:

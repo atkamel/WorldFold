@@ -2860,3 +2860,21 @@ agrees. With a 10 mm clearance and 5 mm steps the planner releases at 13.5 cm: 5
 
 Not checked by this: parts 1 or 2 joints apart (both idle poses read as 6 to 8 mm overlaps there, the arm resting
 on itself), the table, the other arm, and the glides to and from the idle pose.
+
+## First two-arm fold with the cloth; the jaw lagged the plan (2026-11-17)
+
+Both arms, 30 cm cloth, `half_fold_30cm.json` (325 steps), `--speed 0.3 --torque-limit 50 --grasp-check`. n = 1.
+The user: the fold worked apart from the grasp check. No fold score was taken.
+
+| | left (arm 2) | right (arm 1) |
+|---|---|---|
+| jaw at the empty reading (should be about -9.7) | 12.6 deg | 12.5 deg |
+| jaw lifted, attempts 1 to 3 | -9.3, -9.5, -9.4 deg | -9.5, -9.5, -9.6 deg |
+| verdict printed | MISSED x 3 | MISSED x 3 |
+| final pose error, largest joint | 0.6 deg (shoulder lift) | 0.5 deg (shoulder lift) |
+
+The rate cap engaged 320 times. The trajectory asked the jaw for up to 7.45 deg per row and `replay.py` allows
+3 deg per row (60 deg/s), so the jaw ran behind the plan: the empty reading was taken mid-close, which no lifted
+reading could beat, and the pinch was about 7 deg from shut when the lift began. The verdicts say nothing about the
+grasp. Regenerated with the jaw at 2.68 deg per row at most: 379 steps, empty reading 6 rows after the jaw is shut.
+Not rerun on the arms.

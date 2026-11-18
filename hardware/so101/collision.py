@@ -6,6 +6,7 @@ on them), the table, the cloth, and the other arm.
 """
 
 import importlib.util
+import math
 import os
 
 import mujoco
@@ -57,15 +58,21 @@ def load():
 
 def closest(rows):
     """(distance m, row index, "part and part"): the nearest any checked pair of parts comes over `rows` (each the 6
-    joint angles in radians). Negative = they overlap by that much. FAR when nothing comes within FAR."""
+    joint angles in radians). Negative = they overlap by that much. FAR when nothing comes within FAR. ValueError
+    for an angle or a distance that is not a number."""
     model, data, pairs = load()
     best = (FAR, 0, "nothing")
     segment = np.zeros(6)
     for step, row in enumerate(rows):
+        for angle in row:
+            if not math.isfinite(angle):
+                raise ValueError(f"row {step} holds an angle that is not a number")
         data.qpos[:6] = row
         mujoco.mj_kinematics(model, data)
         for first, second, names in pairs:
             distance = mujoco.mj_geomDistance(model, data, first, second, FAR, segment)
+            if not math.isfinite(distance):
+                raise ValueError(f"the distance between {names} at row {step} is not a number")
             if distance < best[0]:
                 best = (float(distance), step, names)
     return best
