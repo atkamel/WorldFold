@@ -720,3 +720,105 @@ def test_without_the_gripper_the_check_takes_the_jaw_at_both_ends_of_its_travel(
         for row in rows:
             jaws_seen.add(round(row[5], 6))
     assert jaws_seen == {round(ends[0], 6), round(ends[1], 6)}
+
+
+class Clock:
+    """A stand-in for time.monotonic and sleep_until: sleeping jumps to the deadline, nothing else passes time."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def sleep_until(self, deadline):
+        self.now = max(self.now, deadline)
+
+
+def stalled_play(env, monkeypatch, stall_at_read, stall=0.3):
+    """Play the test trajectory on a stand-in clock with one encoder read that takes `stall` seconds.
+    Returns [(time, left arm goals)] for every send."""
+    r = env.replay
+    clock = Clock()
+    monkeypatch.setattr(r, "sleep_until", clock.sleep_until)
+    monkeypatch.setattr(r.time, "monotonic", lambda: clock.now)
+    traj = make_traj(dt=0.1)
+    followers = {"left": r.Follower("L"), "right": r.Follower("R")}
+    ticks = {}
+    for side in followers:
+        ticks[side] = r.convert(followers[side], traj["arms"][side]["target"])[0]
+        followers[side].connect()
+    reads = []
+    read_present = followers["left"].read_present
+
+    def slow_read():
+        reads.append(1)
+        if len(reads) == stall_at_read:
+            clock.now += stall
+        return read_present()
+    followers["left"].read_present = slow_read
+    sent = []
+    send_goals = followers["left"].send_goals
+
+    def timed_send(goals):
+        sent.append((clock.now, dict(goals)))
+        send_goals(goals)
+    followers["left"].send_goals = timed_send
+    r.play(followers, ticks, 0.1, 1.0, r.MOTOR_IDS, {}, log=[])
+    return sent, ticks["left"]
+
+
+def test_a_slow_encoder_read_delays_the_rows_after_it_instead_of_sending_them_back_to_back(env, monkeypatch):
+    on_time, ticks = stalled_play(env, monkeypatch, stall_at_read=None)
+    stalled, _ = stalled_play(env, monkeypatch, stall_at_read=3)
+
+    def fastest(sent):          # the largest goal change of any motor within any 20 ms
+        worst = 0.0
+        for i, (t, goals) in enumerate(sent):
+            for later, other in sent[i + 1:]:
+                if later - t > 0.02 + 1e-9:
+                    break
+                worst = max(worst, max(abs(other[m] - goals[m]) for m in goals))
+        return worst
+    assert fastest(stalled) <= fastest(on_time) + 1          # no faster with the stall than without it
+    assert [goals for _, goals in stalled] == [goals for _, goals in on_time]     # the same goals, in the same order
+    assert stalled[-1][0] - on_time[-1][0] >= 0.3 - 1e-9     # the run ends later by the stall
+
+
+def test_a_slow_encoder_read_in_a_glide_delays_the_poses_after_it(env, monkeypatch):
+    r = env.replay
+    clock = Clock()
+    monkeypatch.setattr(r, "sleep_until", clock.sleep_until)
+    monkeypatch.setattr(r.time, "monotonic", lambda: clock.now)
+    follower = r.Follower("L")
+    follower.connect()
+    reads = []
+    read_present = follower.read_present
+
+    def slow_read():
+        reads.append(1)
+        if len(reads) == 2:
+            clock.now += 0.3
+        return read_present()
+    follower.read_present = slow_read
+    times = []
+    send_goals = follower.send_goals
+
+    def timed_send(goals):
+        times.append(clock.now)
+        send_goals(goals)
+    follower.send_goals = timed_send
+
+    class Log:
+        def step(self, *args):
+            pass
+    poses = [{"left": {m: 2047 + 4 * i for m in r.MOTOR_IDS}} for i in range(30)]
+    r.run_poses({"left": follower}, poses, Log(), "glide")
+    gaps = [b - a for a, b in zip(times, times[1:])]
+    assert min(gaps) >= r.TICK_SECONDS - 1e-9          # never two poses in less than a tick
+
+
+def test_grasp_check_on_a_trajectory_planned_without_its_empty_reading_is_refused_before_any_bus_opens(env):
+    traj = make_traj()
+    traj["marks"] = {"hover": 4, "check": 7}
+    with pytest.raises(SystemExit) as stopped:
+        env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--grasp-check"])
+    assert "empty reading" in str(stopped.value)
+    assert env.ports == {}

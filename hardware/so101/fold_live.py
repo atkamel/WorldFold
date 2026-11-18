@@ -123,7 +123,8 @@ def fold(followers, phone, cal, run, args):
         plane = rgbd.fit_plane(rgbd.points(first.depth, first.K, first.rgb.shape))
     keep = keep_mask(first, plane)
     try:
-        traj, corners, px, points = fold_camera.plan(first.rgb, cal, args.spacing, args.closed, keep)
+        traj, corners, px, points = fold_camera.plan(first.rgb, cal, args.spacing, args.closed, keep,
+                                                     args.grasp_check)
         ticks = to_ticks(followers, traj, args.allow_clamp)
     except ValueError as err:
         print(f"Look failed: {err}")
@@ -183,7 +184,7 @@ def fold(followers, phone, cal, run, args):
     if shifts and max(abs(d) for d in shifts.values()) >= MIN_SHIFT:
         print("Bottom layer moved: place shifted " + ", ".join(f"{s} {d * 100:+.1f} cm" for s, d in shifts.items()))
         try:
-            traj2 = fold_traj.fold(moved, args.closed)
+            traj2 = fold_traj.fold(moved, args.closed, args.grasp_check)
             ticks2 = to_ticks(followers, traj2, args.allow_clamp)
         except ValueError as err:
             print(f"Corrected place not usable ({err}); keeping the first plan")

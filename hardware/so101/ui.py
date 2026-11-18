@@ -389,7 +389,7 @@ LOOK_FILE = HERE / "look.png"
 ARM_MOVES = ["/goal", "/torque", "/pose", "/idle"]
 
 
-def make_handler(arms_by_name, camera, recording, token=None, fold=None):
+def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fold=None):
     # follower -> leader arm, for the pairs whose arms are both running
     leaders = {f: arms_by_name[l] for f, l in arms.CONFIG.get("leaders", {}).items()
                if f in arms_by_name and l in arms_by_name}
@@ -513,7 +513,11 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None):
                 for a in arms_by_name.values():
                     a.speed = max(1, min(MAX_SPEED, float(body["speed"])))
             elif self.path == "/hold":
-                # Stop everything, mirror and leader arm included, so no arm keeps chasing another.
+                # Stop everything, mirror and leader arm included, so no arm keeps chasing another. A cloth fold
+                # holds the arms itself, so it is stopped too: `stop_fold` is given to the phone's page as well,
+                # which has no fold buttons.
+                if stop_fold is not None:
+                    stop_fold()
                 for a in arms_by_name.values():
                     a.follows = None
                     a.hold()
@@ -565,11 +569,12 @@ def main():
     threading.Thread(target=camera.connect_loop, daemon=True).start()
     recording = teleop_record.TeleopRecording(arms_by_name, camera)
     fold = fold_job.FoldJob(arms_by_name, camera)
-    server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name, camera, recording, fold=fold))
+    server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name, camera, recording, fold=fold,
+                                                                           stop_fold=fold.stop))
 
     print(f"Arms: {', '.join(f'{n} ({arms.port(n)})' for n in names)}")
     print(f"Laptop: http://localhost:{HTTP_PORT}")
-    start_phone_server(arms_by_name, camera, recording)
+    start_phone_server(arms_by_name, camera, recording, fold.stop)
     print("Ctrl+C to stop; torque state is left as is.")
     try:
         server.serve_forever()
@@ -578,7 +583,7 @@ def main():
     recording.stop()
 
 
-def start_phone_server(arms_by_name, camera, recording):
+def start_phone_server(arms_by_name, camera, recording, stop_fold=None):
     """The phone teleop page over HTTPS. Skipped when openssl is missing (a stock Windows install)."""
     try:
         ensure_certificate()
@@ -586,7 +591,8 @@ def start_phone_server(arms_by_name, camera, recording):
         print(f"Phone teleop is off: could not make its HTTPS certificate with openssl ({err})")
         return
     token = secrets.token_urlsafe(8)
-    phone_server = ThreadingHTTPServer(("0.0.0.0", PHONE_PORT), make_handler(arms_by_name, camera, recording, token))
+    phone_server = ThreadingHTTPServer(("0.0.0.0", PHONE_PORT), make_handler(arms_by_name, camera, recording, token,
+                                                                           stop_fold=stop_fold))
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(CERT_FILE, KEY_FILE)
     phone_server.socket = context.wrap_socket(phone_server.socket, server_side=True)

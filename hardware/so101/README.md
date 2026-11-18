@@ -140,8 +140,9 @@ Known and not fixed: `set_limits.py` uses Unix-only keyboard handling, so limits
 - Cloth 30 cm square, centred between the arms, near edge 1.5 cm in front of the bases' front edges. Each side edge
   of the cloth then lines up with the centre of an arm.
 - Start with both arms in their idle poses (`idle.py --arm <name> record` saves one). `replay.py` glides each arm
-  to its idle pose first and back to it after the fold. An arm with no saved idle pose starts from where it is
-  and stops on the last row, so start that one roughly upright over its base.
+  to its idle pose first and back to it after the fold. An arm with no saved idle pose glides straight from
+  where it is to the fold's first row, 5 cm above the far corner, and stops on the last row above the release, so
+  start that one raised and clear of the cloth.
 
 ## Setup on a new machine
 
@@ -184,9 +185,8 @@ the torque on, so the arms hold where they are.
 # 3. one arm, no cloth, slow
 ../../.venv-hw/bin/python replay.py trajectories/half_fold_30cm.json --left arm2 --right arm1 --only left --speed 0.3
 
-# 4. both arms with the cloth (about 34 s at the default half speed), with the run log and the grasp check
-../../.venv-hw/bin/python replay.py trajectories/half_fold_30cm.json --left arm2 --right arm1 \
-    --log run1.json --grasp-check
+# 4. both arms with the cloth, with the run log
+../../.venv-hw/bin/python replay.py trajectories/half_fold_30cm.json --left arm2 --right arm1 --log run1.json
 ```
 
 What to look for
@@ -201,8 +201,9 @@ What to look for
 - **Step 3, at the far pinch.** The fingers are tilted, so the model puts the fixed fingertip 2.6 mm below the table
   there. The arm presses on the table at that point, which is expected. Stop if it bows or stalls.
 - **Step 4.** Each arm pinches its far corner, carries it over in an arc, opens part way, lifts 5 cm (leaning
-  outward this close to the base), opens fully and stands back up. Before the pinch each jaw shuts once in the air,
-  which is the grasp check's empty reading.
+  outward this close to the base) and opens fully. The fold starts 5 cm above the far corner and ends above the
+  release; the glides from and to the idle pose are `replay.py`'s. A trajectory planned with `--grasp-check` also
+  shuts each jaw once in the air before the pinch, which is the grasp check's empty reading.
 
 ## Folding with the camera
 
@@ -221,7 +222,7 @@ Phone placement. Centred between the arms and behind them, lens 60 to 80 cm abov
 down, on a rigid mount, with the whole cloth and a margin around it in view. The edge of the image nearest the arms
 is `--near` (default `bottom`). Use even light, since a hard shadow reads as cloth.
 
-Do steps 0 to 3 of the run order first. Then, from `hardware/so101/`, with both arms standing over their bases.
+Do steps 0 to 3 of the run order first. Then, from `hardware/so101/`, with both arms in their idle poses.
 
 ```bash
 # a. once per camera position: cloth at the ruler position from the Rig section
@@ -286,7 +287,10 @@ Same setup and calibration as the single look. Start with a dry run, which moves
 
 ## Grasp check and run log
 
-- Above the far corner each jaw shuts once on nothing. That reading is the empty reference.
+- The check needs a trajectory planned for it (`fold_traj.py --grasp-check`; `fold_camera.py` and `fold_live.py`
+  plan one when they are given `--grasp-check`). In such a plan each jaw shuts once on nothing above the far corner.
+  That reading is the empty reference. Without the check the plan leaves that motion out, and `replay.py
+  --grasp-check` refuses a trajectory planned without it. The committed trajectories are planned without it.
 - `--grasp-check` reads each jaw 2 cm into the lift. A jaw that is not at least `--grasp-margin` degrees (default 0.5)
   further open than its empty reading has no cloth. Both arms then go back down, open, and pinch again, up to
   `--retries` times (default 2), and carry on regardless after that.
@@ -343,6 +347,29 @@ python fold_traj.py --out trajectories/my_fold.json --cloth 0.30 --near 0.08 --c
   front of the origin. `--spacing` between the base origins (m).
 - `--near 0.07` cuts the far pinch's tilt to about 22 degrees.
 - `--closed` is the jaw target at the pinch (rad). -0.1745 is the model's closed limit.
+- `--grasp-check` adds the jaw's empty reading above the far corner, about 3 s at full speed.
+
+### Arms at the sides of the cloth (planned, not yet played on the arms)
+
+With both arms behind the near edge, the far corner is a whole cloth away. A 30 cm cloth is the most that
+placement reaches, with the fingers leaning 26 degrees and the release cut short to clear the base. With an arm at
+the middle of each side edge, facing in, each arm reaches across half the cloth.
+
+```bash
+python fold_traj.py --out trajectories/half_fold_30cm_sides.json --cloth 0.30 --sides 0.16
+python fold_traj.py --out trajectories/half_fold_60cm_sides.json --cloth 0.60 --sides 0.16
+```
+
+- `--sides` is how far each base origin sits outside its side edge (m). At 0.16 the plan is exact and stays 46 mm
+  clear of the arm's own body. Nearer than that the carry passes too close to the base.
+- The two bases face each other with their origins the cloth's side plus 32 cm apart, which is 62 cm for a 30 cm
+  cloth and 92 cm for a 60 cm one. The cloth is centred between them with its middle on the line through the two
+  origins. `--left` is the arm on the left seen from the edge the cloth is folded onto.
+- 30 cm cloth. Fingers straight down at the pinch and at the release, no shortening.
+- 60 cm cloth. Fingers lean 19 degrees at the pinch, no shortening.
+- The jaw meets each corner turned by the pan angle (about 50 degrees on the 30 cm cloth, 68 on the 60 cm one).
+- Both files are committed. `replay.py` plays them like any other trajectory. `fold_camera.py` and the panel's
+  camera fold still assume both bases behind the near edge.
 
 ## Arm configuration
 

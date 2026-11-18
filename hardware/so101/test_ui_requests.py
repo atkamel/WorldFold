@@ -43,7 +43,8 @@ def panel(tmp_path, monkeypatch):
         (tmp_path / name).mkdir()
         (tmp_path / name / "limits.json").write_text(json.dumps(limits))
         arms_by_name[name] = ui.Arm(name)
-    handler = ui.make_handler(arms_by_name, NoCamera(), NoRecording())
+    fold_stops = []
+    handler = ui.make_handler(arms_by_name, NoCamera(), NoRecording(), stop_fold=lambda: fold_stops.append(1))
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_address[1]
@@ -61,6 +62,7 @@ def panel(tmp_path, monkeypatch):
         except urllib.error.HTTPError as err:
             return err.code
 
+    post.fold_stops = fold_stops
     yield arms_by_name, post, port
     server.shutdown()
     server.server_close()
@@ -98,3 +100,10 @@ def test_a_post_that_another_web_page_could_send_is_refused(panel):
     assert arm.target == before
     assert post("/goal", {"arm": "arm1", "pose": {"1": 3000}}) == 200
     assert arm.target[1] == 3000
+
+
+def test_hold_stops_a_cloth_fold_too(panel):
+    """The phone's page has no fold buttons, and its STOP sends /hold: a fold must not carry on behind it."""
+    _, post, _ = panel
+    assert post("/hold", {}) == 200
+    assert post.fold_stops == [1]
