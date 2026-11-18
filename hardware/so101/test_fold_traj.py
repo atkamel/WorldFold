@@ -75,3 +75,25 @@ def test_a_pinch_against_the_base_is_refused():
 def test_a_fold_with_nowhere_to_go_is_refused():
     with __import__("pytest").raises(ValueError):
         fold_traj.fold({"left": ((0.30, 0.0), (0.30, 0.0)), "right": ((0.30, 0.0), (0.30, 0.0))})
+
+
+def test_arms_at_the_sides_fold_a_cloth_twice_as_wide_as_the_arms_behind_it_can():
+    collision = __import__("pytest").importorskip("collision")
+    from kinematics import Arm
+    arm = Arm()
+    for cloth, upright in ((0.30, True), (0.60, False)):
+        traj = fold_traj.sides_trajectory(cloth=cloth, gap=0.16)
+        replay.validate(traj)
+        assert traj["layout"]["base_spacing"] == cloth + 0.32
+        for side, far in (("left", 1.0), ("right", -1.0)):          # the far corner is on the left arm's left
+            report = traj["source"][side]
+            assert report["tip_error_mm"] == 0.0 and report["release_short_mm"] == 0.0     # the whole fold, exactly
+            t, tip = np.array(traj["arms"][side]["target"]), np.array(traj["arms"][side]["tip"])[1:]
+            assert collision.closest(t.tolist())[0] >= 2 * collision.CLEARANCE
+            shut = traj["marks"]["hover"] + np.flatnonzero(t[traj["marks"]["hover"]:, 5] < replay.GRASP_RAD)
+            # tip is (right, forward, up) in the arm's own frame: the corners are 16 cm ahead, half a cloth to a side
+            assert np.allclose(tip[shut[0]], (-far * cloth / 2, 0.16, fold_traj.PINCH_Z), atol=0.003)
+            assert np.allclose(tip[shut[-1]], (far * cloth / 2, 0.16, fold_traj.PLACE_Z), atol=0.003)
+            assert np.abs(np.diff(t[:, :5], axis=0)).max() < np.radians(60) * fold_traj.DT
+            lean = np.degrees(np.arccos(-arm.tip(t[traj["marks"]["pinch"], :5])[1][2]))
+            assert lean < 1.0 if upright else lean < 21.0          # fingers straight down on the 30 cm cloth

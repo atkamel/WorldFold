@@ -203,6 +203,17 @@ def trajectory(cloth=0.24, near=0.10, spacing=0.30, closed=-0.17):
     return traj
 
 
+def sides_trajectory(cloth=0.30, gap=0.16, closed=-0.17):
+    """The fold with an arm at the middle of each side edge of the cloth, facing in, its base origin `gap` outside
+    the edge. Each arm pinches the far corner on its side and places it on the near one, so it reaches across half
+    the cloth and not all of it. "left" is the arm on the left seen from the near edge, the one folded onto."""
+    half = cloth / 2
+    traj = fold({"left": ((gap, half), (gap, -half)), "right": ((gap, -half), (gap, half))}, closed)
+    traj["layout"] = {"frame": "each arm's base, on the table", "arms": "at the middle of the side edges, facing in",
+                      "base_spacing": cloth + 2 * gap, "cloth_side": cloth, "side_edge_from_base_origin": gap}
+    return traj
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", required=True)
@@ -210,14 +221,24 @@ def main():
     ap.add_argument("--near", type=float, default=0.10, help="near edge in front of the base origin (m)")
     ap.add_argument("--spacing", type=float, default=0.30, help="between the two base origins (m)")
     ap.add_argument("--closed", type=float, default=-0.17, help="jaw target at the pinch (rad); the URDF closed limit is -0.1745")
+    ap.add_argument("--sides", type=float, metavar="GAP", help="the arms at the middle of the cloth's side edges, "
+                    "facing in, each base origin GAP (m) outside its edge (0.16 or more); --near and --spacing unused")
     args = ap.parse_args()
-    traj = trajectory(args.cloth, args.near, args.spacing, args.closed)
+    if args.sides is None:
+        traj = trajectory(args.cloth, args.near, args.spacing, args.closed)
+    else:
+        traj = sides_trajectory(args.cloth, args.sides, args.closed)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(traj))
     T = len(traj["arms"]["left"]["target"])
     print(f"{T} steps, {T * DT:.0f} s at full speed. IK: {traj['source']['left']} / {traj['source']['right']}")
-    print(f"Cloth: {args.cloth * 100:.0f} cm square, centred between the bases, near edge "
-          f"{(args.near - BASE_FRONT) * 100:.1f} cm in front of the bases' front edges.")
+    if args.sides is None:
+        print(f"Cloth: {args.cloth * 100:.0f} cm square, centred between the bases, near edge "
+              f"{(args.near - BASE_FRONT) * 100:.1f} cm in front of the bases' front edges.")
+    else:
+        print(f"Bases facing each other, origins {(args.cloth + 2 * args.sides) * 100:.0f} cm apart. Cloth: "
+              f"{args.cloth * 100:.0f} cm square, centred between them, its middle on the line through the two "
+              f"origins, each side edge {(args.sides - BASE_FRONT) * 100:.1f} cm in front of a base's front edge.")
     for side in ("left", "right"):
         short = traj["source"][side]["release_short_mm"]
         if short > 0:

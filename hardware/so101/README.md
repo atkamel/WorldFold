@@ -344,6 +344,28 @@ python fold_traj.py --out trajectories/my_fold.json --cloth 0.30 --near 0.08 --c
 - `--near 0.07` cuts the far pinch's tilt to about 22 degrees.
 - `--closed` is the jaw target at the pinch (rad). -0.1745 is the model's closed limit.
 
+### Arms at the sides of the cloth (planned, not yet played on the arms)
+
+With both arms behind the near edge, the far corner is a whole cloth away. A 30 cm cloth is the most that
+placement reaches, with the fingers leaning 26 degrees and the release cut short to clear the base. With an arm at
+the middle of each side edge, facing in, each arm reaches across half the cloth.
+
+```bash
+python fold_traj.py --out trajectories/half_fold_30cm_sides.json --cloth 0.30 --sides 0.16
+python fold_traj.py --out trajectories/half_fold_60cm_sides.json --cloth 0.60 --sides 0.16
+```
+
+- `--sides` is how far each base origin sits outside its side edge (m). At 0.16 the plan is exact and stays 46 mm
+  clear of the arm's own body. Nearer than that the carry passes too close to the base.
+- The two bases face each other with their origins the cloth's side plus 32 cm apart, which is 62 cm for a 30 cm
+  cloth and 92 cm for a 60 cm one. The cloth is centred between them with its middle on the line through the two
+  origins. `--left` is the arm on the left seen from the edge the cloth is folded onto.
+- 30 cm cloth. Fingers straight down at the pinch and at the release, no shortening.
+- 60 cm cloth. Fingers lean 19 degrees at the pinch, no shortening.
+- The jaw meets each corner turned by the pan angle (about 50 degrees on the 30 cm cloth, 68 on the 60 cm one).
+- Both files are committed. `replay.py` plays them like any other trajectory. `fold_camera.py` and the panel's
+  camera fold still assume both bases behind the near edge.
+
 ## Arm configuration
 
 - `arms.json` names every arm and its serial port per platform (`mac`, `windows`), in order; `PLATFORM` in `arms.py`
