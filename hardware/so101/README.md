@@ -140,8 +140,9 @@ Known and not fixed: `set_limits.py` uses Unix-only keyboard handling, so limits
 - Cloth 30 cm square, centred between the arms, near edge 1.5 cm in front of the bases' front edges. Each side edge
   of the cloth then lines up with the centre of an arm.
 - Start with both arms in their idle poses (`idle.py --arm <name> record` saves one). `replay.py` glides each arm
-  to its idle pose first and back to it after the fold. An arm with no saved idle pose starts from where it is
-  and stops on the last row, so start that one roughly upright over its base.
+  to its idle pose first and back to it after the fold. An arm with no saved idle pose glides straight from
+  where it is to the fold's first row, 5 cm above the far corner, and stops on the last row above the release, so
+  start that one raised and clear of the cloth.
 
 ## Setup on a new machine
 
@@ -200,7 +201,8 @@ What to look for
 - **Step 3, at the far pinch.** The fingers are tilted, so the model puts the fixed fingertip 2.6 mm below the table
   there. The arm presses on the table at that point, which is expected. Stop if it bows or stalls.
 - **Step 4.** Each arm pinches its far corner, carries it over in an arc, opens part way, lifts 5 cm (leaning
-  outward this close to the base), opens fully and stands back up. A trajectory planned with `--grasp-check` also
+  outward this close to the base) and opens fully. The fold starts 5 cm above the far corner and ends above the
+  release; the glides from and to the idle pose are `replay.py`'s. A trajectory planned with `--grasp-check` also
   shuts each jaw once in the air before the pinch, which is the grasp check's empty reading.
 
 ## Folding with the camera
@@ -220,7 +222,7 @@ Phone placement. Centred between the arms and behind them, lens 60 to 80 cm abov
 down, on a rigid mount, with the whole cloth and a margin around it in view. The edge of the image nearest the arms
 is `--near` (default `bottom`). Use even light, since a hard shadow reads as cloth.
 
-Do steps 0 to 3 of the run order first. Then, from `hardware/so101/`, with both arms standing over their bases.
+Do steps 0 to 3 of the run order first. Then, from `hardware/so101/`, with both arms in their idle poses.
 
 ```bash
 # a. once per camera position: cloth at the ruler position from the Rig section

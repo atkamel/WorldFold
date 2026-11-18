@@ -1,8 +1,9 @@
 """An open-loop two-arm half fold as a joint trajectory for replay.py, planned on the SO-101 model alone (no camera,
 no simulator): each arm pinches its far corner from above, carries it in an arc onto the near corner on its side,
-opens slowly, lifts and stands back up. The cloth is placed by ruler where this prints. With --grasp-check the jaw
-first shuts once on nothing above the far corner, the empty reading replay.py --grasp-check compares the lifted jaw
-against ("marks").
+opens slowly and lifts clear. The plan starts above the far corner and ends above the release, both with the jaw
+open: replay.py glides there from the arm's idle pose and back to it. The cloth is placed by ruler where this
+prints. With --grasp-check the jaw first shuts once on nothing above the far corner, the empty reading replay.py
+--grasp-check compares the lifted jaw against ("marks").
 
     .venv/bin/python hardware/so101/fold_traj.py --out outputs/hardware/half_fold.json [--cloth 0.24] [--near 0.10]
     .venv-hw/bin/python hardware/so101/replay.py outputs/hardware/half_fold.json --left left --right right --dry-run
@@ -23,14 +24,12 @@ from kinematics import Arm
 
 JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"]
 DT = 0.05
-STAND = np.array([0.0, -0.2, -1.34, -1.2, 0.0])   # isaac_env.QUARTER_HOME: the arm stands over its base
 OPEN, PART_OPEN = 1.0, 0.3     # jaw (rad): open, and how far the release opens with the arm still
 HOVER = 0.05          # m above the table before the pinch
 PINCH_Z = 0.005       # fingertip height at the pinch
 PLACE_Z = 0.012       # fingertip height at the release: the held corner rests on the bottom layer
 RETREAT = 0.05        # lift after the release (straight up where the arm can, see plan)
 STEP = 0.004          # m of fingertip travel per step (8 cm/s at dt; replay.py's default speed halves it)
-JOINT_STEP = 0.04     # rad per step on joint-space moves
 JOINT_RATE = np.radians(55) * DT    # rad per step a joint may be asked for in the carry (replay.py caps at 60 deg/s)
 BASE_FRONT = 0.065    # m from the base's origin to its front edge
 SHORT_STEP = 0.005    # m: the release backs away from the base in steps of this
@@ -41,20 +40,14 @@ MIN_FOLD = 0.02       # m of fold that must be left after shortening
 def plan(arm, pinch, place, closed, counts=None, empty_reading=False):
     """One arm's fold from `pinch` to `place` ((x, y) m in its base frame, x forward, y left): target rows [T, 6],
     the worst (tip error, tilt), marks {"hover": above the corner with the jaw open, "pinch": down on the corner,
-    "check": 2 cm into the lift, "placed": the carry's end} as row indices, and the step counts of its three variable
-    moves. `counts` stretches those moves to given lengths, so two arms' plans line up row for row. With
+    "check": 2 cm into the lift, "placed": the carry's end} as row indices, and the step count of its carry.
+    `counts` stretches the carry to a given length, so two arms' plans line up row for row. With
     `empty_reading` the jaw shuts once on nothing above the corner before the pinch ("empty" in the marks), which
     replay.py --grasp-check reads; without the check it is wasted motion."""
     pinch, place = np.asarray(pinch, float), np.asarray(place, float)
     reach = float(np.linalg.norm(place - pinch))
     seed = np.radians([0.0, 40.0, -30.0, 80.0, 0.0])     # arm out, forearm level, fingers down
     rows, worst, used = [], [0.0, 0.0], {}
-
-    def joint_move(name, q_goal, jaw):
-        q0 = np.array(rows[-1][:5]) if rows else STAND
-        used[name] = max(1, int(np.ceil(np.max(np.abs(q_goal - q0)) / JOINT_STEP)))
-        n = max(used[name], (counts or {}).get(name, 0))
-        rows.extend([*(q0 + (q_goal - q0) * k / n), jaw] for k in range(1, n + 1))
 
     def line(points, jaw):
         q = np.array(rows[-1][:5])
@@ -76,12 +69,11 @@ def plan(arm, pinch, place, closed, counts=None, empty_reading=False):
         n = max(1, int(np.ceil(np.linalg.norm(np.subtract(b, a)) / STEP)))
         return [np.asarray(a) + np.subtract(b, a) * k / n for k in range(1, n + 1)]
 
-    rows.append([*STAND, OPEN])
     q = seed                                                # the pinch first, then up from it: one branch
     for p in [np.array([*pinch, PINCH_Z])] + segment((*pinch, PINCH_Z), (*pinch, HOVER)):
         q, err, _ = arm.solve(p, q)
         worst[0] = max(worst[0], err)
-    joint_move("approach", q, OPEN)
+    rows.append([*q, OPEN])                                 # above the corner: where replay.py's glide ends
     marks = {}
     if empty_reading:
         move_jaw(OPEN, closed, 10)
@@ -124,7 +116,6 @@ def plan(arm, pinch, place, closed, counts=None, empty_reading=False):
             break
     line(lift, PART_OPEN)
     move_jaw(PART_OPEN, OPEN, 8)
-    joint_move("back", STAND, OPEN)
     return np.array(rows), worst, marks, used
 
 

@@ -19,7 +19,7 @@ AT_THE_BASE = [0.0, math.radians(-81), math.radians(80), math.radians(95), 0.0, 
 
 
 def test_the_zero_pose_and_the_stand_pose_are_clear():
-    stand = [float(angle) for angle in fold_traj.STAND] + [fold_traj.OPEN]
+    stand = [0.0, -0.2, -1.34, -1.2, 0.0, fold_traj.OPEN]      # the arm standing over its base
     for row in (ZERO, stand):
         distance, step, pair = collision.closest([row])
         assert distance >= collision.CLEARANCE

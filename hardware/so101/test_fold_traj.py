@@ -34,7 +34,8 @@ def test_half_fold_trajectory():
         assert tip[shut[0]:shut[-1], 2].max() < 0.12                     # the carry stays under the cloth's half length
         assert np.abs(np.diff(t, axis=0)).max() < np.radians(60) * fold_traj.DT   # under replay's rate cap, jaw too
         assert np.all(t[:, 4] == 0.0)                                    # wrist_roll never flips
-        assert np.allclose(t[0, :5], fold_traj.STAND) and np.allclose(t[-1, :5], fold_traj.STAND)
+        assert np.allclose(tip[0], (right, 0.34, fold_traj.HOVER), atol=0.003)    # starts above the far corner
+        assert tip[-1, 2] > fold_traj.PLACE_Z + fold_traj.RETREAT - 0.003          # ends lifted clear of the release
         assert t[0, 5] == t[-1, 5] == fold_traj.OPEN
 
 
