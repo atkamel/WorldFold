@@ -2899,3 +2899,20 @@ The frames show both grippers on the far corners at the pinch, both corners lift
 left on the table. The jaw reads the same holding this cloth as empty, so the position-based grasp check cannot
 see a grasp on it. The run before it (`20261118_000433`) stopped at the look: one side of the outline read 24.5 cm.
 `summary.json` counts 0 steps in a panel run because the script, not the recorder, writes `steps.jsonl`.
+
+## Does the camera fold follow a moved cloth? (2026-11-18)
+
+Offline, on frame 0 of run `20261118_000529` with that run's `camera.json`: the whole picture slid by a number of
+pixels to stand in for a moved cloth, then `fold_camera.plan`. n = 1 frame, no arm moved.
+
+| picture | far-left corner (table cm) | left pinch (right, forward cm) | right pinch (right, forward cm) |
+|---|---|---|---|
+| as recorded | -16.2, 37.6 | -0.5, 36.9 | 0.8, 36.7 |
+| 40 px right, same calibration | -12.5, 37.8 | 3.2, 37.1 | 4.4, 36.9 |
+| 40 px left, same calibration | -20.0, 37.4 | -4.2, 36.8 | -2.8, 36.6 |
+| 30 px nearer the arms, same calibration | -15.1, 32.9 | 0.7, 32.3 | 0.2, 32.2 |
+| 40 px right, calibrated again, then the look | -15.0, 38.0 | 0.7, 37.3 | -0.7, 37.3 |
+
+With the calibration left alone the pinch points move with the cloth (about 3.7 cm for 40 px). Calibrating after
+the move puts them back at the ruler position, because the calibration takes the cloth's place as the ruler
+position. That is the sequence the user ran on the rig when the arms went to the same place every time.
