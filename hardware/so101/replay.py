@@ -402,7 +402,8 @@ def main(argv=None):
 
 def read(args):
     """Print the arm's joint angles (model degrees, through the map) until Ctrl-C. Sends nothing: torque stays as it
-    is, so a limp arm can be posed by hand against known angles (stretched straight forward = all 0)."""
+    is, so a limp arm can be posed by hand against known angles (upper arm straight up, forearm and gripper level and
+    pointing forward, fingers stacked with the moving one on top = all 0; jaw shut = -10)."""
     f = Follower(args.read)
     print("Map in use:", f.describe())
     f.connect()

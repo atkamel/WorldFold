@@ -2782,3 +2782,21 @@ model range is -10° to 100°, the middle of its travel is 45°). Its zero is no
 
 **Recorder:** about 215 to 245 kB per frame (720 x 960 JPEG and 192 x 256 depth), 130 to 150 MB per minute at 10
 frames per second, on synthetic noisy frames.
+
+## SO-101 arm 2 tick map, measured on the arm (2026-11-17)
+
+One reading, by hand, no repeats, no interval. Torque off, arm 2 held in the model's zero pose (upper arm against an
+upright book, forearm and gripper level by eye, jaw shut), angles from `replay.py --read arm2` through the default map:
+
+| joint | reading in the zero pose | expected |
+|---|---|---|
+| shoulder_pan | -1.1° | 0 |
+| shoulder_lift | 3.2° | 0 |
+| elbow_flex | 12.2° | 0 |
+| wrist_flex | 1.3° | 0 |
+| gripper (shut) | -9.7° | -10 |
+
+Elbow zero moved to tick 2186 (2047 + 12.2 x 11.378) in `arm2/urdf.json`; the others left at the default. Under
+power at the zero pose after the change (user, by eye): forearm level, gripper level, upper arm upright, moving
+finger on top, jaw slightly open, all as the model says. Fold dry run with the new zero: 0 clamped steps, elbow peak
+79.6° against about 91° of travel left on that side.

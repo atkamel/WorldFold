@@ -28,36 +28,31 @@ Where the first session on the real arms stopped, and what to do next. The secti
   the table; the model says 43.7.
 - **Zero pose** (`trajectories/zero_pose.json`, every joint at 0). Seen on arm 2: forearm about 15 degrees up toward
   the wrist (model: level), gripper level, upper arm looked upright, forearm about 23 cm above the table.
-- **So the tick map is wrong on arm 2 by about 15 degrees on two joints**: either elbow and wrist, or shoulder and
-  wrist. The eye could not tell which. Nothing is corrected yet; there is no `arm2/urdf.json`.
 - Arm 1 has not been moved by `replay.py`. The fold itself has not been played on either arm.
+
+### Arm 2 zeros set by hand (2026-11-17)
+
+- **Method, no ruler.** Torque off (`idle.py --arm arm2 release`), live angles on (`replay.py --read arm2`), the arm
+  held in the model's zero pose: upper arm flush against an upright book, forearm and gripper level and pointing
+  forward, jaw shut. What a joint reads there is its error `e`; its new zero is `2047 + e * 11.378`.
+- **Readings:** pan -1.1, shoulder lift 3.2, elbow 12.2, wrist 1.3, jaw shut -9.7 (expected -10). Only the elbow was
+  corrected: `arm2/urdf.json` is `{"zero": {"3": 2186}}`.
+- **Check under power** at the zero pose: forearm level, gripper level, upper arm upright, moving finger on top, jaw
+  slightly open (the model's jaw 0 is 10 degrees open). Arm 2's wrist roll is the right way round.
+- Fold dry run with the new zero: 0 clamped steps.
 
 ### Next
 
 From the repo root, panel stopped, a hand on the power.
 
-1. **Measure arm 2 in the zero pose.** It holds at the "press Enter" prompt.
+1. **Arm 1, the same way**: `idle.py --arm arm1 release`, `replay.py --read arm1`, hold the zero pose, write
+   `arm1/urdf.json`, then check under power:
    ```
-   .venv\Scripts\python.exe hardware\so101\replay.py hardware\so101\trajectories\zero_pose.json --left arm2 --right arm1 --only left --speed 0.3
+   .venv\Scripts\python.exe hardware\so101\replay.py hardware\so101\trajectories\zero_pose.json --left arm2 --right arm1 --only right --speed 0.3
    ```
-   Heights above the table, to the centre of each motor hub. The model's values:
-
-   | measurement | model |
-   |---|---|
-   | centre of the elbow joint | 22.9 cm |
-   | centre of the wrist joint | 23.4 cm |
-   | fingertip | 22.6 cm |
-   | elbow centre in front of the shoulder centre | 2.8 cm |
-
-2. **Write the correction to `arm2/urdf.json`** and repeat step 1 until the pose is within about 1 cm.
-   `{"zero": {"3": 2218}}` is the form. For a joint that sits `e` degrees past where it was told, in the model's
-   positive direction, the new zero is `old zero + e * 11.378` (old zero is 2047 unless already overridden).
-   Positive is: shoulder lift tips the upper arm forward, elbow tips the forearm down, wrist flex tips the gripper
-   down. A forearm 15 degrees too high from the elbow alone is `e = -15` on motor 3.
-3. **Same check on arm 1** with `--only right`.
-4. **Wrist roll.** At idle the two arms' wrist-roll encoders read half a turn apart (1030 and 3076). At the first
-   fold pose both grippers should look the same way round: the fixed finger on top, the swinging finger underneath.
-5. **Then the run order below from step 3**: one arm with no cloth (fingertip touches 38.0 cm in front of the base
+   At idle arm 1's wrist-roll encoder reads half a turn from arm 2's (1030 and 3076), so look at which finger is on
+   top: the moving one, as on arm 2.
+2. **Then the run order below from step 3**: one arm with no cloth (fingertip touches 38.0 cm in front of the base
    origin, within about 1 cm), then both arms with the cloth and `--grasp-check`.
 
 Known and not fixed: `set_limits.py` uses Unix-only keyboard handling, so limits cannot be re-recorded on Windows.
@@ -75,7 +70,8 @@ Known and not fixed: `set_limits.py` uses Unix-only keyboard handling, so limits
 - **Verified** by 65 tests on a fake servo bus and synthetic camera frames, and a dry run of the blind trajectory
   against both arms' recorded limits (0 clamped steps).
 - **The fold has not been played on a real arm** (bring-up log above). The radian-to-tick map is a hypothesis until
-  `replay.py --check` passes on each arm, and the zero pose on arm 2 shows it is off by about 15 degrees on two joints. The Record3D connection follows `hardware/iphone_lidar/usb_viewer.py`, which has
+  `replay.py --check` passes on each arm. Arm 2's elbow zero was 12 degrees off and is corrected in `arm2/urdf.json`;
+  arm 1 is unchecked. The Record3D connection follows `hardware/iphone_lidar/usb_viewer.py`, which has
   not seen a phone either. Frame orientation and how well the depth lines up with
   the RGB are unknown until a real frame is recorded.
 - **Both followers are configured**, with `main`'s names and folders. `arm2` is the left arm and `arm1` the right,
