@@ -2878,3 +2878,24 @@ The rate cap engaged 320 times. The trajectory asked the jaw for up to 7.45 deg 
 reading could beat, and the pinch was about 7 deg from shut when the lift began. The verdicts say nothing about the
 grasp. Regenerated with the jaw at 2.68 deg per row at most: 379 steps, empty reading 6 rows after the jaw is shut.
 Not rerun on the arms.
+
+## First recorded camera fold from the control panel: it folded (2026-11-18)
+
+Both arms, light blue 30 cm cloth, started from the panel, speed 0.6, torque cap 50 %, grasp check off. n = 1.
+Run folder `hardware/so101/runs/20261118_000529` (not in git): 374 frames, 555 step lines, exit code 0.
+
+| | value |
+|---|---|
+| cloth found by the look (table cm) | near edge Y 7.1, far corners X -16.3 / 16.2, Y 37.6 / 38.1 |
+| pinch aimed at (each arm's frame, cm) | left 0.6 left of straight ahead, 36.9 forward; right 0.5 right, 37.3 forward |
+| fingertip at the pinch, from the encoders against the plan | within 0.1 cm sideways and forward, 0.2 cm low, both arms |
+| largest joint lag over the fold | 5.6 deg |
+| jaw reading while carrying the cloth | -9 deg on both arms (shut on nothing reads -9.3 to -9.5) |
+| release | planned 7.0 cm short of the near edge, 14 mm clear of the base in the model |
+| fold score from the first and last frames | far edge 1.74 cm mean, 2.55 cm max from the half line; overhang 2.23 cm; near half uncovered 0.0; area ratio 1.26 |
+| folded cloth on the table | Y 5.1 to 22.1 cm (ideal 7.1 to 22.1): the bottom layer ended about 2 cm nearer the arms |
+
+The frames show both grippers on the far corners at the pinch, both corners lifted and carried, and a half fold
+left on the table. The jaw reads the same holding this cloth as empty, so the position-based grasp check cannot
+see a grasp on it. The run before it (`20261118_000433`) stopped at the look: one side of the outline read 24.5 cm.
+`summary.json` counts 0 steps in a panel run because the script, not the recorder, writes `steps.jsonl`.

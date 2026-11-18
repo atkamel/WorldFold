@@ -27,9 +27,10 @@ released, still), user 2026-10-22.
   because the jaw lagged the plan; the trajectory is regenerated with the jaw inside `replay.py`'s rate cap and
   not rerun. The camera versions have seen their first real frames: the
   cloth is light blue, so `fold_camera.py calibrate --cloth-colour blue` finds it by colour (checked on one saved
-  frame); live calibration works, the first camera folds missed the
-  corners (the cloth was probably out of position at calibration; not confirmed). The control panel can now run
-  Calibrate, Look and Fold with the live camera picture beside the LiDAR cloud; not yet run on the arms. Every run that moves an arm
+  frame); live calibration works. The control panel runs Calibrate, Look and Fold with the live camera picture beside
+  the LiDAR cloud, and a camera fold started from it folded the cloth on the real arms (2026-11-18, n = 1: far edge
+  1.7 cm mean from the half line, results.md). Earlier camera folds missed because the camera was recalibrated
+  after the cloth was moved. Every run that moves an arm
   is logged to `hardware/so101/runs/<date_time>/` (targets and encoder readings per control step), and a fold from
   the panel also saves the camera picture and depth 5 times a second. Progress, measurements and next steps are in the
   bring-up log at the top of `hardware/so101/README.md`.
@@ -85,10 +86,10 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
-Hardware side track (user, 2026-11-17), in order: run the panel on the real arms and phone (`ui.py`, Calibrate,
-Look, Fold) and check the arms come back after a fold and after Stop; find why the camera fold misses the corners
-(where the fingertips land against the corners, for each arm); `fold_live.py --dry-run`, then
-`fold_live.py --grasp-check`. Commands in `hardware/so101/README.md`.
+Hardware side track (user, 2026-11-18), in order: repeat the panel fold a few times, with the cloth moved
+between runs and no recalibration, and score each from its recording; a grasp check that can see this cloth (the
+jaw position cannot); `fold_live.py --dry-run`, then `fold_live.py --grasp-check`. Commands in
+`hardware/so101/README.md`.
 
 ## Environment
 
@@ -155,6 +156,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-18 · **First recorded panel fold analysed: it folded (user: analyze the run):** run `20261118_000529` on the real arms and phone, started from the panel (so the panel's port hand-over works on Windows): both grippers on the far corners at the pinch, corners carried, half fold left on the table; encoders within 0.2 cm of the plan at the pinch; fold score far edge 1.74 cm mean, 2.55 cm max (results.md); the jaw reads -9 deg holding the cloth, the same as empty, so the grasp check cannot work on it; the run before it failed at the look (a 24.5 cm side); `summary.json` shows 0 steps for panel runs (the script writes them), not fixed; no code changed, tests not re-run · (this commit)
 - 2026-11-18 · **Every movement is logged; panel request checks (user: log all movements with images and encoder values):** `replay.py` writes `runs/<date_time>/steps.jsonl` as it goes (time, phase, row, targets and readings per arm in model radians; glides every fifth pose; grasp-check readings), with `replay_meta.json` and `plan.json`; `--log FILE` now names that step file (the old end-of-run JSON is gone); `fold_job.py` records each panel fold through `recorder.Recorder` (picture and depth 5 times a second on the same clock, look, calibration, output, events) and passes the folder's `steps.jsonl` to the script; from the commit review: a fold that cannot start gives the arms back, `/mirror` and `/leader` are refused while an arm is lent and an arm comes back following nothing, the laptop page answers only `localhost` / `127.0.0.1` and only JSON posts; the user reports camera folds going to the same place whatever the cloth's position (the calibration was redone after each move, which makes that the standard position) and nowhere near the corners at the standard position, cause not found; not run on the arms; hardware 127 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-17 · **Cloth fold from the control panel (user; design in `docs/superpowers/specs/2026-11-17-panel-cloth-fold-design.md`):** `fold_job.py` runs `fold_camera.py` as a child process for the panel (output kept, the two prompts answered by a Continue button, Stop ends it); `ui.Arm.lend` / `take_back` close and reopen an arm's serial port around a fold; new endpoints `/fold`, `/fold/start|continue|stop`, `/camera.jpg` (encoded in memory), `/look.png`; `ui.html` has a Cloth fold section with the live picture; checked in Chrome on a fake servo bus with a synthetic picture and a stand-in script (look, both prompts, arms lent and a move refused meanwhile, Stop, arms back), not on the arms or the phone; earlier the same day (user, on the rig): live blue calibration outlines the cloth once an arm's cable is off its corner, a torque-cap write failed once on arm 1's motor 2 and passed on the rerun, the jaw's empty readings are -9.3 and -9.5 deg with the rate cap never engaged, and two camera folds missed the corners with both jaws reading empty; hardware 117 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-17 · **`fold_camera.py` no longer dies silently on a live phone (user: fix it):** it exited with no output (0xc0000374, heap corruption) because the Record3D stream object was freed after one frame while the phone kept streaming; freeing it crashed 2 of 2 trial runs, keeping it survived 3 of 3; `rgbd.Phone` keeps every stream object for the life of the process and `fold_camera.record3d_frame` goes through it (its own copy of the connection code deleted); three live `look` runs ended normally, each refusing the stale test calibration; live calibration still to do; hardware 108 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
