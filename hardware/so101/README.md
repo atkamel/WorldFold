@@ -244,6 +244,23 @@ Do steps 0 to 3 of the run order first. Then, from `hardware/so101/`, with both 
   `fold_live.py` follow it. Keep other blue things out of the area in front of the arms.
 - Calibration is only as good as the ruler placement of the cloth and the joint map. Redo it if the phone moves.
 
+## Folding from the control panel
+
+`ui.py` (`http://localhost:8101`) has a "Cloth fold" section: the live camera picture, Calibrate, Look, Fold and
+Stop, the last `look.png`, and the script's output as it prints.
+
+- The buttons run `fold_camera.py` as a child process (`fold_job.py`), one job at a time. Its two "Enter to ..."
+  pauses become a Continue button.
+- The panel keeps the phone. The script gets the current frame as a temporary file, deleted when the job ends; the
+  live picture itself is never written to disk.
+- For a fold the panel closes both arms' serial ports, so the 3D view and the manual controls are frozen until the
+  script ends; then the panel reopens them and holds the arms where they are.
+- Stop (and Esc) ends the script outright: the arms hold with torque on, and a torque cap set for the fold stays
+  on the motors until the next fold or a power cycle.
+- Options: cloth colour (for Calibrate), speed, torque cap, grasp check (off by default: on a thin cloth it reads
+  a held corner as a miss and pinches again). Left is `arm2`, right is `arm1` (`fold_job.py`).
+- Checked in a browser against a fake servo bus, a synthetic picture and a stand-in script. Not run on the arms.
+
 ## Folding with the camera watching throughout
 
 Same setup and calibration as the single look. Start with a dry run, which moves nothing and records a few seconds.

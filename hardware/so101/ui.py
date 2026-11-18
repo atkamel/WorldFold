@@ -22,6 +22,7 @@ SO-101 moved by hand), e.g. {"arm1": "leader"}. With it on, the follower
 copies the leader's joint angles.
 """
 
+import io
 import json
 import os
 import secrets
@@ -42,6 +43,7 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent.parent))
 
 import arms  # noqa: E402
+import fold_job  # noqa: E402
 import panel_camera  # noqa: E402
 import teleop_record  # noqa: E402
 from hardware.iphone_lidar.pointcloud import pack_frame, pack_no_points  # noqa: E402
@@ -141,6 +143,7 @@ class Arm:
         self.pending_burst = None
         self.twin = json.loads(self.twin_file.read_text()) if self.twin_file.exists() else None
         self.follows = None  # (leading Arm, mirror?) while this arm copies another
+        self.lent = False  # True while another program holds this arm's serial port
 
     # --- bus access: only ever called from the control thread (or __init__) ---
 
@@ -190,42 +193,77 @@ class Arm:
 
     def control_loop(self):
         while True:
-            follows = self.follows
-            if follows:
-                with follows[0].lock:
-                    lead_target = dict(follows[0].target)
-            with self.lock:
-                pending, self.pending_torque = self.pending_torque, None
-                if pending is not None:
-                    self.apply_torque(pending)
-                pose, self.pending_pose = self.pending_pose, None
-                if pose is not None:
-                    if not self.torque:
-                        self.apply_torque(True)
-                    self.target.update(pose)
-                    self.burst_speed, self.pending_burst = self.pending_burst, None
-
-                self.read_present()
-                if self.torque:
-                    if follows:
-                        leader, mirror = follows
-                        self.target = self.clamp(copy_pose(lead_target, leader.twin or {}, self.twin or {}, mirror))
-                    # Speed = how far a goal may move per tick. 50 deg/s is
-                    # ~11.4 steps per 20 ms tick; fractions carry over.
-                    max_step = (self.burst_speed or self.speed) * STEPS_PER_DEGREE * TICK_SECONDS
-                    # Ease each goal toward its slider by at most max_step per
-                    # tick, so a fast slider flick can't slam the joint.
-                    for m in MOTOR_IDS:
-                        delta = self.target[m] - self.command[m]
-                        self.command[m] += max(-max_step, min(max_step, delta))
-                    self.send_goals(self.command)
-                    if self.burst_speed and all(abs(self.target[m] - self.command[m]) < 1 for m in MOTOR_IDS):
-                        self.burst_speed = None  # arrived: back to the normal speed
-                else:
-                    # Limp: the arm is moved by hand, so sliders follow it.
-                    self.target = dict(self.present)
-                    self.command = dict(self.present)
+            self.tick()
             time.sleep(TICK_SECONDS)
+
+    def tick(self):
+        """One pass of the control loop. A lent arm's bus belongs to another program, so it is left alone."""
+        follows = self.follows
+        if follows:
+            with follows[0].lock:
+                lead_target = dict(follows[0].target)
+        with self.lock:
+            if self.lent:
+                return
+            pending, self.pending_torque = self.pending_torque, None
+            if pending is not None:
+                self.apply_torque(pending)
+            pose, self.pending_pose = self.pending_pose, None
+            if pose is not None:
+                if not self.torque:
+                    self.apply_torque(True)
+                self.target.update(pose)
+                self.burst_speed, self.pending_burst = self.pending_burst, None
+
+            self.read_present()
+            if self.torque:
+                if follows:
+                    leader, mirror = follows
+                    self.target = self.clamp(copy_pose(lead_target, leader.twin or {}, self.twin or {}, mirror))
+                # Speed = how far a goal may move per tick. 50 deg/s is
+                # ~11.4 steps per 20 ms tick; fractions carry over.
+                max_step = (self.burst_speed or self.speed) * STEPS_PER_DEGREE * TICK_SECONDS
+                # Ease each goal toward its slider by at most max_step per
+                # tick, so a fast slider flick can't slam the joint.
+                for m in MOTOR_IDS:
+                    delta = self.target[m] - self.command[m]
+                    self.command[m] += max(-max_step, min(max_step, delta))
+                self.send_goals(self.command)
+                if self.burst_speed and all(abs(self.target[m] - self.command[m]) < 1 for m in MOTOR_IDS):
+                    self.burst_speed = None  # arrived: back to the normal speed
+            else:
+                # Limp: the arm is moved by hand, so sliders follow it.
+                self.target = dict(self.present)
+                self.command = dict(self.present)
+
+    def lend(self):
+        """Give the serial port up so another program (a cloth fold) can drive the arm."""
+        with self.lock:
+            self.lent = True
+            self.follows = None
+            self.port.closePort()
+
+    def take_back(self):
+        """Open the serial port again and hold the arm where the other program left it. Whatever was asked of the
+        arm while it was lent is dropped. OSError if the port or the motors do not answer."""
+        with self.lock:
+            if not self.port.openPort() or not self.port.setBaudRate(BAUDRATE):
+                raise OSError(f"could not reopen {arms.port(self.name)}")
+            self.present = {m: None for m in MOTOR_IDS}
+            for _ in range(10):
+                self.read_present()
+                if None not in self.present.values():
+                    break
+            if None in self.present.values():
+                raise OSError(f"could not read all motors of the {self.name} arm")
+            self.torque = bool(self.read1(GRIPPER_ID, ADDR_TORQUE_ENABLE))
+            self.target = dict(self.present)
+            self.command = dict(self.present)
+            self.pending_torque = None
+            self.pending_pose = None
+            self.pending_burst = None
+            self.burst_speed = None
+            self.lent = False
 
     # --- called from HTTP threads: only touch shared state, never the bus ---
 
@@ -278,6 +316,7 @@ class Arm:
                 "present": self.present,
                 "target": self.target,
                 "torque": self.torque,
+                "lent": self.lent,
                 "limits": self.limits,
                 "twin": self.twin,
                 "presets": self.load_presets(),
@@ -300,6 +339,18 @@ def cloud_blob(camera):
     if frame is None:
         return pack_no_points()
     return pack_frame(frame.rgb, frame.depth, frame.K)
+
+
+def camera_jpeg(camera):
+    """The camera's latest picture as JPEG bytes, or None with no frame. Encoded in memory: nothing is written."""
+    frame = camera.latest()
+    if frame is None:
+        return None
+    from PIL import Image  # only needed with a phone; the arms run without it
+
+    buffer = io.BytesIO()
+    Image.fromarray(frame.rgb).save(buffer, format="JPEG", quality=70)
+    return buffer.getvalue()
 
 
 def run(arm):
@@ -332,7 +383,12 @@ def lan_ip():
         return s.getsockname()[0]
 
 
-def make_handler(arms_by_name, camera, recording, token=None):
+LOOK_FILE = HERE / "look.png"
+# Requests that move one arm: refused while that arm is lent to a cloth fold.
+ARM_MOVES = ["/goal", "/torque", "/pose", "/idle"]
+
+
+def make_handler(arms_by_name, camera, recording, token=None, fold=None):
     # follower -> leader arm, for the pairs whose arms are both running
     leaders = {f: arms_by_name[l] for f, l in arms.CONFIG.get("leaders", {}).items()
                if f in arms_by_name and l in arms_by_name}
@@ -387,6 +443,22 @@ def make_handler(arms_by_name, camera, recording, token=None):
                 status = recording.status()
                 status["camera"] = camera.status()
                 self.reply(status)
+            elif path == "/camera.jpg":
+                picture = camera_jpeg(camera)
+                if picture is None:
+                    self.reply({"error": "no picture yet"}, status=404)
+                else:
+                    self.reply(picture, "image/jpeg")
+            elif path == "/look.png":
+                if LOOK_FILE.exists():
+                    self.reply(LOOK_FILE.read_bytes(), "image/png")
+                else:
+                    self.reply({"error": "no look yet"}, status=404)
+            elif path == "/fold":
+                if fold is None:
+                    self.reply({"error": "not available here"}, status=404)
+                else:
+                    self.reply(fold.status())
             else:
                 self.reply(PAGE_FILE.read_bytes(), "text/html")
 
@@ -397,6 +469,24 @@ def make_handler(arms_by_name, camera, recording, token=None):
             self.path = path
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])) or "{}")
             arm = arms_by_name.get(body.get("arm"))
+            if self.path.startswith("/fold/"):
+                if fold is None:
+                    self.reply({"error": "not available here"}, status=404)
+                    return
+                if self.path == "/fold/start":
+                    refusal = fold.start(body.get("mode"), body.get("options", {}))
+                    if refusal is not None:
+                        self.reply({"error": refusal}, status=409)
+                        return
+                elif self.path == "/fold/continue":
+                    fold.go_on()
+                elif self.path == "/fold/stop":
+                    fold.stop()
+                self.reply({"ok": True})
+                return
+            if self.path in ARM_MOVES and arm is not None and arm.lent:
+                self.reply({"error": f"{arm.name} is busy with a cloth fold"}, status=409)
+                return
             if self.path == "/goal":
                 arm.set_target(body["pose"])
             elif self.path == "/torque":
@@ -456,7 +546,8 @@ def main():
     # On its own thread: looking for the phone can block, and the arms must not wait for it.
     threading.Thread(target=camera.connect_loop, daemon=True).start()
     recording = teleop_record.TeleopRecording(arms_by_name, camera)
-    server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name, camera, recording))
+    fold = fold_job.FoldJob(arms_by_name, camera)
+    server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name, camera, recording, fold=fold))
 
     print(f"Arms: {', '.join(f'{n} ({arms.port(n)})' for n in names)}")
     print(f"Laptop: http://localhost:{HTTP_PORT}")

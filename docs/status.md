@@ -27,7 +27,9 @@ released, still), user 2026-10-22.
   because the jaw lagged the plan; the trajectory is regenerated with the jaw inside `replay.py`'s rate cap and
   not rerun. The camera versions have seen their first real frames: the
   cloth is light blue, so `fold_camera.py calibrate --cloth-colour blue` finds it by colour (checked on one saved
-  frame); no live calibration or camera fold yet. Progress, measurements and next steps are in the
+  frame); live calibration works, the first camera folds missed the
+  corners (the cloth was probably out of position at calibration; not confirmed). The control panel can now run
+  Calibrate, Look and Fold with the live camera picture beside the LiDAR cloud; not yet run on the arms. Progress, measurements and next steps are in the
   bring-up log at the top of `hardware/so101/README.md`.
 - **Hardware code (user, 2026-11-14), `hardware/so101/`:** a scripted two-arm half
   fold planned with numpy kinematics, in three forms: blind from a committed trajectory (`replay.py`), one look
@@ -81,9 +83,9 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
-Hardware side track (user, 2026-11-17), in order: move arm 1's cable off the cloth's corner, then
-`fold_camera.py calibrate --cloth-colour blue` and `look` (check `look.png`); both arms with the cloth again and
-`--grasp-check` (the empty reading should print near -9.7 deg); `fold_live.py --dry-run`, then
+Hardware side track (user, 2026-11-17), in order: run the panel on the real arms and phone (`ui.py`, Calibrate,
+Look, Fold) and check the arms come back after a fold and after Stop; find why the camera fold misses the corners
+(where the fingertips land against the corners, for each arm); `fold_live.py --dry-run`, then
 `fold_live.py --grasp-check`. Commands in `hardware/so101/README.md`.
 
 ## Environment
@@ -92,7 +94,7 @@ Hardware side track (user, 2026-11-17), in order: move arm 1's cable off the clo
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-14: fast 262 passed, 1 failed (#15), 5 skipped; hardware (`pytest hardware/so101`) 65 passed; Windows 2026-11-17: hardware 108 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-14: fast 262 passed, 1 failed (#15), 5 skipped; hardware (`pytest hardware/so101`) 65 passed; Windows 2026-11-17: hardware 117 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -151,6 +153,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-17 · **Cloth fold from the control panel (user; design in `docs/superpowers/specs/2026-11-17-panel-cloth-fold-design.md`):** `fold_job.py` runs `fold_camera.py` as a child process for the panel (output kept, the two prompts answered by a Continue button, Stop ends it); `ui.Arm.lend` / `take_back` close and reopen an arm's serial port around a fold; new endpoints `/fold`, `/fold/start|continue|stop`, `/camera.jpg` (encoded in memory), `/look.png`; `ui.html` has a Cloth fold section with the live picture; checked in Chrome on a fake servo bus with a synthetic picture and a stand-in script (look, both prompts, arms lent and a move refused meanwhile, Stop, arms back), not on the arms or the phone; earlier the same day (user, on the rig): live blue calibration outlines the cloth once an arm's cable is off its corner, a torque-cap write failed once on arm 1's motor 2 and passed on the rerun, the jaw's empty readings are -9.3 and -9.5 deg with the rate cap never engaged, and two camera folds missed the corners with both jaws reading empty; hardware 117 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-17 · **`fold_camera.py` no longer dies silently on a live phone (user: fix it):** it exited with no output (0xc0000374, heap corruption) because the Record3D stream object was freed after one frame while the phone kept streaming; freeing it crashed 2 of 2 trial runs, keeping it survived 3 of 3; `rgbd.Phone` keeps every stream object for the life of the process and `fold_camera.record3d_frame` goes through it (its own copy of the connection code deleted); three live `look` runs ended normally, each refusing the stale test calibration; live calibration still to do; hardware 108 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-17 · **Camera: first real frames, blue cloth setting (user):** Record3D streams over USB without the record button (the earlier "no frame" runs were likely the app in the background); the user's cloth is light blue on a pale table with darker things in view, and the darkness detector outlined the laptop at thresholds 121 (Otsu), 150, 165 and 180 on real frames; `fold_score.cloth_value` and `--cloth-colour blue` (`fold_camera.py calibrate`, `fold_score.py`) find it by blue over red, saved as `colour` in `camera.json` and followed by `look`, `fold` and `fold_live.py`; on one saved frame three corners land on the cloth and the fourth is 4 to 5 cm in because an arm's cable covers it; a missing `camera.json` gives a message, not a traceback; no live calibration yet; hardware 106 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-17 · **Two-arm cloth fold ran; jaw timing and collision-check gaps fixed (user):** both arms folded the 30 cm cloth at speed 0.3 (user: works apart from the grasp check); the check printed MISSED x 3 on both arms with empty readings of 12.6 and 12.5 deg (shut is -9.7): the plan closed the jaw at up to 7.45 deg per row against the replay's 3, so the jaw lagged (results.md); `fold_traj.py` moves the jaw inside the cap, fold regenerated (379 steps, jaw 2.68 deg per row), not rerun; from the commit review: `collision.closest` refuses angles and distances that are not numbers, `--no-gripper` checks the jaw at both ends of its travel, the glides to idle, to the first target and back are checked before torque goes on (14 to 15 mm clear on both arms today); hardware 104 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
