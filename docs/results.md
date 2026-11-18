@@ -2818,3 +2818,17 @@ top, angles from `replay.py --read arm1` through the default map:
 Elbow zero moved to tick 2110 (2047 + 5.5 x 11.378) in `arm1/urdf.json`; the others left at the default (pan left
 alone by the user's choice). Under power at the zero pose after the change (user, by eye): forearm level, gripper
 level, upper arm upright, fingers and jaw as on arm 2. Fold dry run on both arms: 0 clamped steps.
+
+## First fold played on arm 2: hit its own base (2026-11-17)
+
+Arm 2 alone, no cloth, `half_fold_30cm.json`, `--speed 0.3 --torque-limit 50`. n = 1. The user saw the arm strike
+its base and move in jerks, and stopped it at step 244 of 353 (the release at the near edge).
+
+The committed trajectory in the arm model (so101_new_calib, so101-nexus 0.4.8, collision geoms only, MuJoCo
+`mj_geomDistance`, every step): the gripper is inside the shoulder housing from step 218 to step 269, deepest
+33.9 mm at step 232; the wrist is 3.7 mm inside at step 232. The first step inside has the fingertip 11.9 cm in front
+of the base origin and 5.0 cm up. The release is planned at 8.0 cm (near edge 1.5 cm from the base front). The
+model's base body has no collision geoms, so the real overlap is at least this.
+
+`replay.py` sends one target per trajectory row, every `dt / speed` seconds: 0.167 s at speed 0.3, with up to
+2.7 deg between rows, so the goals arrive as steps 6 times a second. Not measured on the arm; `--log` was off.

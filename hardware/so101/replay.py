@@ -122,13 +122,23 @@ class Follower:
         """Goal = where each joint is NOW, then torque on, so it holds still. `arm_limit` (0 to 1000) caps the torque
         of every joint; the gripper never gets more than its own cap."""
         self.send_goals(present)
+        self.set_torque_limits(arm_limit)
+        for m in MOTOR_IDS:
+            result, _ = self.packet.write1ByteTxRx(self.port, m, ADDR_TORQUE_ENABLE, 1)
+            if result != scs.COMM_SUCCESS:
+                raise OSError(f"Could not turn on the torque of motor {m} on the {self.name} arm")
+
+    def set_torque_limits(self, arm_limit):
+        """Write the torque limit of every motor and read it back. The register keeps its value until the arm is
+        powered off, so it is written on every run."""
         for m in MOTOR_IDS:
             limit = arm_limit
             if m == GRIPPER_ID:
                 limit = min(GRIPPER_TORQUE_LIMIT, arm_limit)
-            # written every time: the register keeps the last value until the arm is powered off
-            self.packet.write2ByteTxRx(self.port, m, ADDR_TORQUE_LIMIT, limit)
-            self.packet.write1ByteTxRx(self.port, m, ADDR_TORQUE_ENABLE, 1)
+            result, _ = self.packet.write2ByteTxRx(self.port, m, ADDR_TORQUE_LIMIT, limit)
+            held, read_result, _ = self.packet.read2ByteTxRx(self.port, m, ADDR_TORQUE_LIMIT)
+            if result != scs.COMM_SUCCESS or read_result != scs.COMM_SUCCESS or held != limit:
+                raise OSError(f"Motor {m} on the {self.name} arm did not take the torque limit {limit}")
 
 
 # --- trajectory file ---
@@ -215,15 +225,18 @@ def print_dry_run(side, arm):
         print(f"  {side} {name}: {min(col):.1f} to {max(col):.1f} deg, max step change {step:.2f} deg")
 
 
-def lowest_points(rows):
+def lowest_points(follower, ticks):
     """[(height above the table in m, step)] for the elbow joint centre, the wrist joint centre and the fingertip:
-    the lowest each one gets over the target rows, from the arm model."""
+    the lowest each one gets over the clamped tick rows that are sent, from the arm model."""
     import kinematics  # needs numpy, which playing a trajectory does not
 
     model = kinematics.Arm()
     lowest = [None, None, None]
-    for step, row in enumerate(rows):
-        points = model.joint_points(row[:5])
+    for step, row in enumerate(ticks):
+        angles = []
+        for m in MOTOR_IDS[:5]:
+            angles.append(follower.to_rad(m, row[m - 1]))
+        points = model.joint_points(angles)
         for i in range(3):
             height = float(points[i][2])
             if lowest[i] is None or height < lowest[i][0]:
@@ -231,9 +244,9 @@ def lowest_points(rows):
     return lowest
 
 
-def print_lowest(side, arm):
+def print_lowest(side, follower, ticks):
     names = ["elbow joint centre", "wrist joint centre", "fingertip"]
-    lowest = lowest_points(arm["target"])
+    lowest = lowest_points(follower, ticks)
     for i in range(3):
         height, step = lowest[i]
         print(f"  {side} lowest {names[i]}: {height * 100:.1f} cm above the table at step {step}")
@@ -398,8 +411,8 @@ def parse(argv):
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--speed", type=speed_arg, default=0.5)
     p.add_argument("--torque-limit", type=torque_arg, default=100, metavar="PERCENT",
-                   help="cap every joint's torque, so a collision stalls gently; stays on the motors until the next "
-                        "replay or a power cycle")
+                   help="cap every joint's torque, so a collision stalls gently; lifted when the run ends at the idle "
+                        "pose, left on after a stop")
     p.add_argument("--only", choices=["left", "right"])
     p.add_argument("--no-gripper", action="store_true")
     p.add_argument("--allow-clamp", action="store_true")
@@ -439,6 +452,8 @@ def main(argv=None):
     except (KeyboardInterrupt, OSError) as err:
         reason = "Ctrl-C" if isinstance(err, KeyboardInterrupt) else f"bus error: {err}"
         print(f"\nStopped ({reason}) at step {progress['step']}. No more targets sent; torque left on, arms hold.")
+        if args.torque_limit < 100:
+            print(f"The {args.torque_limit}% torque cap is still on the motors, until the next replay or a power cycle.")
         return 1
 
 
@@ -497,7 +512,7 @@ def replay(args, progress):
     if args.dry_run:
         for side in followers:
             print_dry_run(side, traj["arms"][side])
-            print_lowest(side, traj["arms"][side])
+            print_lowest(side, followers[side], ticks[side])
         return 0
 
     motors = MOTOR_IDS[:5] if args.no_gripper else MOTOR_IDS
@@ -546,6 +561,10 @@ def replay(args, progress):
     for side, f in followers.items():
         if idle[side] is not None:
             print(f"{side} ({f.name}) is back at its idle pose, torque on.")
+    if args.torque_limit < 100:
+        for f in followers.values():
+            f.set_torque_limits(FULL_TORQUE_LIMIT)
+        print("Torque cap lifted: every joint is back at full torque.")
     return 0
 
 

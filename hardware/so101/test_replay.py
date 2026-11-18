@@ -26,6 +26,8 @@ class FakePort:
         self.writes = []  # one {motor id: goal} per sync write
         self.torque = []  # (motor id, value) per torque-enable write
         self.words = []  # (motor id, address, value) per two-byte register write
+        self.registers = {}  # (motor id, address) -> the value the motor holds
+        self.deaf_to_words = False  # True: two-byte writes are acknowledged but not stored
         self.on_write = None  # called with the write count; may raise
         self.ser = types.SimpleNamespace(reset_input_buffer=lambda: None)
 
@@ -54,7 +56,12 @@ def make_fake_sdk(ports):
 
         def write2ByteTxRx(self, port, motor, address, value):
             port.words.append((motor, address, value))
+            if not port.deaf_to_words:
+                port.registers[(motor, address)] = value
             return 0, 0
+
+        def read2ByteTxRx(self, port, motor, address):
+            return port.registers.get((motor, address), 0), 0, 0
 
     class GroupSyncRead:
         def __init__(self, port, packet, address, length):
@@ -442,28 +449,36 @@ def test_no_gripper_keeps_the_jaw_out_of_the_idle_moves(env):
 
 # --- torque cap and the lowest points of a trajectory ---
 
-def torque_limits(port):
-    """{motor id: last value written to the torque limit register}."""
-    limits = {}
+def torque_limit_writes(port):
+    """{motor id: every value written to the torque limit register, in order}."""
+    writes = {}
     for motor, address, value in port.words:
         if address == 48:
-            limits[motor] = value
-    return limits
+            writes.setdefault(motor, []).append(value)
+    return writes
 
 
-def test_torque_limit_caps_every_joint(env):
+def test_torque_limit_caps_every_joint_and_full_torque_comes_back_at_the_end(env):
     traj = make_traj()
     seed_at_first_target(env, traj)
     args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--torque-limit", "40"]
     assert env.replay.main(args) == 0
-    assert torque_limits(env.ports["devL"]) == {1: 400, 2: 400, 3: 400, 4: 400, 5: 400, 6: 400}
+    writes = torque_limit_writes(env.ports["devL"])
+    for motor in range(1, 7):
+        assert writes[motor][0] == 400
+    for motor in range(1, 6):
+        assert writes[motor][-1] == 1000
+    assert writes[6][-1] == 500
 
 
 def test_without_a_torque_limit_the_arm_joints_get_full_torque(env):
     traj = make_traj()
     seed_at_first_target(env, traj)
     assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 0
-    assert torque_limits(env.ports["devR"]) == {1: 1000, 2: 1000, 3: 1000, 4: 1000, 5: 1000, 6: 500}
+    writes = torque_limit_writes(env.ports["devR"])
+    for motor in range(1, 6):
+        assert writes[motor][0] == 1000
+    assert writes[6][0] == 500
 
 
 def test_a_torque_limit_too_low_to_hold_the_arm_is_refused(env):
@@ -471,12 +486,49 @@ def test_a_torque_limit_too_low_to_hold_the_arm_is_refused(env):
         env.replay.main([write_traj(env, make_traj()), "--left", "L", "--torque-limit", "5"])
 
 
+def test_a_torque_limit_the_motor_did_not_take_stops_before_torque_goes_on(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+    env.ports["devL"].deaf_to_words = True
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--torque-limit", "40"]
+    assert env.replay.main(args) == 1
+    assert env.ports["devL"].torque == []
+
+
+def test_ctrl_c_leaves_the_torque_cap_on(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+
+    def interrupt(n):
+        if n >= 5:
+            raise KeyboardInterrupt
+
+    env.ports["devL"].on_write = interrupt
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--torque-limit", "40"]
+    assert env.replay.main(args) == 1
+    writes = torque_limit_writes(env.ports["devL"])
+    for motor in range(1, 7):
+        assert writes[motor] == [400]
+
+
 def test_lowest_points_finds_the_step_that_leans_furthest(env):
+    f = env.replay.Follower("L")
     rows = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(5)]
     rows[3][1] = 0.9  # shoulder lift tips the whole arm forward and down
-    lowest = env.replay.lowest_points(rows)
+    ticks = env.replay.convert(f, rows)[0]
+    lowest = env.replay.lowest_points(f, ticks)
     assert len(lowest) == 3
     for height, step in lowest:
         assert step == 3
-    upright_tip = env.replay.lowest_points(rows[:3])[2][0]
+    upright_tip = env.replay.lowest_points(f, ticks[:3])[2][0]
     assert lowest[2][0] < upright_tip
+
+
+def test_lowest_points_follow_the_clamped_targets(env):
+    f = env.replay.Follower("L")
+    over = [[0.0, math.radians(140), 0.0, 0.0, 0.0, 0.0]]  # the fixture's limit is 120 deg
+    at_limit = [[0.0, math.radians(120), 0.0, 0.0, 0.0, 0.0]]
+    sent = env.replay.lowest_points(f, env.replay.convert(f, over)[0])
+    expected = env.replay.lowest_points(f, env.replay.convert(f, at_limit)[0])
+    for i in range(3):
+        assert abs(sent[i][0] - expected[i][0]) < 0.002
