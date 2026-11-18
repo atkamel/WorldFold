@@ -56,19 +56,45 @@ def read(port, packet, motor_id, address, tries=5):
     sys.exit(f"Motor {motor_id}: reading address {address} failed")
 
 
-def write(port, packet, motor_id, address, value, size=2):
+def try_write(port, packet, motor_id, address, value, size=2):
+    """Write a register. Returns None on success, or a message saying why it failed."""
     write_fn = packet.write1ByteTxRx if size == 1 else packet.write2ByteTxRx
+    comm = None
+    error = None
     for _ in range(5):
         comm, error = write_fn(port, motor_id, address, value)
         if comm == scs.COMM_SUCCESS and not error:
-            return
+            return None
         time.sleep(0.05)
-    sys.exit(f"Motor {motor_id}: writing address {address} failed")
+    return f"Motor {motor_id}: writing address {address} failed (comm result {comm}, servo error byte {error})"
+
+
+def write(port, packet, motor_id, address, value, size=2):
+    failure = try_write(port, packet, motor_id, address, value, size)
+    if failure is not None:
+        sys.exit(failure)
 
 
 def set_torque(port, packet, on):
     for motor_id in MOTOR_IDS:
         write(port, packet, motor_id, ADDR_TORQUE_ENABLE, int(on), size=1)
+
+
+def torque_off_all(port, packet):
+    """Turn torque off on every motor, carrying on past a motor that fails. Returns the failure messages."""
+    failures = []
+    for motor_id in MOTOR_IDS:
+        failure = try_write(port, packet, motor_id, ADDR_TORQUE_ENABLE, 0, size=1)
+        if failure is not None:
+            failures.append(failure)
+    return failures
+
+
+def release(port, packet):
+    failures = torque_off_all(port, packet)
+    if len(failures) > 0:
+        port.closePort()
+        sys.exit("\n".join(failures) + "\nTorque is off on the other motors. Power-cycle the arm to free the ones listed.")
 
 
 def present_positions(port, packet):
@@ -92,7 +118,7 @@ def clamp_to_limits(pose):
 
 
 def record(port, packet):
-    set_torque(port, packet, False)
+    release(port, packet)
     print("Torque off. Pose the arm by hand in its idle position, then press Enter.")
 
     # Enter is waited for on another thread so this one can keep showing the encoders.
@@ -155,7 +181,7 @@ def main():
     if args.mode == "record":
         record(port, packet)
     elif args.mode == "release":
-        set_torque(port, packet, False)
+        release(port, packet)
         print("Torque off: the arm is limp.")
     else:
         go_idle(port, packet)
