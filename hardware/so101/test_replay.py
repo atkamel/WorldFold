@@ -25,6 +25,9 @@ class FakePort:
         self.pos = {m: 2047 for m in range(1, 7)}
         self.writes = []  # one {motor id: goal} per sync write
         self.torque = []  # (motor id, value) per torque-enable write
+        self.words = []  # (motor id, address, value) per two-byte register write
+        self.registers = {}  # (motor id, address) -> the value the motor holds
+        self.deaf_to_words = False  # True: two-byte writes are acknowledged but not stored
         self.on_write = None  # called with the write count; may raise
         self.ser = types.SimpleNamespace(reset_input_buffer=lambda: None)
 
@@ -52,7 +55,13 @@ def make_fake_sdk(ports):
             return 0, 0
 
         def write2ByteTxRx(self, port, motor, address, value):
+            port.words.append((motor, address, value))
+            if not port.deaf_to_words:
+                port.registers[(motor, address)] = value
             return 0, 0
+
+        def read2ByteTxRx(self, port, motor, address):
+            return port.registers.get((motor, address), 0), 0, 0
 
     class GroupSyncRead:
         def __init__(self, port, packet, address, length):
@@ -102,6 +111,7 @@ def env(tmp_path, monkeypatch):
         limits = {str(m): {"true": {"min": 685, "max": 3410}} for m in range(1, 7)}  # +-120 deg about 2047
         (tmp_path / "arms" / name / "limits.json").write_text(json.dumps(limits))
     monkeypatch.setattr(replay, "SETTLE_SECONDS", 0)
+    monkeypatch.setattr(replay, "RUNS_DIR", tmp_path / "runs")      # every replay logs its steps to a run folder
     monkeypatch.setattr("builtins.input", lambda *a: "")
     return types.SimpleNamespace(replay=replay, ports=ports, tmp=tmp_path)
 
@@ -382,13 +392,331 @@ def test_grasp_check_gives_up_after_its_retries_and_finishes(env, capsys, monkey
     assert code == 0 and out.count("MISSED") == 2 and state["attempt"] == 1
 
 
-def test_log_holds_the_measured_angles_per_step(env):
+def step_lines(path):
+    lines = []
+    for text in Path(path).read_text().splitlines():
+        if text.strip():
+            lines.append(json.loads(text))
+    return lines
+
+
+def only_run_folder(env):
+    folders = sorted((env.tmp / "runs").iterdir())
+    assert len(folders) == 1
+    return folders[0]
+
+
+def test_every_replay_logs_each_step_with_its_time_targets_and_readings(env):
+    traj = make_traj()
+    idle = {m: 1500 + 10 * m for m in range(1, 7)}
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 0
+    folder = only_run_folder(env)
+    lines = step_lines(folder / "steps.jsonl")
+    fold_rows = []
+    phases = []
+    for line in lines:
+        if line["phase"] not in phases:
+            phases.append(line["phase"])
+        if line["phase"] == "fold":
+            fold_rows.append(line)
+    assert phases[0] != "fold" and phases[-1] != "fold" and "fold" in phases      # the glides are logged too
+    assert [line["row"] for line in fold_rows] == list(range(T))
+    times = [line["t"] for line in lines]
+    assert times == sorted(times)
+    first = fold_rows[0]
+    for side in ("left", "right"):
+        assert len(first["target"][side]) == 6 and len(first["measured"][side]) == 6
+        for j in range(6):
+            assert abs(first["target"][side][j] - traj["arms"][side]["target"][0][j]) < 1e-4
+        # a perfect fake servo, read before each send: row 0 reads the first target, where the glide left the arm
+        assert abs(first["measured"][side][0] - traj["arms"][side]["target"][0][0]) < 2 * env.replay.RAD_PER_STEP
+    meta = json.loads((folder / "replay_meta.json").read_text())
+    assert meta["arms"]["left"]["name"] == "L"
+    assert json.loads((folder / "plan.json").read_text())["dt"] == traj["dt"]
+
+
+def test_log_names_the_step_file(env):
     traj = make_traj()
     seed_at_first_target(env, traj)
-    log = env.tmp / "run.json"
-    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--log", str(log)]) == 0
-    data = json.loads(log.read_text())
-    assert [row[0] for row in data["measured"]["left"]] == list(range(T))
-    assert len(data["measured"]["right"][0]) == 7
-    # a perfect fake servo read before each send: step 0 reads the first target, where the arm was seeded
-    assert abs(data["measured"]["left"][0][1] - traj["arms"]["left"]["target"][0][0]) < 2 * env.replay.RAD_PER_STEP
+    wanted = env.tmp / "my_run" / "steps.jsonl"
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--log", str(wanted)]
+    assert env.replay.main(args) == 0
+    assert len(step_lines(wanted)) >= T
+    assert not (env.tmp / "runs").exists()
+
+
+def test_a_stopped_run_keeps_the_steps_logged_so_far(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+
+    def interrupt(n):
+        if n >= 5:
+            raise KeyboardInterrupt
+
+    env.ports["devL"].on_write = interrupt
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 1
+    lines = step_lines(only_run_folder(env) / "steps.jsonl")
+    assert len(lines) >= 1
+    assert len(lines) < T
+
+
+def test_a_dry_run_logs_nothing(env):
+    assert env.replay.main([write_traj(env, make_traj()), "--left", "L", "--right", "R", "--dry-run"]) == 0
+    assert not (env.tmp / "runs").exists()
+
+
+def test_the_grasp_check_readings_go_into_the_log(env, capsys, monkeypatch):
+    add_cloth(env, "devL", {0})
+    add_cloth(env, "devR", {0})
+    code, out = run_fold(env, capsys, monkeypatch)
+    assert code == 0
+    checks = []
+    for line in step_lines(only_run_folder(env) / "steps.jsonl"):
+        if line["phase"] == "grasp check":
+            checks.append(line)
+    assert len(checks) == 1
+    assert checks[0]["held"] == {"left": True, "right": True}
+
+
+# --- idle pose: a replay starts from it and returns to it ---
+
+def write_idle(env, name, pose):
+    (env.tmp / "arms" / name / "idle_pose.json").write_text(json.dumps({str(m): p for m, p in pose.items()}))
+
+
+def first_target(env, traj, side):
+    f = env.replay.Follower("L")
+    ticks = env.replay.convert(f, traj["arms"][side]["target"][:1])[0][0]
+    return {m: round(t) for m, t in zip(range(1, 7), ticks)}
+
+
+def test_replay_goes_to_the_idle_pose_first_and_ends_there(env):
+    traj = make_traj()
+    idle = {m: 1500 + 10 * m for m in range(1, 7)}
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 0
+    for side, dev in (("left", "devL"), ("right", "devR")):
+        writes = env.ports[dev].writes
+        assert writes[-1] == idle
+        assert writes.index(idle) < writes.index(first_target(env, traj, side))
+
+
+def test_an_idle_pose_outside_the_limits_is_clamped(env):
+    traj = make_traj()
+    idle = {m: 2047 for m in range(1, 7)}
+    idle[2] = 600  # below the fixture's lower limit of 685
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 0
+    assert env.ports["devL"].writes[-1][2] == 685
+
+
+def test_no_gripper_keeps_the_jaw_out_of_the_idle_moves(env):
+    traj = make_traj()
+    idle = {m: 1500 + 10 * m for m in range(1, 7)}
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--no-gripper", "--speed", "1"]
+    assert env.replay.main(args) == 0
+    assert set(env.ports["devL"].writes[-1]) == {1, 2, 3, 4, 5}
+
+
+# --- torque cap and the lowest points of a trajectory ---
+
+def torque_limit_writes(port):
+    """{motor id: every value written to the torque limit register, in order}."""
+    writes = {}
+    for motor, address, value in port.words:
+        if address == 48:
+            writes.setdefault(motor, []).append(value)
+    return writes
+
+
+def test_torque_limit_caps_every_joint_and_full_torque_comes_back_at_the_idle_pose(env):
+    traj = make_traj()
+    idle = {m: 1500 + 10 * m for m in range(1, 7)}
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--torque-limit", "40"]
+    assert env.replay.main(args) == 0
+    writes = torque_limit_writes(env.ports["devL"])
+    for motor in range(1, 7):
+        assert writes[motor][0] == 400
+    for motor in range(1, 6):
+        assert writes[motor][-1] == 1000
+    assert writes[6][-1] == 500
+
+
+def test_without_a_torque_limit_the_arm_joints_get_full_torque(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 0
+    writes = torque_limit_writes(env.ports["devR"])
+    for motor in range(1, 6):
+        assert writes[motor][0] == 1000
+    assert writes[6][0] == 500
+
+
+def test_a_torque_limit_too_low_to_hold_the_arm_is_refused(env):
+    with pytest.raises(SystemExit):
+        env.replay.main([write_traj(env, make_traj()), "--left", "L", "--torque-limit", "5"])
+
+
+def test_a_torque_limit_the_motor_did_not_take_stops_before_torque_goes_on(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+    env.ports["devL"].deaf_to_words = True
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--torque-limit", "40"]
+    assert env.replay.main(args) == 1
+    assert env.ports["devL"].torque == []
+
+
+def test_ctrl_c_leaves_the_torque_cap_on(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+
+    def interrupt(n):
+        if n >= 5:
+            raise KeyboardInterrupt
+
+    env.ports["devL"].on_write = interrupt
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--torque-limit", "40"]
+    assert env.replay.main(args) == 1
+    writes = torque_limit_writes(env.ports["devL"])
+    for motor in range(1, 7):
+        assert writes[motor] == [400]
+
+
+def test_lowest_points_finds_the_step_that_leans_furthest(env):
+    f = env.replay.Follower("L")
+    rows = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(5)]
+    rows[3][1] = 0.9  # shoulder lift tips the whole arm forward and down
+    ticks = env.replay.convert(f, rows)[0]
+    lowest = env.replay.lowest_points(f, ticks)
+    assert len(lowest) == 3
+    for height, step in lowest:
+        assert step == 3
+    upright_tip = env.replay.lowest_points(f, ticks[:3])[2][0]
+    assert lowest[2][0] < upright_tip
+
+
+def test_lowest_points_follow_the_clamped_targets(env):
+    f = env.replay.Follower("L")
+    over = [[0.0, math.radians(140), 0.0, 0.0, 0.0, 0.0]]  # the fixture's limit is 120 deg
+    at_limit = [[0.0, math.radians(120), 0.0, 0.0, 0.0, 0.0]]
+    sent = env.replay.lowest_points(f, env.replay.convert(f, over)[0])
+    expected = env.replay.lowest_points(f, env.replay.convert(f, at_limit)[0])
+    for i in range(3):
+        assert abs(sent[i][0] - expected[i][0]) < 0.002
+
+
+def test_the_torque_cap_stays_on_an_arm_that_does_not_end_at_an_idle_pose(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--torque-limit", "40"]
+    assert env.replay.main(args) == 0
+    writes = torque_limit_writes(env.ports["devL"])
+    for motor in range(1, 7):
+        assert writes[motor] == [400]
+
+
+# --- smooth playback ---
+
+def test_play_moves_in_small_steps_between_rows(env, monkeypatch):
+    r = env.replay
+    monkeypatch.setattr(r, "sleep_until", lambda t: None)
+    traj = make_traj(dt=0.1)  # 0.1 s per row = 5 sends of 20 ms
+    followers = {"left": r.Follower("L"), "right": r.Follower("R")}
+    ticks = {}
+    for side in followers:
+        ticks[side] = r.convert(followers[side], traj["arms"][side]["target"])[0]
+        followers[side].connect()
+    r.play(followers, ticks, 0.1, 1.0, r.MOTOR_IDS, {})
+    sent = followers["left"].port.writes
+    assert len(sent) == T * 5
+    biggest_row_jump = 0.0
+    for k in range(1, T):
+        for j in range(6):
+            biggest_row_jump = max(biggest_row_jump, abs(ticks["left"][k][j] - ticks["left"][k - 1][j]))
+    biggest_sent_jump = 0
+    for a, b in zip(sent, sent[1:]):
+        for m in a:
+            biggest_sent_jump = max(biggest_sent_jump, abs(b[m] - a[m]))
+    assert biggest_sent_jump <= biggest_row_jump / 5 + 1  # +1: goals are rounded to whole ticks
+    for m in range(1, 7):
+        assert sent[-1][m] == round(ticks["left"][T - 1][m - 1])
+
+
+# --- self-collision ---
+
+def through_the_base_traj():
+    traj = make_traj()
+    for side in ("left", "right"):
+        row = traj["arms"][side]["target"][4]
+        row[1] = math.radians(-81)
+        row[2] = math.radians(80)
+        row[3] = math.radians(95)
+    return traj
+
+
+def test_a_trajectory_through_the_arms_own_base_is_refused(env):
+    pytest.importorskip("mujoco")
+    pytest.importorskip("so101_nexus")
+    path = write_traj(env, through_the_base_traj())
+    with pytest.raises(SystemExit):
+        env.replay.main([path, "--left", "L", "--right", "R", "--speed", "1"])
+    assert env.ports == {}  # refused before any bus was opened
+
+
+def test_no_collision_check_plays_it_anyway(env):
+    path = write_traj(env, through_the_base_traj())
+    assert env.replay.main([path, "--left", "L", "--right", "R", "--dry-run", "--no-collision-check"]) == 0
+
+
+def fake_closest(band):
+    """A stand-in for collision.closest: the arm overlaps itself wherever shoulder lift (rad) is inside `band`.
+    Returns the stand-in and the list of row sets it was asked about."""
+    asked = []
+
+    def closest(rows):
+        asked.append([list(row) for row in rows])
+        for step, row in enumerate(rows):
+            if band[0] <= row[1] <= band[1]:
+                return -0.02, step, "stand-in parts"
+        return 0.05, 0, "nothing"
+
+    return closest, asked
+
+
+def test_a_glide_to_the_idle_pose_through_the_arm_is_refused_before_torque_goes_on(env, monkeypatch):
+    collision = pytest.importorskip("collision")
+    closest, asked = fake_closest((-0.6, -0.4))
+    monkeypatch.setattr(collision, "closest", closest)
+    traj = make_traj()
+    idle = {m: 2047 for m in range(1, 7)}
+    idle[2] = 2047 - round(1.0 / env.replay.RAD_PER_STEP)  # shoulder lift -1 rad: the glide crosses the band
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    with pytest.raises(SystemExit):
+        env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"])
+    assert env.ports["devL"].torque == []
+    assert env.ports["devL"].writes == []
+
+
+def test_without_the_gripper_the_check_takes_the_jaw_at_both_ends_of_its_travel(env, monkeypatch):
+    collision = pytest.importorskip("collision")
+    closest, asked = fake_closest((5.0, 6.0))  # never overlaps
+    monkeypatch.setattr(collision, "closest", closest)
+    traj = make_traj()
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--dry-run", "--no-gripper"]
+    assert env.replay.main(args) == 0
+    f = env.replay.Follower("L")
+    ends = [f.to_rad(6, f.limits[6][0]), f.to_rad(6, f.limits[6][1])]
+    jaws_seen = set()
+    for rows in asked:
+        for row in rows:
+            jaws_seen.add(round(row[5], 6))
+    assert jaws_seen == {round(ends[0], 6), round(ends[1], 6)}

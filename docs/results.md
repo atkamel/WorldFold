@@ -2782,3 +2782,137 @@ model range is -10° to 100°, the middle of its travel is 45°). Its zero is no
 
 **Recorder:** about 215 to 245 kB per frame (720 x 960 JPEG and 192 x 256 depth), 130 to 150 MB per minute at 10
 frames per second, on synthetic noisy frames.
+
+## SO-101 arm 2 tick map, measured on the arm (2026-11-17)
+
+One reading, by hand, no repeats, no interval. Torque off, arm 2 held in the model's zero pose (upper arm against an
+upright book, forearm and gripper level by eye, jaw shut), angles from `replay.py --read arm2` through the default map:
+
+| joint | reading in the zero pose | expected |
+|---|---|---|
+| shoulder_pan | -1.1° | 0 |
+| shoulder_lift | 3.2° | 0 |
+| elbow_flex | 12.2° | 0 |
+| wrist_flex | 1.3° | 0 |
+| gripper (shut) | -9.7° | -10 |
+
+Elbow zero moved to tick 2186 (2047 + 12.2 x 11.378) in `arm2/urdf.json`; the others left at the default. Under
+power at the zero pose after the change (user, by eye): forearm level, gripper level, upper arm upright, moving
+finger on top, jaw slightly open, all as the model says. Fold dry run with the new zero: 0 clamped steps, elbow peak
+79.6° against about 91° of travel left on that side.
+
+## SO-101 arm 1 tick map, measured on the arm (2026-11-17)
+
+One reading, by hand, no repeats, no interval. Same method as arm 2, with the fingers stacked and the moving one on
+top, angles from `replay.py --read arm1` through the default map:
+
+| joint | reading in the zero pose | expected |
+|---|---|---|
+| shoulder_pan | -3.0° | 0 |
+| shoulder_lift | 1.6° | 0 |
+| elbow_flex | 5.5° | 0 |
+| wrist_flex | -0.4° | 0 |
+| wrist_roll | 0.7° | 0 |
+| gripper (shut) | -9.6° | -10 |
+
+Elbow zero moved to tick 2110 (2047 + 5.5 x 11.378) in `arm1/urdf.json`; the others left at the default (pan left
+alone by the user's choice). Under power at the zero pose after the change (user, by eye): forearm level, gripper
+level, upper arm upright, fingers and jaw as on arm 2. Fold dry run on both arms: 0 clamped steps.
+
+## First fold played on arm 2: hit its own base (2026-11-17)
+
+Arm 2 alone, no cloth, `half_fold_30cm.json`, `--speed 0.3 --torque-limit 50`. n = 1. The user saw the arm strike
+its base and move in jerks, and stopped it at step 244 of 353 (the release at the near edge).
+
+The committed trajectory in the arm model (so101_new_calib, so101-nexus 0.4.8, collision geoms only, MuJoCo
+`mj_geomDistance`, every step): the gripper is inside the shoulder housing from step 218 to step 269, deepest
+33.9 mm at step 232; the wrist is 3.7 mm inside at step 232. The first step inside has the fingertip 11.9 cm in front
+of the base origin and 5.0 cm up. The release is planned at 8.0 cm (near edge 1.5 cm from the base front). The
+model's base body has no collision geoms, so the real overlap is at least this.
+
+`replay.py` sends one target per trajectory row, every `dt / speed` seconds: 0.167 s at speed 0.3, with up to
+2.7 deg between rows, so the goals arrive as steps 6 times a second. Not measured on the arm; `--log` was off.
+
+## Self-collision check and the short fold (2026-11-17)
+
+Arm model only (so101_new_calib, so101-nexus 0.4.8, MuJoCo 3.11.0 as installed), nothing here run on an arm.
+`hardware/so101/collision.py`: signed distance between the collision shapes of parts 3 or more joints apart, base
+meshes made solid, `mj_geomDistance` with the native convex routine off. With it on, 99 of 13,098 calls over the old
+fold returned exactly 0 for shapes whose nearest points were up to 4 cm apart; with it off, none did.
+
+One-arm plan, pinch at 38 cm, straight ahead, release at each distance from the base origin, nearest approach over
+the whole plan (always the shoulder housing and the gripper):
+
+| release | nearest approach |
+|---|---|
+| 8 cm (the near edge) | -67.0 mm |
+| 10 cm | -28.1 mm |
+| 11 cm | -13.9 mm |
+| 12 cm | -2.8 mm |
+| 13 cm | 9.6 mm |
+| 14 cm | 21.5 mm |
+| 15 cm | 32.1 mm |
+| 16 cm | 42.7 mm |
+
+The overlap depth differs between the two convex routines (33.9 mm native, 67.0 mm older, same pose); the sign
+agrees. With a 10 mm clearance and 5 mm steps the planner releases at 13.5 cm: 5.5 cm short of the near edge of the
+30 cm cloth, nearest approach 15.6 mm, 325 steps (was 353). The old trajectory is refused by `replay.py`.
+
+Not checked by this: parts 1 or 2 joints apart (both idle poses read as 6 to 8 mm overlaps there, the arm resting
+on itself), the table, the other arm, and the glides to and from the idle pose.
+
+## First two-arm fold with the cloth; the jaw lagged the plan (2026-11-17)
+
+Both arms, 30 cm cloth, `half_fold_30cm.json` (325 steps), `--speed 0.3 --torque-limit 50 --grasp-check`. n = 1.
+The user: the fold worked apart from the grasp check. No fold score was taken.
+
+| | left (arm 2) | right (arm 1) |
+|---|---|---|
+| jaw at the empty reading (should be about -9.7) | 12.6 deg | 12.5 deg |
+| jaw lifted, attempts 1 to 3 | -9.3, -9.5, -9.4 deg | -9.5, -9.5, -9.6 deg |
+| verdict printed | MISSED x 3 | MISSED x 3 |
+| final pose error, largest joint | 0.6 deg (shoulder lift) | 0.5 deg (shoulder lift) |
+
+The rate cap engaged 320 times. The trajectory asked the jaw for up to 7.45 deg per row and `replay.py` allows
+3 deg per row (60 deg/s), so the jaw ran behind the plan: the empty reading was taken mid-close, which no lifted
+reading could beat, and the pinch was about 7 deg from shut when the lift began. The verdicts say nothing about the
+grasp. Regenerated with the jaw at 2.68 deg per row at most: 379 steps, empty reading 6 rows after the jaw is shut.
+Not rerun on the arms.
+
+## First recorded camera fold from the control panel: it folded (2026-11-18)
+
+Both arms, light blue 30 cm cloth, started from the panel, speed 0.6, torque cap 50 %, grasp check off. n = 1.
+Run folder `hardware/so101/runs/20261118_000529` (not in git): 374 frames, 555 step lines, exit code 0.
+
+| | value |
+|---|---|
+| cloth found by the look (table cm) | near edge Y 7.1, far corners X -16.3 / 16.2, Y 37.6 / 38.1 |
+| pinch aimed at (each arm's frame, cm) | left 0.6 left of straight ahead, 36.9 forward; right 0.5 right, 37.3 forward |
+| fingertip at the pinch, from the encoders against the plan | within 0.1 cm sideways and forward, 0.2 cm low, both arms |
+| largest joint lag over the fold | 5.6 deg |
+| jaw reading while carrying the cloth | -9 deg on both arms (shut on nothing reads -9.3 to -9.5) |
+| release | planned 7.0 cm short of the near edge, 14 mm clear of the base in the model |
+| fold score from the first and last frames | far edge 1.74 cm mean, 2.55 cm max from the half line; overhang 2.23 cm; near half uncovered 0.0; area ratio 1.26 |
+| folded cloth on the table | Y 5.1 to 22.1 cm (ideal 7.1 to 22.1): the bottom layer ended about 2 cm nearer the arms |
+
+The frames show both grippers on the far corners at the pinch, both corners lifted and carried, and a half fold
+left on the table. The jaw reads the same holding this cloth as empty, so the position-based grasp check cannot
+see a grasp on it. The run before it (`20261118_000433`) stopped at the look: one side of the outline read 24.5 cm.
+`summary.json` counts 0 steps in a panel run because the script, not the recorder, writes `steps.jsonl`.
+
+## Does the camera fold follow a moved cloth? (2026-11-18)
+
+Offline, on frame 0 of run `20261118_000529` with that run's `camera.json`: the whole picture slid by a number of
+pixels to stand in for a moved cloth, then `fold_camera.plan`. n = 1 frame, no arm moved.
+
+| picture | far-left corner (table cm) | left pinch (right, forward cm) | right pinch (right, forward cm) |
+|---|---|---|---|
+| as recorded | -16.2, 37.6 | -0.5, 36.9 | 0.8, 36.7 |
+| 40 px right, same calibration | -12.5, 37.8 | 3.2, 37.1 | 4.4, 36.9 |
+| 40 px left, same calibration | -20.0, 37.4 | -4.2, 36.8 | -2.8, 36.6 |
+| 30 px nearer the arms, same calibration | -15.1, 32.9 | 0.7, 32.3 | 0.2, 32.2 |
+| 40 px right, calibrated again, then the look | -15.0, 38.0 | 0.7, 37.3 | -0.7, 37.3 |
+
+With the calibration left alone the pinch points move with the cloth (about 3.7 cm for 40 px). Calibrating after
+the move puts them back at the ruler position, because the calibration takes the cloth's place as the ruler
+position. That is the sequence the user ran on the rig when the arms went to the same place every time.

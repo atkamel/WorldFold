@@ -40,9 +40,24 @@ def otsu(grey):
     return dark
 
 
-def cloth_mask(rgb, dark=None):
-    """Boolean mask of the largest dark blob (holes filled) and the grey threshold used."""
-    grey = np.asarray(rgb, float).mean(axis=2)
+COLOURS = ["dark", "blue"]
+
+
+def cloth_value(rgb, colour="dark"):
+    """Per pixel, 0 to 255, low where the cloth is: the grey level for a dark cloth, and for a blue one how far blue
+    falls short of standing out over red (white, grey, black and brown things all read 255)."""
+    pixels = np.asarray(rgb, float)
+    if colour == "dark":
+        return pixels.mean(axis=2)
+    if colour == "blue":
+        blueness = np.clip(pixels[:, :, 2] - pixels[:, :, 0], 0, 255)
+        return 255 - np.clip(2 * blueness, 0, 255)
+    raise ValueError(f"cloth colour {colour!r} is not one of {COLOURS}")
+
+
+def cloth_mask(rgb, dark=None, colour="dark"):
+    """Boolean mask of the largest blob of cloth-coloured pixels (holes filled) and the threshold used."""
+    grey = cloth_value(rgb, colour)
     if dark is None:
         dark = otsu(grey)
     labels, n = ndimage.label(grey < dark)
@@ -91,15 +106,15 @@ def apply(h, pts):
     return q[:, :2] / q[:, 2:]
 
 
-def calibrate(before_rgb, side=0.30, near="bottom", dark=None):
-    mask, dark = cloth_mask(before_rgb, dark)
+def calibrate(before_rgb, side=0.30, near="bottom", dark=None, colour="dark"):
+    mask, dark = cloth_mask(before_rgb, dark, colour)
     corners = square_corners(mask, near)
     return homography(corners, side), corners, dark
 
 
-def score(before_rgb, after_rgb, side=0.30, near="bottom", dark=None):
-    h, _, dark = calibrate(before_rgb, side, near, dark)
-    mask, _ = cloth_mask(after_rgb, dark)
+def score(before_rgb, after_rgb, side=0.30, near="bottom", dark=None, colour="dark"):
+    h, _, dark = calibrate(before_rgb, side, near, dark, colour)
+    mask, _ = cloth_mask(after_rgb, dark, colour)
     x, y = apply(h, boundary(mask)).T
 
     far = (y > side / 4) & (x >= 0) & (x <= side)
@@ -140,13 +155,14 @@ def main(argv=None):
     ap.add_argument("--side", type=float, default=0.30, help="cloth side (m)")
     ap.add_argument("--near", choices=list(NEAR_DIR), default="bottom")
     ap.add_argument("--dark", type=float, default=None, help="grey threshold; default Otsu on the before photo")
+    ap.add_argument("--cloth-colour", choices=COLOURS, default="dark", help="what sets the cloth apart from the table")
     ap.add_argument("--out", help="save the after photo with the before square (green) and the ideal far edge (red)")
     args = ap.parse_args(argv)
     before, after = (np.asarray(Image.open(p).convert("RGB")) for p in (args.before, args.after))
-    res = score(before, after, args.side, args.near, args.dark)
+    res = score(before, after, args.side, args.near, args.dark, args.cloth_colour)
     print(json.dumps({k: round(float(v), 4) for k, v in res.items()}))
     if args.out:
-        h, corners, _ = calibrate(before, args.side, args.near, args.dark)
+        h, corners, _ = calibrate(before, args.side, args.near, args.dark, args.cloth_colour)
         overlay(after, corners, h, args.side).save(args.out)
 
 

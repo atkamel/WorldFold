@@ -4,8 +4,6 @@ Base frame: x forward, y left, z up, origin at the base's origin. Angles in radi
 
 import numpy as np
 
-TILT_WEIGHT = 0.03    # IK: metres of tip error per unit of finger-direction error (soft: far pinches may tilt)
-
 # Per arm joint (shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll): the body it turns, with the body's
 # position and quaternion (w, x, y, z) in its parent's frame, and the joint range. Each joint turns about the body's z.
 BODIES = [
@@ -53,26 +51,48 @@ class Arm:
             R = R @ rot @ turn(angle)
         return p + R @ self.site[0], (R @ self.site[1])[:, 2]
 
+    def joint_points(self, q):
+        """(elbow joint centre, wrist joint centre, fingertip), each a position (3,), for the 5 arm angles `q`."""
+        R = np.eye(3)
+        p = np.zeros(3)
+        origins = []
+        for (pos, rot), angle in zip(self.links, q):
+            p = p + R @ pos
+            origins.append(p)
+            R = R @ rot @ turn(angle)
+        fingertip = p + R @ self.site[0]
+        return origins[2], origins[3], fingertip
+
     def solve(self, target, seed, iters=200):
-        """Arm angles for the fingertip at `target` (base frame: x forward, y left, z up), fingers as near straight
-        down as the reach allows, on the seed's branch; wrist_roll stays 0 (free, it flipped half a turn at the edge
-        of reach). Returns (q, tip error m, tilt deg)."""
+        """Arm angles for the fingertip at `target` (base frame: x forward, y left, z up), on the seed's branch;
+        wrist_roll stays 0 (free, it flipped half a turn at the edge of reach). The tip position comes first: the four
+        joints leave one freedom at a reachable target, and it goes to keeping the fingers as near straight down as
+        that position allows. A joint at its limit is held there and the others go on. Returns (q, tip error m, tilt
+        deg); a tip error means the target is out of reach on this branch."""
         down = np.array([0.0, 0.0, -1.0])
-
-        def error(q):
-            p, z = self.tip(q)
-            return np.concatenate([target - p, TILT_WEIGHT * (down - z)])
-
         q = np.clip(np.asarray(seed, float), self.low, self.high)
         q[4] = 0.0
         for _ in range(iters):
-            e = error(q)
-            J = np.column_stack([(e - error(q + dq)) / 1e-6 for dq in np.eye(5)[:4] * 1e-6])
-            dq = J.T @ np.linalg.solve(J @ J.T + 1e-4 * np.eye(6), e)
-            dq *= min(1.0, 0.1 / max(float(np.max(np.abs(dq))), 1e-12))
-            moved = np.clip(q[:4] + dq, self.low[:4], self.high[:4])
-            if np.max(np.abs(moved - q[:4])) < 1e-7:      # converged (or held by a limit): a warm start from the
-                break                                      # last waypoint takes a few steps
-            q[:4] = moved
+            f = np.concatenate(self.tip(q))
+            J = np.column_stack([(np.concatenate(self.tip(q + dq)) - f) / 1e-6 for dq in np.eye(5)[:4] * 1e-6])
+            e, lean = target - f[:3], down - f[3:]
+            free = np.ones(4, bool)
+            for _ in range(4):                             # drop the joints a limit holds, solve with the rest
+                dq = np.zeros(4)
+                if not free.any():
+                    break
+                Jp, Jz = J[:3, free], J[3:, free]
+                inv = Jp.T @ np.linalg.inv(Jp @ Jp.T + 1e-6 * np.eye(3))
+                null = np.eye(free.sum()) - inv @ Jp       # joint motions that leave the tip where it is
+                reach, upright = inv @ e, null @ (Jz.T @ lean)
+                dq[free] = reach * min(1.0, 0.1 / max(float(np.max(np.abs(reach))), 1e-12)) \
+                    + upright * min(1.0, 0.05 / max(float(np.max(np.abs(upright))), 1e-12))
+                held = free & (((q[:4] <= self.low[:4]) & (dq < 0)) | ((q[:4] >= self.high[:4]) & (dq > 0)))
+                if not held.any():
+                    break
+                free &= ~held
+            if np.max(np.abs(dq)) < 1e-6:                  # converged: a warm start from the last waypoint takes a
+                break                                      # few steps
+            q[:4] = np.clip(q[:4] + dq, self.low[:4], self.high[:4])
         p, z = self.tip(q)
         return q, float(np.linalg.norm(target - p)), float(np.degrees(np.arccos(np.clip(-z[2], -1.0, 1.0))))

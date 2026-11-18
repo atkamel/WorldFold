@@ -10,6 +10,7 @@ The pose is saved to <arm>/idle_pose.json. Targets are clamped to <arm>/limits.j
 import argparse
 import json
 import sys
+import threading
 import time
 
 import scservo_sdk as scs
@@ -27,6 +28,7 @@ MOTOR_IDS = [1, 2, 3, 4, 5, 6]
 GRIPPER_ID = 6
 MOVE_SECONDS = 3.0  # how long the glide to the idle pose takes
 STEP_SECONDS = 0.02  # 50 goal updates per second
+DISPLAY_SECONDS = 0.1  # how often record shows the encoder positions
 
 LIMITS_FILE = ARM_DIR / "limits.json"
 POSE_FILE = ARM_DIR / "idle_pose.json"
@@ -54,19 +56,45 @@ def read(port, packet, motor_id, address, tries=5):
     sys.exit(f"Motor {motor_id}: reading address {address} failed")
 
 
-def write(port, packet, motor_id, address, value, size=2):
+def try_write(port, packet, motor_id, address, value, size=2):
+    """Write a register. Returns None on success, or a message saying why it failed."""
     write_fn = packet.write1ByteTxRx if size == 1 else packet.write2ByteTxRx
+    comm = None
+    error = None
     for _ in range(5):
         comm, error = write_fn(port, motor_id, address, value)
         if comm == scs.COMM_SUCCESS and not error:
-            return
+            return None
         time.sleep(0.05)
-    sys.exit(f"Motor {motor_id}: writing address {address} failed")
+    return f"Motor {motor_id}: writing address {address} failed (comm result {comm}, servo error byte {error})"
+
+
+def write(port, packet, motor_id, address, value, size=2):
+    failure = try_write(port, packet, motor_id, address, value, size)
+    if failure is not None:
+        sys.exit(failure)
 
 
 def set_torque(port, packet, on):
     for motor_id in MOTOR_IDS:
         write(port, packet, motor_id, ADDR_TORQUE_ENABLE, int(on), size=1)
+
+
+def torque_off_all(port, packet):
+    """Turn torque off on every motor, carrying on past a motor that fails. Returns the failure messages."""
+    failures = []
+    for motor_id in MOTOR_IDS:
+        failure = try_write(port, packet, motor_id, ADDR_TORQUE_ENABLE, 0, size=1)
+        if failure is not None:
+            failures.append(failure)
+    return failures
+
+
+def release(port, packet):
+    failures = torque_off_all(port, packet)
+    if len(failures) > 0:
+        port.closePort()
+        sys.exit("\n".join(failures) + "\nTorque is off on the other motors. Power-cycle the arm to free the ones listed.")
 
 
 def present_positions(port, packet):
@@ -90,8 +118,26 @@ def clamp_to_limits(pose):
 
 
 def record(port, packet):
-    set_torque(port, packet, False)
-    input("Torque off. Pose the arm by hand in its idle position, then press Enter.")
+    release(port, packet)
+    print("Torque off. Pose the arm by hand in its idle position, then press Enter.")
+
+    # Enter is waited for on another thread so this one can keep showing the encoders.
+    enter_pressed = threading.Event()
+
+    def wait_for_enter():
+        input()
+        enter_pressed.set()
+
+    threading.Thread(target=wait_for_enter, daemon=True).start()
+    while not enter_pressed.is_set():
+        pose = present_positions(port, packet)
+        parts = []
+        for motor_id in MOTOR_IDS:
+            parts.append("{}:{:4d}".format(motor_id, pose[motor_id]))
+        print("\r" + "  ".join(parts), end="", flush=True)
+        time.sleep(DISPLAY_SECONDS)
+    print()
+
     pose = present_positions(port, packet)
     POSE_FILE.write_text(json.dumps({str(m): p for m, p in pose.items()}, indent=2))
     print(f"Saved idle pose to {POSE_FILE.name}: {pose}")
@@ -135,7 +181,7 @@ def main():
     if args.mode == "record":
         record(port, packet)
     elif args.mode == "release":
-        set_torque(port, packet, False)
+        release(port, packet)
         print("Torque off: the arm is limp.")
     else:
         go_idle(port, packet)

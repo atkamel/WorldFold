@@ -21,7 +21,6 @@ look.png (the corners it found, and each arm's pinch and place points): check it
 import argparse
 import json
 import sys
-import threading
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +29,7 @@ from scipy import ndimage
 
 import fold_score
 import fold_traj
+import rgbd
 
 HERE = Path(__file__).parent
 CAMERA = HERE / "camera.json"
@@ -42,19 +42,9 @@ REGION = {"x": (-0.35, 0.35), "y": (fold_traj.BASE_FRONT + 0.005, 0.55)}
 
 def record3d_frame(device=0, timeout=5.0):
     """One RGB frame [H, W, 3] from Record3D over USB."""
-    from record3d import Record3DStream
-    devices = Record3DStream.get_connected_devices()
-    if len(devices) <= device:
-        sys.exit(f"No iPhone at index {device}. Plug it in, unlock it, open Record3D.")
-    new_frame = threading.Event()
-    session = Record3DStream()
-    session.on_new_frame = new_frame.set
-    session.on_stream_stopped = lambda: None
-    if session.connect(devices[device]) is False:
-        sys.exit("Record3D is not serving USB. Turn on USB Streaming mode in its settings and stop any recording.")
-    if not new_frame.wait(timeout):
-        sys.exit("Record3D connected but sent no frame.")
-    return np.array(session.get_rgb_frame())
+    phone = rgbd.Phone(device)
+    phone.start()
+    return phone.wait(timeout).rgb
 
 
 def frame(args):
@@ -70,11 +60,12 @@ def table_grid(H, shape):
     return (q[:, :2] / q[:, 2:]).reshape(shape[0], shape[1], 2), below
 
 
-def calibrate(rgb, side, near_edge, near="bottom", dark=None):
-    """The camera map from a frame of the cloth at the ruler position."""
-    H_square, corners, dark = fold_score.calibrate(rgb, side, near, dark)
+def calibrate(rgb, side, near_edge, near="bottom", dark=None, colour="dark"):
+    """The camera map from a frame of the cloth at the ruler position. `colour` is what sets the cloth apart from the
+    table ("dark" or "blue"); `dark` is the threshold on fold_score.cloth_value for it."""
+    H_square, corners, dark = fold_score.calibrate(rgb, side, near, dark, colour)
     shift = np.array([[1.0, 0.0, -side / 2], [0.0, 1.0, near_edge], [0.0, 0.0, 1.0]])   # the square's frame to the table's
-    return {"H": (shift @ H_square).tolist(), "dark": float(dark), "near": near, "side": side,
+    return {"H": (shift @ H_square).tolist(), "dark": float(dark), "colour": colour, "near": near, "side": side,
             "shape": list(rgb.shape[:2]), "px": corners.tolist()}
 
 
@@ -87,10 +78,11 @@ def search_region(cal):
 
 
 def cloth_pixels(rgb, cal, inside, keep=None):
-    """Dark pixels in the searched area; `keep` (rgbd.flat: nothing standing above the table) drops the arms."""
+    """Cloth-coloured pixels in the searched area; `keep` (rgbd.flat: nothing standing above the table) drops the
+    arms. A calibration saved without a colour is for a dark cloth."""
     if list(rgb.shape[:2]) != cal["shape"]:
         raise ValueError(f"frame is {rgb.shape[:2]}, the calibration was {cal['shape']}")
-    dark = (np.asarray(rgb, float).mean(axis=2) < cal["dark"]) & inside
+    dark = (fold_score.cloth_value(rgb, cal.get("colour", "dark")) < cal["dark"]) & inside
     return dark if keep is None else dark & keep
 
 
@@ -195,14 +187,19 @@ def main(argv=None):
     ap.add_argument("--near-edge", type=float, default=0.08, help="calibrate: near edge in front of the base origins (m)")
     ap.add_argument("--spacing", type=float, default=0.30, help="between the base origins (m)")
     ap.add_argument("--dark", type=float, help="calibrate: grey level below which a pixel is cloth (default: Otsu)")
+    ap.add_argument("--cloth-colour", choices=fold_score.COLOURS, default="dark",
+                    help="calibrate: what sets the cloth apart from the table; saved in the calibration")
     ap.add_argument("--closed", type=float, default=-0.17, help="jaw target at the pinch (rad)")
     ap.add_argument("--out", default=str(HERE / "look.png"))
     args, replay_args = ap.parse_known_args(argv)
     rgb = frame(args)
     if args.mode == "calibrate":
-        cal = calibrate(rgb, args.cloth, args.near_edge, args.near, args.dark)
+        cal = calibrate(rgb, args.cloth, args.near_edge, args.near, args.dark, args.cloth_colour)
         CAMERA.write_text(json.dumps(cal))
-        print(f"Saved {CAMERA.name}: cloth threshold {cal['dark']:.0f}, corners (px) {np.round(cal['px']).tolist()}")
+        print(f"Saved {CAMERA.name}: {cal['colour']} cloth, threshold {cal['dark']:.0f}, "
+              f"corners (px) {np.round(cal['px']).tolist()}")
+    if not CAMERA.exists():
+        sys.exit(f"No {CAMERA.name} yet: run `fold_camera.py calibrate` first, with the cloth at the ruler position.")
     cal = json.loads(CAMERA.read_text())
     try:
         traj, corners, px, points = plan(rgb, cal, args.spacing, args.closed)
