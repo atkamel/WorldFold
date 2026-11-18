@@ -198,10 +198,11 @@ What to look for
 ## Folding with the camera
 
 Extra packages on the rig machine, on top of `feetech-servo-sdk`. The arm kinematics are plain numpy
-(`kinematics.py`), so neither MuJoCo nor so101-nexus is needed.
+(`kinematics.py`); the planner's self-collision check (`collision.py`) needs MuJoCo and so101-nexus, at the
+versions pinned in `imitation/requirements.txt`. The repo's main `.venv` has all of these.
 
 ```bash
-.venv-hw/bin/pip install numpy scipy pillow record3d==1.4.1
+.venv-hw/bin/pip install numpy scipy pillow record3d==1.4.1 mujoco so101-nexus
 ```
 
 `record3d` builds from source and needs CMake and a C++ compiler. On the phone, open the Record3D app, turn on USB
