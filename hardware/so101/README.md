@@ -28,9 +28,9 @@ Where the first session on the real arms stopped, and what to do next. The secti
   the table; the model says 43.7.
 - **Zero pose** (`trajectories/zero_pose.json`, every joint at 0). Seen on arm 2: forearm about 15 degrees up toward
   the wrist (model: level), gripper level, upper arm looked upright, forearm about 23 cm above the table.
-- Arm 1 has not been moved by `replay.py`. The fold itself has not been played on either arm.
+- The fold itself has not been played on either arm.
 
-### Arm 2 zeros set by hand (2026-11-17)
+### Both arms' zeros set by hand (2026-11-17)
 
 - **Method, no ruler.** Torque off (`idle.py --arm arm2 release`), live angles on (`replay.py --read arm2`), the arm
   held in the model's zero pose: upper arm flush against an upright book, forearm and gripper level and pointing
@@ -39,20 +39,19 @@ Where the first session on the real arms stopped, and what to do next. The secti
   corrected: `arm2/urdf.json` is `{"zero": {"3": 2186}}`.
 - **Check under power** at the zero pose: forearm level, gripper level, upper arm upright, moving finger on top, jaw
   slightly open (the model's jaw 0 is 10 degrees open). Arm 2's wrist roll is the right way round.
-- Fold dry run with the new zero: 0 clamped steps.
+- **Arm 1, the same way**, held with the moving finger on top. Readings: pan -3.0, shoulder lift 1.6, elbow 5.5,
+  wrist -0.4, roll 0.7, jaw shut -9.6. Only the elbow was corrected: `arm1/urdf.json` is `{"zero": {"3": 2110}}`.
+  Under power the zero pose looks the same as arm 2's. The pan reading was left alone; watch for a sideways miss at
+  the touch test.
+- The half turn between the two wrist-roll encoders at idle (1030 and 3076) is the two arms resting rolled opposite
+  ways (-89 and +90 degrees), not a difference in the map.
+- Fold dry run with both new zeros: 0 clamped steps.
 
 ### Next
 
 From the repo root, panel stopped, a hand on the power.
 
-1. **Arm 1, the same way**: `idle.py --arm arm1 release`, `replay.py --read arm1`, hold the zero pose, write
-   `arm1/urdf.json`, then check under power:
-   ```
-   .venv\Scripts\python.exe hardware\so101\replay.py hardware\so101\trajectories\zero_pose.json --left arm2 --right arm1 --only right --speed 0.3
-   ```
-   At idle arm 1's wrist-roll encoder reads half a turn from arm 2's (1030 and 3076), so look at which finger is on
-   top: the moving one, as on arm 2.
-2. **Then the run order below from step 3**: one arm with no cloth (fingertip touches 38.0 cm in front of the base
+1. **The run order below from step 3**: one arm with no cloth (fingertip touches 38.0 cm in front of the base
    origin, within about 1 cm), then both arms with the cloth and `--grasp-check`.
 
 Known and not fixed: `set_limits.py` uses Unix-only keyboard handling, so limits cannot be re-recorded on Windows.
@@ -70,8 +69,8 @@ Known and not fixed: `set_limits.py` uses Unix-only keyboard handling, so limits
 - **Verified** by 65 tests on a fake servo bus and synthetic camera frames, and a dry run of the blind trajectory
   against both arms' recorded limits (0 clamped steps).
 - **The fold has not been played on a real arm** (bring-up log above). The radian-to-tick map is a hypothesis until
-  `replay.py --check` passes on each arm. Arm 2's elbow zero was 12 degrees off and is corrected in `arm2/urdf.json`;
-  arm 1 is unchecked. The Record3D connection follows `hardware/iphone_lidar/usb_viewer.py`, which has
+  `replay.py --check` passes on each arm. The elbow zeros were off (12 degrees on arm 2, 5.5 on arm 1) and are corrected
+  in each arm's `urdf.json`. The Record3D connection follows `hardware/iphone_lidar/usb_viewer.py`, which has
   not seen a phone either. Frame orientation and how well the depth lines up with
   the RGB are unknown until a real frame is recorded.
 - **Both followers are configured**, with `main`'s names and folders. `arm2` is the left arm and `arm1` the right,

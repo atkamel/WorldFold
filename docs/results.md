@@ -2800,3 +2800,21 @@ Elbow zero moved to tick 2186 (2047 + 12.2 x 11.378) in `arm2/urdf.json`; the ot
 power at the zero pose after the change (user, by eye): forearm level, gripper level, upper arm upright, moving
 finger on top, jaw slightly open, all as the model says. Fold dry run with the new zero: 0 clamped steps, elbow peak
 79.6° against about 91° of travel left on that side.
+
+## SO-101 arm 1 tick map, measured on the arm (2026-11-17)
+
+One reading, by hand, no repeats, no interval. Same method as arm 2, with the fingers stacked and the moving one on
+top, angles from `replay.py --read arm1` through the default map:
+
+| joint | reading in the zero pose | expected |
+|---|---|---|
+| shoulder_pan | -3.0° | 0 |
+| shoulder_lift | 1.6° | 0 |
+| elbow_flex | 5.5° | 0 |
+| wrist_flex | -0.4° | 0 |
+| wrist_roll | 0.7° | 0 |
+| gripper (shut) | -9.6° | -10 |
+
+Elbow zero moved to tick 2110 (2047 + 5.5 x 11.378) in `arm1/urdf.json`; the others left at the default (pan left
+alone by the user's choice). Under power at the zero pose after the change (user, by eye): forearm level, gripper
+level, upper arm upright, fingers and jaw as on arm 2. Fold dry run on both arms: 0 clamped steps.
