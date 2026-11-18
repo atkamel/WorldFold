@@ -81,6 +81,11 @@ Arm 2 alone, no cloth, speed 0.3, torque cap 50%. Stopped by hand at step 244, a
 - `idle.py release` then stopped at arm 2's elbow motor with an error; the cause is not known. After a power cycle
   the motor is fine (user).
 - **Arm 2 alone, no cloth, played the new fold as intended** (user, speed 0.3, torque cap 50%).
+- **First real frames from the phone** (720 x 960, portrait, behind the arms). Record3D streams over USB with the
+  app in the foreground; the record button is not needed. The cloth is light blue on a pale table with a laptop, a
+  box and a bag in view: the darkness detector outlined the laptop at every threshold tried, the blue setting
+  outlines the cloth. An arm's cable over a corner pulls that corner in by 4 to 5 cm, so clear the corners first.
+  No calibration from the live phone has been checked yet.
 - **Both arms with the cloth folded it** (user), apart from the grasp check, which printed MISSED three times on
   both arms. The check was blind: the trajectory closed the jaw faster than `replay.py` lets it move, so the empty
   reading was taken mid-close (12.6 deg, shut is -9.7) and the pinch was still closing when the lift began. The
@@ -230,6 +235,9 @@ Do steps 0 to 3 of the run order first. Then, from `hardware/so101/`, with both 
 - The look refuses a dark shape whose sides are more than 15% off the cloth's side, and a pinch the arm model cannot
   reach.
 - `--image photo.jpg` runs any mode on a saved frame.
+- `calibrate --cloth-colour blue` finds a blue cloth by its colour instead of its darkness, for a light cloth or a
+  table with darker things on it (a laptop, a bag). The choice is saved in `camera.json`, and `look`, `fold` and
+  `fold_live.py` follow it. Keep other blue things out of the area in front of the arms.
 - Calibration is only as good as the ruler placement of the cloth and the joint map. Redo it if the phone moves.
 
 ## Folding with the camera watching throughout

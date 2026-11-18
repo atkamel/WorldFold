@@ -117,3 +117,38 @@ def test_near_edge_follows_the_bottom_layer(cal):
     slope1, y1 = fold_camera.near_edge(render(moved, BASES), cal, grid, (-0.12, 0.12))
     assert abs(y0 - NEAR_EDGE) < 0.004 and abs((y1 - y0) - 0.02) < 0.004 and abs(slope0) < 0.02 and abs(slope1) < 0.02
     assert fold_camera.near_edge(np.full((*SHAPE, 3), 200, np.uint8), cal, grid, (-0.12, 0.12)) is None
+
+
+# --- a light blue cloth among darker things ---
+
+def render_blue(corners, discs=()):
+    """A light blue cloth on a grey table, with dark discs (a laptop, a bag) that are darker than the cloth."""
+    xy, _ = fold_camera.table_grid(camera(), SHAPE)
+    cloth_here = np.ones(SHAPE, bool)
+    for a, b in zip(corners, np.roll(corners, -1, axis=0)):
+        cloth_here &= (b[0] - a[0]) * (xy[..., 1] - a[1]) - (b[1] - a[1]) * (xy[..., 0] - a[0]) >= 0
+    image = np.full((*SHAPE, 3), 200, np.uint8)
+    image[cloth_here] = (90, 150, 210)
+    for (x, y), r in discs:
+        disc_here = (xy[..., 0] - x) ** 2 + (xy[..., 1] - y) ** 2 <= r ** 2
+        image[disc_here & ~cloth_here] = (30, 30, 30)
+    return image
+
+
+CLUTTER = (((-0.30, 0.50), 0.09), ((0.31, 0.47), 0.08))      # dark things on the table, inside the searched area
+
+
+def test_a_blue_cloth_is_found_among_darker_things():
+    blue_cal = fold_camera.calibrate(render_blue(cloth(), CLUTTER), SIDE, NEAR_EDGE, colour="blue")
+    truth = cloth(shift=(0.02, 0.015), turn_deg=8.0)
+    corners, _ = fold_camera.look(render_blue(truth, CLUTTER), blue_cal)
+    for name, want in zip(("near_left", "near_right", "far_right", "far_left"), truth):
+        assert np.linalg.norm(corners[name] - want) < 0.004
+
+
+def test_a_calibration_saved_without_a_colour_still_looks_for_a_dark_cloth(cal):
+    old_cal = dict(cal)
+    old_cal.pop("colour", None)
+    truth = cloth(shift=(0.02, 0.015), turn_deg=8.0)
+    corners, _ = fold_camera.look(render(truth, BASES), old_cal)
+    assert np.linalg.norm(corners["near_left"] - truth[0]) < 0.004

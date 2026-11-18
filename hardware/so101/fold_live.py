@@ -202,7 +202,8 @@ def fold(followers, phone, cal, run, args):
     tracker.join(timeout=2)
     last = phone.latest()
     try:
-        result = fold_score.score(first.rgb, last.rgb, cal["side"], cal["near"], cal["dark"])
+        result = fold_score.score(first.rgb, last.rgb, cal["side"], cal["near"], cal["dark"],
+                                  cal.get("colour", "dark"))
         print("Fold score (cm):", json.dumps({k: round(v, 2) for k, v in result.items()}))
     except Exception as err:        # a score is a bonus: an arm in the last frame must not fail the run
         result = {"error": str(err)}
