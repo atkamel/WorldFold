@@ -657,6 +657,9 @@ def replay(args, progress):
         validate(traj)
     except (OSError, ValueError) as err:
         sys.exit(f"Bad trajectory {args.trajectory}: {err}")
+    if args.grasp_check and "empty" not in (traj.get("marks") or {}):
+        sys.exit("--grasp-check needs the jaw's empty reading, which this trajectory was planned without: plan it "
+                 "with fold_traj.py --grasp-check")
     print(f"layout: {traj.get('layout')}\nsource: {traj.get('source')}")
     T, dt = len(traj["arms"]["left"]["target"]), traj["dt"]
     print(f"{T} steps, dt {dt} s, speed {args.speed}: {T * dt / args.speed:.1f} s")

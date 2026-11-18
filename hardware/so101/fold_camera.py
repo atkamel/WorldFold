@@ -141,10 +141,10 @@ def fold_points(corners, spacing):
     return points
 
 
-def plan(rgb, cal, spacing, closed, keep=None):
+def plan(rgb, cal, spacing, closed, keep=None, empty_reading=False):
     corners, px = look(rgb, cal, keep)
     points = fold_points(corners, spacing)
-    traj = fold_traj.fold(points, closed)
+    traj = fold_traj.fold(points, closed, empty_reading)
     traj["layout"] = {"frame": "table: X right, Y forward from the line of the base origins", "base_spacing": spacing,
                       "corners": {k: np.round(v, 4).tolist() for k, v in corners.items()}}
     return traj, corners, px, points
@@ -202,7 +202,8 @@ def main(argv=None):
         sys.exit(f"No {CAMERA.name} yet: run `fold_camera.py calibrate` first, with the cloth at the ruler position.")
     cal = json.loads(CAMERA.read_text())
     try:
-        traj, corners, px, points = plan(rgb, cal, args.spacing, args.closed)
+        traj, corners, px, points = plan(rgb, cal, args.spacing, args.closed,
+                                         empty_reading="--grasp-check" in replay_args)
     except ValueError as err:
         sys.exit(f"Look failed: {err}")
     overlay(rgb, cal, px, points, args.spacing).save(args.out)

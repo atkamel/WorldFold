@@ -1,7 +1,8 @@
 """An open-loop two-arm half fold as a joint trajectory for replay.py, planned on the SO-101 model alone (no camera,
 no simulator): each arm pinches its far corner from above, carries it in an arc onto the near corner on its side,
-opens slowly, lifts and stands back up. The cloth is placed by ruler where this prints. Above the far corner the jaw
-shuts once on nothing, so replay.py --grasp-check has an empty reading to compare the lifted jaw against ("marks").
+opens slowly, lifts and stands back up. The cloth is placed by ruler where this prints. With --grasp-check the jaw
+first shuts once on nothing above the far corner, the empty reading replay.py --grasp-check compares the lifted jaw
+against ("marks").
 
     .venv/bin/python hardware/so101/fold_traj.py --out outputs/hardware/half_fold.json [--cloth 0.24] [--near 0.10]
     .venv-hw/bin/python hardware/so101/replay.py outputs/hardware/half_fold.json --left left --right right --dry-run
@@ -37,11 +38,13 @@ MAX_SHORT = 0.10      # m the release may stop short of the place it was asked f
 MIN_FOLD = 0.02       # m of fold that must be left after shortening
 
 
-def plan(arm, pinch, place, closed, counts=None):
+def plan(arm, pinch, place, closed, counts=None, empty_reading=False):
     """One arm's fold from `pinch` to `place` ((x, y) m in its base frame, x forward, y left): target rows [T, 6],
-    the worst (tip error, tilt), marks {"empty": the jaw shut in the air, "hover": above the corner with the jaw open
-    again, "pinch": down on the corner, "check": 2 cm into the lift, "placed": the carry's end} as row indices, and the step counts of its three variable moves. `counts`
-    stretches those moves to given lengths, so two arms' plans line up row for row."""
+    the worst (tip error, tilt), marks {"hover": above the corner with the jaw open, "pinch": down on the corner,
+    "check": 2 cm into the lift, "placed": the carry's end} as row indices, and the step counts of its three variable
+    moves. `counts` stretches those moves to given lengths, so two arms' plans line up row for row. With
+    `empty_reading` the jaw shuts once on nothing above the corner before the pinch ("empty" in the marks), which
+    replay.py --grasp-check reads; without the check it is wasted motion."""
     pinch, place = np.asarray(pinch, float), np.asarray(place, float)
     reach = float(np.linalg.norm(place - pinch))
     seed = np.radians([0.0, 40.0, -30.0, 80.0, 0.0])     # arm out, forearm level, fingers down
@@ -79,10 +82,12 @@ def plan(arm, pinch, place, closed, counts=None):
         q, err, _ = arm.solve(p, q)
         worst[0] = max(worst[0], err)
     joint_move("approach", q, OPEN)
-    move_jaw(OPEN, closed, 10)
-    hold(6, closed)
-    marks = {"empty": len(rows) - 1}
-    move_jaw(closed, OPEN, 10)
+    marks = {}
+    if empty_reading:
+        move_jaw(OPEN, closed, 10)
+        hold(6, closed)
+        marks["empty"] = len(rows) - 1
+        move_jaw(closed, OPEN, 10)
     marks["hover"] = len(rows) - 1
     line(segment((*pinch, HOVER), (*pinch, PINCH_Z)), OPEN)
     marks["pinch"] = len(rows) - 1
@@ -137,7 +142,7 @@ def release_pose_is_clear(arm, pinch, place, closed):
     return distance >= collision.CLEARANCE
 
 
-def clear_release(arm, pinch, place, closed):
+def clear_release(arm, pinch, place, closed, empty_reading=False):
     """(release point, m it stops short of `place`, the plan's step counts): the point nearest `place`, on the line
     back toward `pinch`, whose whole plan keeps the arm clear of itself. ValueError if there is none."""
     pinch = np.asarray(pinch, float)
@@ -150,17 +155,18 @@ def clear_release(arm, pinch, place, closed):
     while short <= MAX_SHORT and reach - short >= MIN_FOLD:
         candidate = place + short * back
         if release_pose_is_clear(arm, pinch, candidate, closed):
-            rows, _, _, used = plan(arm, pinch, candidate, closed)
+            rows, _, _, used = plan(arm, pinch, candidate, closed, empty_reading=empty_reading)
             if collision.closest(rows.tolist())[0] >= collision.CLEARANCE:
                 return candidate, short, used
         short += SHORT_STEP
     raise ValueError(f"no release within {MAX_SHORT * 100:.0f} cm of the place keeps the arm clear of itself")
 
 
-def fold(points, closed=-0.17):
+def fold(points, closed=-0.17, empty_reading=False):
     """A two-arm trajectory for replay.py from {"left": (pinch, place), "right": (pinch, place)}, each (x, y) m in
     that arm's base frame. A place the arm cannot reach without hitting its own base is moved back toward the pinch
-    ("release_short_mm"). Both plans get the same step counts; the grasp check comes when both have lifted 2 cm."""
+("release_short_mm"). Both plans get the same step counts; the grasp check comes when both have lifted 2 cm.
+    `empty_reading`: see plan."""
     arm = Arm()
     asked = points
     points = {}
@@ -168,14 +174,14 @@ def fold(points, closed=-0.17):
     natural = []
     for side in ("left", "right"):
         pinch, place = asked[side]
-        release, short, used = clear_release(arm, pinch, place, closed)
+        release, short, used = clear_release(arm, pinch, place, closed, empty_reading)
         points[side] = (pinch, (float(release[0]), float(release[1])))
         shorts[side] = short
         natural.append(used)
     counts = {name: max(n[name] for n in natural) for name in natural[0]}
     arms, report, checks = {}, {}, []
     for side in ("left", "right"):
-        target, (err, tilt), marks, _ = plan(arm, *points[side], closed, counts)
+        target, (err, tilt), marks, _ = plan(arm, *points[side], closed, counts, empty_reading)
         clearance = collision.closest(target.tolist())[0]
         if clearance < collision.CLEARANCE:
             raise ValueError(f"the {side} arm comes within {clearance * 1000:.0f} mm of itself")
@@ -194,21 +200,22 @@ def fold(points, closed=-0.17):
             "source": {"tool": "hardware/so101/fold_traj.py", "closed_rad": closed, **report}}
 
 
-def trajectory(cloth=0.24, near=0.10, spacing=0.30, closed=-0.17):
+def trajectory(cloth=0.24, near=0.10, spacing=0.30, closed=-0.17, empty_reading=False):
     """The fold for a cloth placed by ruler: square, centred between the bases, near edge `near` in front of them."""
     inset = spacing / 2 - cloth / 2          # the cloth's corner column sits this far toward the middle of the rig
-    traj = fold({side: ((near + cloth, y), (near, y)) for side, y in (("left", -inset), ("right", inset))}, closed)
+    traj = fold({side: ((near + cloth, y), (near, y)) for side, y in (("left", -inset), ("right", inset))}, closed,
+                empty_reading)
     traj["layout"] = {"frame": "each arm's base, on the table", "base_spacing": spacing, "cloth_side": cloth,
                       "near_edge_from_base_origin": near, "near_edge_from_base_front": round(near - BASE_FRONT, 3)}
     return traj
 
 
-def sides_trajectory(cloth=0.30, gap=0.16, closed=-0.17):
+def sides_trajectory(cloth=0.30, gap=0.16, closed=-0.17, empty_reading=False):
     """The fold with an arm at the middle of each side edge of the cloth, facing in, its base origin `gap` outside
     the edge. Each arm pinches the far corner on its side and places it on the near one, so it reaches across half
     the cloth and not all of it. "left" is the arm on the left seen from the near edge, the one folded onto."""
     half = cloth / 2
-    traj = fold({"left": ((gap, half), (gap, -half)), "right": ((gap, -half), (gap, half))}, closed)
+    traj = fold({"left": ((gap, half), (gap, -half)), "right": ((gap, -half), (gap, half))}, closed, empty_reading)
     traj["layout"] = {"frame": "each arm's base, on the table", "arms": "at the middle of the side edges, facing in",
                       "base_spacing": cloth + 2 * gap, "cloth_side": cloth, "side_edge_from_base_origin": gap}
     return traj
@@ -223,11 +230,13 @@ def main():
     ap.add_argument("--closed", type=float, default=-0.17, help="jaw target at the pinch (rad); the URDF closed limit is -0.1745")
     ap.add_argument("--sides", type=float, metavar="GAP", help="the arms at the middle of the cloth's side edges, "
                     "facing in, each base origin GAP (m) outside its edge (0.16 or more); --near and --spacing unused")
+    ap.add_argument("--grasp-check", action="store_true", help="the jaw shuts once on nothing above the far corner "
+                    "first: the empty reading that replay.py --grasp-check needs")
     args = ap.parse_args()
     if args.sides is None:
-        traj = trajectory(args.cloth, args.near, args.spacing, args.closed)
+        traj = trajectory(args.cloth, args.near, args.spacing, args.closed, args.grasp_check)
     else:
-        traj = sides_trajectory(args.cloth, args.sides, args.closed)
+        traj = sides_trajectory(args.cloth, args.sides, args.closed, args.grasp_check)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(traj))
     T = len(traj["arms"]["left"]["target"])

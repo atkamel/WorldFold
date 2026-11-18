@@ -813,3 +813,12 @@ def test_a_slow_encoder_read_in_a_glide_delays_the_poses_after_it(env, monkeypat
     r.run_poses({"left": follower}, poses, Log(), "glide")
     gaps = [b - a for a, b in zip(times, times[1:])]
     assert min(gaps) >= r.TICK_SECONDS - 1e-9          # never two poses in less than a tick
+
+
+def test_grasp_check_on_a_trajectory_planned_without_its_empty_reading_is_refused_before_any_bus_opens(env):
+    traj = make_traj()
+    traj["marks"] = {"hover": 4, "check": 7}
+    with pytest.raises(SystemExit) as stopped:
+        env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--grasp-check"])
+    assert "empty reading" in str(stopped.value)
+    assert env.ports == {}

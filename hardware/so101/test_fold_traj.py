@@ -18,7 +18,7 @@ import replay  # noqa: E402
 
 
 def test_half_fold_trajectory():
-    traj = fold_traj.trajectory(cloth=0.24, near=0.10, spacing=0.30)
+    traj = fold_traj.trajectory(cloth=0.24, near=0.10, spacing=0.30, empty_reading=True)
     replay.validate(traj)
     for side, right in (("left", 0.03), ("right", -0.03)):
         t, tip = np.array(traj["arms"][side]["target"]), np.array(traj["arms"][side]["tip"])[1:]
@@ -97,3 +97,12 @@ def test_arms_at_the_sides_fold_a_cloth_twice_as_wide_as_the_arms_behind_it_can(
             assert np.abs(np.diff(t[:, :5], axis=0)).max() < np.radians(60) * fold_traj.DT
             lean = np.degrees(np.arccos(-arm.tip(t[traj["marks"]["pinch"], :5])[1][2]))
             assert lean < 1.0 if upright else lean < 21.0          # fingers straight down on the 30 cm cloth
+
+
+def test_the_jaw_shuts_on_nothing_only_when_the_grasp_check_asks_for_its_empty_reading():
+    plain = fold_traj.trajectory(cloth=0.24, near=0.10, spacing=0.30)
+    checked = fold_traj.trajectory(cloth=0.24, near=0.10, spacing=0.30, empty_reading=True)
+    assert "empty" not in plain["marks"] and "empty" in checked["marks"]
+    t = np.array(plain["arms"]["left"]["target"])
+    assert np.all(t[:plain["marks"]["pinch"] + 1, 5] == fold_traj.OPEN)       # the jaw stays open until it is on the corner
+    assert len(checked["arms"]["left"]["target"]) - len(t) == checked["marks"]["hover"] - plain["marks"]["hover"] > 40
