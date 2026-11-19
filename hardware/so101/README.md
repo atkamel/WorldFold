@@ -448,7 +448,11 @@ python -m imitation.train --policy vision --root outputs/rig/datasets --dataset 
   it as it is. Each row holds the picture taken last before it (squashed to 128 x 128, camera name `main`), the
   joints read, their rates, the jaw, and the fingertip from the arm model, and as its action the joint targets
   sent, in units of 2 rad. The observation's simulator-only entries stay zero.
-- Rates are per second of wall time, so record at the speed the policy will run at.
+- Rates are per second of wall time, so record at the speed the policy will run at. `build` refuses good folds
+  recorded at different speeds.
+- Every good fold is lengthened to the longest one plus 16 rows by repeating its last row, the arms at rest where
+  the fold ended, and no episode is marked as ended. The trainer fills what follows an ended episode with zeros,
+  which for these targets would teach "go to the zero pose".
 
 ### Playing a camera policy on the arms (`camera_run.py`, checked on a stand-in rig only)
 
@@ -463,9 +467,11 @@ python -m imitation.train --policy vision --root outputs/rig/datasets --dataset 
   many rows, a new picture every 4 rows (`--replan`), and the arms glide back.
 - Nothing can be checked ahead of the motion beyond the start and the glides to it: what the policy does depends
   on pictures not taken yet. Every row is checked before it is sent: the arm where it was told (`--track-deg`),
-  a picture newer than the last (`--stale`), the row finite, inside the limits and clear of the arm's own body,
-  and the fingertip, wrist and elbow above the table. A step over `replay.py`'s rate cap is cut to the cap. A
-  failed check stops the run with torque on. The other arm and the cloth are not checked.
+  a picture the phone sent since the last look (`--stale`) and of the size the policy learned on, the row finite,
+  inside the limits and clear of the arm's own body, and no part of the arm beyond the shoulder more than 3 mm
+  into the table (the arm model's meshes at the pose that will be sent, the open jaw included). A step over
+  `replay.py`'s rate cap is cut to the cap. A failed check stops the run with torque on. The other arm and the
+  cloth are not checked. The first picture is taken after the Enter prompt.
 - Every run is recorded like a `rig_record.py` run, with the pictures the policy was shown, so `rig_dataset.py`
   can read it back. Label it afterwards.
 - `policy_run.py` is the other learned fold: the planner's copy, which reads joints and corner positions and no

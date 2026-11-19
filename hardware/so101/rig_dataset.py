@@ -26,6 +26,11 @@ imitation.train reads it unchanged. What goes where, per control row:
                        ACTION_SCALE rad: absolute targets, so a row's action does not depend on how far the servo
                        lags (the simulator's store holds joint steps; a policy trained here is for the rig only)
 The rates and speeds are per second of wall time, so a policy sees the speed its demonstrations were played at.
+
+Every good fold is lengthened to the longest one plus HOLD rows by repeating its last row (the arms resting where
+the fold ended, the last picture), and no episode is marked as ending: the store's trainer fills what follows an
+ended episode with zeros, which for these absolute targets would be "go to the zero pose". A policy played for as
+many rows as the longest fold has therefore been taught every one of them.
 """
 
 import argparse
@@ -47,6 +52,8 @@ ACTION_SCALE = 2.0          # rad per unit of action: the fold's joints and the 
                             # wrist roll alone can turn further (to 2.8 rad); a run that sends it there is refused
 SIZE = 128                  # pixels a side the pictures are stored at
 MIN_ROWS = 20               # fewer rows than this is not a fold
+HOLD = 16                   # rows of resting added after the longest fold: a policy's whole look-ahead (its chunk)
+SAME_PACE = 1.3             # folds whose rows last this many times longer than others' are another speed
 LABEL = "label.json"
 OBS_DIM, ARM_SLOTS = 139, 25        # imitation.spec.OBS_DIM and its proprio block per arm (checked in build)
 
@@ -110,7 +117,9 @@ def load_run(path, left=None, right=None):
         whole = lambda q: q is not None and len(q) == 6 and None not in q                            # noqa: E731
         if any(not whole(s["target"].get(side)) or not whole(s["measured"].get(side)) for s in folds for side in SIDES):
             raise ValueError("a row is missing an arm or a joint (one arm only, or the gripper left out)")
-        rows = [(s["t"], [s["measured"][side] for side in SIDES], [s["target"][side] for side in SIDES]) for s in folds]
+        # camera_run.py writes a row after the policy has thought about it, and says when the joints were read
+        rows = [(s.get("read_t", s["t"]), [s["measured"][side] for side in SIDES], [s["target"][side] for side in SIDES])
+                for s in folds]
         if kind == "script" and (path / "plan.json").exists() and len(rows) > 1:
             # replay.py logs the planned row. When a joint is asked for more than its rate cap in one row, what was
             # sent lags the plan, and the rows logged are not what the arm was told
@@ -176,19 +185,29 @@ def proprio(run):
     return np.array(rows)
 
 
-def episode(run, size=SIZE):
-    """A run as an imitation.data.schema.Episode. Needs a label and a picture for every row."""
+def episode(run, size=SIZE, rows=None):
+    """A run as an imitation.data.schema.Episode. Needs a label and a picture for every row. With `rows`, the
+    episode is lengthened to that many by repeating its last row at rest (module docstring)."""
     from imitation.data.schema import Episode
     if run["label"] is None:
         raise ValueError("not labelled: say whether it folded with `rig_dataset.py label`")
     if (run["frame"] < 0).any():
         raise ValueError("no camera picture for some rows")
-    T, good = len(run["t"]), bool(run["label"]["success"])
+    recorded, good = len(run["t"]), bool(run["label"]["success"])
     actions = (run["target"] / ACTION_SCALE).astype(np.float32)
     if np.abs(actions).max() > 1.0:
         raise ValueError(f"a target of {np.abs(run['target']).max():.2f} rad is outside +-{ACTION_SCALE} rad")
     pictures = {int(i): picture(run["path"], i, size) for i in np.unique(run["frame"])}
-    obs = proprio(run)
+    obs, images = proprio(run), np.stack([pictures[int(i)] for i in run["frame"]])
+    extra = max(0, (rows or 0) - recorded)
+    if extra:
+        rest = obs[-1].copy()
+        for b in (0, ARM_SLOTS):            # at rest: no joint rate, no fingertip speed
+            rest[b + 5:b + 10], rest[b + 21:b + 24] = 0.0, 0.0
+        obs = np.concatenate([obs, np.repeat(rest[None], extra, 0)])
+        actions = np.concatenate([actions, np.repeat(actions[-1:], extra, 0)])
+        images = np.concatenate([images, np.repeat(images[-1:], extra, 0)])
+    T = recorded + extra
     last = np.zeros(T, bool)
     last[-1] = True
     name = run["path"].name
@@ -196,13 +215,14 @@ def episode(run, size=SIZE):
         obs=obs, actions=actions, rewards=np.zeros(T, np.float32), stage=np.zeros(T, np.int8),
         fold_score=np.zeros(T, np.float32), grasped=np.zeros((T, 2), bool),
         actor=np.full(T, 1 if run["kind"] == "policy" else 0, np.int8), final_obs=obs[-1].copy(),
-        terminated=last & good, truncated=last & (not good), discount=np.where(last & good, 0.0, 1.0).astype(np.float32),
-        images={"main": np.stack([pictures[int(i)] for i in run["frame"]])},
+        # never "terminated": see the module docstring. Whether it folded is meta["success"]
+        terminated=np.zeros(T, bool), truncated=last, discount=np.ones(T, np.float32), images={"main": images},
         # the store names an episode by its source and seed: the seed is a number made from the run folder's name
         meta={"seed": zlib.crc32(name.encode()), "source": "student" if run["kind"] == "policy" else "expert",
               "success": good, "termination_reason": "folded" if good else "not folded", "run": name,
               "kind": run["kind"], "note": run["label"].get("note", ""), "speed": run["meta"].get("speed"),
-              "seconds": round(float(run["t"][-1] - run["t"][0]), 2), "pictures": len(pictures)})
+              "seconds": round(float(run["t"][-1] - run["t"][0]), 2), "pictures": len(pictures),
+              "rows_recorded": recorded})
 
 
 def run_folders(where):
@@ -235,26 +255,44 @@ def build(folders, out, version, size=SIZE, left=None, right=None, failures=Fals
     assert spec.OBS_DIM == OBS_DIM and spec.ACTION_DIM == 12 and spec.GRIPPER_CTRL_DIMS == (10, 10 + ARM_SLOTS)
     writer = DatasetWriter(out, version, config={"tool": "hardware/so101/rig_dataset.py", "size": size,
                                                  "action": f"joint targets / {ACTION_SCALE} rad", "camera": "main"})
-    left_out, starts, lengths, periods = [], [], [], []
-    for folder in folders:
+    left_out, runs = [], []
+    for folder in folders:                      # first what there is: the longest good fold sets every one's length
         try:
             run = load_run(folder, left, right)
-            if run["label"] is not None and not run["label"]["success"] and not failures:
+            if run["label"] is None:
+                raise ValueError("not labelled: say whether it folded with `rig_dataset.py label`")
+            if (run["frame"] < 0).any():
+                raise ValueError("no camera picture for some rows")
+            if not run["label"]["success"] and not failures:
                 raise ValueError("labelled bad")
-            writer.add(episode(run, size), spec.OBS_DIM, spec.ACTION_DIM)
-            if run["label"]["success"]:
-                starts.append(run["target"][0])
-                lengths.append(len(run["t"]))
-                periods.append(float(np.median(np.diff(run["t"]))))
+            runs.append(run)
         except (ValueError, KeyError) as err:
             left_out.append((Path(folder).name, str(err)))
+    good = [r for r in runs if r["label"]["success"]]
+    if not good:
+        raise ValueError("no good fold to learn from: " + "; ".join(f"{n} ({why})" for n, why in left_out[:5]))
+    period = lambda r: float(np.median(np.diff(r["t"])))                                             # noqa: E731
+    if max(map(period, good)) > SAME_PACE * min(map(period, good)):
+        raise ValueError(f"the good folds were recorded at different speeds (a row lasts {min(map(period, good)):.3f} "
+                         f"to {max(map(period, good)):.3f} s): the rates a policy sees would not agree. Build from "
+                         "runs of one speed")
+    # for camera_run.py: where the folds began (the pose it glides to before the policy takes over), how many rows
+    # the longest took, how long a row lasted, and the size of the phone's pictures. A teleop recording begins
+    # wherever the arms happened to be, so the beginning comes from the played folds when there are any
+    played = [r for r in good if r["kind"] != "teleop"] or good
+    firsts = np.array([r["target"][0] for r in played])
+    typical = int(np.abs(firsts - np.median(firsts, axis=0)).max(axis=1).argmin())       # a start a fold really had
+    longest = max(len(r["t"]) for r in good)
+    writer.config |= {"start": firsts[typical].round(5).tolist(), "rows": longest, "hold": HOLD,
+                      "row_seconds": round(float(np.median([period(r) for r in good])), 4), "action_scale": ACTION_SCALE,
+                      "frame_shape": list(recorder.load_frame(good[0]["path"], int(good[0]["frame"][0]))[0].shape[:2])}
+    for run in runs:
+        try:
+            writer.add(episode(run, size, longest + HOLD if run["label"]["success"] else None), spec.OBS_DIM, spec.ACTION_DIM)
+        except ValueError as err:
+            left_out.append((run["path"].name, str(err)))
     if not writer.new_entries:
         raise ValueError("no usable run: " + "; ".join(f"{n} ({why})" for n, why in left_out[:5]))
-    if starts:
-        # for camera_run.py: where the good folds began (the pose it glides to before the policy takes over), how
-        # many rows the longest took and how long a row lasted
-        writer.config |= {"start": np.median(starts, axis=0).round(5).tolist(), "rows": int(max(lengths)),
-                          "row_seconds": round(float(np.median(periods)), 4), "action_scale": ACTION_SCALE}
     return writer.freeze(), left_out
 
 

@@ -33,15 +33,19 @@ def traj_file(folder):
 
 
 class Phone:
-    """A phone whose every picture is one grey level higher than the last, so pictures can be told apart."""
+    """A phone whose every picture is one grey level higher than the last, so pictures can be told apart. It counts
+    the frames it is sent, as rgbd.Phone does."""
 
     def __init__(self):
-        self.n = 0
+        self.count = 0
 
     def latest(self):
-        self.n += 1
-        level = min(self.n, 250)
+        self.count += 1
+        level = min(self.count, 250)
         return rgbd.Frame(0.0, np.full((48, 64, 3), level, np.uint8), np.full((12, 16), 0.5, np.float32), (50, 50, 32, 24))
+
+    def wait(self, timeout=5.0):
+        return self.latest()
 
 
 def record(env, monkeypatch, answer, argv=("--no-collision-check",)):  # noqa: F811
@@ -80,7 +84,7 @@ def test_an_unanswered_run_stays_unlabelled_and_out_of_a_dataset(env, monkeypatc
     assert not (folder / "label.json").exists()
     line, usable = rig_dataset.describe(folder)
     assert "unlabelled" in line and not usable
-    with pytest.raises(ValueError, match="no usable run"):
+    with pytest.raises(ValueError, match="no good fold to learn from"):
         rig_dataset.build([folder], env.tmp / "store", "rig_t")
     assert rig_dataset.main(["label", str(folder), "bad", "--note", "left corner slipped"]) == 0
     assert json.loads((folder / "label.json").read_text()) == {"success": False, "note": "left corner slipped"}
@@ -133,13 +137,29 @@ def test_recorded_folds_become_a_dataset_a_camera_policy_trains_on(env, monkeypa
     assert manifest["n_episodes"] == 2 and manifest["n_success"] == 2 and {e.meta["run"] for e in episodes} == {good.name, "second_good"}
     ep = next(e for e in episodes if e.meta["run"] == good.name)
     run = rig_dataset.load_run(good)
-    assert ep.obs.shape == (ROWS, 139) and ep.actions.shape == (ROWS, 12) and ep.images["main"].shape == (ROWS, 3, 64, 64)
-    assert np.allclose(ep.actions * rig_dataset.ACTION_SCALE, run["target"], atol=1e-6)               # what was sent
-    assert np.allclose(ep.obs[:, 0:5], run["measured"][:, 0:5], atol=1e-6) and np.allclose(ep.obs[:, 25:30], run["measured"][:, 6:11], atol=1e-6)
-    assert np.allclose(ep.obs[:, 10], run["measured"][:, 5], atol=1e-6) and np.allclose(ep.obs[:, 35], run["measured"][:, 11], atol=1e-6)
+    T = ROWS + rig_dataset.HOLD                                 # the fold, then the arms at rest where it ended
+    assert ep.obs.shape == (T, 139) and ep.actions.shape == (T, 12) and ep.images["main"].shape == (T, 3, 64, 64)
+    assert ep.meta["rows_recorded"] == ROWS and ep.meta["success"] is True
+    assert np.allclose(ep.actions[:ROWS] * rig_dataset.ACTION_SCALE, run["target"], atol=1e-6)        # what was sent
+    assert np.allclose(ep.obs[:ROWS, 0:5], run["measured"][:, 0:5], atol=1e-6) and np.allclose(ep.obs[:ROWS, 25:30], run["measured"][:, 6:11], atol=1e-6)
+    assert np.allclose(ep.obs[:ROWS, 10], run["measured"][:, 5], atol=1e-6) and np.allclose(ep.obs[:ROWS, 35], run["measured"][:, 11], atol=1e-6)
     assert np.allclose(ep.obs[7, 11:14], Arm().tip(run["measured"][7, :5])[0], atol=1e-6)             # the fingertip
     assert np.all(ep.obs[:, 50:] == 0) and np.all(ep.obs[:, [24, 49]] == 0)                           # nothing privileged
-    assert ep.images["main"][0].max() < ep.images["main"][-1].min()                                   # each row its own picture
+    assert ep.images["main"][0].max() < ep.images["main"][ROWS - 1].min()                             # each row its own picture
+    # rates look back only: row 7's is what rows 6 and 7 read, whatever row 8 read
+    dt = run["t"][7] - run["t"][6]
+    assert np.allclose(ep.obs[7, 5:10], (run["measured"][7, :5] - run["measured"][6, :5]) / dt, rtol=1e-4, atol=1e-5) and np.all(ep.obs[0, 5:10] == 0)
+    # the rest after the fold: the last joints, target and picture, no rates; and the fold is never "terminated",
+    # which the trainer would follow with zeros, "go to the zero pose" for these absolute targets
+    assert np.all(ep.actions[ROWS:] == ep.actions[ROWS - 1]) and np.all(ep.obs[ROWS:, 0:5] == ep.obs[ROWS - 1, 0:5])
+    assert np.all(ep.obs[ROWS:, 5:10] == 0) and np.all(ep.images["main"][ROWS:] == ep.images["main"][ROWS - 1])
+    assert not ep.terminated.any() and ep.truncated[-1] and np.all(ep.discount == 1)
+    from imitation.data.dataset import build_samples
+    X, Y, M, _ = build_samples([ep], 2, 16)
+    for t in range(len(Y)):                                    # every row a policy is taught is a row that was sent
+        for k in np.flatnonzero(M[t]):
+            assert t + k < T and np.array_equal(Y[t, k], ep.actions[t + k])
+    assert M[ROWS - 1].all() and not M[-1].all()               # the fold's last row is taught its whole look-ahead
     with pytest.raises(FileExistsError):                                                              # write-once
         rig_dataset.build(folders, store, "rig_t", size=64)
     kept, left_out = rig_dataset.build(folders, store, "rig_all", size=64, failures=True)
@@ -165,15 +185,24 @@ def test_recorded_folds_become_a_dataset_a_camera_policy_trains_on(env, monkeypa
     for name in ("policy_run", "camera_run"):
         sys.modules.pop(name, None)
     camera_run = importlib.import_module("camera_run")
-    config = camera_run.load_config(store / "rig_t")
-    assert config["size"] == 64 and config["rows"] == ROWS and len(config["start"]) == 12 and 0.01 < config["row_seconds"] < 0.2
-    assert np.allclose(config["start"], np.concatenate([target[0], target[0]]), atol=0.002)
+    manifest = json.loads((store / "rig_t" / "manifest.json").read_text())
+    config = manifest["config"]
+    assert config["size"] == 64 and config["rows"] == ROWS and config["frame_shape"] == [48, 64] and config["hold"] == rig_dataset.HOLD
+    assert np.allclose(config["start"], np.concatenate([target[0], target[0]]), atol=0.002)           # a start a fold had
+    # the fake arms played these folds at 0.02 s a row; the real ones never go under 0.05, which camera_run insists on
+    with pytest.raises(ValueError, match="shorter than"):
+        camera_run.load_config(store / "rig_t")
+    config = config | {"row_seconds": 0.05}
     monkeypatch.setattr(env.replay, "sleep_until", lambda t: None)
     monkeypatch.setattr(env.replay, "RUNS_DIR", env.tmp / "played")
     options = types.SimpleNamespace(dry_run=False, torque_limit=50, track_deg=8.0, stale=5.0, replan=4, log=None,
                                     policy=str(out / "final.pt"), dataset=str(store / "rig_t"))
     followers = {"left": env.replay.Follower("L"), "right": env.replay.Follower("R")}
     code = camera_run.run(policy, config, followers, Phone(), options)
-    assert code in (0, 1)                                                          # played to the end, or stopped by a check
-    played = rig_dataset.load_run(next((env.tmp / "played").iterdir())) if code == 0 else None
-    assert played is None or (played["kind"] == "policy" and len(played["t"]) == ROWS and (played["frame"] >= 0).all())
+    lines = [json.loads(l) for l in (next((env.tmp / "played").iterdir()) / "steps.jsonl").read_text().splitlines()]
+    folds = [l for l in lines if l["phase"] == "fold"]
+    assert any(l["phase"] == "glide to the start" for l in lines)                 # the arms were taken to the folds' start
+    if code == 0:                                                                 # played to the end...
+        assert len(folds) == ROWS and all("read_t" in l for l in folds)
+    else:                                                                         # ...or a check stopped it, and said why
+        assert code == 1 and lines[-1]["phase"] == "stopped" and lines[-1]["reason"] and len(folds) == lines[-1]["row"]

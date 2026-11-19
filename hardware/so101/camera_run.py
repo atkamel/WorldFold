@@ -12,10 +12,11 @@ arms glide back.
 A camera policy cannot be rolled out before the arms move, as policy_run.py rolls out the planner's copy: what it
 does depends on pictures not taken yet. So everything is checked row by row, before the row is sent:
     every joint of both arms within --track-deg of the row sent before (an arm that is not where it was told)
-    a picture newer than the last one the policy saw, at least every --stale seconds
+    a picture the phone sent after the last look, at least every --stale seconds, of the size the policy learned on
     the new row finite, inside the limits, clear of itself as a pose (policy_run.row_fault)
     no joint more than replay.py's rate cap from the row before: a larger step is cut to the cap, not refused
-    the fingertip, wrist and elbow above the table (the arm model; nothing else here knows where the table is)
+    no part of the arm beyond the shoulder further into the table than the planned pinch presses (the arm model's
+        meshes at the pose that will be sent, open jaw included; nothing else here knows where the table is)
 A failed check stops the run: nothing more is sent, torque stays on, the arms hold the last row. Ctrl-C and bus
 errors do the same. Not checked: the other arm, the cloth, and whether the fold is any good.
 
@@ -34,6 +35,7 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 
+import mujoco
 import numpy as np
 
 import arms
@@ -42,38 +44,69 @@ import recorder
 import replay
 import rig_dataset
 from kinematics import Arm
-from policy_net import STEP_LIMIT
+from policy_net import DT, STEP_LIMIT
 
 MOTOR_IDS = replay.MOTOR_IDS
 SIDES = rig_dataset.SIDES
-FINGERTIP_FLOOR = 0.003     # m above the table the fingertip may come down to (the fold's pinch is at 0.005)
-JOINT_FLOOR = 0.045         # m for the wrist and elbow joint centres: their motor bodies reach about 3 cm lower
+TABLE_FLOOR = -0.003        # m: how far below the model's table any part may be asked to go. The planned pinch
+                            # comes within 1 mm of it either way; a pose 3 mm into it is not a pinch
 
 
 def load_config(dataset):
-    """What camera_run needs of a rig_dataset version: {"size", "action_scale", "start", "rows", "row_seconds"}."""
+    """What camera_run needs of a rig_dataset version: {"size", "action_scale", "start", "rows", "row_seconds",
+    "frame_shape"}. ValueError when the version does not say, or says something a run cannot be built on."""
     manifest = json.loads((Path(dataset) / "manifest.json").read_text())
     config = manifest.get("config", {})
-    missing = [k for k in ("size", "action_scale", "start", "rows", "row_seconds") if k not in config]
+    missing = [k for k in ("size", "action_scale", "start", "rows", "row_seconds", "frame_shape") if k not in config]
     if missing:
         raise ValueError(f"{dataset} does not say {', '.join(missing)}: build it again with this rig_dataset.py")
+    start = np.asarray(config["start"], float)
+    if start.shape != (12,) or not np.all(np.isfinite(start)):
+        raise ValueError(f"its start is not 12 joint angles: {config['start']}")
+    if not isinstance(config["rows"], int) or config["rows"] < 1:
+        raise ValueError(f"its rows is {config['rows']!r}")
+    if not config["row_seconds"] >= DT:
+        raise ValueError(f"a row of {config['row_seconds']!r} s is shorter than the arms' {DT} s: the rate cap is per row")
+    if config["action_scale"] != rig_dataset.ACTION_SCALE:
+        raise ValueError(f"its actions are in units of {config['action_scale']} rad, this code's in {rig_dataset.ACTION_SCALE}")
     return config
 
 
-def table_fault(arm, target):
-    """Why the pose `target` (6 rad) would put the arm into the table, or None."""
-    elbow, wrist, tip = arm.joint_points(target[:5])
-    for name, point, floor in (("fingertip", tip, FINGERTIP_FLOOR), ("wrist", wrist, JOINT_FLOOR), ("elbow", elbow, JOINT_FLOOR)):
-        if point[2] < floor:
-            return f"the {name} would be {point[2] * 1000:.0f} mm above the table (floor {floor * 1000:.0f})"
-    return None
+class Body:
+    """The arm's solid parts beyond the shoulder (collision.py's model), for how low a pose reaches."""
+
+    def __init__(self):
+        self.model, self.data, _ = replay.load_collision().load()
+        self.parts, base = [], []
+        for g in range(self.model.ngeom):
+            if self.model.geom_contype[g] == 0 or self.model.geom_type[g] != mujoco.mjtGeom.mjGEOM_MESH:
+                continue
+            mesh = self.model.geom_dataid[g]
+            first, count = self.model.mesh_vertadr[mesh], self.model.mesh_vertnum[mesh]
+            name = self.model.body(self.model.geom_bodyid[g]).name
+            (base if name == "base" else self.parts).append((g, name, self.model.mesh_vert[first:first + count].copy()))
+        self.table = min(self.lowest_of(np.zeros(6), base)[0], 0.0)     # the base stands on the table
+
+    def lowest_of(self, q, parts):
+        self.data.qpos[:6] = q
+        mujoco.mj_kinematics(self.model, self.data)
+        return min(((vertices @ self.data.geom_xmat[g].reshape(3, 3).T + self.data.geom_xpos[g])[:, 2].min(), name)
+                   for g, name, vertices in parts if name != "shoulder")
+
+    def table_fault(self, q):
+        """Why the pose `q` (6 rad, jaw included) would put the arm into the table, or None."""
+        z, name = self.lowest_of(q, self.parts)
+        if z - self.table < TABLE_FLOOR:
+            return f"the {name.replace('_so101_v1', '').replace('_', ' ')} would be {(self.table - z) * 1000:.0f} mm into the table"
+        return None
 
 
-def start_rows(config, followers):
+def start_rows(config, followers, body):
     """The glide target before the policy plays, as {side: {motor id: ticks}}, checked as a row of a fold is.
     ValueError says why it cannot be used."""
-    collision, arm, out = replay.load_collision(), Arm(), {}
-    for k, (side, f) in enumerate(followers.items()):
+    collision, out = replay.load_collision(), {}
+    for side, f in followers.items():
+        k = SIDES.index(side)
         target = np.array(config["start"][6 * k:6 * k + 6], float)
         ticks, stats = replay.convert(f, [target.tolist()])
         worst = max(w for _, w in stats.values())
@@ -83,38 +116,43 @@ def start_rows(config, followers):
         distance, _, parts = replay.nearest_to_itself(collision, f, [out[side]], out[side][replay.GRIPPER_ID])
         if distance < collision.CLEARANCE:
             raise ValueError(f"the {side} arm's start comes within {distance * 1000:.0f} mm of itself ({parts})")
-        reason = table_fault(arm, target)
+        reason = body.table_fault(policy_run.angles(f, [[out[side][m] for m in MOTOR_IDS]])[0])
         if reason:
             raise ValueError(f"the {side} arm's start: {reason}")
     return out
 
 
-def closed_loop(followers, policy, phone, config, first, options, progress, log, keep=None):
-    """The policy's rows, each from the joints read just before it and the phone's latest picture. `keep(frame)`,
-    if given, gets every picture the policy is shown. Returns (0, the last rows sent) when all rows were played,
-    (1, the last rows sent) when a check stopped it."""
+def closed_loop(followers, policy, phone, config, first, body, options, progress, log, keep=None):
+    """The policy's rows, each from the joints read just before it and a picture the phone sent since the last
+    look. `keep(frame)`, if given, gets every picture the policy is shown. Returns (0, the last rows sent) when all
+    rows were played, (1, the last rows sent) when a check stopped it: then nothing more has been sent."""
     tick = config["row_seconds"]
     sends = max(1, math.ceil(tick / replay.TICK_SECONDS - 1e-9))
     collision, arm = replay.load_collision(), Arm()
-    command = {side: dict(first[side]) for side in followers}
-    history, before, chunk, seen, fresh = deque(maxlen=policy.obs_horizon), None, None, None, time.monotonic()
+    command = {side: dict(first[side]) for side in SIDES}
+    history, before, chunk = deque(maxlen=policy.obs_horizon), None, None
+    phone.wait()                    # a picture taken now: the last one may be from before the cloth was laid down
+    seen, fresh = phone.count, time.monotonic()
     t0 = time.monotonic()
 
     def stop(k, fault, present):
         log.step("stopped", k, command, present)
         log.write({"phase": "stopped", "row": k, "reason": fault})
         print(f"\nStopped at row {k}: {fault}. Nothing more sent; torque left on, the arms hold the last row sent.")
+        if options.torque_limit < 100:
+            print(f"The {options.torque_limit}% torque cap stays on the motors until the next run or a power cycle.")
         return 1, command
 
     for k in range(config["rows"]):
         row_start = t0 + k * tick
         replay.sleep_until(row_start)
         progress["step"] = k
-        present = {side: f.read_present() for side, f in followers.items()}
-        now = time.monotonic()
-        measured = {side: policy_run.angles(f, [[present[side][m] for m in MOTOR_IDS]])[0] for side, f in followers.items()}
-        sent = {side: policy_run.angles(f, [[command[side][m] for m in MOTOR_IDS]])[0] for side, f in followers.items()}
-        for side in followers:
+        present = {side: followers[side].read_present() for side in SIDES}
+        now, read_at = time.monotonic(), time.time()
+        angles = lambda side, pose: policy_run.angles(followers[side], [[pose[m] for m in MOTOR_IDS]])[0]   # noqa: E731
+        measured = {side: angles(side, present[side]) for side in SIDES}
+        sent = {side: angles(side, command[side]) for side in SIDES}
+        for side in SIDES:
             off = np.degrees(np.abs(measured[side] - sent[side]))
             if off.max() > options.track_deg:
                 return stop(k, f"the {side} arm's {replay.JOINTS[int(np.argmax(off))]} is {off.max():.1f} deg from the "
@@ -123,34 +161,49 @@ def closed_loop(followers, policy, phone, config, first, options, progress, log,
         history.append(row)
         if k % options.replan == 0:
             frame = phone.latest()
-            count = getattr(phone, "count", None)       # rgbd.Phone counts the frames it was sent
-            if frame is not None and (count is None or count != seen):
-                seen, fresh = count, now
+            if frame is not None and phone.count != seen:
+                seen, fresh = phone.count, now
             if frame is None or now - fresh > options.stale:
                 return stop(k, f"no new picture from the phone for {now - fresh:.1f} s", present)
+            if list(np.shape(frame.rgb)) != [*config["frame_shape"], 3]:
+                return stop(k, f"the phone's picture is {list(np.shape(frame.rgb))}, the policy learned on "
+                               f"{[*config['frame_shape'], 3]} (the phone turned, or another camera mode)", present)
             if keep is not None:
                 keep(frame)
             obs = np.stack([history[0]] * (policy.obs_horizon - len(history)) + list(history))[None]
-            chunk = np.asarray(policy.predict(obs, [{"main": rig_dataset.squash(frame.rgb, config["size"])}]))[0]
-        action = chunk[k % options.replan] * config["action_scale"]
+            try:
+                chunk = np.asarray(policy.predict(obs, [{"main": rig_dataset.squash(frame.rgb, config["size"])}]))[0]
+            except Exception as err:            # whatever the network or the picture did: the arms must not be left to it
+                return stop(k, f"the policy failed on this picture ({type(err).__name__}: {err})", present)
+        action = np.asarray(chunk[k % options.replan], float) * config["action_scale"]
         new = {}
-        for i, (side, f) in enumerate(followers.items()):
-            target = np.asarray(action[6 * i:6 * i + 6], float)
-            if np.all(np.isfinite(target)):             # a step over the rate cap is cut to it, as replay.py's play does
+        for side in SIDES:
+            i = SIDES.index(side)
+            target = action[6 * i:6 * i + 6]
+            if np.all(np.isfinite(target)):     # a step over the rate cap is cut to it, as replay.py's play does
                 target = sent[side] + np.clip(target - sent[side], -STEP_LIMIT, STEP_LIMIT)
-            reason, new[side] = policy_run.row_fault(f, target, command[side], collision)
-            reason = reason or table_fault(arm, target)
+            try:
+                reason, new[side] = policy_run.row_fault(followers[side], target, command[side], collision)
+                # the pose that will be sent: row_fault's limits may have moved it up to CLAMP_REFUSE_DEG
+                reason = reason or body.table_fault(angles(side, new[side]))
+            except SystemExit as err:           # replay.py's collision check gives up this way
+                reason = f"the self-collision check failed ({err})"
             if reason:
                 return stop(k, f"the {side} arm's next row: {reason}", present)
         late = time.monotonic() - row_start
         if late > replay.TICK_SECONDS:      # a slow read or a slow network: the rest starts later, at its usual pace
             t0 += late
             row_start += late
-        log.step("fold", k, new, present)
+        # replay.StepLog's line, with when the joints were read: the line itself is written after the policy has
+        # thought, and rig_dataset.py must give a later policy the rates this one saw
+        log.write({"phase": "fold", "row": k, "read_t": read_at,
+                   "target": {side: log.angles(followers[side], new[side]) for side in SIDES},
+                   "measured": {side: log.angles(followers[side], present[side]) for side in SIDES}})
         for j in range(1, sends + 1):
             replay.sleep_until(row_start + (j - 1) * tick / sends)
-            for side, f in followers.items():
-                f.send_goals({m: command[side][m] + (new[side][m] - command[side][m]) * j / sends for m in MOTOR_IDS})
+            for side in SIDES:
+                followers[side].send_goals({m: command[side][m] + (new[side][m] - command[side][m]) * j / sends
+                                            for m in MOTOR_IDS})
         command = new
     return 0, command
 
@@ -169,7 +222,7 @@ def open_log(path, options, followers, config):
     return log
 
 
-def play(followers, policy, phone, config, first, options, progress):
+def play(followers, policy, phone, config, first, body, options, progress):
     """Everything that moves the arms: the glides, the policy's rows, the glide back."""
     for f in followers.values():
         f.connect()
@@ -193,7 +246,7 @@ def play(followers, policy, phone, config, first, options, progress):
         progress["step"] = "glide to the start"
         replay.ramp_together(followers, at, first, log, "glide to the start")
         input("At the start. Check the arms are clear and the phone sees the cloth, then press Enter (Ctrl-C stops) ")
-        code, last = closed_loop(followers, policy, phone, config, first, options, progress, log, keep)
+        code, last = closed_loop(followers, policy, phone, config, first, body, options, progress, log, keep)
         if code:
             return code
         time.sleep(replay.SETTLE_SECONDS)
@@ -216,7 +269,10 @@ def play(followers, policy, phone, config, first, options, progress):
         return 0
     finally:
         log.close()
-        run.close()
+        try:
+            run.close()
+        except Exception as err:    # a picture that could not be written must not hide how the run ended
+            print(f"The recording lost pictures ({err}); the step log is whole.")
         print(f"Recorded in {run.path}. Say whether it folded: rig_dataset.py label {run.path} good|bad")
 
 
@@ -231,8 +287,13 @@ def run(policy, config, followers, phone, options):
         sys.exit(f"The policy looks through {cameras}; this dataset holds the phone's picture as ('main', {config['size']}).")
     if not 1 <= options.replan <= policy.chunk:
         sys.exit(f"--replan must be 1 to {policy.chunk}, the rows the policy gives at a time")
+    if list(followers) != list(SIDES):
+        sys.exit(f"followers must be {list(SIDES)}, in that order")
+    if not options.dry_run and not (hasattr(phone, "count") and hasattr(phone, "wait")):
+        sys.exit("The phone must count the frames it is sent (rgbd.Phone): without that a stalled camera cannot be told.")
+    body = Body()
     try:
-        first = start_rows(config, followers)
+        first = start_rows(config, followers, body)
     except ValueError as err:
         sys.exit(f"Not playing: {err}.")
     for side, f in followers.items():
@@ -250,9 +311,9 @@ def run(policy, config, followers, phone, options):
         return 0
     progress = {"step": "before playing"}
     try:
-        return play(followers, policy, phone, config, first, options, progress)
+        return play(followers, policy, phone, config, first, body, options, progress)
     except (KeyboardInterrupt, OSError) as err:
-        reason = "Ctrl-C" if isinstance(err, KeyboardInterrupt) else f"bus error: {err}"
+        reason = "Ctrl-C" if isinstance(err, KeyboardInterrupt) else f"bus or disk error: {err}"
         print(f"\nStopped ({reason}) at row {progress['step']}. No more targets sent; torque left on, arms hold.")
         if options.torque_limit < 100:
             print(f"A {options.torque_limit}% torque cap was asked for and may be on some or all motors. "
