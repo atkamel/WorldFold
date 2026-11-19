@@ -19,7 +19,7 @@ left out of a dataset.
 imitation.train reads it unchanged. What goes where, per control row:
     images["main"]   the phone's picture taken last before the row, squashed to --size x --size, uint8 [3, S, S]
     obs (139)        only the sensor proprio slots are filled, per arm (left at 0, right at 25):
-                       +0..4 the 5 joint angles read (rad), +5..9 their rate (rad/s, from the rows' own times),
+                       +0..4 the 5 joint angles read (rad), +5..9 their rate (rad/s, since the row before),
                        +10 the jaw angle read (rad), +11..13 the fingertip in the arm's own base frame (m),
                        +14..16 the fingers' direction, +21..23 the fingertip's speed (m/s); the rest stay 0
     actions (12)     the joint targets sent, left then right, each arm's 5 joints and its jaw, in units of
@@ -134,27 +134,42 @@ def load_run(path, left=None, right=None):
             "meta": meta, "path": path}
 
 
-def picture(path, i, size=SIZE):
-    """Frame i of a run as uint8 [3, size, size]: the whole picture squashed square, the same for every run."""
+def squash(rgb, size=SIZE):
+    """A camera picture [H, W, 3] as uint8 [3, size, size]: the whole picture squashed square. The same for every
+    recorded row and for the picture a policy is shown on the arms."""
     from PIL import Image
-    rgb = recorder.load_frame(path, int(i))[0]
-    return np.asarray(Image.fromarray(rgb).resize((size, size), Image.BILINEAR)).transpose(2, 0, 1).copy()
+    return np.asarray(Image.fromarray(np.asarray(rgb, np.uint8)).resize((size, size), Image.BILINEAR)).transpose(2, 0, 1).copy()
+
+
+def picture(path, i, size=SIZE):
+    """Frame i of a run, squashed."""
+    return squash(recorder.load_frame(path, int(i))[0], size)
+
+
+def proprio_row(arm, t, measured, before=None):
+    """One observation row [139] from the 12 joints read at time `t` (s), and what the next row needs of this one.
+    `before` is that second value from the row before (None for the first row, whose rates are 0). The rates look
+    back only, so a policy on the arms can be given exactly what its training rows held."""
+    obs, tips = np.zeros(OBS_DIM, np.float32), []
+    for k in range(2):
+        q, b = np.asarray(measured[6 * k:6 * k + 6], float), ARM_SLOTS * k
+        tip, fingers = arm.tip(q[:5])
+        tips.append(tip)
+        obs[b:b + 5], obs[b + 10], obs[b + 11:b + 14], obs[b + 14:b + 17] = q[:5], q[5], tip, fingers
+        if before is not None and t > before[0]:
+            dt = t - before[0]
+            obs[b + 5:b + 10] = (q[:5] - before[1][6 * k:6 * k + 5]) / dt
+            obs[b + 21:b + 24] = (tip - before[2][k]) / dt
+    return obs, (t, np.asarray(measured, float), tips)
 
 
 def proprio(run):
     """The observation rows [T, 139] of a run: each arm's block as the module docstring lays it out."""
-    arm, t, T = Arm(), run["t"], len(run["t"])
-    dt = np.gradient(t) if T > 1 else np.ones(1)
-    dt[dt <= 0] = np.median(dt[dt > 0]) if (dt > 0).any() else 1.0     # two rows logged in the same instant
-    rate = lambda x: np.gradient(x, axis=0) / dt[:, None]                                            # noqa: E731
-    obs = np.zeros((T, OBS_DIM), np.float32)
-    for k in range(2):
-        q, b = run["measured"][:, 6 * k:6 * k + 6], ARM_SLOTS * k
-        tips = [arm.tip(row[:5]) for row in q]
-        tip, fingers = np.array([p for p, _ in tips]), np.array([z for _, z in tips])
-        obs[:, b:b + 5], obs[:, b + 5:b + 10], obs[:, b + 10] = q[:, :5], rate(q[:, :5]), q[:, 5]
-        obs[:, b + 11:b + 14], obs[:, b + 14:b + 17], obs[:, b + 21:b + 24] = tip, fingers, rate(tip)
-    return obs
+    arm, rows, before = Arm(), [], None
+    for t, measured in zip(run["t"], run["measured"]):
+        row, before = proprio_row(arm, float(t), measured, before)
+        rows.append(row)
+    return np.array(rows)
 
 
 def episode(run, size=SIZE):
@@ -216,17 +231,26 @@ def build(folders, out, version, size=SIZE, left=None, right=None, failures=Fals
     assert spec.OBS_DIM == OBS_DIM and spec.ACTION_DIM == 12 and spec.GRIPPER_CTRL_DIMS == (10, 10 + ARM_SLOTS)
     writer = DatasetWriter(out, version, config={"tool": "hardware/so101/rig_dataset.py", "size": size,
                                                  "action": f"joint targets / {ACTION_SCALE} rad", "camera": "main"})
-    left_out = []
+    left_out, starts, lengths, periods = [], [], [], []
     for folder in folders:
         try:
             run = load_run(folder, left, right)
             if run["label"] is not None and not run["label"]["success"] and not failures:
                 raise ValueError("labelled bad")
             writer.add(episode(run, size), spec.OBS_DIM, spec.ACTION_DIM)
+            if run["label"]["success"]:
+                starts.append(run["target"][0])
+                lengths.append(len(run["t"]))
+                periods.append(float(np.median(np.diff(run["t"]))))
         except (ValueError, KeyError) as err:
             left_out.append((Path(folder).name, str(err)))
     if not writer.new_entries:
         raise ValueError("no usable run: " + "; ".join(f"{n} ({why})" for n, why in left_out[:5]))
+    if starts:
+        # for camera_run.py: where the good folds began (the pose it glides to before the policy takes over), how
+        # many rows the longest took and how long a row lasted
+        writer.config |= {"start": np.median(starts, axis=0).round(5).tolist(), "rows": int(max(lengths)),
+                          "row_seconds": round(float(np.median(periods)), 4), "action_scale": ACTION_SCALE}
     return writer.freeze(), left_out
 
 

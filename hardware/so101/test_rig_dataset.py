@@ -153,3 +153,25 @@ def test_recorded_folds_become_a_dataset_a_camera_policy_trains_on(env, monkeypa
     history = np.repeat(ep.obs[:1], policy.obs_horizon, axis=0)[None]
     chunk = policy.predict(history, [{"main": ep.images["main"][0]}])
     assert chunk.shape == (1, policy.chunk, 12) and np.isfinite(chunk).all() and torch.is_tensor(policy.obs_mean)
+
+    # and the trained policy goes back onto the (fake) arms through camera_run.py, with what the dataset says of
+    # how it was recorded. Six updates teach it nothing: the point is that it is played, checked and recorded
+    import importlib
+    import types
+    pytest.importorskip("mujoco")
+    pytest.importorskip("so101_nexus")
+    for name in ("policy_run", "camera_run"):
+        sys.modules.pop(name, None)
+    camera_run = importlib.import_module("camera_run")
+    config = camera_run.load_config(store / "rig_t")
+    assert config["size"] == 64 and config["rows"] == ROWS and len(config["start"]) == 12 and 0.01 < config["row_seconds"] < 0.2
+    assert np.allclose(config["start"], np.concatenate([target[0], target[0]]), atol=0.002)
+    monkeypatch.setattr(env.replay, "sleep_until", lambda t: None)
+    monkeypatch.setattr(env.replay, "RUNS_DIR", env.tmp / "played")
+    options = types.SimpleNamespace(dry_run=False, torque_limit=50, track_deg=8.0, stale=5.0, replan=4, log=None,
+                                    policy=str(out / "final.pt"), dataset=str(store / "rig_t"))
+    followers = {"left": env.replay.Follower("L"), "right": env.replay.Follower("R")}
+    code = camera_run.run(policy, config, followers, Phone(), options)
+    assert code in (0, 1)                                                          # played to the end, or stopped by a check
+    played = rig_dataset.load_run(next((env.tmp / "played").iterdir())) if code == 0 else None
+    assert played is None or (played["kind"] == "policy" and len(played["t"]) == ROWS and (played["frame"] >= 0).all())

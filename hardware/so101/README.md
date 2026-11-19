@@ -441,8 +441,27 @@ python -m imitation.train --policy vision --root outputs/rig/datasets --dataset 
   joints read, their rates, the jaw, and the fingertip from the arm model, and as its action the joint targets
   sent, in units of 2 rad. The observation's simulator-only entries stay zero.
 - Rates are per second of wall time, so record at the speed the policy will run at.
-- Not built yet: a runner that plays a camera policy on the arms. `policy_run.py` plays the planner's copy, which
-  reads joints and corner positions and no pictures.
+
+### Playing a camera policy on the arms (`camera_run.py`, checked on a stand-in rig only)
+
+```bash
+../../.venv-hw/bin/python camera_run.py --policy ../../outputs/rig/runs/vision_v0/final.pt \
+    --dataset ../../outputs/rig/datasets/rig_v0 --left arm2 --right arm1 --torque-limit 50 --dry-run
+```
+
+- It needs `torch` and this repo's `imitation` package on the machine at the arms, besides what `replay.py` needs.
+- The dataset version tells it the picture size, how long a row lasted, how many rows the longest good fold took
+  and where the good folds began. The arms glide from their idle poses to that beginning, the policy plays that
+  many rows, a new picture every 4 rows (`--replan`), and the arms glide back.
+- Nothing can be checked ahead of the motion beyond the start and the glides to it: what the policy does depends
+  on pictures not taken yet. Every row is checked before it is sent: the arm where it was told (`--track-deg`),
+  a picture newer than the last (`--stale`), the row finite, inside the limits and clear of the arm's own body,
+  and the fingertip, wrist and elbow above the table. A step over `replay.py`'s rate cap is cut to the cap. A
+  failed check stops the run with torque on. The other arm and the cloth are not checked.
+- Every run is recorded like a `rig_record.py` run, with the pictures the policy was shown, so `rig_dataset.py`
+  can read it back. Label it afterwards.
+- `policy_run.py` is the other learned fold: the planner's copy, which reads joints and corner positions and no
+  pictures, and can be checked whole before the arms move.
 
 ## Arm configuration
 
@@ -524,6 +543,7 @@ kinematics against MuJoCo when `mujoco` and `so101-nexus` are installed.
 | `fold_camera.py` | one look through the iPhone, then the fold from where the cloth lies |
 | `arm_calibration.py` | the camera's map from the arms: touch the table, click the fingertips, fit one map per arm |
 | `rig_record.py` | records a command-line fold as the panel records its own, and asks whether it folded |
+| `camera_run.py` | plays a camera policy trained on a `rig_dataset.py` version, checked row by row, recorded |
 | `rig_dataset.py` | recorded runs into a dataset `imitation.train` reads: `list`, `label`, `build` |
 | `rgbd.py` | Record3D stream (RGB, depth), table plane, height above the table |
 | `recorder.py` | saves a run, `load` reads it back |
