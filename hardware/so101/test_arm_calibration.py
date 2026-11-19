@@ -69,7 +69,8 @@ def test_the_touch_sequence_rests_on_every_point_and_is_a_safe_trajectory():
 
 def test_a_narrower_spread_keeps_the_touching_arm_near_its_own_centre_line():
     arm = Arm()
-    for widest, limit in ((25.0, 0.16), (55.0, 0.31)):
+    assert arm_calibration.WIDEST == 25.0                                    # the default is the one for bases 30 cm apart
+    for widest, limit in ((arm_calibration.WIDEST, 0.16), (55.0, 0.31)):
         rows = arm_calibration.trajectory(arm_calibration.touch_points(widest))["arms"]["left"]["target"]
         sideways = max(abs(p[1]) for row in rows for p in arm.joint_points(row[:5]))
         assert sideways < limit
@@ -79,53 +80,91 @@ def test_the_fit_recovers_the_cameras_map_and_says_how_well():
     points = np.array(arm_calibration.touch_points())
     to_px = np.linalg.inv(synthetic.camera())
     px = fold_score.apply(to_px, np.array([to_table(BEHIND, "left", p) for p in points]))
-    H, inside, left_out = arm_calibration.fit_report(px, points)
+    H, inside, left_out, _ = arm_calibration.fit_report(px, points)
     assert inside.max() < 1e-6 and np.nanmax(left_out) < 1e-6
     fresh = np.array([(0.38, 0.0), (0.10, 0.05), (0.25, -0.12)])
     seen = fold_score.apply(to_px, np.array([to_table(BEHIND, "left", p) for p in fresh]))
     assert np.abs(arm_calibration.apply(H, seen) - fresh).max() < 1e-6
     noisy = px + np.random.default_rng(0).normal(0, 1.0, px.shape)          # clicks a pixel off
-    _, inside, left_out = arm_calibration.fit_report(noisy, points)
-    assert inside.max() < 0.004 and np.nanmax(left_out) < 0.008
+    _, inside, left_out, _ = arm_calibration.fit_report(noisy, points)
+    assert inside.max() < 0.006 and np.nanmax(left_out) < arm_calibration.MAX_FIT_ERROR
     with pytest.raises(ValueError, match="at least 4"):
         arm_calibration.fit_map(px[:3], points[:3])
 
 
-def test_fit_refuses_a_wrong_click_and_keeps_the_rest_of_camera_json(tmp_path, monkeypatch):
+def clicked_touches(folder, side, rig=None, noise=0.0, seed=0):
+    """touches.json and one picture for `side`, every touch clicked where the synthetic camera sees it."""
+    from PIL import Image
+    points = arm_calibration.touch_points()
+    px = fold_score.apply(np.linalg.inv(synthetic.camera()), np.array([to_table(rig or BEHIND, side, p) for p in points]))
+    px = px + np.random.default_rng(seed).normal(0, noise, px.shape)
+    touches = [{"point": list(p), "frame": f"touch_{k}.jpg", "px": list(map(float, c))} for k, (p, c) in enumerate(zip(points, px))]
+    (folder / side).mkdir(parents=True, exist_ok=True)
+    for t in touches:
+        Image.fromarray(np.zeros((*synthetic.SHAPE, 3), np.uint8)).save(folder / side / t["frame"])
+    (folder / side / "touches.json").write_text(json.dumps({"arm": side, "touches": touches}))
+    return px
+
+
+def test_fit_wants_both_arms_names_a_wrong_click_and_keeps_the_rest_of_camera_json(tmp_path, monkeypatch):
     monkeypatch.setattr(arm_calibration, "CAMERA", tmp_path / "camera.json")
     monkeypatch.setattr(arm_calibration, "FOLDER", tmp_path / "touches")
     (tmp_path / "camera.json").write_text(json.dumps({"dark": 100.0, "colour": "blue"}))
-    points = arm_calibration.touch_points()
-    px = fold_score.apply(np.linalg.inv(synthetic.camera()), np.array([to_table(BEHIND, "left", p) for p in points]))
-    touches = [{"point": list(p), "frame": f"touch_{k}.jpg", "px": list(map(float, c))} for k, (p, c) in enumerate(zip(points, px))]
-    touches[0]["px"] = None                                                  # one fingertip was out of the picture
-    (tmp_path / "touches" / "left").mkdir(parents=True)
-    (tmp_path / "touches" / "left" / "touches.json").write_text(json.dumps({"arm": "left", "touches": touches}))
+    px = clicked_touches(tmp_path / "touches", "left", noise=1.0)
+    with pytest.raises(ValueError, match="right arm has 0 clicked"):          # one arm alone is not a calibration
+        arm_calibration.fit()
+    assert "arms" not in json.loads((tmp_path / "camera.json").read_text())
+    clicked_touches(tmp_path / "touches", "right", noise=1.0, seed=1)
+    arm_calibration.record_click("left", "touch_0.jpg", None)                # one fingertip was out of the picture
     summary = arm_calibration.fit()
-    assert summary["left"]["touches"] == 8 and summary["left"]["max_mm"] < 0.1 and "right" not in summary
+    assert summary["left"]["touches"] == 8 and summary["right"]["touches"] == 9 and summary["left"]["max_mm"] < 6
     saved = json.loads((tmp_path / "camera.json").read_text())
-    assert saved["dark"] == 100.0 and saved["colour"] == "blue" and set(saved["arms"]) == {"left"}
-    arm_calibration.record_click("left", "touch_3.jpg", (px[3][0] + 60, px[3][1]))       # a click on the wrong thing
-    with pytest.raises(ValueError, match="touch_3.jpg"):
+    assert saved["dark"] == 100.0 and saved["colour"] == "blue" and {"left", "right", "fitted", "shape"} == set(saved["arms"])
+    assert saved["arms"]["shape"] == list(synthetic.SHAPE)
+    # a click 12 px off (about 25 mm on this table): a fit of all nine touches bends to it and looks fine, the fit
+    # of the other eight does not, and the others agree best without that picture
+    arm_calibration.record_click("left", "touch_4.jpg", (px[4][0] + 12, px[4][1]))
+    with pytest.raises(ValueError, match="fit best without touch_4.jpg"):
         arm_calibration.fit()
     assert json.loads((tmp_path / "camera.json").read_text()) == saved
+    arm_calibration.record_click("left", "touch_4.jpg", px[4])               # clicked again, rightly
+    for k in range(4):                                                        # too few clicks to tell a wrong one
+        arm_calibration.record_click("right", f"touch_{k}.jpg", None)
+    with pytest.raises(ValueError, match="right arm has 5 clicked"):
+        arm_calibration.fit()
 
 
-def test_each_touch_gets_the_picture_taken_while_the_arm_rested_there(tmp_path):
+def test_each_touch_gets_a_picture_from_the_middle_of_its_rest_and_none_from_after_it(tmp_path):
     from PIL import Image
     traj = {"marks": {"rests": [[10, 50], [100, 140], [200, 240]]}, "source": {"points": [[0.3, 0.1], [0.3, -0.1], [0.2, 0.0]]}}
     lines = [{"phase": "glide to the first target", "row": None, "t": 99.0, "target": {"left": []}}]
     lines += [{"phase": "fold", "row": k, "t": 100.0 + 0.1 * k, "target": {"left": []}} for k in range(160)]    # stopped in touch 3
     (tmp_path / "steps.jsonl").write_text("\n".join(json.dumps(l) for l in lines))
     (tmp_path / "frames").mkdir()
-    for t in np.arange(99.0, 117.0, 0.25):
+    # touch 1 rests 101.0 to 105.0 and, settled, 101.5 to 105.0; touch 2 rests 110.0 to 114.0 but the phone only
+    # sent pictures before it arrived and after it lifted
+    for t in [*np.arange(99.0, 109.0, 0.25), 109.75, 114.25, 114.5]:
         Image.fromarray(np.full((4, 4, 3), int(t * 4) % 255, np.uint8)).save(tmp_path / "frames" / f"{int(t * 1000)}.jpg")
     touches = arm_calibration.keep_touches(tmp_path, "left", traj, tmp_path / "steps.jsonl")
-    assert [t["frame"] for t in touches] == ["touch_0.jpg", "touch_1.jpg"] and all(t["px"] is None for t in touches)
-    assert touches[1]["point"] == [0.3, -0.1]
-    for k, moment in ((0, 105.0), (1, 114.0)):                               # the end of each rest: rows 50 and 140
-        want = np.asarray(Image.open(tmp_path / "frames" / f"{int(moment * 1000)}.jpg"))
-        assert np.array_equal(np.asarray(Image.open(tmp_path / f"touch_{k}.jpg")), want)
+    assert [t["frame"] for t in touches] == ["touch_0.jpg"] and touches[0]["px"] is None and touches[0]["point"] == [0.3, 0.1]
+    want = np.asarray(Image.open(tmp_path / "frames" / "103250.jpg"))        # the middle of 101.5 to 105.0
+    assert np.array_equal(np.asarray(Image.open(tmp_path / "touch_0.jpg")), want)
+
+
+def test_a_stalled_phone_adds_no_pictures(tmp_path):
+    import time
+    import rgbd
+    frame = rgbd.Frame(0.0, np.zeros((4, 4, 3), np.uint8), None, (1, 1, 0, 0))
+    phone = type("Phone", (), {"count": 3, "latest": lambda self: frame})()
+    capture = arm_calibration.Capture(phone, tmp_path)
+    capture.PERIOD = 0.01
+    capture.start()
+    time.sleep(0.15)
+    phone.count = 4                                                           # one new frame arrives
+    time.sleep(0.15)
+    capture.stopped.set()
+    capture.join()
+    assert len(list((tmp_path / "frames").glob("*.jpg"))) == 2                # the first one seen, and the new one
 
 
 def arm_cal(rig, noise=0.0):

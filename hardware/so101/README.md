@@ -264,24 +264,31 @@ arms instead, one map per arm, so the cloth plays no part in it and the bases ma
   (at full speed) and glides back. It is played by `replay.py`, so it gets the same checks, torque cap and step log
   as a fold; add `--dry-run` to see them without motion. A picture is kept of every rest, in
   `runs/arm_calibration/<arm>/`. About 50 s of touches at full speed.
-- **`--widest`** is how far to either side of straight ahead the touches span (default 55 degrees, an arm sweeping
-  31 cm to each side). Nothing checks for the other arm. With the bases side by side 30 cm apart use `--widest 25`,
-  which keeps every part of the touching arm within 18 cm of its own centre line. The other arm rests in its idle
-  pose, where it takes up 5.5 cm to each side of its own centre line and 10 cm in front of its origin.
+- **`--widest`** is how far to either side of straight ahead the touches span. Nothing checks for the other arm.
+  The default, 25 degrees, is for the bases side by side 30 cm apart: every part of the touching arm stays within
+  18 cm of its own centre line, and each arm's first touch is on its outer side. The other arm must rest in its
+  idle pose, where it takes up 5.5 cm to each side of its own centre line and 10 cm in front of its origin. With
+  the bases far apart (arms at the cloth's sides) `--widest 55` fits the map over more of the table; the arm then
+  sweeps 31 cm to each side.
 - **click.** A page on this machine shows each picture. Click the very tip of the closed gripper where it meets
-  the table, or say the fingertip is not in the picture. Four touches per arm are the least; more is better.
-- **fit.** Fits each arm's map and prints how far the touches lie from it, and how far a touch lies from the map
-  made without it. A touch more than 10 mm off stops the fit and names its picture. The maps go into `camera.json`
-  under `"arms"`.
+  the table, or say the fingertip is not in the picture. Six clicked touches per arm are the least.
+- **fit.** Fits both arms' maps, or neither. It prints how far the touches lie from each map, and how far a touch
+  lies from the map the others make without it. That second number is the test: over 15 mm stops the fit and
+  names the picture the others agree best without. On a synthetic camera with clicks 1.5 px off, a click 20 mm
+  wrong is caught 19 times in 20 and one 10 mm wrong mostly is not, so click with care. The maps go into
+  `camera.json` under `"arms"`, with the time and the picture size.
 - **After that** `fold_camera.py look` and `fold` read each arm's pinch and place points through that arm's own
   map. `--spacing` and `--near-edge` go unused. `fold_camera.py calibrate` (and the panel's Calibrate button) only
-  learns the cloth's colour and leaves the maps alone, so it is safe with the cloth anywhere. Redo the touches when
-  the phone or a base moves.
+  learns the cloth's colour and leaves the maps alone, so it is safe with the cloth anywhere. It does NOT renew
+  the maps: when the phone or a base moves, redo the touches. Every look prints when the maps were fitted and
+  refuses a picture of another size.
 - The cloth is searched for in front of both bases' front edges and within 60 cm of a base. The corners are named
   by the picture as before: the near edge is the one at `--near`, and the left arm takes the left corners.
 - The map pairs each pixel with the point the arm was sent to, so a joint zero that is a little off is folded in.
-  It is for a fingertip 5 mm above the table; a cloth corner lies lower, which the camera's slant turns into a few
-  mm along the table.
+  The fingertip rests 5 mm up in the arm model and a cloth corner lies on the table, which the camera's slant
+  turns into a few mm along the table.
+- A new `touch` replaces an arm's earlier pictures and clicks only once it has pictures of its own. A dry run or a
+  refused run leaves them.
 - `fold_live.py` does not read this calibration and says so.
 
 ## Folding from the control panel
@@ -407,8 +414,9 @@ python fold_traj.py --out trajectories/half_fold_60cm_sides.json --cloth 0.60 --
 - 30 cm cloth. Fingers straight down at the pinch and at the release, no shortening.
 - 60 cm cloth. Fingers lean 19 degrees at the pinch, no shortening.
 - The jaw meets each corner turned by the pan angle (about 50 degrees on the 30 cm cloth, 68 on the 60 cm one).
-- Both files are committed. `replay.py` plays them like any other trajectory. `fold_camera.py` and the panel's
-  camera fold still assume both bases behind the near edge.
+- Both files are committed. `replay.py` plays them like any other trajectory. The camera fold follows the cloth
+  in this placement once the camera is calibrated from the arms (`arm_calibration.py`, with `--widest 55`);
+  calibrated from the cloth it still assumes both bases behind the near edge.
 
 ## Recording folds and training on them (built and checked on a stand-in rig, not yet on the arms)
 
@@ -434,7 +442,7 @@ python -m imitation.train --policy vision --root outputs/rig/datasets --dataset 
   `rig_record.py replay`), one played by `policy_run.py`, `fold_live.py`, and a teleop recording from the panel's
   record button (for that one pass `--left` and `--right` if `arms.json` holds more than two followers).
 - A run is left out, with the reason printed, when it has no label, no pictures, one arm only, the gripper left
-  out, or a plan faster than `replay.py`'s rate cap (the log then holds the planned rows and not the rows sent).
+  out (`--no-gripper`), or a plan faster than `replay.py`'s rate cap (the log then holds the planned rows and not the rows sent).
   Runs labelled bad are left out unless `--failures`.
 - The dataset is a version of the write-once store the simulator's students train from, so `imitation.train` reads
   it as it is. Each row holds the picture taken last before it (squashed to 128 x 128, camera name `main`), the

@@ -43,7 +43,8 @@ from kinematics import Arm
 HERE = Path(__file__).parent
 RUNS = HERE / "runs"
 SIDES = ("left", "right")
-ACTION_SCALE = 2.0          # rad per unit of action: every joint's range (within +-1.92) and the jaw fit in +-1
+ACTION_SCALE = 2.0          # rad per unit of action: the fold's joints and the jaw stay well inside +-2 rad. The
+                            # wrist roll alone can turn further (to 2.8 rad); a run that sends it there is refused
 SIZE = 128                  # pixels a side the pictures are stored at
 MIN_ROWS = 20               # fewer rows than this is not a fold
 LABEL = "label.json"
@@ -102,6 +103,9 @@ def load_run(path, left=None, right=None):
     else:
         policy = (path / "policy_meta.json").exists()
         kind = "policy" if policy else "live" if "plan" in steps[0] else "script"
+        played = json.loads((path / "replay_meta.json").read_text()) if (path / "replay_meta.json").exists() else {}
+        if played.get("no_gripper"):    # replay.py logs the planned jaw even when it leaves the jaw alone
+            raise ValueError("played with --no-gripper: the jaw targets logged were never sent")
         folds = [s for s in steps if s.get("phase", "fold") == "fold"]
         whole = lambda q: q is not None and len(q) == 6 and None not in q                            # noqa: E731
         if any(not whole(s["target"].get(side)) or not whole(s["measured"].get(side)) for s in folds for side in SIDES):

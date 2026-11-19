@@ -13,8 +13,9 @@ its trajectory through replay.py (flags after its own go there: the same checks,
 fold), with `--only` set to the arm being calibrated. The point commanded is what is paired with the pixel, so a
 joint zero that is a little off is folded into the map: the arm is sent where the picture says.
 
-The touch is at the pinch's height (fold_traj.PINCH_Z), so the map is for a fingertip at that height. A cloth corner
-lies a few mm lower, which the camera's slant turns into a few mm along the table; not corrected.
+The fingertip rests at the pinch's height (fold_traj.PINCH_Z, 5 mm in the arm model), and the click is on its tip.
+A cloth corner lies on the table a few mm lower, which the camera's slant turns into a few mm along the table; not
+corrected.
 """
 
 import argparse
@@ -23,6 +24,7 @@ import shutil
 import sys
 import threading
 import time
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -36,12 +38,16 @@ HERE = Path(__file__).parent
 CAMERA = HERE / "camera.json"
 FOLDER = HERE / "runs" / "arm_calibration"      # <FOLDER>/<arm>/: the touch pictures and touches.json
 RADII = (0.36, 0.16)        # m from the base origin: the far ring first, then the near one on the way back
-WIDEST = 55.0               # degrees to either side of straight ahead that the rings span
+WIDEST = 25.0               # degrees to either side of straight ahead that the rings span: with the bases side by
+                            # side 30 cm apart, the widest that keeps the touching arm out of the other arm's place
 MIDDLE = (0.26, 0.0)
 HOLD = 2.0                  # s at full speed the fingertip rests on the table for its picture
 CLOSED = -0.17              # jaw: shut the whole time, so the fingertip is one point in the picture
-MIN_TOUCHES = 4
-MAX_FIT_ERROR = 0.010       # m: a touch further than this from the fitted map means a wrong click or a moved phone
+MIN_TOUCHES = 4             # the least a map can be fitted to
+MIN_CLICKED = 6             # the least `fit` takes: with fewer, one wrong click cannot be told from the rest
+MAX_FIT_ERROR = 0.015       # m: a touch this far from the map the OTHER touches make means a wrong click or a moved
+                            # phone. Clicks 1.5 px off give up to about 14 mm here; a click 20 mm off is caught 19
+                            # times in 20, one 10 mm off mostly is not (results.md, 2026-11-19)
 CLICK_PORT = 8011
 
 
@@ -132,24 +138,28 @@ class Capture(threading.Thread):
 
     def run(self):
         from PIL import Image
+        seen = None
         while not self.stopped.wait(self.PERIOD):
             frame = self.phone.latest()
-            if frame is not None:
-                Image.fromarray(np.asarray(frame.rgb, np.uint8)).save(self.folder / f"{int(time.time() * 1000)}.jpg")
+            count = getattr(self.phone, "count", None)      # rgbd.Phone counts the frames it was sent
+            if frame is None or (count is not None and count == seen):
+                continue                                    # a stalled phone repeats its last frame: not a new picture
+            seen = count
+            Image.fromarray(np.asarray(frame.rgb, np.uint8)).save(self.folder / f"{int(time.time() * 1000)}.jpg")
 
 
 def rest_times(log_lines, side, rests, settle=0.5):
-    """{touch index: time.time() to take its picture at} from replay.py's step log: the last moment the arm was
-    logged resting on that point, when it had been there at least `settle` seconds. A rest the run never finished
-    is left out."""
+    """{touch index: (from, to)} from replay.py's step log: the time.time() window in which the arm was resting on
+    that point, from `settle` seconds after it arrived to the rest's last row (the row after starts the lift). A
+    rest the run never finished, or shorter than the settle, is left out."""
     seen = {}
     for line in log_lines:
         if line.get("phase") == "fold" and side in line.get("target", {}):
             seen.setdefault(line["row"], line["t"])
     out = {}
     for k, (a, b) in enumerate(rests):
-        if a in seen and b in seen and seen[b] - seen[a] >= settle:
-            out[k] = seen[b]
+        if a in seen and b in seen and seen[b] - seen[a] > settle:
+            out[k] = (seen[a] + settle, seen[b])
     return out
 
 
@@ -160,12 +170,11 @@ def keep_touches(folder, side, traj, log_path):
     times = rest_times(lines, side, traj["marks"]["rests"])
     frames = sorted((int(p.stem), p) for p in (folder / "frames").glob("*.jpg"))
     touches = []
-    for k, t in sorted(times.items()):
-        if not frames:
-            break
-        stamp, picture = min(frames, key=lambda f: abs(f[0] / 1000 - t))
-        if abs(stamp / 1000 - t) > 1.0:
-            continue                            # no picture near that moment: the phone stalled
+    for k, (start, end) in sorted(times.items()):
+        inside = [f for f in frames if start <= f[0] / 1000 <= end]
+        if not inside:
+            continue                            # no picture while it rested there: the phone stalled
+        _, picture = min(inside, key=lambda f: abs(f[0] / 1000 - (start + end) / 2))
         shutil.copy(picture, folder / f"touch_{k}.jpg")
         touches.append({"point": traj["source"]["points"][k], "frame": f"touch_{k}.jpg", "px": None})
     (folder / "touches.json").write_text(json.dumps({"arm": side, "touches": touches}, indent=1))
@@ -198,17 +207,21 @@ def apply(H, pts):
 
 
 def fit_report(px, xy):
-    """(map, per-touch error m with every touch in the fit, per-touch error m with that touch left out). The second
-    is the honest one: how far the map puts a point it was not fitted to."""
+    """(map, per-touch error m with every touch in the fit, per-touch error m with that touch left out, and for
+    each touch the worst error among the OTHERS when it is left out). The first error flatters: one wrong click
+    bends the whole map toward itself. The second is how far the map puts a point it was not fitted to. The third
+    says which touch is the odd one: the others fit best without it."""
     px, xy = np.asarray(px, float), np.asarray(xy, float)
     H = fit_map(px, xy)
     inside = np.linalg.norm(apply(H, px) - xy, axis=1)
-    left_out = np.full(len(px), np.nan)
+    left_out, others = np.full(len(px), np.nan), np.full(len(px), np.nan)
     if len(px) > MIN_TOUCHES:
         for i in range(len(px)):
             rest = np.arange(len(px)) != i
-            left_out[i] = np.linalg.norm(apply(fit_map(px[rest], xy[rest]), px[i:i + 1])[0] - xy[i])
-    return H, inside, left_out
+            without = fit_map(px[rest], xy[rest])
+            left_out[i] = np.linalg.norm(apply(without, px[i:i + 1])[0] - xy[i])
+            others[i] = np.linalg.norm(apply(without, px[rest]) - xy[rest], axis=1).max()
+    return H, inside, left_out, others
 
 
 def load_touches(side):
@@ -217,29 +230,34 @@ def load_touches(side):
 
 
 def fit():
-    """Fit each arm that has enough clicked touches and write the maps into camera.json (its other entries are
-    kept). Returns {arm: summary}. ValueError when a touch is further than MAX_FIT_ERROR from its arm's map."""
-    cal = json.loads(CAMERA.read_text()) if CAMERA.exists() else {}
-    maps, summary = dict(cal.get("arms", {})), {}
+    """Fit both arms' maps from their clicked touches and write them into camera.json (its other entries are kept).
+    Returns {arm: summary}. ValueError, and nothing written, when an arm has fewer than MIN_CLICKED clicked touches,
+    when a touch lies further than MAX_FIT_ERROR from the map the others make, or when the two arms' pictures are
+    not the same size (the phone was changed between them). Both arms or neither: fold_camera.py reads both."""
+    from PIL import Image
+    maps, summary, shapes = {}, {}, set()
     for side in ("left", "right"):
         clicked = [t for t in load_touches(side) if t["px"] is not None]
-        if len(clicked) < MIN_TOUCHES:
-            continue
-        H, inside, left_out = fit_report([t["px"] for t in clicked], [t["point"] for t in clicked])
-        if inside.max() > MAX_FIT_ERROR:
-            # one wrong click bends the whole fit, so the touch furthest from it need not be the wrong one: the
-            # wrong one is the touch that lands furthest from the map the others make without it
-            worst = int(inside.argmax()) if np.isnan(left_out).all() else int(np.nanargmax(left_out))
-            off = inside[worst] if np.isnan(left_out).all() else left_out[worst]
-            raise ValueError(f"the {side} arm's touch in {clicked[worst]['frame']} is {off * 1000:.0f} mm from the "
-                             "map the others fit: click it again, or the phone moved during the touches")
+        if len(clicked) < MIN_CLICKED:
+            raise ValueError(f"the {side} arm has {len(clicked)} clicked touches, {MIN_CLICKED} are needed: run "
+                             f"`touch --arm {side}` and `click`")
+        H, inside, left_out, others = fit_report([t["px"] for t in clicked], [t["point"] for t in clicked])
+        if left_out.max() > MAX_FIT_ERROR:
+            odd = int(others.argmin())          # the touch the others fit best without
+            raise ValueError(f"the {side} arm's touches do not agree: one lies {left_out.max() * 1000:.0f} mm from "
+                             f"the map the others make. The others fit best without {clicked[odd]['frame']} (within "
+                             f"{others[odd] * 1000:.0f} mm): click it again first, or the phone moved")
+        with Image.open(FOLDER / side / clicked[0]["frame"]) as picture:
+            shapes.add((picture.height, picture.width))
         summary[side] = {"touches": len(clicked), "rms_mm": round(float(np.sqrt((inside ** 2).mean())) * 1000, 1),
                          "max_mm": round(float(inside.max()) * 1000, 1),
-                         "left_out_max_mm": None if np.isnan(left_out).all() else round(float(np.nanmax(left_out)) * 1000, 1)}
+                         "left_out_max_mm": round(float(left_out.max()) * 1000, 1)}
         maps[side] = {"H": H.tolist(), **summary[side]}
-    if summary:
-        cal["arms"] = maps
-        CAMERA.write_text(json.dumps(cal))
+    if len(shapes) != 1:
+        raise ValueError(f"the two arms' pictures are not the same size ({sorted(shapes)})")
+    cal = json.loads(CAMERA.read_text()) if CAMERA.exists() else {}
+    cal["arms"] = maps | {"fitted": datetime.now().isoformat(timespec="minutes"), "shape": list(shapes.pop())}
+    CAMERA.write_text(json.dumps(cal))
     return summary
 
 
@@ -315,8 +333,9 @@ def main(argv=None):
     ap.add_argument("--arm", choices=["left", "right"], help="touch: the arm to calibrate")
     ap.add_argument("--device", type=int, default=0, help="touch: Record3D device index")
     ap.add_argument("--widest", type=float, default=WIDEST, help="touch: degrees to either side of straight ahead "
-                    "that the touches span. Nothing checks for the other arm: with the bases side by side 30 cm "
-                    "apart use 25, which keeps the touching arm within about 17 cm of its own centre line")
+                    "that the touches span. Nothing checks for the other arm. The default keeps the touching arm "
+                    "within 18 cm of its own centre line, for bases side by side 30 cm apart; with the bases far "
+                    "apart (arms at the cloth's sides) 55 fits the map over more of the table, sweeping 31 cm")
     args, replay_args = ap.parse_known_args(argv)
     if args.mode == "click":
         if not load_touches("left") and not load_touches("right"):
@@ -331,8 +350,6 @@ def main(argv=None):
             summary = fit()
         except ValueError as err:
             sys.exit(f"Not saved: {err}")
-        if not summary:
-            sys.exit(f"No arm has {MIN_TOUCHES} clicked touches yet: run touch, then click.")
         for side, s in summary.items():
             print(f"{side} arm: {s['touches']} touches, fit error {s['rms_mm']} mm rms, {s['max_mm']} mm worst; a "
                   f"touch left out of the fit lands within {s['left_out_max_mm']} mm")
@@ -343,8 +360,11 @@ def main(argv=None):
         sys.exit("touch needs --arm left or --arm right")
     import replay
     import rgbd
+    points = touch_points(args.widest)
+    if args.arm == "right":                         # mirrored, so each arm's first touch (the one replay.py glides
+        points = [(x, -y) for x, y in points]       # to before it asks) is on its outer side, away from the other
     try:
-        traj = trajectory(touch_points(args.widest))
+        traj = trajectory(points)
     except ValueError as err:
         sys.exit(f"No touch sequence: {err}")
     arm = Arm()
@@ -352,28 +372,36 @@ def main(argv=None):
     print(f"The {args.arm} arm touches {len(traj['source']['points'])} points and swings its wrist and fingertip up "
           f"to {sideways * 100:.0f} cm to either side of its centre line (the gripper is a few cm wider). Keep that "
           "clear: the other arm is not checked for.")
-    folder = FOLDER / args.arm
-    if folder.exists():
-        shutil.rmtree(folder)
-    folder.mkdir(parents=True)
-    (folder / "touch_traj.json").write_text(json.dumps(traj))
-    log = folder / "steps.jsonl"
+    # everything goes into a folder of its own first: the arm's earlier touches and clicks are only replaced once
+    # this run has pictures of its own (a dry run, a refused trajectory or a stop before the first rest keeps them)
+    folder, work = FOLDER / args.arm, FOLDER / f"{args.arm}.new"
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+    (work / "touch_traj.json").write_text(json.dumps(traj))
+    log = work / "steps.jsonl"
     capture = None
     if "--dry-run" not in replay_args:
         phone = rgbd.Phone(args.device)
         phone.start()
         phone.wait()
-        capture = Capture(phone, folder)
+        capture = Capture(phone, work)
         capture.start()
     try:
-        code = replay.main([str(folder / "touch_traj.json"), "--only", args.arm, "--log", str(log), *replay_args])
+        code = replay.main([str(work / "touch_traj.json"), "--only", args.arm, "--log", str(log), *replay_args])
     finally:
         if capture is not None:
             capture.stopped.set()
             capture.join(timeout=2)
-    if capture is None:
+    touches = [] if capture is None else keep_touches(work, args.arm, traj, log)
+    if not touches:
+        shutil.rmtree(work)
+        if capture is not None:
+            print(f"No touch was finished with a picture. The {args.arm} arm's earlier touches, if any, are kept.")
         return code
-    touches = keep_touches(folder, args.arm, traj, log)
+    if folder.exists():
+        shutil.rmtree(folder)
+    work.rename(folder)
     print(f"{len(touches)} of {len(traj['source']['points'])} touches have a picture, in {folder}. "
           "Next: the other arm, then `arm_calibration.py click`.")
     return code

@@ -2,8 +2,8 @@
 the cloth lies (fold_traj.fold), and play it (replay.py). The cloth may be shifted and turned; it is not tracked
 after the look.
 
-    python fold_camera.py calibrate            # once per camera position, with the cloth at the ruler position
-                                               # (after arm_calibration.py: any time, cloth anywhere; see below)
+    python fold_camera.py calibrate            # with the cloth at the ruler position, again whenever the phone
+                                               # moves (after arm_calibration.py: cloth anywhere; see below)
     python fold_camera.py look                 # no motion: where it sees the cloth and whether the arms reach it
     python fold_camera.py fold --left arm2 --right arm1 [--grasp-check] [--log run.json] [--speed 0.5] [--dry-run]
 
@@ -17,7 +17,9 @@ the right and Y forward seen from behind the arms, origin midway between the two
 
 After arm_calibration.py has put each arm's own pixel-to-arm map in camera.json ("arms"), the look reads every pinch
 and place point through the map of the arm that goes there. The cloth's place at `calibrate` then no longer matters
-(it only teaches the cloth's colour), --spacing and --near-edge go unused, and the bases may stand anywhere.
+(it only teaches the cloth's colour), --spacing and --near-edge go unused, and the bases may stand anywhere. When
+the phone or a base moves, the arms' maps are stale and `calibrate` does NOT renew them: run arm_calibration.py again.
+Every look prints when the maps were fitted.
 
 Both arms should stand over their bases during a look, out of the cloth's outline in the image. Every look writes
 look.png (the corners it found, and each arm's pinch and place points): check it before letting the arms move.
@@ -262,7 +264,10 @@ def main(argv=None):
     rgb = frame(args)
     if args.mode == "calibrate":
         cal = calibrate(rgb, args.cloth, args.near_edge, args.near, args.dark, args.cloth_colour)
-        kept = json.loads(CAMERA.read_text()).get("arms") if CAMERA.exists() else None
+        try:
+            kept = json.loads(CAMERA.read_text()).get("arms") if CAMERA.exists() else None
+        except ValueError:          # an unreadable camera.json is written over, as before
+            kept = None
         if kept is not None:
             cal["arms"] = kept      # the map came from the arms: this look at the cloth must not move it
         CAMERA.write_text(json.dumps(cal))
@@ -276,6 +281,15 @@ def main(argv=None):
     if "dark" not in cal:
         sys.exit(f"{CAMERA.name} has the arms' maps but not the cloth's colour yet: run `fold_camera.py calibrate` "
                  "once with the cloth in view, anywhere.")
+    if "arms" in cal:
+        maps = cal["arms"]
+        if "left" not in maps or "right" not in maps:
+            sys.exit(f"{CAMERA.name} holds a map for one arm only: run `arm_calibration.py fit` with both arms' touches.")
+        if maps.get("shape") not in (None, list(rgb.shape[:2])):
+            sys.exit(f"The arms' maps were fitted on {maps['shape']} pictures and this one is {list(rgb.shape[:2])}: "
+                     "run arm_calibration.py again.")
+        print(f"Reading the cloth through the arms' own maps, fitted {maps.get('fitted', 'at an unknown time')}. "
+              "They hold only while the phone and the bases stay where they were.")
     try:
         traj, corners, px, points = plan(rgb, cal, args.spacing, args.closed,
                                          empty_reading="--grasp-check" in replay_args)

@@ -89,6 +89,8 @@ def test_an_unanswered_run_stays_unlabelled_and_out_of_a_dataset(env, monkeypatc
 def test_a_one_arm_run_and_a_run_without_pictures_cannot_be_used(env, monkeypatch):  # noqa: F811
     _, folder, _ = record(env, monkeypatch, "y", argv=("--no-collision-check", "--only", "left"))
     assert "unusable" in rig_dataset.describe(folder)[0]
+    _, folder, _ = record(env, monkeypatch, "y", argv=("--no-collision-check", "--no-gripper"))
+    assert "never sent" in rig_dataset.describe(folder)[0]                       # the jaw rows logged were not played
     _, folder, _ = record(env, monkeypatch, "y")
     shutil.rmtree(folder / "frames")
     (folder / "frames.jsonl").unlink()

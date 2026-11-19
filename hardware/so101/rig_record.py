@@ -44,7 +44,10 @@ def record(play, argv, phone, runs=RUNS, ask=input):
     finally:
         done.set()
         camera.join(timeout=2)
-        run.close()
+        try:
+            run.close()
+        except Exception as err:    # a picture that could not be written: the run itself is what matters here
+            print(f"The recording lost pictures ({err}); the step log is whole.")
         moved = steps.exists() and steps.stat().st_size > 0
         if not moved:
             shutil.rmtree(run.path)
