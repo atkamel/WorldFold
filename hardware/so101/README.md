@@ -410,6 +410,40 @@ python fold_traj.py --out trajectories/half_fold_60cm_sides.json --cloth 0.60 --
 - Both files are committed. `replay.py` plays them like any other trajectory. `fold_camera.py` and the panel's
   camera fold still assume both bases behind the near edge.
 
+## Recording folds and training on them (built and checked on a stand-in rig, not yet on the arms)
+
+Every run that moves the arms can become a training episode: the phone's picture, the joints read and the targets
+sent, row by row.
+
+```bash
+# 1. record. The panel's fold and its record button already do; from the command line:
+../../.venv-hw/bin/python rig_record.py replay trajectories/half_fold_30cm.json --left arm2 --right arm1 --torque-limit 50
+../../.venv-hw/bin/python rig_record.py policy --left arm2 --right arm1 --layout behind
+# 2. say whether each run folded (rig_record.py asks at the end; for the panel's runs, or to change one):
+python rig_dataset.py label runs/20261119_101500 good
+python rig_dataset.py list                    # every run: who moved the arms, rows, pictures, label, usable or not
+# 3. convert the good ones into a dataset, then train (on a machine with the repo's pinned env and torch)
+python rig_dataset.py build --out ../../outputs/rig/datasets --version rig_v0
+python -m imitation.train --policy vision --root outputs/rig/datasets --dataset rig_v0 --run outputs/rig/runs/vision_v0
+```
+
+- `rig_record.py` passes everything after `replay` or `policy` to that script unchanged, so the checks and the
+  motion are the same as without it. It saves a picture and its depth five times a second into a new `runs/`
+  folder beside the script's step log, and asks at the end whether the cloth folded.
+- `rig_dataset.py` reads four kinds of run folder: a fold played by `replay.py` (the panel's fold, `fold_camera.py`,
+  `rig_record.py replay`), one played by `policy_run.py`, `fold_live.py`, and a teleop recording from the panel's
+  record button (for that one pass `--left` and `--right` if `arms.json` holds more than two followers).
+- A run is left out, with the reason printed, when it has no label, no pictures, one arm only, the gripper left
+  out, or a plan faster than `replay.py`'s rate cap (the log then holds the planned rows and not the rows sent).
+  Runs labelled bad are left out unless `--failures`.
+- The dataset is a version of the write-once store the simulator's students train from, so `imitation.train` reads
+  it as it is. Each row holds the picture taken last before it (squashed to 128 x 128, camera name `main`), the
+  joints read, their rates, the jaw, and the fingertip from the arm model, and as its action the joint targets
+  sent, in units of 2 rad. The observation's simulator-only entries stay zero.
+- Rates are per second of wall time, so record at the speed the policy will run at.
+- Not built yet: a runner that plays a camera policy on the arms. `policy_run.py` plays the planner's copy, which
+  reads joints and corner positions and no pictures.
+
 ## Arm configuration
 
 - `arms.json` names every arm and its serial port per platform (`mac`, `windows`), in order; `PLATFORM` in `arms.py`
@@ -489,6 +523,8 @@ kinematics against MuJoCo when `mujoco` and `so101-nexus` are installed.
 | `fold_live.py` | the fold with the iPhone watching throughout, recorded |
 | `fold_camera.py` | one look through the iPhone, then the fold from where the cloth lies |
 | `arm_calibration.py` | the camera's map from the arms: touch the table, click the fingertips, fit one map per arm |
+| `rig_record.py` | records a command-line fold as the panel records its own, and asks whether it folded |
+| `rig_dataset.py` | recorded runs into a dataset `imitation.train` reads: `list`, `label`, `build` |
 | `rgbd.py` | Record3D stream (RGB, depth), table plane, height above the table |
 | `recorder.py` | saves a run, `load` reads it back |
 | `kinematics.py` | the arm's forward and inverse kinematics in numpy |

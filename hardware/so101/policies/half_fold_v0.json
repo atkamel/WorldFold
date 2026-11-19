@@ -1,0 +1,130 @@
+{
+ "obs": [
+  "pinch_x",
+  "pinch_y",
+  "place_x",
+  "place_y",
+  "other_pinch_x",
+  "other_pinch_y",
+  "other_place_x",
+  "other_place_y",
+  "measured_shoulder_pan",
+  "measured_shoulder_lift",
+  "measured_elbow_flex",
+  "measured_wrist_flex",
+  "measured_wrist_roll",
+  "measured_gripper",
+  "time",
+  "side"
+ ],
+ "act": [
+  "target_shoulder_pan",
+  "target_shoulder_lift",
+  "target_elbow_flex",
+  "target_wrist_flex",
+  "target_wrist_roll",
+  "target_gripper"
+ ],
+ "hidden": [
+  256,
+  256,
+  256
+ ],
+ "dt": 0.05,
+ "rows": 286,
+ "obs_mean": [
+  0.28953378880692154,
+  0.06270634062357008,
+  0.11453512958010584,
+  -0.061323615265116815,
+  0.28953378880691094,
+  0.06270634062357112,
+  0.11453512958010703,
+  -0.061323615265116586,
+  0.07883835642386047,
+  -0.14098872585166006,
+  0.17757997060950328,
+  1.4458079431434145,
+  0.0,
+  0.36402334430339933,
+  7.124999999999999,
+  0.0
+ ],
+ "obs_std": [
+  0.11023526311320588,
+  0.07808591220525574,
+  0.04357600497378953,
+  0.07535871325516376,
+  0.11023526311321115,
+  0.07808591220525732,
+  0.04357600497379056,
+  0.07535871325516265,
+  0.49984181463981087,
+  0.6704365325671944,
+  0.7417018008429201,
+  0.20057235471523646,
+  0.01,
+  0.5306388176542471,
+  4.128029190788158,
+  1.0
+ ],
+ "act_mean": [
+  0.08002622410159455,
+  -0.14510540438422462,
+  0.18113089699271417,
+  1.4463723362753989,
+  0.0,
+  0.36402334430339933
+ ],
+ "act_std": [
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0
+ ],
+ "start": [
+  0.0,
+  0.6981317007977318,
+  -0.5235987755982988,
+  1.3962634015954636,
+  0.0,
+  1.0
+ ],
+ "noise": {
+  "lag_rows": 3.0,
+  "offset_deg": 3.0
+ },
+ "training": {
+  "data": "outputs/policy/train.npz",
+  "seed": 0,
+  "folds": 340,
+  "folds_by_layout": {
+   "behind": 199,
+   "sides": 141
+  },
+  "refused_in_data": 60,
+  "samples": 194480,
+  "epochs": 300,
+  "train_seconds": 155,
+  "torch": "2.13.0",
+  "rms_error_deg_on_plan": {
+   "shoulder_pan": 0.272,
+   "shoulder_lift": 0.549,
+   "elbow_flex": 0.584,
+   "wrist_flex": 0.484,
+   "wrist_roll": 0.016,
+   "gripper": 0.728
+  },
+  "max_error_deg_on_plan": {
+   "shoulder_pan": 2.846,
+   "shoulder_lift": 5.538,
+   "elbow_flex": 4.644,
+   "wrist_flex": 4.613,
+   "wrist_roll": 0.589,
+   "gripper": 6.28
+  }
+ },
+ "layers": 4
+}
