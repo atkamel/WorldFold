@@ -44,7 +44,7 @@ class Phone:
         level = min(self.count, 250)
         return rgbd.Frame(0.0, np.full((48, 64, 3), level, np.uint8), np.full((12, 16), 0.5, np.float32), (50, 50, 32, 24))
 
-    def wait(self, timeout=5.0):
+    def wait(self, timeout=5.0):        # a healthy phone: a new frame has always arrived
         return self.latest()
 
 
@@ -190,7 +190,7 @@ def test_recorded_folds_become_a_dataset_a_camera_policy_trains_on(env, monkeypa
     assert config["size"] == 64 and config["rows"] == ROWS and config["frame_shape"] == [48, 64] and config["hold"] == rig_dataset.HOLD
     assert np.allclose(config["start"], np.concatenate([target[0], target[0]]), atol=0.002)           # a start a fold had
     # the fake arms played these folds at 0.02 s a row; the real ones never go under 0.05, which camera_run insists on
-    with pytest.raises(ValueError, match="shorter than"):
+    with pytest.raises(ValueError, match="or longer"):
         camera_run.load_config(store / "rig_t")
     config = config | {"row_seconds": 0.05}
     monkeypatch.setattr(env.replay, "sleep_until", lambda t: None)

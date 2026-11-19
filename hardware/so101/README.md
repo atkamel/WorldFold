@@ -471,7 +471,7 @@ python -m imitation.train --policy vision --root outputs/rig/datasets --dataset 
   inside the limits and clear of the arm's own body, and no part of the arm beyond the shoulder more than 3 mm
   into the table (the arm model's meshes at the pose that will be sent, the open jaw included). A step over
   `replay.py`'s rate cap is cut to the cap. A failed check stops the run with torque on. The other arm and the
-  cloth are not checked. The first picture is taken after the Enter prompt.
+  cloth are not checked. The first picture is one the phone sends after the Enter prompt; if none comes, nothing moves.
 - Every run is recorded like a `rig_record.py` run, with the pictures the policy was shown, so `rig_dataset.py`
   can read it back. Label it afterwards.
 - `policy_run.py` is the other learned fold: the planner's copy, which reads joints and corner positions and no

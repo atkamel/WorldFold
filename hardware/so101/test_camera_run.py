@@ -46,25 +46,32 @@ class Planned:
 
 
 class Phone:
-    """A phone that counts the frames it is sent, as rgbd.Phone does. `sending`: how many more looks find a new
-    frame (None: all of them); after that the stream has stalled and latest() repeats the last frame."""
+    """A phone with rgbd.Phone's own rules: `count` is the frames that have arrived, latest() gives the last one and
+    marks them all seen, wait() returns only when one has arrived since, and gives up (SystemExit) if none does.
+    One frame arrives before each call while `sending` lasts (None: always); after that the stream has stalled."""
 
     def __init__(self, sending=None, shape=SHAPE):
-        self.count, self.sending, self.shape, self.waits = 0, sending, shape, 0
+        self.count, self.seen, self.sending, self.shape = 1, 0, sending, shape
+
+    def arrive(self):
+        if self.sending is None or self.sending > 0:
+            self.count += 1
+            self.sending = None if self.sending is None else self.sending - 1
 
     def frame(self):
         return rgbd.Frame(0.0, np.full((*self.shape, 3), min(self.count, 250), np.uint8),
                           np.full((12, 16), 0.5, np.float32), (50, 50, 32, 24))
 
-    def wait(self, timeout=5.0):
-        self.count += 1
-        self.waits += 1
+    def latest(self):
+        self.arrive()
+        self.seen = self.count
         return self.frame()
 
-    def latest(self):
-        if self.sending is None or self.sending > 0:
-            self.count += 1
-            self.sending = None if self.sending is None else self.sending - 1
+    def wait(self, timeout=5.0):
+        self.arrive()
+        if self.count <= self.seen:
+            sys.exit("Record3D sent no new frame.")
+        self.seen = self.count
         return self.frame()
 
 
@@ -111,9 +118,8 @@ def writes_after_start(rig, dev="devL"):
 
 
 def test_the_planners_rows_given_by_a_camera_policy_are_played_and_recorded(rig, capsys):
-    phone = Phone()
-    code, policy = play(rig, phone=phone)
-    assert code == 0 and phone.waits == 1                                         # a fresh picture before the first row
+    code, policy = play(rig)
+    assert code == 0
     for side, dev in (("left", "devL"), ("right", "devR")):
         port = rig.ports[dev]
         assert port.writes[-1] == ticks(rig, side, rig.rows - 1) and all(v == 1 for _, v in port.torque)
@@ -134,6 +140,7 @@ def test_the_planners_rows_given_by_a_camera_policy_are_played_and_recorded(rig,
     # little; had the log held the time its line was written, they would differ by the time the policy took
     assert np.abs(stored[rates]).max() > 0.05 and np.allclose(seen[rates], stored[rates], rtol=0.1, atol=0.02)
     assert np.allclose(run["target"], policy.rows, atol=0.002)
+    assert list(run["frame"][:13]) == [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3]       # row 4 has the picture shown at row 4
 
 
 def test_a_dry_run_opens_no_port_and_a_policy_for_other_cameras_is_refused(rig, capsys):
@@ -152,6 +159,8 @@ def test_a_start_the_arm_cannot_take_is_refused_before_any_port_opens(rig):
     rig.config["start"][1] = math.radians(170)                                    # outside the shoulder's limits
     with pytest.raises(SystemExit, match="outside its limits"):
         play(rig)
+    with pytest.raises(SystemExit, match="not 12 joint angles"):                  # run() checks the config itself
+        rig.camera_run.run(Planned(rig.traj, 4), rig.config | {"start": [float("nan")] * 12}, rig.followers, Phone(), options())
     rig.config["start"][1] = math.radians(60)                                     # leaning forward onto the table
     rig.config["start"][2] = math.radians(60)
     with pytest.raises(SystemExit, match="into the table|within .* of itself"):
@@ -172,7 +181,8 @@ def test_a_dataset_that_cannot_be_played_from_is_refused(tmp_path, rig):
     refused("not 12 joint angles", start=good["start"][:11])
     refused("not 12 joint angles", start=[float("nan")] + good["start"][1:])       # replay.convert would send a limit
     refused("rows", rows=0)
-    refused("shorter than", row_seconds=0.01)
+    refused("or longer", row_seconds=0.01)
+    refused("or longer", row_seconds=float("inf"))
     refused("units of", action_scale=0.05)
     (tmp_path / "manifest.json").write_text(json.dumps({"config": good}))
     assert rig.camera_run.load_config(tmp_path)["rows"] == rig.rows
@@ -213,10 +223,21 @@ def test_the_table_is_checked_on_the_pose_the_limits_leave(rig, monkeypatch):
 
 
 def test_a_phone_that_stops_sending_stops_the_run(rig, capsys):
-    code, _ = play(rig, phone=Phone(sending=2), stale=0.0)                        # new pictures at rows 0 and 4, then none
+    # frames arrive for the look-and-wait after the prompt (2) and the looks at rows 0 and 4 (2), then none
+    code, _ = play(rig, phone=Phone(sending=4), stale=0.0)
     out = capsys.readouterr().out
     assert code == 1 and "no new picture" in out and "Stopped at row 8" in out    # the third look finds nothing new
     assert len(writes_after_start(rig)) == 7 * 3                                  # rows 1 to 7 followed the start, no more
+
+
+def test_a_phone_that_stalled_during_the_prompt_moves_nothing(rig, capsys):
+    """The picture it holds may be from before the cloth was laid down: the policy must not be shown it."""
+    code, policy = play(rig, phone=Phone(sending=0))                              # nothing arrives after the prompt
+    out = capsys.readouterr().out
+    assert code == 1 and "Stopped at row 0" in out and "since the prompt" in out
+    assert policy.shown == [] and writes_after_start(rig) == []
+    lines = [json.loads(l) for l in (next((rig.tmp / "runs").iterdir()) / "steps.jsonl").read_text().splitlines()]
+    assert lines[-1]["phase"] == "stopped" and not any(l["phase"] == "fold" for l in lines)
 
 
 def test_a_picture_of_another_size_stops_the_run_before_the_first_row(rig, capsys):
