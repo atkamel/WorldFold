@@ -231,6 +231,9 @@ def main(argv=None):
     ap.add_argument("--runs", default=str(HERE / "runs"))
     args = ap.parse_args(argv)
     cal = json.loads(fold_camera.CAMERA.read_text())
+    if "arms" in cal:       # the edge tracking and the place correction here work in the cloth-made table frame
+        sys.exit("camera.json was calibrated from the arms (arm_calibration.py), which fold_live.py does not read "
+                 "yet: use fold_camera.py fold.")
     followers = {"left": replay.Follower(args.left), "right": replay.Follower(args.right)}
     phone = rgbd.Phone(args.device)
     phone.start()
