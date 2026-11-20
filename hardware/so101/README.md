@@ -289,6 +289,12 @@ arms instead, one map per arm, so the cloth plays no part in it and the bases ma
   still draws where the fingertips should land. **`--pinch-height M`** (default 0.005) is the fingertip's
   height at the pinch in the arm model; lower it when the fingers stop above the cloth. Both are saved by
   `calibrate` as `--inset` is (2026-11-19: about 1 cm forward, 0.7 cm outward, and 0.5 cm high, results.md).
+- **A setting for each arm.** `--pinch-height LEFT RIGHT` and `--overshoot LEFT_FORWARD LEFT_OUTWARD
+  RIGHT_FORWARD RIGHT_OUTWARD` give each arm its own; one height or one pair still serves both. The pinch
+  height may go down to -0.02: the model's table is not the real one, and not the same for the two arms
+  (2026-11-19: the left fingertip met the table at about -0.2 cm, the right was still above it at -0.5).
+  The look prints each arm's numbers. To find an arm's table, lower its height 3 mm at a time and read the
+  run's `steps.jsonl`: an arm that ends above the height it was sent to has met the table.
 - **`fold_camera.py --max-tilt DEG`** (default 30): a fold whose fingers would lean further from upright is
   refused with TOO FLAT, as one out of reach is. The lean grows about 4 degrees per cm past 36 cm from the
   base, and flat fingers close on top of the cloth (results.md, 2026-11-19): move the cloth closer.

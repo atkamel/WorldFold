@@ -356,3 +356,49 @@ def test_a_calibration_file_with_a_setting_out_of_range_is_refused_at_the_look()
         with pytest.raises(ValueError):
             fold_camera.plan(picture, cal, S, -0.17)
 
+
+def test_a_pinch_height_for_each_arm_is_saved_and_planned(tmp_path, monkeypatch):
+    from PIL import Image
+    picture = synthetic.render(synthetic.cloth(), synthetic.BASES)
+    cal = arm_cal(BEHIND)
+    monkeypatch.setattr(fold_camera, "CAMERA", tmp_path / "camera.json")
+    (tmp_path / "camera.json").write_text(json.dumps(cal))
+    Image.fromarray(picture).save(tmp_path / "cloth.png")
+    common = ["--image", str(tmp_path / "cloth.png"), "--out", str(tmp_path / "look.png")]
+    fold_camera.main(["calibrate", "--pinch-height", "0", "-0.012"] + common)
+    saved = json.loads((tmp_path / "camera.json").read_text())
+    assert saved["pinch_height"] == [0.0, -0.012]
+    traj, _, _, _ = fold_camera.plan(picture, saved, S, -0.17)
+    pinch = traj["marks"]["pinch"] + 1
+    assert abs(traj["arms"]["left"]["tip"][pinch][2]) < 0.001
+    assert abs(traj["arms"]["right"]["tip"][pinch][2] + 0.012) < 0.001
+    with pytest.raises(SystemExit):
+        fold_camera.main(["look", "--pinch-height", "0", "0", "0"] + common)
+    with pytest.raises(SystemExit):
+        fold_camera.main(["look", "--pinch-height", "0", "-0.03"] + common)
+
+
+def test_an_overshoot_for_each_arm_is_saved_and_planned(tmp_path, monkeypatch):
+    from PIL import Image
+    picture = synthetic.render(synthetic.cloth(), synthetic.BASES)
+    cal = arm_cal(BEHIND)
+    usual, _, _, _ = fold_camera.plan(picture, cal, S, -0.17)
+    monkeypatch.setattr(fold_camera, "CAMERA", tmp_path / "camera.json")
+    (tmp_path / "camera.json").write_text(json.dumps(cal))
+    Image.fromarray(picture).save(tmp_path / "cloth.png")
+    common = ["--image", str(tmp_path / "cloth.png"), "--out", str(tmp_path / "look.png")]
+    fold_camera.main(["calibrate", "--overshoot", "0", "0", "0.012", "0.004"] + common)
+    saved = json.loads((tmp_path / "camera.json").read_text())
+    assert saved["overshoot"] == [[0.0, 0.0], [0.012, 0.004]]
+    traj, _, _, _ = fold_camera.plan(picture, saved, S, -0.17)
+    pinch = traj["marks"]["pinch"] + 1
+    before = usual["arms"]["left"]["tip"][usual["marks"]["pinch"] + 1]
+    after = traj["arms"]["left"]["tip"][pinch]
+    assert np.allclose(after[:2], before[:2], atol=0.001)            # the left arm is sent where it was
+    before = usual["arms"]["right"]["tip"][usual["marks"]["pinch"] + 1]
+    after = traj["arms"]["right"]["tip"][pinch]
+    assert abs(after[1] - (before[1] - 0.012)) < 0.001               # the right arm 1.2 cm short
+    assert abs(-after[0] - (-before[0] + 0.004)) < 0.001             # and 0.4 cm toward the left arm
+    with pytest.raises(SystemExit):
+        fold_camera.main(["look", "--overshoot", "0", "0", "0.01"] + common)
+

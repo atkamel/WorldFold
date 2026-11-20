@@ -119,3 +119,18 @@ def test_the_pinch_height_can_be_lowered_and_the_release_stays_where_it_was():
             assert abs(tip[traj["marks"]["pinch"], 2] - height) < 0.001
             assert abs(tip[traj["marks"]["placed"], 2] - fold_traj.PLACE_Z) < 0.001
 
+
+def test_each_arm_can_have_its_own_pinch_height_and_the_two_plans_stay_in_step():
+    points = {"left": ((0.34, -0.03), (0.14, -0.03)), "right": ((0.34, 0.03), (0.14, 0.03))}
+    traj = fold_traj.fold(points, pinch_z={"left": 0.0, "right": -0.012})
+    replay.validate(traj)
+    left = np.array(traj["arms"]["left"]["tip"])[1:]
+    right = np.array(traj["arms"]["right"]["tip"])[1:]
+    assert len(left) == len(right)
+    pinch = traj["marks"]["pinch"]
+    assert abs(left[pinch, 2] - 0.0) < 0.001
+    assert abs(right[pinch, 2] + 0.012) < 0.001
+    assert left[pinch - 1, 2] > 0.0005 and right[pinch - 1, 2] > -0.0115       # both arrive on the pinch row, not before
+    assert abs(left[traj["marks"]["placed"], 2] - fold_traj.PLACE_Z) < 0.001
+    assert abs(right[traj["marks"]["placed"], 2] - fold_traj.PLACE_Z) < 0.001
+

@@ -3016,3 +3016,25 @@ look takes the tip of each corner, which on this cloth stands about 1 cm past it
 3 cm in along the diagonal, was about 1 cm inside the hem. Offline on frame 0 of this run with `--overshoot 0.010
 0.007 --pinch-height 0`: the arms are sent to 29.6 / 36.6 cm forward (from 30.6 / 37.6) at 0.0 cm, tilts 11.3 /
 25.9 deg (from 10.6 / 29.0), both clear of themselves (14.8 / 14.7 mm). Not yet played on the arms.
+
+## The two arms do not agree on where the table is; how the jaw closes (2026-11-19)
+
+Fingertip height at the end of the pinch's hold, from the encoders through the arm model, against the height the arm
+was sent to (command-line folds, speed 0.7, 50% cap, P gain 16, n = 1 fold each):
+
+| run | sent to (model cm) | left ended | right ended | left jaw in the carry | right jaw in the carry | held (user) |
+|---|---|---|---|---|---|---|
+| `20261119_215721` | 0.0 | 1.3 mm above | 1.9 mm below | not read | not read | left yes, right no |
+| `20261119_220226` | -0.5 | 3.0 mm above | 0.2 mm below | -8.15 deg | -9.47 deg | left yes, right no |
+
+At -0.5 cm the left fingertip stopped 3 mm short of where it was sent, so the table met it at about -0.2 cm in the
+model; the right one reached -0.5 cm unhindered, so for the right arm (arm 1) the table lies lower than that. The
+left jaw read 1.2 to 1.3 deg more open while carrying the cloth than the right jaw shut on nothing (-9.4 to -9.5 on
+both arms empty): a held corner shows in the jaw reading on this cloth.
+
+In the so101_nexus model at the right arm's pinch of `20261119_215924` (35.1 cm forward, fingers 23 deg from
+upright, tip sent to 0.0 cm): the fixed finger's lowest point is 0.7 cm below the tip point; the moving finger's
+lowest point is 8 cm further out and 4.6 cm up with the jaw open at 57 deg, and over the last 15 deg of closing it
+travels from 3.8 cm out at 0.4 cm up to the fixed finger at -0.3 cm. At the left arm's pinch of the same fold (6 deg
+from upright) it travels at -0.5 to -0.6 cm. So flatter fingers carry the moving finger 3 to 5 mm higher through the
+sweep that has to catch the cloth. Model geometry only; not checked against the arm.
