@@ -115,12 +115,12 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
-Hardware side track (user, 2026-11-19), in order: lower the right arm's pinch height 3 mm at a time
-(`--pinch-height -0.005 -0.008` next) until its encoders show the table, with the cloth square to the arms; the
-user reports one arm overshooting, which one and how far not yet said (`--overshoot` takes a pair per arm);
-save the working numbers with `calibrate`; a grasp check on the jaw reading (a held corner reads about 1.2 deg
-more open); read the P gain after a power cycle; the uncommitted edit to `replay.py`, the user's to keep or
-restore; a grasp check that can see this cloth (the jaw position cannot); the `summary.json`
+Hardware side track (user, 2026-11-19), in order: the right arm near the far edge and on the table, which no
+run has had yet (`--pinch-height -0.005 -0.014`, no `--pinch-tilt`), read from the log; if flat fingers still
+skim the cloth there, the far-right corner has to come within about 35 cm (the cloth squared up, a 24 cm
+cloth, or the side layout); save the working numbers with `calibrate`; a grasp check on the jaw reading (a
+held corner reads 1.5 to 1.8 deg more open); read the P gain after a power cycle; the uncommitted edit to
+`replay.py`, the user's to keep or restore; a grasp check that can see this cloth (the jaw position cannot); the `summary.json`
 step count for panel runs; `fold_live.py --dry-run`, then `fold_live.py --grasp-check`. Commands in
 `hardware/so101/README.md`.
 
@@ -189,6 +189,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-19 · **A steeper claw on request, and what it showed (user: make the claw angle steeper):** `fold_camera.py --pinch-tilt DEG` pulls each pinch toward its arm until the fingers are within DEG of upright (saved by `calibrate`, off unless given); on the rig the right claw went from 24 to 27 deg to 9 to 10 deg and still shut on nothing, also once lowered to -1.4 cm where the table stops it (about -1.1 cm in the model); the left, 1.7 cm inside its far corner, held both times; so the grab on this cloth looks like the moving finger hooking the far edge, which a pinch pulled 4 cm into the cloth gives up (results.md); `test_arm_calibration.py`, `test_fold_camera.py`, `test_fold_traj.py`, `test_fold_live.py` 42 passed; full hardware and fast suites not re-run · (this commit)
 - 2026-11-19 · **A pinch height and an overshoot for each arm (user: the right arm still misses; only one arm overshoots):** in fold `20261119_220226` the left fingertip, sent to -0.5 cm, was stopped by the table 3 mm short and its jaw carried the cloth 1.2 deg open, while the right reached -0.5 cm unhindered and shut on nothing: the model's table height differs between the arms; `fold_traj.fold(pinch_z=)` takes a height per arm and keeps the two plans in step (the descent is stretched to the longer one), `fold_camera.py --pinch-height LEFT RIGHT` down to -2 cm and `--overshoot` with a pair per arm, saved by `calibrate`, each checked at the look; the jaw's closing sweep worked out in the arm model (results.md); not yet played with per-arm values; full hardware run in the tree 188 passed, 3 failed (the uncommitted edit to `replay.py`), started before the per-arm overshoot went in; after it `test_arm_calibration.py` and `test_fold_camera.py` 27 passed; fast suite not re-run · (this commit)
 - 2026-11-19 · **Saved settings are checked where they are used (security review of edb9c97):** the inset, overshoot and pinch height were held to their limits only on the command line, so a camera.json holding anything else sent the arms there; fold_camera.settings() checks them at every plan and the look refuses the file; left as they are: no arm-to-arm check exists (the overshoot moves each arm at most 3 cm toward the other), and the reach is judged at the point the arm is sent to, which is where it goes; test_arm_calibration.py and test_fold_camera.py 25 passed, the rest not re-run · (this commit)
 - 2026-11-19 · **Send the arms short of the corner and lower (user: the right arm missed to the right, both overshot a little and stopped about 0.5 cm high):** on panel fold `20261119_212409` both fingertips landed about 0.8 cm forward and 0.3 / 0.9 cm outward of the plan (by eye, n = 1; the second fold with that bias) and the encoders put them 7 mm apart in height; `fold_camera.py --overshoot FORWARD OUTWARD` sends each arm that much short of where its fingertip should land, mirrored, and `--pinch-height` sets the fingertip's height at the pinch (`fold_traj.fold(pinch_z=)`), both saved by `calibrate`; offline on that run's frame with 1.0 / 0.7 cm and 0 cm the plan is reachable and clear; not yet played; full hardware run in the tree 185 passed, 3 failed, the 3 being the uncommitted edit to replay.py (they pass on a copy with the committed file), fast suite not re-run (no file under its test paths changed) · (this commit)

@@ -295,6 +295,10 @@ arms instead, one map per arm, so the cloth plays no part in it and the bases ma
   (2026-11-19: the left fingertip met the table at about -0.2 cm, the right was still above it at -0.5).
   The look prints each arm's numbers. To find an arm's table, lower its height 3 mm at a time and read the
   run's `steps.jsonl`: an arm that ends above the height it was sent to has met the table.
+- **`fold_camera.py --pinch-tilt DEG`** pulls each pinch straight toward its arm, further into the cloth, until
+  the fingers are within DEG of upright there (the arm leans them about 3.5 degrees per cm past 30 cm). Off
+  unless given; saved by `calibrate`. On the rig it made the claw steep and the grab worse: the pinch ends up
+  several cm inside the far edge, where the closing finger lands on top of the cloth (results.md, 2026-11-19).
 - **`fold_camera.py --max-tilt DEG`** (default 30): a fold whose fingers would lean further from upright is
   refused with TOO FLAT, as one out of reach is. The lean grows about 4 degrees per cm past 36 cm from the
   base, and flat fingers close on top of the cloth (results.md, 2026-11-19): move the cloth closer.

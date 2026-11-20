@@ -402,3 +402,36 @@ def test_an_overshoot_for_each_arm_is_saved_and_planned(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         fold_camera.main(["look", "--overshoot", "0", "0", "0.01"] + common)
 
+
+def test_a_pinch_tilt_pulls_a_far_pinch_toward_its_arm_until_the_fingers_are_steep(tmp_path, monkeypatch):
+    from PIL import Image
+    picture = synthetic.render(synthetic.cloth(shift=(0.0, 0.02), turn_deg=0.0), synthetic.BASES)
+    cal = arm_cal(BEHIND)
+    usual_traj, _, _, usual = fold_camera.plan(picture, cal, S, -0.17)
+    steep = dict(cal)
+    steep["pinch_tilt"] = 12.0
+    traj, _, _, points = fold_camera.plan(picture, steep, S, -0.17)
+    arm = Arm()
+    for side in ("left", "right"):
+        row = traj["arms"][side]["target"][traj["marks"]["pinch"]]
+        direction = arm.tip(row[:5])[1]
+        assert np.degrees(np.arccos(-direction[2])) <= 12.5
+        before, after = np.array(usual[side][0]), np.array(points[side][0])
+        assert np.linalg.norm(after) < np.linalg.norm(before) - 0.01          # nearer the arm
+        assert abs(before[0] * after[1] - before[1] * after[0]) < 1e-6         # along the line to its base
+        assert np.allclose(points[side][1], usual[side][1])                    # the place stays
+        assert traj["layout"]["pinch_pulled_m"][side] > 0.01
+        assert usual_traj["source"][side]["max_tilt_deg"] > 20.0
+    monkeypatch.setattr(fold_camera, "CAMERA", tmp_path / "camera.json")
+    (tmp_path / "camera.json").write_text(json.dumps(cal))
+    Image.fromarray(picture).save(tmp_path / "cloth.png")
+    common = ["--image", str(tmp_path / "cloth.png"), "--out", str(tmp_path / "look.png")]
+    fold_camera.main(["calibrate", "--pinch-tilt", "12"] + common)
+    assert json.loads((tmp_path / "camera.json").read_text())["pinch_tilt"] == 12.0
+    with pytest.raises(SystemExit):
+        fold_camera.main(["look", "--pinch-tilt", "80"] + common)
+    impossible = dict(cal)
+    impossible["pinch_tilt"] = 0.0
+    with pytest.raises(ValueError):
+        fold_camera.plan(picture, impossible, S, -0.17)
+

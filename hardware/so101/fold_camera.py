@@ -37,6 +37,7 @@ from scipy import ndimage
 import fold_score
 import fold_traj
 import rgbd
+from kinematics import Arm
 
 HERE = Path(__file__).parent
 CAMERA = HERE / "camera.json"
@@ -50,6 +51,9 @@ MAX_OVERSHOOT = 0.03
 PINCH_HEIGHTS = (-0.02, 0.02)    # m: the lowest and highest fingertip height at the pinch that is accepted. The
                                  # model's table is not the real one: on the rig one arm met it at about -0.2 cm
                                  # and the other was still above it at -0.5 (results.md, 2026-11-19)
+PINCH_TILTS = (0.0, 45.0)        # deg: the range a saved pinch tilt may take
+MAX_PULL = 0.10                  # m: the furthest a pinch is pulled toward its arm to keep the fingers steep
+PULL_STEP = 0.0025
 MAX_TILT = 30.0       # deg from upright: past it the fingers lie too flat to pinch a corner. On the rig 25 to 27
                       # held the cloth and 34 to 36 did not (results.md, 2026-11-19)
 # Table area searched for the cloth (m): in front of the bases, clear of them
@@ -231,6 +235,35 @@ def overshoots(value):
     return pairs
 
 
+def steepened(points, overshoot, heights, limit):
+    """`points` ({side: (pinch, place)}) with each pinch pulled straight toward its arm's base, as little as leaves
+    the fingers within `limit` degrees of upright there, and how far each was pulled (m). The arm cannot hold its
+    fingers upright past about 30 cm: it leans them about 3.5 degrees for every cm further. ValueError when MAX_PULL
+    is not enough."""
+    arm = Arm()
+    seed = np.radians([0.0, 40.0, -30.0, 80.0, 0.0])
+    moved = {}
+    pulled = {}
+    for side in ("left", "right"):
+        pinch, place = points[side]
+        distance = float(np.hypot(pinch[0], pinch[1]))
+        pull = 0.0
+        while True:
+            scale = (distance - pull) / distance
+            candidate = (pinch[0] * scale, pinch[1] * scale)
+            sent = aimed({"left": (candidate, place), "right": (candidate, place)}, overshoot)[side][0]
+            tilt = arm.solve(np.array([sent[0], sent[1], heights[side]]), seed)[2]
+            if tilt <= limit:
+                break
+            pull = pull + PULL_STEP
+            if pull > MAX_PULL:
+                raise ValueError(f"the {side} arm's fingers lean {tilt:.0f} deg even with the pinch {MAX_PULL * 100:.0f} "
+                                 f"cm nearer the arm; the limit is {limit:.0f}: move the cloth closer")
+        moved[side] = (candidate, place)
+        pulled[side] = pull
+    return moved, pulled
+
+
 def settings(cal):
     """(inset, overshoot, each arm's pinch height) of a calibration, each inside its limits. ValueError otherwise:
     these send the arms, and camera.json can hold anything."""
@@ -250,6 +283,10 @@ def settings(cal):
         if not PINCH_HEIGHTS[0] <= heights[side] <= PINCH_HEIGHTS[1]:
             raise ValueError(f"the {side} pinch height {heights[side]} m is not between {PINCH_HEIGHTS[0]} and "
                              f"{PINCH_HEIGHTS[1]} m")
+    tilt = cal.get("pinch_tilt")
+    if tilt is not None:
+        if isinstance(tilt, bool) or not isinstance(tilt, (int, float)) or not PINCH_TILTS[0] <= tilt <= PINCH_TILTS[1]:
+            raise ValueError(f"the pinch tilt {tilt!r} is not between {PINCH_TILTS[0]} and {PINCH_TILTS[1]} deg")
     return inset, overshoot, heights
 
 
@@ -275,14 +312,21 @@ def plan(rgb, cal, spacing, closed, keep=None, empty_reading=False):
     if "arms" in cal:
         by_arm, px = look_arms(rgb, cal, keep)
         points = fold_points_arms(by_arm, inset)
+        pulled = {"left": 0.0, "right": 0.0}
+        if cal.get("pinch_tilt") is not None:
+            points, pulled = steepened(points, overshoot, pinch_z, cal["pinch_tilt"])
         traj = fold_traj.fold(aimed(points, overshoot), closed, empty_reading, pinch_z)
-        traj["layout"] = {"frame": "each arm's base, from its own camera map", "overshoot": {side: list(pair) for side, pair in overshoot.items()}, "corners":
+        traj["layout"] = {"frame": "each arm's base, from its own camera map", "pinch_pulled_m": pulled, "overshoot": {side: list(pair) for side, pair in overshoot.items()}, "corners":
                           {side: {k: np.round(v, 4).tolist() for k, v in c.items()} for side, c in by_arm.items()}}
         return traj, by_arm["left"], px, points
     corners, px = look(rgb, cal, keep)
     points = fold_points(corners, spacing, inset)
+    pulled = {"left": 0.0, "right": 0.0}
+    if cal.get("pinch_tilt") is not None:
+        points, pulled = steepened(points, overshoot, pinch_z, cal["pinch_tilt"])
     traj = fold_traj.fold(aimed(points, overshoot), closed, empty_reading, pinch_z)
     traj["layout"] = {"frame": "table: X right, Y forward from the line of the base origins", "base_spacing": spacing,
+                      "pinch_pulled_m": pulled,
                       "overshoot": {side: list(pair) for side, pair in overshoot.items()},
                       "corners": {k: np.round(v, 4).tolist() for k, v in corners.items()}}
     return traj, corners, px, points
@@ -348,6 +392,9 @@ def main(argv=None):
     ap.add_argument("--pinch-height", type=float, nargs="+", metavar="M", help="fingertip height at the pinch in "
                     "the arm model (m, default 0.005): one number for both arms, or LEFT RIGHT. Lower an arm's "
                     "when its fingers stop above the cloth. Saved like --overshoot")
+    ap.add_argument("--pinch-tilt", type=float, metavar="DEG", help="keep the fingers within DEG of upright at the "
+                    "pinch: each pinch is pulled toward its arm, further into the cloth, by as much as that takes. "
+                    "Saved like --overshoot; without it the pinch stays where the inset puts it")
     ap.add_argument("--max-tilt", type=float, default=MAX_TILT, help="deg from upright the fingers may lean anywhere "
                     "in the fold; a fold that needs more is refused")
     ap.add_argument("--out", default=str(HERE / "look.png"))
@@ -366,7 +413,11 @@ def main(argv=None):
         for height in args.pinch_height:
             if not PINCH_HEIGHTS[0] <= height <= PINCH_HEIGHTS[1]:
                 sys.exit(f"--pinch-height {height} m is not between {PINCH_HEIGHTS[0]} and {PINCH_HEIGHTS[1]} m.")
+    if args.pinch_tilt is not None and not PINCH_TILTS[0] <= args.pinch_tilt <= PINCH_TILTS[1]:
+        sys.exit(f"--pinch-tilt {args.pinch_tilt} deg is not between {PINCH_TILTS[0]} and {PINCH_TILTS[1]}.")
     given = {}                  # the settings given on this command line: saved by calibrate, else for this run
+    if args.pinch_tilt is not None:
+        given["pinch_tilt"] = args.pinch_tilt
     if args.inset is not None:
         given["inset"] = args.inset
     if args.overshoot is not None:
@@ -424,6 +475,10 @@ def main(argv=None):
     for side in ("left", "right"):
         print(f"  {side} arm sent {overshoot[side][0] * 100:.1f} cm short of it and {overshoot[side][1] * 100:.1f} cm "
               f"toward the other arm, fingertip {heights[side] * 100:.1f} cm above the model's table")
+        pull = traj["layout"]["pinch_pulled_m"][side]
+        if pull > 0:
+            print(f"  {side} pinch pulled {pull * 100:.1f} cm toward its arm to keep the fingers within "
+                  f"{cal['pinch_tilt']:.0f} deg of upright")
     if args.mode != "fold":
         return 0
     if not reachable:

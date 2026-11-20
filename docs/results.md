@@ -3038,3 +3038,25 @@ lowest point is 8 cm further out and 4.6 cm up with the jaw open at 57 deg, and 
 travels from 3.8 cm out at 0.4 cm up to the fixed finger at -0.3 cm. At the left arm's pinch of the same fold (6 deg
 from upright) it travels at -0.5 to -0.6 cm. So flatter fingers carry the moving finger 3 to 5 mm higher through the
 sweep that has to catch the cloth. Model geometry only; not checked against the arm.
+
+## A steep claw touching the table still closes empty when it is far inside the cloth (2026-11-19)
+
+Command-line folds, speed 0.7, 50% cap, P gain 16, the cloth lying turned (far-right corner about 39 cm from the
+right arm, far-left about 33.5 cm from the left), n = 1 fold each. Claw angle is the planned lean from upright at
+the pinch row; "table" is the fingertip's height against where it was sent at the end of the hold (above = the
+table stopped it); the jaw reading is the mean over the carry, about -9.45 deg when empty.
+
+| run | arm | pinch (cm forward) | inside the far corner | claw | sent to (cm) | table | jaw | held |
+|---|---|---|---|---|---|---|---|---|
+| `20261119_223818` | left | 31.5 | 1.7 cm | 2.1 deg | -0.5 | 3.0 mm above | -7.63 | yes |
+| `20261119_223818` | right, `--pinch-tilt 10` | 33.0 | 6.1 cm | 9.9 deg | -0.8 | 0.4 mm above | -9.47 | no |
+| `20261119_224147` | left | 31.8 | 1.7 cm | 3.1 deg | -0.5 | 3.6 mm above | -7.89 | yes |
+| `20261119_224147` | right, `--pinch-tilt 10` | 32.8 | 6.4 cm | 9.2 deg | -1.4 | 2.9 mm above | -9.30 | no |
+
+The right fingertip meets the table at about -1.1 cm in the model at 33 cm (the left at about -0.2 cm at 32 cm). With
+the right claw as steep as the left's earlier grabs and resting on the table it still shut on nothing. What then
+differs is where the far edge lies: under 2 cm beyond the left arm's fixed finger, over 6 cm beyond the right's,
+because `--pinch-tilt` buys the angle by moving the pinch into the cloth. Read with the model's closing sweep (the
+moving finger comes in along the table from about 3.8 cm out), the grab on this cloth looks like the moving finger
+hooking the far edge against the fixed one; landing on top of the cloth it slides over. Not shown directly: no run
+yet has the right arm both near the edge and on the table.
