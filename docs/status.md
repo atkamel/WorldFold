@@ -40,10 +40,14 @@ released, still), user 2026-10-22.
   1.7 cm mean from the half line, results.md). On the rig the arms go to the same place wherever the cloth
   lies when Calibrate is pressed after the cloth is moved: the calibration takes the cloth's place as the ruler
   position (shown offline on a recorded frame, results.md). With the calibration left alone the plan follows the
-  cloth; not yet shown on the arms. The calibration from the arms is built (`arm_calibration.py`, 2026-11-18: each
-  arm touches the table, the fingertips are clicked in the pictures, one map per arm) and `fold_camera.py` reads
-  the cloth through those maps once they are in `camera.json`, where Calibrate only learns the cloth's colour;
-  checked offline, not yet run on the arms, and this laptop's `camera.json` still holds the cloth-based map. Also
+  cloth. The calibration from the arms (`arm_calibration.py`: each arm touches the table, the fingertips are
+  clicked in the pictures, one map per arm) ran on the rig on 2026-11-19 with the phone on its side and the
+  touches kept to each arm's inner side (`--outer 0`): a left-out touch lands within 4.7 / 5.6 mm, and with no
+  calibration in between the look and the fold followed the cloth to four places, refusing the one out of
+  reach (results.md). The grippers land about 1 cm past the far corners (n = 1 recorded fold); `fold_camera.py
+  --inset` (saved by `calibrate`) moves the pinch further in, 3 cm planned offline, not yet played. The cloth
+  is about 25 by 29 cm and faint blue (`--cloth 0.28 --dark 245`), and has 1 to 2 cm of room toward or away
+  from the arms. Also
   built and not yet on the arms: the side layout (30 and 60 cm trajectories), a learned half fold with its
   runners (`policy_run.py`, `camera_run.py`), and the fold recorder and dataset converter. Every run that moves an arm
   is logged to `hardware/so101/runs/<date_time>/` (targets and encoder readings per control step), and a fold from
@@ -101,10 +105,9 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
-Hardware side track (user, 2026-11-19), in order: on the rig, `arm_calibration.py touch --outer 0` on the left
-arm (the phone does not see its outer side), the right arm's touch (check its pictures first), click and
-fit, then `fold_camera.py calibrate --cloth-colour blue` for the colour; move the cloth, Look, and check the pinch
-points follow the corners before any fold; then Fold with no recalibration and score each recorded run; a grasp check that can see this cloth (the jaw position cannot); the `summary.json`
+Hardware side track (user, 2026-11-19), in order: fold with `--inset 0.03` (user: better short of the corner
+than past it) and tune it on recorded panel folds; score each recorded run; the uncommitted edit to `replay.py`
+(slow-read pacing and the grasp-check guard removed), the user's to keep or restore; a grasp check that can see this cloth (the jaw position cannot); the `summary.json`
 step count for panel runs; `fold_live.py --dry-run`, then `fold_live.py --grasp-check`. Commands in
 `hardware/so101/README.md`.
 
@@ -173,6 +176,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-19 · **The camera fold follows the cloth on the rig; a saved pinch inset (user: it works but always reaches too far, better to undershoot):** both arms' maps fitted from 9 inner-side touches each with the phone on its side (left-out touch within 4.7 / 5.6 mm); look and fold followed the cloth to four places with no calibration between, refusing the one out of reach; the look needed `--near left --dark 245 --cloth 0.28` (sideways picture, faint blue, a cloth about 25 by 29 cm); on panel fold `20261119_205147` both grippers landed about 1 cm past and outward of the planned pinch (by eye, n = 1, results.md); `fold_camera.py --inset` sets how far in from the corner the pinch lands, saved by `calibrate`, for one run on `look` / `fold`; 3 cm plans offline on that run's frame, not yet played; `test_arm_calibration.py` and `test_fold_camera.py` 22 passed, full hardware and fast suites not re-run; `replay.py`'s uncommitted edit left alone · (this commit)
 - 2026-11-19 · **First touches on the rig; a touch fan for a phone that sees only the middle (user: I don't need the views the camera can't see):** the left arm (arm 2) played all 9 touches of the usual fan at speed 0.3, 50% cap, and rested on the first point within 0.6 deg of its targets, largest motor load 64 of 1000; the phone is framed on the cloth, so the fingertip is clear in 4 of the 9 pictures, cut by the frame edge in 2 and out of the picture in 3, under the 6 the fit takes; `arm_calibration.py touch --outer DEG` sets the fan's outer edge (`touch_points(widest, outer)`), `--outer 0` keeps every touch between the centre line and the inner edge; dry run of the left arm's `--outer 0` fan: 9 points, 0 clamped steps, 43 mm self-clearance; not yet played on the arm; the map will only be fitted over the middle strip, and a cloth moved left of the left arm's centre line leaves the picture; `test_arm_calibration.py` 11 passed, full hardware and fast suites not re-run · (this commit)
 - 2026-11-19 · **Branch brought up to origin; the click page refuses requests that are not its own (user: go for it):** local `feat/iphone-lidar` fast-forwarded 15 commits to 9905703 (calibration from the arms, side layout, learned half fold, recorder and converter, camera runner; none run on the arms); `arm_calibration.py click` answers only `localhost` / `127.0.0.1`, takes only JSON posts, and stores a click only for an arm's touch picture (it took any post, and the arm name went into a file path unchecked); status brought in line with the code (the calibration choice was still listed as open); not run on the arms; hardware 180 passed with the committed `replay.py` (177 in the full run, and the 3 it failed in `test_replay.py` pass on a copy with the committed file: an uncommitted edit to `replay.py` from other work in the tree removes the slow-read pacing and the grasp-check guard), fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-19 · **Two-arm gamepad teleop (user):** `ui.py --gamepad` drives the two followers from one sample and checks the pair and table before sending goals. Simulated servos and live PowerA heartbeat verified, physical arm motion and Windows controller I/O untested. Fast plus controller and SO-101 448 passed, 5 skipped, and 3 failed. See results.md · (this commit)

@@ -245,7 +245,7 @@ Do steps 0 to 3 of the run order first. Then, from `hardware/so101/`, with both 
   `fold_live.py` follow it. Keep other blue things out of the area in front of the arms.
 - Calibration is only as good as the ruler placement of the cloth and the joint map. Redo it if the phone moves.
 
-## Calibrating the camera from the arms (built and checked offline, not yet run on the arms)
+## Calibrating the camera from the arms (run on the arms 2026-11-19)
 
 `fold_camera.py calibrate` reads the camera's map off the cloth, which it takes to lie at the ruler position. Press
 it after moving the cloth and the arms go back to the ruler position. `arm_calibration.py` makes the map from the
@@ -281,6 +281,12 @@ arms instead, one map per arm, so the cloth plays no part in it and the bases ma
   names the picture the others agree best without. On a synthetic camera with clicks 1.5 px off, a click 20 mm
   wrong is caught 19 times in 20 and one 10 mm wrong mostly is not, so click with care. The maps go into
   `camera.json` under `"arms"`, with the time and the picture size.
+- **`fold_camera.py --inset M`** is how far in from each corner the pinch lands (default 0.01). `calibrate` saves
+  it in `camera.json`, so the panel uses it too; on `look` and `fold` it holds for that run. Raise it when the
+  grippers come down past the corners (2026-11-19: about 1 cm past on both arms, results.md).
+- **A sideways phone, a faint or lopsided cloth:** `calibrate --near left` (the arms on the picture's left),
+  `--dark 245` (a threshold by hand when Otsu drops the hems) and `--cloth 0.28` (the side the 15% check is
+  against) are saved the same way. A later `calibrate` without them puts the defaults back.
 - **After that** `fold_camera.py look` and `fold` read each arm's pinch and place points through that arm's own
   map. `--spacing` and `--near-edge` go unused. `fold_camera.py calibrate` (and the panel's Calibrate button) only
   learns the cloth's colour and leaves the maps alone, so it is safe with the cloth anywhere. It does NOT renew

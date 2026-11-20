@@ -284,3 +284,31 @@ def test_a_fan_cut_short_on_the_outer_side_keeps_every_touch_on_the_inner_side()
             most_outward = max(most_outward, p[1])
     assert most_inward < 0.16
     assert most_outward < 0.03
+
+
+def test_a_saved_inset_moves_the_pinch_further_in_from_the_corner(tmp_path, monkeypatch):
+    from PIL import Image
+    truth = synthetic.cloth(shift=(0.01, 0.01), turn_deg=0.0)
+    picture = synthetic.render(truth, synthetic.BASES)
+    cal = arm_cal(BEHIND)
+    by_arm, _ = fold_camera.look_arms(picture, cal)
+    _, _, _, usual = fold_camera.plan(picture, cal, S, -0.17)
+    deeper = dict(cal)
+    deeper["inset"] = 0.03
+    _, _, _, moved = fold_camera.plan(picture, deeper, S, -0.17)
+    for side, far, across in (("left", "far_left", "near_right"), ("right", "far_right", "near_left")):
+        inward = by_arm[side][across] - by_arm[side][far]
+        inward = inward / np.linalg.norm(inward)
+        for k in (0, 1):                                 # the pinch and the place move together
+            shift = np.array(moved[side][k]) - np.array(usual[side][k])
+            assert np.allclose(shift, (0.03 - fold_camera.INSET) * inward, atol=0.001)
+    monkeypatch.setattr(fold_camera, "CAMERA", tmp_path / "camera.json")
+    (tmp_path / "camera.json").write_text(json.dumps(cal))
+    Image.fromarray(picture).save(tmp_path / "cloth.png")
+    common = ["--image", str(tmp_path / "cloth.png"), "--out", str(tmp_path / "look.png")]
+    fold_camera.main(["calibrate", "--inset", "0.03"] + common)
+    assert json.loads((tmp_path / "camera.json").read_text())["inset"] == 0.03
+    fold_camera.main(["calibrate"] + common)             # not given: back to the usual inset
+    assert "inset" not in json.loads((tmp_path / "camera.json").read_text())
+    with pytest.raises(SystemExit):
+        fold_camera.main(["look", "--inset", "0.2"] + common)

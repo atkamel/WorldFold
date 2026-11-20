@@ -2943,3 +2943,34 @@ were checked with a synthetic input structure. Physical motion and the Windows U
 No dataset or random seeds apply to these controller checks.
 
 The combined macOS fast suite and controller and SO-101 tests finished with 448 passed, 5 skipped, and 3 failed. The failures were the known seed check (#15), the toy placement test (#17), and the idle test loading an empty servo SDK stand-in. The SDK stand-in failure also reproduced when selecting only the unchanged fold-camera and idle test modules without importing the gamepad integration.
+## Camera calibration from the arms on the rig; the pinch lands past the corner (2026-11-19)
+Rig: both followers on the Windows laptop, bases side by side, the phone behind them turned on its side (the
+picture arrives sideways, 960 x 720, arms on its left: `--near left`). Touches with `arm_calibration.py touch
+--outer 0` (9 per arm, every one between the arm's centre line and its inner edge), speed 0.3, 50% torque cap; all
+18 fingertips clicked by the user. The usual fan and an upright phone were tried first: the left arm's fingertip was
+clear in 4 of 9 pictures.
+| arm | touches | fit error rms | worst | a touch left out of the fit lands within |
+|---|---|---|---|---|
+| left (arm 2) | 9 | 1.3 mm | 2.4 mm | 4.7 mm |
+| right (arm 1) | 9 | 1.6 mm | 2.5 mm | 5.6 mm |
+Looks through these maps with no calibration between them (the cloth moved by hand, n = 1 look each):
+| cloth | near-left corner X (left arm frame, cm) | far-left corner X | result |
+|---|---|---|---|
+| in front of the bases | 10.1 | 39.2 | reachable, fingers tilted 30.9 / 31.8 deg |
+| pushed away | 18.5 | 48.9 | out of reach, pinch missed by 18.0 / 21.1 mm, refused |
+| part of the way back | 12.9 | 42.7 | reachable, fingers tilted 44.0 / 42.9 deg |
+| turned | 13.6 | 41.7 | reachable, left pinch 40.8 cm forward, right 30.9 cm |
+The cloth is not a 30 cm square: its near edge reads 24.6 to 25.5 cm in both arms' maps and the other sides 28.4
+to 31.2 cm, so the look runs with `--cloth 0.28`. Its blue is faint: the Otsu thresholds (172 to 212) dropped the
+hems and a dim corner, `--dark 245` finds the whole cloth and nothing else in view.
+Where the grippers land, from the panel fold `20261119_205147` (run folders are not in git), one frame at the
+pinch row, read by eye against 1 cm steps drawn through each arm's map, good to about 0.5 cm, n = 1 fold:
+| arm | planned pinch | fingertip seen |
+|---|---|---|
+| left | 1 cm in from the far-left corner | about 1.4 cm further forward, 0.8 cm further left: on the corner's edge |
+| right | 1 cm in from the far-right corner | about 1.0 cm further forward, 1.1 cm further right: on the corner's edge, just off the cloth |
+Both encoders ended within 1 deg of the plan, so the error is in where the picture puts the corner: forward and
+outward on both arms, the opposite of the inset's direction. Not separated: clicks short of the true contact point,
+the cloth's thickness under a slanted camera, and corners 4 to 6 cm past the furthest touch (36 cm). Offline on
+frame 0 of that run, an inset of 3 cm moves the pinch to 38.7 / 29.4 cm forward (from 40.4 / 30.3), both reachable,
+left arm 10.0 mm clear of itself with the release 1.5 cm short. Not yet played on the arms.

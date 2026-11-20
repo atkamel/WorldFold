@@ -40,7 +40,8 @@ import rgbd
 
 HERE = Path(__file__).parent
 CAMERA = HERE / "camera.json"
-INSET = 0.01          # m: the pinch lands this far in from the corner along the cloth's diagonal
+INSET = 0.01          # m: the pinch lands this far in from the corner along the cloth's diagonal, unless the
+                      # calibration holds its own ("inset", from calibrate --inset)
 SIDE_TOL = 0.15       # a detected side this far off the cloth's side (fraction) is not the cloth
 REACH_TOL = 0.006     # m: a pinch the arm model misses by more than this is out of reach
 # Table area searched for the cloth (m): in front of the bases, clear of them
@@ -173,26 +174,26 @@ def look_arms(rgb, cal, keep=None):
     return by_arm, dict(zip(names, px))
 
 
-def fold_points_arms(by_arm):
+def fold_points_arms(by_arm, inset=INSET):
     """Each arm's (pinch, place) from the corners in its own frame (look_arms): as fold_points, with no layout."""
     points = {}
     for side, far, near, across in (("left", "far_left", "near_left", "near_right"),
                                     ("right", "far_right", "near_right", "near_left")):
         corners = by_arm[side]
         diagonal = corners[across] - corners[far]
-        offset = INSET * diagonal / np.linalg.norm(diagonal)
+        offset = inset * diagonal / np.linalg.norm(diagonal)
         points[side] = tuple((float(p[0]), float(p[1])) for p in (corners[far] + offset, corners[near] + offset))
     return points
 
 
-def fold_points(corners, spacing):
+def fold_points(corners, spacing, inset=INSET):
     """Each arm's (pinch, place) in its own base frame (x forward, y left): the far corner on its side onto the near
-    one, both moved INSET in along the far corner's diagonal so the corner lands on the corner."""
+    one, both moved `inset` in along the far corner's diagonal so the corner lands on the corner."""
     points = {}
     for side, base_x, far, near, across in (("left", -spacing / 2, "far_left", "near_left", "near_right"),
                                             ("right", spacing / 2, "far_right", "near_right", "near_left")):
         diagonal = corners[across] - corners[far]
-        offset = INSET * diagonal / np.linalg.norm(diagonal)
+        offset = inset * diagonal / np.linalg.norm(diagonal)
         points[side] = tuple((float(p[1]), float(-(p[0] - base_x))) for p in (corners[far] + offset,
                                                                                corners[near] + offset))
     return points
@@ -201,15 +202,16 @@ def fold_points(corners, spacing):
 def plan(rgb, cal, spacing, closed, keep=None, empty_reading=False):
     """The fold for the cloth in `rgb`: (trajectory, corners, corners in pixels, each arm's points). With a
     calibration from the arms the corners returned are in the left arm's frame (x forward, y left)."""
+    inset = cal.get("inset", INSET)
     if "arms" in cal:
         by_arm, px = look_arms(rgb, cal, keep)
-        points = fold_points_arms(by_arm)
+        points = fold_points_arms(by_arm, inset)
         traj = fold_traj.fold(points, closed, empty_reading)
         traj["layout"] = {"frame": "each arm's base, from its own camera map", "corners":
                           {side: {k: np.round(v, 4).tolist() for k, v in c.items()} for side, c in by_arm.items()}}
         return traj, by_arm["left"], px, points
     corners, px = look(rgb, cal, keep)
-    points = fold_points(corners, spacing)
+    points = fold_points(corners, spacing, inset)
     traj = fold_traj.fold(points, closed, empty_reading)
     traj["layout"] = {"frame": "table: X right, Y forward from the line of the base origins", "base_spacing": spacing,
                       "corners": {k: np.round(v, 4).tolist() for k, v in corners.items()}}
@@ -259,8 +261,13 @@ def main(argv=None):
     ap.add_argument("--cloth-colour", choices=fold_score.COLOURS, default="dark",
                     help="calibrate: what sets the cloth apart from the table; saved in the calibration")
     ap.add_argument("--closed", type=float, default=-0.17, help="jaw target at the pinch (rad)")
+    ap.add_argument("--inset", type=float, help="how far in from each corner, along the cloth's diagonal, the pinch "
+                    "lands (m, default 0.01). calibrate saves it; on look and fold it is for that run only. Raise it "
+                    "when the grippers come down past the corners")
     ap.add_argument("--out", default=str(HERE / "look.png"))
     args, replay_args = ap.parse_known_args(argv)
+    if args.inset is not None and not 0.0 <= args.inset < args.cloth / 2:
+        sys.exit(f"--inset {args.inset} m is not between 0 and half the cloth's side ({args.cloth / 2} m).")
     rgb = frame(args)
     if args.mode == "calibrate":
         cal = calibrate(rgb, args.cloth, args.near_edge, args.near, args.dark, args.cloth_colour)
@@ -270,6 +277,8 @@ def main(argv=None):
             kept = None
         if kept is not None:
             cal["arms"] = kept      # the map came from the arms: this look at the cloth must not move it
+        if args.inset is not None:
+            cal["inset"] = args.inset
         CAMERA.write_text(json.dumps(cal))
         print(f"Saved {CAMERA.name}: {cal['colour']} cloth, threshold {cal['dark']:.0f}, "
               f"corners (px) {np.round(cal['px']).tolist()}")
@@ -278,6 +287,8 @@ def main(argv=None):
     if not CAMERA.exists():
         sys.exit(f"No {CAMERA.name} yet: run `fold_camera.py calibrate` first, with the cloth at the ruler position.")
     cal = json.loads(CAMERA.read_text())
+    if args.inset is not None:
+        cal["inset"] = args.inset
     if "dark" not in cal:
         sys.exit(f"{CAMERA.name} has the arms' maps but not the cloth's colour yet: run `fold_camera.py calibrate` "
                  "once with the cloth in view, anywhere.")
@@ -299,6 +310,7 @@ def main(argv=None):
     print(f"Cloth corners {'in the left arm frame, X forward and Y left' if 'arms' in cal else 'on the table'} "
           f"(drawn in {args.out}):")
     reachable = report(traj, corners)
+    print(f"  pinching {cal.get('inset', INSET) * 100:.1f} cm in from each corner")
     if args.mode != "fold":
         return 0
     if not reachable:
