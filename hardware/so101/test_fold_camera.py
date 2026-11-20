@@ -195,3 +195,17 @@ def test_one_frame_from_the_phone_keeps_its_stream_alive(monkeypatch):
     OneFrameStream.made.clear()
     gc.collect()
     assert stream() is not None
+
+
+def test_a_pinch_with_the_fingers_too_flat_is_not_reachable(capsys):
+    def plan_with_tilt(left, right):
+        source = {}
+        for side, tilt in (("left", left), ("right", right)):
+            source[side] = {"pinch_error_mm": 0.0, "place_error_mm": 0.0, "max_tilt_deg": tilt}
+        return {"source": source}
+
+    assert fold_camera.report(plan_with_tilt(24.0, 26.0), {})
+    assert not fold_camera.report(plan_with_tilt(24.0, fold_camera.MAX_TILT + 5.0), {})
+    assert "FLAT" in capsys.readouterr().out
+    assert fold_camera.report(plan_with_tilt(24.0, fold_camera.MAX_TILT + 5.0), {}, max_tilt=50.0)
+

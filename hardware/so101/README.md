@@ -284,6 +284,11 @@ arms instead, one map per arm, so the cloth plays no part in it and the bases ma
 - **`fold_camera.py --inset M`** is how far in from each corner the pinch lands (default 0.01). `calibrate` saves
   it in `camera.json`, so the panel uses it too; on `look` and `fold` it holds for that run. Raise it when the
   grippers come down past the corners (2026-11-19: about 1 cm past on both arms, results.md).
+- **`fold_camera.py --max-tilt DEG`** (default 30): a fold whose fingers would lean further from upright is
+  refused with TOO FLAT, as one out of reach is. The lean grows about 4 degrees per cm past 36 cm from the
+  base, and flat fingers close on top of the cloth (results.md, 2026-11-19): move the cloth closer.
+- **`replay.py --p-gain GAIN`** (default 16, factory 32) is written to joints 1 to 5 before every run, so the
+  camera folds, the touches and the panel's fold get it. At 32 the arms shake while they move.
 - **A sideways phone, a faint or lopsided cloth:** `calibrate --near left` (the arms on the picture's left),
   `--dark 245` (a threshold by hand when Otsu drops the hems) and `--cloth 0.28` (the side the 15% check is
   against) are saved the same way. A later `calibrate` without them puts the defaults back.

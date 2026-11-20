@@ -44,6 +44,8 @@ INSET = 0.01          # m: the pinch lands this far in from the corner along the
                       # calibration holds its own ("inset", from calibrate --inset)
 SIDE_TOL = 0.15       # a detected side this far off the cloth's side (fraction) is not the cloth
 REACH_TOL = 0.006     # m: a pinch the arm model misses by more than this is out of reach
+MAX_TILT = 30.0       # deg from upright: past it the fingers lie too flat to pinch a corner. On the rig 25 to 27
+                      # held the cloth and 34 to 36 did not (results.md, 2026-11-19)
 # Table area searched for the cloth (m): in front of the bases, clear of them
 REGION = {"x": (-0.35, 0.35), "y": (fold_traj.BASE_FRONT + 0.005, 0.55)}
 
@@ -235,16 +237,23 @@ def overlay(rgb, cal, px, points, spacing):
     return img
 
 
-def report(traj, corners):
+def report(traj, corners, max_tilt=MAX_TILT):
+    """Print the corners and each arm's reach. False when an arm misses its pinch or its fingers lie flatter than
+    `max_tilt` degrees from upright anywhere in the fold."""
     for name, p in corners.items():
         print(f"  {name:10s} X {p[0] * 100:6.1f}  Y {p[1] * 100:6.1f} cm")
     ok = True
     for side in ("left", "right"):
         r = traj["source"][side]
-        reach = r["pinch_error_mm"] <= REACH_TOL * 1000
-        ok &= reach
+        note = ""
+        if r["pinch_error_mm"] > REACH_TOL * 1000:
+            ok = False
+            note = "  OUT OF REACH"
+        elif r["max_tilt_deg"] > max_tilt:
+            ok = False
+            note = f"  TOO FLAT (over {max_tilt:.0f} deg)"
         print(f"  {side} arm: pinch missed by {r['pinch_error_mm']} mm, place by {r['place_error_mm']} mm, fingers "
-              f"tilted up to {r['max_tilt_deg']} deg{'' if reach else '  OUT OF REACH'}")
+              f"tilted up to {r['max_tilt_deg']} deg{note}")
     return ok
 
 
@@ -264,6 +273,8 @@ def main(argv=None):
     ap.add_argument("--inset", type=float, help="how far in from each corner, along the cloth's diagonal, the pinch "
                     "lands (m, default 0.01). calibrate saves it; on look and fold it is for that run only. Raise it "
                     "when the grippers come down past the corners")
+    ap.add_argument("--max-tilt", type=float, default=MAX_TILT, help="deg from upright the fingers may lean anywhere "
+                    "in the fold; a fold that needs more is refused")
     ap.add_argument("--out", default=str(HERE / "look.png"))
     args, replay_args = ap.parse_known_args(argv)
     if args.inset is not None and not 0.0 <= args.inset < args.cloth / 2:
@@ -309,12 +320,12 @@ def main(argv=None):
     overlay(rgb, cal, px, points, args.spacing).save(args.out)
     print(f"Cloth corners {'in the left arm frame, X forward and Y left' if 'arms' in cal else 'on the table'} "
           f"(drawn in {args.out}):")
-    reachable = report(traj, corners)
+    reachable = report(traj, corners, args.max_tilt)
     print(f"  pinching {cal.get('inset', INSET) * 100:.1f} cm in from each corner")
     if args.mode != "fold":
         return 0
     if not reachable:
-        sys.exit("Not folding: move the cloth closer.")
+        sys.exit("Not folding: move the cloth closer to the arms.")
     input(f"Check {args.out}. Enter to fold, Ctrl-C to stop ")
     import replay
     path = HERE / "last_look.json"

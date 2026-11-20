@@ -28,6 +28,8 @@ class FakePort:
         self.words = []  # (motor id, address, value) per two-byte register write
         self.registers = {}  # (motor id, address) -> the value the motor holds
         self.deaf_to_words = False  # True: two-byte writes are acknowledged but not stored
+        self.bytes = []  # (motor id, address, value) per one-byte register write, torque enable aside
+        self.deaf_to_bytes = False  # True: one-byte writes are acknowledged but not stored
         self.on_write = None  # called with the write count; may raise
         self.ser = types.SimpleNamespace(reset_input_buffer=lambda: None)
 
@@ -52,7 +54,14 @@ def make_fake_sdk(ports):
         def write1ByteTxRx(self, port, motor, address, value):
             if address == 40:
                 port.torque.append((motor, value))
+                return 0, 0
+            port.bytes.append((motor, address, value))
+            if not port.deaf_to_bytes:
+                port.registers[(motor, address)] = value
             return 0, 0
+
+        def read1ByteTxRx(self, port, motor, address):
+            return port.registers.get((motor, address), 0), 0, 0
 
         def write2ByteTxRx(self, port, motor, address, value):
             port.words.append((motor, address, value))
@@ -822,3 +831,46 @@ def test_grasp_check_on_a_trajectory_planned_without_its_empty_reading_is_refuse
         env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--grasp-check"])
     assert "empty reading" in str(stopped.value)
     assert env.ports == {}
+
+
+# --- the position loop's gain ---
+
+def p_gain_writes(port):
+    """{motor id: every value written to the P gain register, in order}."""
+    writes = {}
+    for motor, address, value in port.bytes:
+        if address == 21:
+            writes.setdefault(motor, []).append(value)
+    return writes
+
+
+def test_every_run_sets_the_arm_joints_gain_and_leaves_the_gripper_alone(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 0
+    for device in ("devL", "devR"):
+        writes = p_gain_writes(env.ports[device])
+        assert sorted(writes) == [1, 2, 3, 4, 5]
+        for motor in writes:
+            assert writes[motor] == [env.replay.P_GAIN]
+    assert env.replay.P_GAIN < 32                        # under the factory value, which shakes
+
+
+def test_the_gain_can_be_chosen_and_a_dry_run_writes_none(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+    args = [write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1", "--p-gain", "20"]
+    assert env.replay.main(args + ["--dry-run"]) == 0
+    assert "devL" not in env.ports or p_gain_writes(env.ports["devL"]) == {}
+    assert env.replay.main(args) == 0
+    assert p_gain_writes(env.ports["devL"])[3] == [20]
+    with pytest.raises(SystemExit):
+        env.replay.main(args[:-1] + ["60"])
+
+
+def test_a_gain_the_motor_did_not_take_stops_before_torque_goes_on(env):
+    traj = make_traj()
+    seed_at_first_target(env, traj)
+    env.ports["devL"].deaf_to_bytes = True
+    assert env.replay.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 1
+    assert env.ports["devL"].torque == []

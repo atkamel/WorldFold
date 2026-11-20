@@ -57,6 +57,7 @@ RUNS_DIR = Path(__file__).parent / "runs"  # one folder per run, ignored by git
 GLIDE_LOG_EVERY = 5  # a glide sends 50 poses a second; every fifth one is read back and logged
 
 # STS3215 control table addresses (same as ui.py)
+ADDR_P_GAIN = 21
 ADDR_TORQUE_ENABLE = 40
 ADDR_GOAL_POSITION = 42
 ADDR_TORQUE_LIMIT = 48
@@ -64,6 +65,8 @@ ADDR_PRESENT_POSITION = 56
 GRIPPER_TORQUE_LIMIT = 500  # 50% of max, as ui.py
 FULL_TORQUE_LIMIT = 1000
 MIN_TORQUE_PERCENT = 10  # below this an arm cannot hold itself up
+P_GAIN = 16  # position loop gain of joints 1 to 5; at the factory 32 the arms shake while they move
+MIN_P_GAIN, MAX_P_GAIN = 4, 32
 
 
 class Follower:
@@ -132,6 +135,15 @@ class Follower:
             result, _ = self.packet.write1ByteTxRx(self.port, m, ADDR_TORQUE_ENABLE, 1)
             if result != scs.COMM_SUCCESS:
                 raise OSError(f"Could not turn on the torque of motor {m} on the {self.name} arm")
+
+    def set_p_gain(self, gain):
+        """Write the position loop's P gain of joints 1 to 5 and read it back; the gripper keeps its own. Written on
+        every run, as the torque limit is."""
+        for m in MOTOR_IDS[:5]:
+            result, _ = self.packet.write1ByteTxRx(self.port, m, ADDR_P_GAIN, gain)
+            held, read_result, _ = self.packet.read1ByteTxRx(self.port, m, ADDR_P_GAIN)
+            if result != scs.COMM_SUCCESS or read_result != scs.COMM_SUCCESS or held != gain:
+                raise OSError(f"Motor {m} on the {self.name} arm did not take the P gain {gain}")
 
     def set_torque_limits(self, arm_limit):
         """Write the torque limit of every motor and read it back. The register keeps its value until the arm is
@@ -565,6 +577,13 @@ def torque_arg(text):
     return value
 
 
+def p_gain_arg(text):
+    value = int(text)
+    if not MIN_P_GAIN <= value <= MAX_P_GAIN:
+        raise argparse.ArgumentTypeError(f"must be {MIN_P_GAIN} to {MAX_P_GAIN}")
+    return value
+
+
 def parse(argv):
     p = argparse.ArgumentParser(description="Replay a simulator trajectory on real SO-101 arms.")
     p.add_argument("trajectory", nargs="?")
@@ -575,6 +594,9 @@ def parse(argv):
     p.add_argument("--torque-limit", type=torque_arg, default=100, metavar="PERCENT",
                    help="cap every joint's torque, so a collision stalls gently; lifted when the run ends at the idle "
                         "pose, left on after a stop")
+    p.add_argument("--p-gain", type=p_gain_arg, default=P_GAIN, metavar="GAIN",
+                   help="position loop gain written to joints 1 to 5 before the run (factory 32, which shakes); "
+                        "lower is smoother and softer")
     p.add_argument("--only", choices=["left", "right"])
     p.add_argument("--no-gripper", action="store_true")
     p.add_argument("--allow-clamp", action="store_true")
@@ -727,7 +749,7 @@ def open_step_log(args, traj, followers, ticks):
     for side, f in followers.items():
         used[side] = {"name": f.name, "zero": [f.zero[m] for m in MOTOR_IDS], "sign": [f.sign[m] for m in MOTOR_IDS]}
     meta = {"started": datetime.now().isoformat(), "trajectory": args.trajectory, "speed": args.speed,
-            "torque_limit": args.torque_limit, "no_gripper": args.no_gripper, "grasp_check": args.grasp_check,
+            "torque_limit": args.torque_limit, "p_gain": args.p_gain, "no_gripper": args.no_gripper, "grasp_check": args.grasp_check,
             "arms": used, "joints": JOINTS}
     (path.parent / "replay_meta.json").write_text(json.dumps(meta, indent=1))
     (path.parent / "plan.json").write_text(json.dumps(traj))
@@ -739,6 +761,7 @@ def move(args, progress, traj, followers, ticks, motors, present, at, idle, firs
     """Everything that moves the arms: torque on, the glides, the trajectory, the glide back."""
     T, dt = len(traj["arms"]["left"]["target"]), traj["dt"]
     for side, f in followers.items():
+        f.set_p_gain(args.p_gain)
         f.torque_on_holding(present[side], args.torque_limit * 10)
 
     progress["step"] = "ramp to the idle pose"

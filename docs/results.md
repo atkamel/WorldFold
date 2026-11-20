@@ -2974,3 +2974,27 @@ outward on both arms, the opposite of the inset's direction. Not separated: clic
 the cloth's thickness under a slanted camera, and corners 4 to 6 cm past the furthest touch (36 cm). Offline on
 frame 0 of that run, an inset of 3 cm moves the pinch to 38.7 / 29.4 cm forward (from 40.4 / 30.3), both reachable,
 left arm 10.0 mm clear of itself with the release 1.5 cm short. Not yet played on the arms.
+
+## The arms shake at the factory gain; flat fingers do not hold a corner (2026-11-19)
+
+Shake. Every motor on both arms held the factory position gains (P 32, D 32, I 0, acceleration 0, read from the
+motors). In fold `20261119_210113` (speed 0.3, 50% cap) the rows went out every 167 ms within 1 ms and a read of both
+arms took 2 ms, so the playback's timing was not the cause; the joints lagged their targets by up to 4.8 deg. With
+P 16 written to joints 1 to 5 of both arms the user reports the fast shake while moving much reduced (one fold, by
+eye, no measurement). The write was made with the servo's write lock on (read as 1); whether it outlasts a power
+cycle is not checked.
+
+Finger tilt at the pinch against the grasp, every camera fold so far (tilt is the planner's largest lean from
+upright over the fold; the reach is where the pinch was planned, not measured):
+
+| run | arm | pinch planned (cm forward) | tilt (deg) | held the corner |
+|---|---|---|---|---|
+| `20261118_000529` | left / right | 36.9 / 37.3 | 25.3 / 26.8 | yes / yes (frames) |
+| `20261119_210113`, inset 3 cm | right | 28.6 | 8.4 | yes (user) |
+| `20261119_210113`, inset 3 cm | left | 39.2 | 33.8 | no (user) |
+| `20261119_210916`, inset 3 cm, P 16 | left / right | about 40 / 38 | 36.4 / 23.6 | no / no (frames: the cloth lies flat after the carry) |
+
+The user on the last one: the claw was in the right place and too flat. In the arm model the tilt at a pinch
+straight ahead is 18.6 deg at 36 cm, 25.8 at 38, 33.4 at 40 and 41.7 at 42, about 4 deg per cm. The right arm's miss
+at 23.6 deg is not explained by the tilt: with the 3 cm inset its fingertip came down on top of the cloth. n = 4
+folds, one cloth; the 30 deg limit is a first setting, not a measured threshold.
