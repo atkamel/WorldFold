@@ -286,29 +286,81 @@ fetch('/touches').then(r => r.json()).then(l => { list = l; i = Math.max(0, l.fi
 </script>"""
 
 
+def is_touch_picture(side, name):
+    """Whether (side, name) can name one arm's touch picture: nothing else is read from or written to disk."""
+    if side not in ("left", "right"):
+        return False
+    if not isinstance(name, str):
+        return False
+    if "/" in name or "\\" in name:
+        return False
+    return name.startswith("touch_") and name.endswith(".jpg")
+
+
+def is_pixel(px):
+    """Whether `px` is a click: None (fingertip not in the picture) or two numbers."""
+    if px is None:
+        return True
+    if not isinstance(px, list) or len(px) != 2:
+        return False
+    for value in px:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return False
+    return True
+
+
 def click_handler():
     class Handler(BaseHTTPRequestHandler):
-        def reply(self, body, kind="application/json"):
+        def reply(self, body, kind="application/json", status=200):
             body = body if isinstance(body, bytes) else json.dumps(body).encode()
-            self.send_response(200)
+            self.send_response(status)
             self.send_header("Content-Type", kind)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
+        def from_this_machine(self):
+            """False (after replying 403) for a request not addressed to this machine by name: a web page
+            elsewhere that points its own name at 127.0.0.1 arrives with that other name."""
+            port = self.server.server_address[1]
+            if self.headers.get("Host", "") in (f"localhost:{port}", f"127.0.0.1:{port}"):
+                return True
+            self.reply({"error": "this page only answers on localhost"}, status=403)
+            return False
+
         def do_GET(self):
+            if not self.from_this_machine():
+                return
             path = self.path.split("?")[0]
             if path == "/touches":
                 self.reply([{"arm": side, **t} for side in ("left", "right") for t in load_touches(side)])
             elif path.startswith("/picture/"):
-                _, _, side, name = path.split("/")
-                if side in ("left", "right") and name.startswith("touch_") and name.endswith(".jpg") and "/" not in name:
-                    self.reply((FOLDER / side / name).read_bytes(), "image/jpeg")
+                parts = path.split("/")
+                if len(parts) == 4 and is_touch_picture(parts[2], parts[3]) and (FOLDER / parts[2] / parts[3]).exists():
+                    self.reply((FOLDER / parts[2] / parts[3]).read_bytes(), "image/jpeg")
+                else:
+                    self.reply({"error": "no such picture"}, status=404)
             else:
                 self.reply(PAGE.encode(), "text/html")
 
         def do_POST(self):
-            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if not self.from_this_machine():
+                return
+            # A browser lets any web page send a plain form to this port without asking; JSON it must ask about
+            # first, and this server never says yes.
+            if not self.headers.get("Content-Type", "").startswith("application/json"):
+                self.reply({"error": "send JSON"}, status=415)
+                return
+            try:
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+            except ValueError:
+                body = None
+            if not isinstance(body, dict):
+                self.reply({"error": "send a JSON object"}, status=400)
+                return
+            if not is_touch_picture(body.get("arm"), body.get("frame")) or not is_pixel(body.get("px")):
+                self.reply({"error": "not a click on a touch picture"}, status=400)
+                return
             record_click(body["arm"], body["frame"], body["px"])
             self.reply({"ok": True})
 

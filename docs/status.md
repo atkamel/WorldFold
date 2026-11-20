@@ -40,8 +40,12 @@ released, still), user 2026-10-22.
   1.7 cm mean from the half line, results.md). On the rig the arms go to the same place wherever the cloth
   lies when Calibrate is pressed after the cloth is moved: the calibration takes the cloth's place as the ruler
   position (shown offline on a recorded frame, results.md). With the calibration left alone the plan follows the
-  cloth; not yet shown on the arms. The user is choosing between a calibration from the arms (fingertips clicked in
-  the picture) and a guard on the Calibrate button. Every run that moves an arm
+  cloth; not yet shown on the arms. The calibration from the arms is built (`arm_calibration.py`, 2026-11-18: each
+  arm touches the table, the fingertips are clicked in the pictures, one map per arm) and `fold_camera.py` reads
+  the cloth through those maps once they are in `camera.json`, where Calibrate only learns the cloth's colour;
+  checked offline, not yet run on the arms, and this laptop's `camera.json` still holds the cloth-based map. Also
+  built and not yet on the arms: the side layout (30 and 60 cm trajectories), a learned half fold with its
+  runners (`policy_run.py`, `camera_run.py`), and the fold recorder and dataset converter. Every run that moves an arm
   is logged to `hardware/so101/runs/<date_time>/` (targets and encoder readings per control step), and a fold from
   the panel also saves the camera picture and depth 5 times a second. Progress, measurements and next steps are in the
   bring-up log at the top of `hardware/so101/README.md`.
@@ -97,9 +101,9 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
-Hardware side track (user, 2026-11-18), in order: the user's choice of calibration fix (from the arms, or a
-guarded button), then build it; on the rig, calibrate once, move the cloth, Look and Fold with no recalibration,
-and score each recorded run; a grasp check that can see this cloth (the jaw position cannot); the `summary.json`
+Hardware side track (user, 2026-11-19), in order: on the rig, `arm_calibration.py` touch (both arms), click and
+fit, then `fold_camera.py calibrate --cloth-colour blue` for the colour; move the cloth, Look, and check the pinch
+points follow the corners before any fold; then Fold with no recalibration and score each recorded run; a grasp check that can see this cloth (the jaw position cannot); the `summary.json`
 step count for panel runs; `fold_live.py --dry-run`, then `fold_live.py --grasp-check`. Commands in
 `hardware/so101/README.md`.
 
@@ -109,7 +113,7 @@ step count for panel runs; `fold_live.py --dry-run`, then `fold_live.py --grasp-
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-19: fast plus controller and SO-101 448 passed, 5 skipped, and 3 failed, see results.md; Windows 2026-11-18: hardware 127 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-19: fast plus controller and SO-101 448 passed, 5 skipped, and 3 failed, see results.md; Windows 2026-11-19: hardware 180 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -168,6 +172,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-19 · **Branch brought up to origin; the click page refuses requests that are not its own (user: go for it):** local `feat/iphone-lidar` fast-forwarded 15 commits to 9905703 (calibration from the arms, side layout, learned half fold, recorder and converter, camera runner; none run on the arms); `arm_calibration.py click` answers only `localhost` / `127.0.0.1`, takes only JSON posts, and stores a click only for an arm's touch picture (it took any post, and the arm name went into a file path unchecked); status brought in line with the code (the calibration choice was still listed as open); not run on the arms; hardware 180 passed with the committed `replay.py` (177 in the full run, and the 3 it failed in `test_replay.py` pass on a copy with the committed file: an uncommitted edit to `replay.py` from other work in the tree removes the slow-read pacing and the grasp-check guard), fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-19 · **Two-arm gamepad teleop (user):** `ui.py --gamepad` drives the two followers from one sample and checks the pair and table before sending goals. Simulated servos and live PowerA heartbeat verified, physical arm motion and Windows controller I/O untested. Fast plus controller and SO-101 448 passed, 5 skipped, and 3 failed. See results.md · (this commit)
 - 2026-11-19 · **PowerA EnWired controller (user):** Python GIP reader, raw capture, and offline decoder in `hardware/controller/`. Live JSON from the plugged-in controller and raw packet replay verified. Focused parser tests passed. Fast plus controller 261 passed, 5 skipped, 6 failed (#15, #17, four CGL connection errors). See results.md · (this commit)
 - 2026-11-18 · **Why the arms ignore a moved cloth (user: they go to the same place even after calibrating and looking again):** offline on a recorded frame, the plan follows a slid picture when the calibration is unchanged (pinch 3.7 cm over for 40 px) and returns to the ruler position when calibrated after the move (results.md); the Calibrate button is the trap; two fixes put to the user (calibrate from the arms, or guard the button), none built; no code changed, tests not re-run · (this commit)

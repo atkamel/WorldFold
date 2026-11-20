@@ -213,3 +213,49 @@ def test_with_the_arms_at_the_sides_each_arm_gets_its_own_corners_and_the_whole_
     drawn = np.asarray(fold_camera.overlay(synthetic.render(corners), cal, px, points, S))
     u, v = px["far_left"]
     assert drawn[int(v) - 12:int(v) + 12, int(u) - 12:int(u) + 12, 0].max() == 255            # the pinch circle, on the corner
+
+
+def click_status(port, body, headers=None, method="POST", path="/click"):
+    """The HTTP status the click page gives a request."""
+    import urllib.error
+    import urllib.request
+    sent = {"Content-Type": "application/json"}
+    if headers is not None:
+        sent = headers
+    data = None
+    if method == "POST":
+        data = json.dumps(body).encode()
+    request = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data, headers=sent, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=5) as answer:
+            return answer.status
+    except urllib.error.HTTPError as err:
+        return err.code
+
+
+def test_the_click_page_takes_clicks_only_from_its_own_page_and_only_for_a_touch_picture(tmp_path, monkeypatch):
+    import threading
+    from http.server import HTTPServer
+    monkeypatch.setattr(arm_calibration, "FOLDER", tmp_path / "touches")
+    clicked_touches(tmp_path / "touches", "left")
+    stored = tmp_path / "touches" / "left" / "touches.json"
+    server = HTTPServer(("127.0.0.1", 0), arm_calibration.click_handler())
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_address[1]
+    try:
+        good = {"arm": "left", "frame": "touch_0.jpg", "px": [11.0, 22.0]}
+        assert click_status(port, good) == 200
+        assert json.loads(stored.read_text())["touches"][0]["px"] == [11.0, 22.0]
+        before = stored.read_text()
+        other_site = {"Content-Type": "application/json", "Host": f"elsewhere.example:{port}"}
+        assert click_status(port, good | {"px": [1.0, 2.0]}, other_site) == 403
+        assert click_status(port, None, {"Host": f"elsewhere.example:{port}"}, method="GET", path="/touches") == 403
+        assert click_status(port, good | {"px": [1.0, 2.0]}, {"Content-Type": "text/plain"}) == 415
+        assert click_status(port, good | {"arm": "../left"}) == 400
+        assert click_status(port, good | {"frame": "touches.json"}) == 400
+        assert click_status(port, good | {"px": "here"}) == 400
+        assert stored.read_text() == before
+        assert click_status(port, None, {}, method="GET", path="/touches") == 200
+    finally:
+        server.shutdown()
+        server.server_close()
