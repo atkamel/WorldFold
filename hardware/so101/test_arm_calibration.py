@@ -312,3 +312,37 @@ def test_a_saved_inset_moves_the_pinch_further_in_from_the_corner(tmp_path, monk
     assert "inset" not in json.loads((tmp_path / "camera.json").read_text())
     with pytest.raises(SystemExit):
         fold_camera.main(["look", "--inset", "0.2"] + common)
+
+
+def test_a_saved_overshoot_aims_short_and_inward_and_a_saved_pinch_height_lowers_the_pinch(tmp_path, monkeypatch):
+    from PIL import Image
+    picture = synthetic.render(synthetic.cloth(shift=(0.01, 0.01), turn_deg=0.0), synthetic.BASES)
+    cal = arm_cal(BEHIND)
+    usual_traj, _, _, usual = fold_camera.plan(picture, cal, S, -0.17)
+    tuned = dict(cal)
+    tuned["overshoot"] = [0.010, 0.007]
+    tuned["pinch_height"] = 0.0
+    traj, _, _, points = fold_camera.plan(picture, tuned, S, -0.17)
+    pinch = traj["marks"]["pinch"] + 1
+    for side, outward in (("left", 1.0), ("right", -1.0)):
+        assert np.allclose(points[side], usual[side])                # what is reported and drawn: where it should land
+        right, forward, up = traj["arms"][side]["tip"][pinch]
+        assert abs(forward - (usual[side][0][0] - 0.010)) < 0.001    # aimed 1 cm short of it
+        assert abs(-right - (usual[side][0][1] - outward * 0.007)) < 0.001     # and 0.7 cm toward the other arm
+        assert abs(up) < 0.001
+        assert abs(usual_traj["arms"][side]["tip"][usual_traj["marks"]["pinch"] + 1][2] - fold_traj.PINCH_Z) < 0.001
+    monkeypatch.setattr(fold_camera, "CAMERA", tmp_path / "camera.json")
+    (tmp_path / "camera.json").write_text(json.dumps(cal))
+    Image.fromarray(picture).save(tmp_path / "cloth.png")
+    common = ["--image", str(tmp_path / "cloth.png"), "--out", str(tmp_path / "look.png")]
+    fold_camera.main(["calibrate", "--overshoot", "0.01", "0.007", "--pinch-height", "0"] + common)
+    saved = json.loads((tmp_path / "camera.json").read_text())
+    assert saved["overshoot"] == [0.01, 0.007] and saved["pinch_height"] == 0.0
+    fold_camera.main(["calibrate"] + common)
+    saved = json.loads((tmp_path / "camera.json").read_text())
+    assert "overshoot" not in saved and "pinch_height" not in saved
+    with pytest.raises(SystemExit):
+        fold_camera.main(["look", "--pinch-height", "-0.05"] + common)
+    with pytest.raises(SystemExit):
+        fold_camera.main(["look", "--overshoot", "0.2", "0"] + common)
+

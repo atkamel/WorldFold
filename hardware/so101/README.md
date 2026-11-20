@@ -284,6 +284,11 @@ arms instead, one map per arm, so the cloth plays no part in it and the bases ma
 - **`fold_camera.py --inset M`** is how far in from each corner the pinch lands (default 0.01). `calibrate` saves
   it in `camera.json`, so the panel uses it too; on `look` and `fold` it holds for that run. Raise it when the
   grippers come down past the corners (2026-11-19: about 1 cm past on both arms, results.md).
+- **`fold_camera.py --overshoot FORWARD OUTWARD`** (m, default 0 0) is how far past the point they are sent to
+  the fingertips land; the arms are sent that much short, outward being away from the other arm. `look.png`
+  still draws where the fingertips should land. **`--pinch-height M`** (default 0.005) is the fingertip's
+  height at the pinch in the arm model; lower it when the fingers stop above the cloth. Both are saved by
+  `calibrate` as `--inset` is (2026-11-19: about 1 cm forward, 0.7 cm outward, and 0.5 cm high, results.md).
 - **`fold_camera.py --max-tilt DEG`** (default 30): a fold whose fingers would lean further from upright is
   refused with TOO FLAT, as one out of reach is. The lean grows about 4 degrees per cm past 36 cm from the
   base, and flat fingers close on top of the cloth (results.md, 2026-11-19): move the cloth closer.

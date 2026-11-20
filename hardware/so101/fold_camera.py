@@ -44,6 +44,10 @@ INSET = 0.01          # m: the pinch lands this far in from the corner along the
                       # calibration holds its own ("inset", from calibrate --inset)
 SIDE_TOL = 0.15       # a detected side this far off the cloth's side (fraction) is not the cloth
 REACH_TOL = 0.006     # m: a pinch the arm model misses by more than this is out of reach
+OVERSHOOT = (0.0, 0.0)    # m (forward, outward): how far past the point they are sent to the fingertips land, unless
+                         # the calibration holds its own ("overshoot"); outward is away from the other arm
+MAX_OVERSHOOT = 0.03
+PINCH_HEIGHTS = (-0.005, 0.02)   # m: the lowest and highest fingertip height at the pinch that is accepted
 MAX_TILT = 30.0       # deg from upright: past it the fingers lie too flat to pinch a corner. On the rig 25 to 27
                       # held the cloth and 34 to 36 did not (results.md, 2026-11-19)
 # Table area searched for the cloth (m): in front of the bases, clear of them
@@ -201,21 +205,38 @@ def fold_points(corners, spacing, inset=INSET):
     return points
 
 
+def aimed(points, overshoot):
+    """Where each arm is sent so that its fingertip lands on `points` ({side: (pinch, place)}, each arm's own frame):
+    `overshoot` (forward, outward) m short of them. Outward is to the left for the left arm, the right for the right."""
+    forward, outward = overshoot
+    sent = {}
+    for side, sign in (("left", 1.0), ("right", -1.0)):
+        moved = []
+        for x, y in points[side]:
+            moved.append((x - forward, y - sign * outward))
+        sent[side] = tuple(moved)
+    return sent
+
+
 def plan(rgb, cal, spacing, closed, keep=None, empty_reading=False):
     """The fold for the cloth in `rgb`: (trajectory, corners, corners in pixels, each arm's points). With a
-    calibration from the arms the corners returned are in the left arm's frame (x forward, y left)."""
+    calibration from the arms the corners returned are in the left arm's frame (x forward, y left). The points
+    returned are where the fingertips should land; the trajectory is sent the calibration's overshoot short of them."""
     inset = cal.get("inset", INSET)
+    overshoot = cal.get("overshoot", OVERSHOOT)
+    pinch_z = cal.get("pinch_height", fold_traj.PINCH_Z)
     if "arms" in cal:
         by_arm, px = look_arms(rgb, cal, keep)
         points = fold_points_arms(by_arm, inset)
-        traj = fold_traj.fold(points, closed, empty_reading)
-        traj["layout"] = {"frame": "each arm's base, from its own camera map", "corners":
+        traj = fold_traj.fold(aimed(points, overshoot), closed, empty_reading, pinch_z)
+        traj["layout"] = {"frame": "each arm's base, from its own camera map", "overshoot": list(overshoot), "corners":
                           {side: {k: np.round(v, 4).tolist() for k, v in c.items()} for side, c in by_arm.items()}}
         return traj, by_arm["left"], px, points
     corners, px = look(rgb, cal, keep)
     points = fold_points(corners, spacing, inset)
-    traj = fold_traj.fold(points, closed, empty_reading)
+    traj = fold_traj.fold(aimed(points, overshoot), closed, empty_reading, pinch_z)
     traj["layout"] = {"frame": "table: X right, Y forward from the line of the base origins", "base_spacing": spacing,
+                      "overshoot": list(overshoot),
                       "corners": {k: np.round(v, 4).tolist() for k, v in corners.items()}}
     return traj, corners, px, points
 
@@ -273,12 +294,28 @@ def main(argv=None):
     ap.add_argument("--inset", type=float, help="how far in from each corner, along the cloth's diagonal, the pinch "
                     "lands (m, default 0.01). calibrate saves it; on look and fold it is for that run only. Raise it "
                     "when the grippers come down past the corners")
+    ap.add_argument("--overshoot", type=float, nargs=2, metavar=("FORWARD", "OUTWARD"), help="how far past the point "
+                    "they are sent to the fingertips land (m, default 0 0); the arms are sent that much short. "
+                    "Outward is away from the other arm. Saved by calibrate, for one run on look and fold")
+    ap.add_argument("--pinch-height", type=float, help="fingertip height at the pinch in the arm model (m, default "
+                    f"{fold_traj.PINCH_Z}). Lower it when the fingers stop above the cloth. Saved like --overshoot")
     ap.add_argument("--max-tilt", type=float, default=MAX_TILT, help="deg from upright the fingers may lean anywhere "
                     "in the fold; a fold that needs more is refused")
     ap.add_argument("--out", default=str(HERE / "look.png"))
     args, replay_args = ap.parse_known_args(argv)
     if args.inset is not None and not 0.0 <= args.inset < args.cloth / 2:
         sys.exit(f"--inset {args.inset} m is not between 0 and half the cloth's side ({args.cloth / 2} m).")
+    if args.overshoot is not None and max(abs(args.overshoot[0]), abs(args.overshoot[1])) > MAX_OVERSHOOT:
+        sys.exit(f"--overshoot {args.overshoot} m: neither number may be over {MAX_OVERSHOOT} m.")
+    if args.pinch_height is not None and not PINCH_HEIGHTS[0] <= args.pinch_height <= PINCH_HEIGHTS[1]:
+        sys.exit(f"--pinch-height {args.pinch_height} m is not between {PINCH_HEIGHTS[0]} and {PINCH_HEIGHTS[1]} m.")
+    given = {}                  # the settings given on this command line: saved by calibrate, else for this run
+    if args.inset is not None:
+        given["inset"] = args.inset
+    if args.overshoot is not None:
+        given["overshoot"] = list(args.overshoot)
+    if args.pinch_height is not None:
+        given["pinch_height"] = args.pinch_height
     rgb = frame(args)
     if args.mode == "calibrate":
         cal = calibrate(rgb, args.cloth, args.near_edge, args.near, args.dark, args.cloth_colour)
@@ -288,8 +325,7 @@ def main(argv=None):
             kept = None
         if kept is not None:
             cal["arms"] = kept      # the map came from the arms: this look at the cloth must not move it
-        if args.inset is not None:
-            cal["inset"] = args.inset
+        cal.update(given)
         CAMERA.write_text(json.dumps(cal))
         print(f"Saved {CAMERA.name}: {cal['colour']} cloth, threshold {cal['dark']:.0f}, "
               f"corners (px) {np.round(cal['px']).tolist()}")
@@ -298,8 +334,7 @@ def main(argv=None):
     if not CAMERA.exists():
         sys.exit(f"No {CAMERA.name} yet: run `fold_camera.py calibrate` first, with the cloth at the ruler position.")
     cal = json.loads(CAMERA.read_text())
-    if args.inset is not None:
-        cal["inset"] = args.inset
+    cal.update(given)
     if "dark" not in cal:
         sys.exit(f"{CAMERA.name} has the arms' maps but not the cloth's colour yet: run `fold_camera.py calibrate` "
                  "once with the cloth in view, anywhere.")
@@ -321,7 +356,10 @@ def main(argv=None):
     print(f"Cloth corners {'in the left arm frame, X forward and Y left' if 'arms' in cal else 'on the table'} "
           f"(drawn in {args.out}):")
     reachable = report(traj, corners, args.max_tilt)
-    print(f"  pinching {cal.get('inset', INSET) * 100:.1f} cm in from each corner")
+    overshoot = cal.get("overshoot", OVERSHOOT)
+    print(f"  pinching {cal.get('inset', INSET) * 100:.1f} cm in from each corner, the arms sent "
+          f"{overshoot[0] * 100:.1f} cm short of it and {overshoot[1] * 100:.1f} cm toward the other arm, fingertips "
+          f"{cal.get('pinch_height', fold_traj.PINCH_Z) * 100:.1f} cm above the table")
     if args.mode != "fold":
         return 0
     if not reachable:

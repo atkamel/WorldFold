@@ -2998,3 +2998,21 @@ The user on the last one: the claw was in the right place and too flat. In the a
 straight ahead is 18.6 deg at 36 cm, 25.8 at 38, 33.4 at 40 and 41.7 at 42, about 4 deg per cm. The right arm's miss
 at 23.6 deg is not explained by the tilt: with the 3 cm inset its fingertip came down on top of the cloth. n = 4
 folds, one cloth; the 30 deg limit is a first setting, not a measured threshold.
+
+## Where the fingertips land against where they are sent, second recorded fold (2026-11-19)
+
+Panel fold `20261119_212409` (inset 3 cm, P gain 16, speed 0.3, 50% cap; the cloth turned about 16 deg), one frame
+at the pinch row, read by eye against each arm's map, good to about 0.5 cm, n = 1 fold. Neither corner was held.
+
+| arm | pinch planned (cm forward, tilt) | fingertip seen against the plan | fingertip height from the encoders at the end of the hold |
+|---|---|---|---|
+| left | 30.6, 10.1 deg | about 0.8 cm further forward, 0.3 cm further left | 5.4 mm above the table in the model |
+| right | 37.6, 29.0 deg | about 0.8 cm further forward, 0.9 cm further right | 1.4 mm below the table in the model |
+
+With `20261119_205147` (1.4 / 0.8 cm and 1.0 / 1.1 cm) that is two folds with the fingertips forward and outward of
+the plan on both arms. The user saw both stop about 0.5 cm above the cloth, though the encoders put the two
+fingertips 7 mm apart in height, so the model's table height is not good to 5 mm and differs between the arms. The
+look takes the tip of each corner, which on this cloth stands about 1 cm past its straight edges: the right pinch,
+3 cm in along the diagonal, was about 1 cm inside the hem. Offline on frame 0 of this run with `--overshoot 0.010
+0.007 --pinch-height 0`: the arms are sent to 29.6 / 36.6 cm forward (from 30.6 / 37.6) at 0.0 cm, tilts 11.3 /
+25.9 deg (from 10.6 / 29.0), both clear of themselves (14.8 / 14.7 mm). Not yet played on the arms.

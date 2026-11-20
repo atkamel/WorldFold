@@ -107,3 +107,15 @@ def test_the_jaw_shuts_on_nothing_only_when_the_grasp_check_asks_for_its_empty_r
     t = np.array(plain["arms"]["left"]["target"])
     assert np.all(t[:plain["marks"]["pinch"] + 1, 5] == fold_traj.OPEN)       # the jaw stays open until it is on the corner
     assert len(checked["arms"]["left"]["target"]) - len(t) == checked["marks"]["hover"] - plain["marks"]["hover"] > 40
+
+
+def test_the_pinch_height_can_be_lowered_and_the_release_stays_where_it_was():
+    points = {"left": ((0.34, -0.03), (0.14, -0.03)), "right": ((0.34, 0.03), (0.14, 0.03))}
+    usual = fold_traj.fold(points)
+    lower = fold_traj.fold(points, pinch_z=0.0)
+    for side in ("left", "right"):
+        for traj, height in ((usual, fold_traj.PINCH_Z), (lower, 0.0)):
+            tip = np.array(traj["arms"][side]["tip"])[1:]
+            assert abs(tip[traj["marks"]["pinch"], 2] - height) < 0.001
+            assert abs(tip[traj["marks"]["placed"], 2] - fold_traj.PLACE_Z) < 0.001
+

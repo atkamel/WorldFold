@@ -50,7 +50,10 @@ released, still), user 2026-10-22.
   from the arms. With the 3 cm inset the grippers come down where they are aimed (user), and the far corners
   are then lost to the fingers' lean: 34 to 36 deg from upright did not hold, 25 to 27 did, so a fold over 30
   deg is refused (`--max-tilt`). `replay.py` writes P gain 16 to joints 1 to 5 on every run (`--p-gain`): at
-  the factory 32 the arms shook while moving (user: much smoother at 16). Also
+  the factory 32 the arms shook while moving (user: much smoother at 16). On a second recorded fold the
+  fingertips again landed about 1 cm forward and outward of the plan and stopped about 0.5 cm above the cloth
+  (user); `fold_camera.py --overshoot` and `--pinch-height` (saved by `calibrate`) send the arms short and
+  lower, planned offline at 1.0 / 0.7 cm and 0 cm, not yet played. Also
   built and not yet on the arms: the side layout (30 and 60 cm trajectories), a learned half fold with its
   runners (`policy_run.py`, `camera_run.py`), and the fold recorder and dataset converter. Every run that moves an arm
   is logged to `hardware/so101/runs/<date_time>/` (targets and encoder readings per control step), and a fold from
@@ -108,11 +111,11 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
-Hardware side track (user, 2026-11-19), in order: fold with the cloth as near the arms as it goes and both
-tilts under 30 deg, recorded from the panel, and see whether both corners hold; then the inset (3 cm puts the
-right fingertip on top of the cloth) and, if the far corners stay marginal, a 24 cm cloth or the side layout;
-read the P gain after a power cycle; the uncommitted edit to `replay.py` (slow-read pacing and the grasp-check
-guard removed), the user's to keep or restore; a grasp check that can see this cloth (the jaw position cannot); the `summary.json`
+Hardware side track (user, 2026-11-19), in order: a recorded panel fold with `--overshoot 0.010 0.007
+--pinch-height 0` saved, the cloth as near the arms as it goes and both tilts under 30 deg, then tune the two
+numbers from its frames; if the far corners stay marginal, a 24 cm cloth or the side layout; read the P gain
+after a power cycle; the uncommitted edit to `replay.py` (slow-read pacing and the grasp-check guard
+removed), the user's to keep or restore; a grasp check that can see this cloth (the jaw position cannot); the `summary.json`
 step count for panel runs; `fold_live.py --dry-run`, then `fold_live.py --grasp-check`. Commands in
 `hardware/so101/README.md`.
 
@@ -122,7 +125,7 @@ step count for panel runs; `fold_live.py --dry-run`, then `fold_live.py --grasp-
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-19: fast plus controller and SO-101 448 passed, 5 skipped, and 3 failed, see results.md; Windows 2026-11-19: hardware 180 passed (full run, before 6 tests added the same day); macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-19: fast plus controller and SO-101 448 passed, 5 skipped, and 3 failed, see results.md; Windows 2026-11-19: hardware 188 passed with the committed code (185 in the tree, where an uncommitted edit to replay.py fails 3); macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -181,6 +184,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-19 · **Send the arms short of the corner and lower (user: the right arm missed to the right, both overshot a little and stopped about 0.5 cm high):** on panel fold `20261119_212409` both fingertips landed about 0.8 cm forward and 0.3 / 0.9 cm outward of the plan (by eye, n = 1; the second fold with that bias) and the encoders put them 7 mm apart in height; `fold_camera.py --overshoot FORWARD OUTWARD` sends each arm that much short of where its fingertip should land, mirrored, and `--pinch-height` sets the fingertip's height at the pinch (`fold_traj.fold(pinch_z=)`), both saved by `calibrate`; offline on that run's frame with 1.0 / 0.7 cm and 0 cm the plan is reachable and clear; not yet played; full hardware run in the tree 185 passed, 3 failed, the 3 being the uncommitted edit to replay.py (they pass on a copy with the committed file), fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-19 · **Smoother arms and a limit on flat fingers (user: go for it):** the arms shook while moving at the factory P gain 32 (timing clean: rows within 1 ms, reads 2 ms); the user ran P 16 on joints 1 to 5 and reports it much smoother; `replay.py --p-gain` (default 16) writes it before torque goes on and refuses a motor that does not take it; with the 3 cm inset the grippers land where aimed and neither corner held at 36.4 / 23.6 deg of finger lean (user: right place, too flat); `fold_camera.py --max-tilt` (default 30) refuses such a fold with TOO FLAT; tilt against grasp for the four folds so far in results.md; not yet played with either change built in; `test_replay.py`, `test_fold_camera.py`, `test_arm_calibration.py`, `test_fold_live.py`: 81 passed with the committed `replay.py` plus this change (in the tree 78 passed, the 3 failures are the uncommitted edit's), full hardware and fast suites not re-run · (this commit)
 - 2026-11-19 · **The camera fold follows the cloth on the rig; a saved pinch inset (user: it works but always reaches too far, better to undershoot):** both arms' maps fitted from 9 inner-side touches each with the phone on its side (left-out touch within 4.7 / 5.6 mm); look and fold followed the cloth to four places with no calibration between, refusing the one out of reach; the look needed `--near left --dark 245 --cloth 0.28` (sideways picture, faint blue, a cloth about 25 by 29 cm); on panel fold `20261119_205147` both grippers landed about 1 cm past and outward of the planned pinch (by eye, n = 1, results.md); `fold_camera.py --inset` sets how far in from the corner the pinch lands, saved by `calibrate`, for one run on `look` / `fold`; 3 cm plans offline on that run's frame, not yet played; `test_arm_calibration.py` and `test_fold_camera.py` 22 passed, full hardware and fast suites not re-run; `replay.py`'s uncommitted edit left alone · (this commit)
 - 2026-11-19 · **First touches on the rig; a touch fan for a phone that sees only the middle (user: I don't need the views the camera can't see):** the left arm (arm 2) played all 9 touches of the usual fan at speed 0.3, 50% cap, and rested on the first point within 0.6 deg of its targets, largest motor load 64 of 1000; the phone is framed on the cloth, so the fingertip is clear in 4 of the 9 pictures, cut by the frame edge in 2 and out of the picture in 3, under the 6 the fit takes; `arm_calibration.py touch --outer DEG` sets the fan's outer edge (`touch_points(widest, outer)`), `--outer 0` keeps every touch between the centre line and the inner edge; dry run of the left arm's `--outer 0` fan: 9 points, 0 clamped steps, 43 mm self-clearance; not yet played on the arm; the map will only be fitted over the middle strip, and a cloth moved left of the left arm's centre line leaves the picture; `test_arm_calibration.py` 11 passed, full hardware and fast suites not re-run · (this commit)

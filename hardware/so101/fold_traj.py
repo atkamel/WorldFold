@@ -26,7 +26,7 @@ JOINTS = ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_ro
 DT = 0.05
 OPEN, PART_OPEN = 1.0, 0.3     # jaw (rad): open, and how far the release opens with the arm still
 HOVER = 0.05          # m above the table before the pinch
-PINCH_Z = 0.005       # fingertip height at the pinch
+PINCH_Z = 0.005       # fingertip height at the pinch, unless the caller gives its own (pinch_z)
 PLACE_Z = 0.012       # fingertip height at the release: the held corner rests on the bottom layer
 RETREAT = 0.05        # lift after the release (straight up where the arm can, see plan)
 STEP = 0.004          # m of fingertip travel per step (8 cm/s at dt; replay.py's default speed halves it)
@@ -37,7 +37,7 @@ MAX_SHORT = 0.10      # m the release may stop short of the place it was asked f
 MIN_FOLD = 0.02       # m of fold that must be left after shortening
 
 
-def plan(arm, pinch, place, closed, counts=None, empty_reading=False):
+def plan(arm, pinch, place, closed, counts=None, empty_reading=False, pinch_z=PINCH_Z):
     """One arm's fold from `pinch` to `place` ((x, y) m in its base frame, x forward, y left): target rows [T, 6],
     the worst (tip error, tilt), marks {"hover": above the corner with the jaw open, "pinch": down on the corner,
     "check": 2 cm into the lift, "placed": the carry's end} as row indices, and the step count of its carry.
@@ -70,7 +70,7 @@ def plan(arm, pinch, place, closed, counts=None, empty_reading=False):
         return [np.asarray(a) + np.subtract(b, a) * k / n for k in range(1, n + 1)]
 
     q = seed                                                # the pinch first, then up from it: one branch
-    for p in [np.array([*pinch, PINCH_Z])] + segment((*pinch, PINCH_Z), (*pinch, HOVER)):
+    for p in [np.array([*pinch, pinch_z])] + segment((*pinch, pinch_z), (*pinch, HOVER)):
         q, err, _ = arm.solve(p, q)
         worst[0] = max(worst[0], err)
     rows.append([*q, OPEN])                                 # above the corner: where replay.py's glide ends
@@ -81,7 +81,7 @@ def plan(arm, pinch, place, closed, counts=None, empty_reading=False):
         marks["empty"] = len(rows) - 1
         move_jaw(closed, OPEN, 10)
     marks["hover"] = len(rows) - 1
-    line(segment((*pinch, HOVER), (*pinch, PINCH_Z)), OPEN)
+    line(segment((*pinch, HOVER), (*pinch, pinch_z)), OPEN)
     marks["pinch"] = len(rows) - 1
     move_jaw(OPEN, closed, 12)
     hold(8, closed)
@@ -89,7 +89,7 @@ def plan(arm, pinch, place, closed, counts=None, empty_reading=False):
     peak = min(0.10, 0.45 * reach)                          # under the cloth's half length: the carry never pulls it
 
     def arc(n):
-        return [(*(pinch + (place - pinch) * k), PINCH_Z + (PLACE_Z - PINCH_Z) * k + peak * np.sin(np.pi * k))
+        return [(*(pinch + (place - pinch) * k), pinch_z + (PLACE_Z - pinch_z) * k + peak * np.sin(np.pi * k))
                 for k in np.arange(1, n + 1) / n]
 
     n = int(np.ceil(1.3 * reach / STEP))
@@ -101,7 +101,7 @@ def plan(arm, pinch, place, closed, counts=None, empty_reading=False):
         n = int(np.ceil(n * max(1.0, fastest / JOINT_RATE)))
     used["carry"] = n
     line(arc(max(n, (counts or {}).get("carry", 0))), closed)
-    marks["check"] = next(k for k in range(lift, len(rows)) if arm.tip(rows[k][:5])[0][2] >= PINCH_Z + 0.02)
+    marks["check"] = next(k for k in range(lift, len(rows)) if arm.tip(rows[k][:5])[0][2] >= pinch_z + 0.02)
     marks["placed"] = len(rows) - 1
     hold(10, closed)
     move_jaw(closed, PART_OPEN, 14)                         # gentle release: the jaw opens part way, arm still
@@ -119,11 +119,11 @@ def plan(arm, pinch, place, closed, counts=None, empty_reading=False):
     return np.array(rows), worst, marks, used
 
 
-def release_pose_is_clear(arm, pinch, place, closed):
+def release_pose_is_clear(arm, pinch, place, closed, pinch_z=PINCH_Z):
     """True if the arm keeps clear of itself with the fingertip at the release point `place`, jaw shut and jaw open.
     One pose, reached along the table from `pinch`: a quick test before a whole plan is made and checked."""
     q = np.radians([0.0, 40.0, -30.0, 80.0, 0.0])
-    start = np.array([pinch[0], pinch[1], PINCH_Z])
+    start = np.array([pinch[0], pinch[1], pinch_z])
     end = np.array([place[0], place[1], PLACE_Z])
     steps = max(1, int(np.ceil(np.linalg.norm(end - start) / 0.02)))
     for k in range(steps + 1):
@@ -133,7 +133,7 @@ def release_pose_is_clear(arm, pinch, place, closed):
     return distance >= collision.CLEARANCE
 
 
-def clear_release(arm, pinch, place, closed, empty_reading=False):
+def clear_release(arm, pinch, place, closed, empty_reading=False, pinch_z=PINCH_Z):
     """(release point, m it stops short of `place`, the plan's step counts): the point nearest `place`, on the line
     back toward `pinch`, whose whole plan keeps the arm clear of itself. ValueError if there is none."""
     pinch = np.asarray(pinch, float)
@@ -145,19 +145,19 @@ def clear_release(arm, pinch, place, closed, empty_reading=False):
     short = 0.0
     while short <= MAX_SHORT and reach - short >= MIN_FOLD:
         candidate = place + short * back
-        if release_pose_is_clear(arm, pinch, candidate, closed):
-            rows, _, _, used = plan(arm, pinch, candidate, closed, empty_reading=empty_reading)
+        if release_pose_is_clear(arm, pinch, candidate, closed, pinch_z):
+            rows, _, _, used = plan(arm, pinch, candidate, closed, empty_reading=empty_reading, pinch_z=pinch_z)
             if collision.closest(rows.tolist())[0] >= collision.CLEARANCE:
                 return candidate, short, used
         short += SHORT_STEP
     raise ValueError(f"no release within {MAX_SHORT * 100:.0f} cm of the place keeps the arm clear of itself")
 
 
-def fold(points, closed=-0.17, empty_reading=False):
+def fold(points, closed=-0.17, empty_reading=False, pinch_z=PINCH_Z):
     """A two-arm trajectory for replay.py from {"left": (pinch, place), "right": (pinch, place)}, each (x, y) m in
     that arm's base frame. A place the arm cannot reach without hitting its own base is moved back toward the pinch
 ("release_short_mm"). Both plans get the same step counts; the grasp check comes when both have lifted 2 cm.
-    `empty_reading`: see plan."""
+    `empty_reading`: see plan. `pinch_z` is the fingertip's height at the pinch (m in the arm model)."""
     arm = Arm()
     asked = points
     points = {}
@@ -165,14 +165,14 @@ def fold(points, closed=-0.17, empty_reading=False):
     natural = []
     for side in ("left", "right"):
         pinch, place = asked[side]
-        release, short, used = clear_release(arm, pinch, place, closed, empty_reading)
+        release, short, used = clear_release(arm, pinch, place, closed, empty_reading, pinch_z)
         points[side] = (pinch, (float(release[0]), float(release[1])))
         shorts[side] = short
         natural.append(used)
     counts = {name: max(n[name] for n in natural) for name in natural[0]}
     arms, report, checks = {}, {}, []
     for side in ("left", "right"):
-        target, (err, tilt), marks, _ = plan(arm, *points[side], closed, counts, empty_reading)
+        target, (err, tilt), marks, _ = plan(arm, *points[side], closed, counts, empty_reading, pinch_z)
         clearance = collision.closest(target.tolist())[0]
         if clearance < collision.CLEARANCE:
             raise ValueError(f"the {side} arm comes within {clearance * 1000:.0f} mm of itself")
@@ -188,7 +188,8 @@ def fold(points, closed=-0.17, empty_reading=False):
                         "release_short_mm": round(shorts[side] * 1000, 1),
                         "self_clearance_mm": round(clearance * 1000, 1)}
     return {"dt": DT, "joints": JOINTS, "arms": arms, "marks": marks | {"check": max(checks)},
-            "source": {"tool": "hardware/so101/fold_traj.py", "closed_rad": closed, **report}}
+            "source": {"tool": "hardware/so101/fold_traj.py", "closed_rad": closed, "pinch_height_m": pinch_z,
+                       **report}}
 
 
 def trajectory(cloth=0.24, near=0.10, spacing=0.30, closed=-0.17, empty_reading=False):
