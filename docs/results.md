@@ -2916,3 +2916,16 @@ pixels to stand in for a moved cloth, then `fold_camera.plan`. n = 1 frame, no a
 With the calibration left alone the pinch points move with the cloth (about 3.7 cm for 40 px). Calibrating after
 the move puts them back at the ruler position, because the calibration takes the cloth's place as the ruler
 position. That is the sequence the user ran on the rig when the arms went to the same place every time.
+
+
+## PowerA wired controller (2026-11-19)
+
+Local macOS USB smoke test with one PowerA EnWired Lavender Swirl (`20d6:2026`, firmware descriptor `0x0101`).
+USB configuration and startup succeeded. The reader received main input reports with a 32-byte payload. An
+initial report with four minimum stick values was filtered from live state output. Captured input replay and
+live JSON both returned signed stick values. Button, trigger, Share, and Guide assertions used synthetic packets.
+No dataset or random seeds apply to the USB check.
+
+The macOS fast suite plus controller parser tests finished with 261 passed (all three controller tests),
+5 skipped, and 6 failed. The failures were the seed check (#15), the toy placement test (#17), and four
+MuJoCo depth tests reporting `invalid CoreGraphics connection` in the sandboxed runner.

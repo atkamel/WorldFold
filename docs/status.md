@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-18 · **Branch:** `feat/iphone-lidar` (SO-101 hardware side track) · **Phase:** Q, the
+**Updated:** 2026-11-19 · **Branch:** `feat/iphone-lidar` (SO-101 and controller hardware side tracks) · **Phase:** Q, the
 quarter fold on Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -15,6 +15,9 @@ the revised plan in [reviews/2026-10-22-quarter-fold-reevaluation.md](reviews/20
 with at least one recorded clean demo. Bar: mean ≤ 2.0 cm and edge ≤ 3.0 cm on gated episodes (flat on the table,
 released, still), user 2026-10-22.
 
+- **PowerA USB controller (user, 2026-11-19):** `python -m hardware.controller` streams decoded input from
+  the Lavender Swirl EnWired on this Mac. Live USB input and stick reports checked. Button, trigger, Share, and
+  Guide mappings checked with fixtures. See `hardware/controller/README.md`.
 - **Hardware bring-up (user, 2026-11-17), both arms' tick maps set:** both followers and the iPhone run on the
   Windows laptop (panel driven on both arms, limits verified on the motors, idle poses recorded). The elbow zeros
   were off by 12.2 degrees on arm 2 and 5.5 on arm 1 (read with the limp arm held in the model's zero pose) and are
@@ -101,7 +104,7 @@ step count for panel runs; `fold_live.py --dry-run`, then `fold_live.py --grasp-
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-14: fast 262 passed, 1 failed (#15), 5 skipped; hardware (`pytest hardware/so101`) 65 passed; Windows 2026-11-18: hardware 127 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-19: fast plus controller 261 passed, 6 failed (#15, #17, and four CGL connection errors), 5 skipped; hardware (`pytest hardware/so101`) 65 passed; Windows 2026-11-18: hardware 127 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -138,7 +141,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
-| 17 | `isaac/tests/test_rlpd.py::test_learns_toy_placement` fails on Windows (2026-11-14, twice in a row): learned mean 0.0667 against the 0.05 bar; cause not looked into | fast suite on Windows | Q |
+| 17 | `isaac/tests/test_rlpd.py::test_learns_toy_placement` fails on Windows (2026-11-14, twice in a row): learned mean 0.0667 against the 0.05 bar; also failed on macOS (2026-11-19); cause not looked into | fast suite | Q |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
 | 13 | `cloth_fold_rl/fold_env.py` puts `mujoco_sim/` first on `sys.path`; `mujoco_sim/tests` then shadows the root `tests` namespace for later-collected test modules that do `from tests.imitation...` (worked around in `test_backend.py` with lazy imports) | test collection order | — |
@@ -160,6 +163,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-19 · **PowerA EnWired controller (user):** Python GIP reader, raw capture, and offline decoder in `hardware/controller/`. Live JSON from the plugged-in controller and raw packet replay verified. Focused parser tests passed. Fast plus controller 261 passed, 5 skipped, 6 failed (#15, #17, four CGL connection errors). See results.md · (this commit)
 - 2026-11-18 · **Why the arms ignore a moved cloth (user: they go to the same place even after calibrating and looking again):** offline on a recorded frame, the plan follows a slid picture when the calibration is unchanged (pinch 3.7 cm over for 40 px) and returns to the ruler position when calibrated after the move (results.md); the Calibrate button is the trap; two fixes put to the user (calibrate from the arms, or guard the button), none built; no code changed, tests not re-run · (this commit)
 - 2026-11-18 · **First recorded panel fold analysed: it folded (user: analyze the run):** run `20261118_000529` on the real arms and phone, started from the panel (so the panel's port hand-over works on Windows): both grippers on the far corners at the pinch, corners carried, half fold left on the table; encoders within 0.2 cm of the plan at the pinch; fold score far edge 1.74 cm mean, 2.55 cm max (results.md); the jaw reads -9 deg holding the cloth, the same as empty, so the grasp check cannot work on it; the run before it failed at the look (a 24.5 cm side); `summary.json` shows 0 steps for panel runs (the script writes them), not fixed; no code changed, tests not re-run · (this commit)
 - 2026-11-18 · **Every movement is logged; panel request checks (user: log all movements with images and encoder values):** `replay.py` writes `runs/<date_time>/steps.jsonl` as it goes (time, phase, row, targets and readings per arm in model radians; glides every fifth pose; grasp-check readings), with `replay_meta.json` and `plan.json`; `--log FILE` now names that step file (the old end-of-run JSON is gone); `fold_job.py` records each panel fold through `recorder.Recorder` (picture and depth 5 times a second on the same clock, look, calibration, output, events) and passes the folder's `steps.jsonl` to the script; from the commit review: a fold that cannot start gives the arms back, `/mirror` and `/leader` are refused while an arm is lent and an arm comes back following nothing, the laptop page answers only `localhost` / `127.0.0.1` and only JSON posts; the user reports camera folds going to the same place whatever the cloth's position (the calibration was redone after each move, which makes that the standard position) and nowhere near the corners at the standard position, cause not found; not run on the arms; hardware 127 passed, fast suite not re-run (no file under its test paths changed) · (this commit)
