@@ -205,6 +205,29 @@ def fold_points(corners, spacing, inset=INSET):
     return points
 
 
+def settings(cal):
+    """(inset, overshoot, pinch height) of a calibration, each inside its limits. ValueError otherwise: these send
+    the arms, and camera.json can hold anything."""
+    inset = cal.get("inset", INSET)
+    overshoot = cal.get("overshoot", OVERSHOOT)
+    pinch_z = cal.get("pinch_height", fold_traj.PINCH_Z)
+    numbers = [inset, pinch_z]
+    if isinstance(overshoot, (list, tuple)) and len(overshoot) == 2:
+        numbers = numbers + list(overshoot)
+    else:
+        raise ValueError(f"the calibration's overshoot is {overshoot!r}, not two numbers")
+    for number in numbers:
+        if isinstance(number, bool) or not isinstance(number, (int, float)) or not np.isfinite(number):
+            raise ValueError(f"the calibration holds {number!r} where a number belongs")
+    if not 0.0 <= inset < cal["side"] / 2:
+        raise ValueError(f"the inset {inset} m is not between 0 and half the cloth's side")
+    if max(abs(overshoot[0]), abs(overshoot[1])) > MAX_OVERSHOOT:
+        raise ValueError(f"the overshoot {list(overshoot)} m is over {MAX_OVERSHOOT} m")
+    if not PINCH_HEIGHTS[0] <= pinch_z <= PINCH_HEIGHTS[1]:
+        raise ValueError(f"the pinch height {pinch_z} m is not between {PINCH_HEIGHTS[0]} and {PINCH_HEIGHTS[1]} m")
+    return inset, (float(overshoot[0]), float(overshoot[1])), pinch_z
+
+
 def aimed(points, overshoot):
     """Where each arm is sent so that its fingertip lands on `points` ({side: (pinch, place)}, each arm's own frame):
     `overshoot` (forward, outward) m short of them. Outward is to the left for the left arm, the right for the right."""
@@ -222,9 +245,7 @@ def plan(rgb, cal, spacing, closed, keep=None, empty_reading=False):
     """The fold for the cloth in `rgb`: (trajectory, corners, corners in pixels, each arm's points). With a
     calibration from the arms the corners returned are in the left arm's frame (x forward, y left). The points
     returned are where the fingertips should land; the trajectory is sent the calibration's overshoot short of them."""
-    inset = cal.get("inset", INSET)
-    overshoot = cal.get("overshoot", OVERSHOOT)
-    pinch_z = cal.get("pinch_height", fold_traj.PINCH_Z)
+    inset, overshoot, pinch_z = settings(cal)
     if "arms" in cal:
         by_arm, px = look_arms(rgb, cal, keep)
         points = fold_points_arms(by_arm, inset)

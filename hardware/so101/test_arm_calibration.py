@@ -346,3 +346,13 @@ def test_a_saved_overshoot_aims_short_and_inward_and_a_saved_pinch_height_lowers
     with pytest.raises(SystemExit):
         fold_camera.main(["look", "--overshoot", "0.2", "0"] + common)
 
+
+def test_a_calibration_file_with_a_setting_out_of_range_is_refused_at_the_look():
+    picture = synthetic.render(synthetic.cloth(), synthetic.BASES)
+    for key, value in (("pinch_height", -0.05), ("overshoot", [0.2, 0.0]), ("overshoot", [0.01]), ("inset", 0.5),
+                       ("pinch_height", "low")):
+        cal = arm_cal(BEHIND)
+        cal[key] = value
+        with pytest.raises(ValueError):
+            fold_camera.plan(picture, cal, S, -0.17)
+
