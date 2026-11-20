@@ -259,3 +259,28 @@ def test_the_click_page_takes_clicks_only_from_its_own_page_and_only_for_a_touch
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_a_fan_cut_short_on_the_outer_side_keeps_every_touch_on_the_inner_side():
+    pytest.importorskip("collision")
+    arm = Arm()
+    usual = arm_calibration.touch_points()
+    assert np.allclose(arm_calibration.touch_points(arm_calibration.WIDEST, arm_calibration.WIDEST), usual)
+    points = arm_calibration.touch_points(arm_calibration.WIDEST, 0.0)
+    assert len(points) == 9
+    lowest_y = 0.0
+    for x, y in points:
+        assert y <= 1e-9                                 # the left arm's inner side is to its right (y negative)
+        lowest_y = min(lowest_y, y)
+    usual_lowest_y = min(p[1] for p in usual)
+    assert np.isclose(lowest_y, usual_lowest_y)          # no nearer the other arm than the usual fan
+    assert np.isclose(max(p[1] for p in points), 0.0)    # and it reaches the arm's own centre line
+    rows = arm_calibration.trajectory(points)["arms"]["left"]["target"]     # reachable, clear of itself
+    most_inward = 0.0
+    most_outward = 0.0
+    for row in rows:
+        for p in arm.joint_points(row[:5]):
+            most_inward = max(most_inward, -p[1])
+            most_outward = max(most_outward, p[1])
+    assert most_inward < 0.16
+    assert most_outward < 0.03

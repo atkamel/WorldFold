@@ -270,6 +270,10 @@ arms instead, one map per arm, so the cloth plays no part in it and the bases ma
   idle pose, where it takes up 5.5 cm to each side of its own centre line and 10 cm in front of its origin. With
   the bases far apart (arms at the cloth's sides) `--widest 55` fits the map over more of the table; the arm then
   sweeps 31 cm to each side.
+- **`--outer`** is how far the touches span on the arm's outer side, `--widest` when not given. `--outer 0` keeps
+  every touch between the arm's centre line and its inner edge, for a phone that does not see the outer side
+  (2026-11-19: with the phone framed on the cloth, the left arm's fingertip was clear in 4 of 9 pictures of the
+  usual fan). The map is then fitted over that strip only.
 - **click.** A page on this machine shows each picture. Click the very tip of the closed gripper where it meets
   the table, or say the fingertip is not in the picture. Six clicked touches per arm are the least.
 - **fit.** Fits both arms' maps, or neither. It prints how far the touches lie from each map, and how far a touch

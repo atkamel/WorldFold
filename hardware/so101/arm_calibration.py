@@ -51,13 +51,29 @@ MAX_FIT_ERROR = 0.015       # m: a touch this far from the map the OTHER touches
 CLICK_PORT = 8011
 
 
-def touch_points(widest=WIDEST):
+def touch_points(widest=WIDEST, outer=None):
     """The points an arm touches, (x forward, y left) m in its own frame: the far ring left to right, the middle,
-    the near ring right to left, so consecutive points are neighbours. The rings span `widest` degrees to either
-    side: the wider, the more of the table the map is fitted over, and the more room the arm needs beside it."""
-    angles = (-widest, -widest / 3, widest / 3, widest)
-    ring = lambda r, angles: [(r * np.cos(np.radians(a)), r * np.sin(np.radians(a))) for a in angles]   # noqa: E731
-    return ring(RADII[0], angles[::-1]) + [MIDDLE] + ring(RADII[1], angles)
+    the near ring right to left, so consecutive points are neighbours. The rings run from `widest` degrees on the
+    arm's right (the left arm's inner side) to `outer` degrees on its left, `widest` when not given: the wider, the
+    more of the table the map is fitted over, and the more room the arm needs beside it. An `outer` of 0 keeps
+    every touch between the centre line and the inner edge, for a camera that does not see the outer side."""
+    if outer is None:
+        outer = widest
+    if outer <= -widest:
+        raise ValueError(f"the fan's outer edge ({outer} degrees) must be left of its inner edge ({-widest})")
+    bearings = []
+    for k in range(4):
+        bearings.append(-widest + (outer + widest) * k / 3)
+    far = []
+    for bearing in reversed(bearings):
+        far.append((RADII[0] * np.cos(np.radians(bearing)), RADII[0] * np.sin(np.radians(bearing))))
+    near = []
+    for bearing in bearings:
+        near.append((RADII[1] * np.cos(np.radians(bearing)), RADII[1] * np.sin(np.radians(bearing))))
+    centre = np.radians((outer - widest) / 2)
+    reach = float(np.hypot(MIDDLE[0], MIDDLE[1]))
+    middle = (reach * np.cos(centre), reach * np.sin(centre))
+    return far + [middle] + near
 
 
 def touch_plan(arm, points, step=fold_traj.STEP):
@@ -388,6 +404,9 @@ def main(argv=None):
                     "that the touches span. Nothing checks for the other arm. The default keeps the touching arm "
                     "within 18 cm of its own centre line, for bases side by side 30 cm apart; with the bases far "
                     "apart (arms at the cloth's sides) 55 fits the map over more of the table, sweeping 31 cm")
+    ap.add_argument("--outer", type=float, help="touch: degrees the touches span on the arm's outer side (default: "
+                    "as --widest). 0 keeps every touch between the arm's centre line and its inner edge, for a "
+                    "phone that does not see the outer side; the map is then only fitted over that strip")
     args, replay_args = ap.parse_known_args(argv)
     if args.mode == "click":
         if not load_touches("left") and not load_touches("right"):
@@ -412,7 +431,10 @@ def main(argv=None):
         sys.exit("touch needs --arm left or --arm right")
     import replay
     import rgbd
-    points = touch_points(args.widest)
+    try:
+        points = touch_points(args.widest, args.outer)
+    except ValueError as err:
+        sys.exit(f"No touch sequence: {err}")
     if args.arm == "right":                         # mirrored, so each arm's first touch (the one replay.py glides
         points = [(x, -y) for x, y in points]       # to before it asks) is on its outer side, away from the other
     try:
