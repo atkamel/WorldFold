@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-19 · **Branch:** `feat/iphone-lidar` (SO-101 and controller hardware side tracks) · **Phase:** Q, the
+**Updated:** 2026-11-19 · **Branch:** `feat/iphone-lidar` (SO-101 and two-arm gamepad side tracks) · **Phase:** Q, the
 quarter fold on Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -15,6 +15,11 @@ the revised plan in [reviews/2026-10-22-quarter-fold-reevaluation.md](reviews/20
 with at least one recorded clean demo. Bar: mean ≤ 2.0 cm and edge ≤ 3.0 cm on gated episodes (flat on the table,
 released, still), user 2026-10-22.
 
+- **Two-arm PowerA teleop (user, 2026-11-19):** `python hardware/so101/ui.py --gamepad` gives the left and right
+  sticks their own followers. LB switches to height, LT and RT toggle the jaws, and RB enables motion. The paired
+  loop checks both arms and the table in one model before sending a step. Tested with fake servos, the saved idle
+  poses, and live controller USB input. Windows XInput decoding checked with a fixture. Physical arm motion in
+  gamepad mode still needs a rig check. See `hardware/so101/README.md`.
 - **PowerA USB controller (user, 2026-11-19):** `python -m hardware.controller` streams decoded input from
   the Lavender Swirl EnWired on this Mac. Live USB input and stick reports checked. Button, trigger, Share, and
   Guide mappings checked with fixtures. See `hardware/controller/README.md`.
@@ -104,7 +109,7 @@ step count for panel runs; `fold_live.py --dry-run`, then `fold_live.py --grasp-
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-19: fast plus controller 261 passed, 6 failed (#15, #17, and four CGL connection errors), 5 skipped; hardware (`pytest hardware/so101`) 65 passed; Windows 2026-11-18: hardware 127 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | macOS 2026-11-19: fast plus controller and SO-101 448 passed, 5 skipped, and 3 failed, see results.md; Windows 2026-11-18: hardware 127 passed; macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -163,6 +168,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-19 · **Two-arm gamepad teleop (user):** `ui.py --gamepad` drives the two followers from one sample and checks the pair and table before sending goals. Simulated servos and live PowerA heartbeat verified, physical arm motion and Windows controller I/O untested. Fast plus controller and SO-101 448 passed, 5 skipped, and 3 failed. See results.md · (this commit)
 - 2026-11-19 · **PowerA EnWired controller (user):** Python GIP reader, raw capture, and offline decoder in `hardware/controller/`. Live JSON from the plugged-in controller and raw packet replay verified. Focused parser tests passed. Fast plus controller 261 passed, 5 skipped, 6 failed (#15, #17, four CGL connection errors). See results.md · (this commit)
 - 2026-11-18 · **Why the arms ignore a moved cloth (user: they go to the same place even after calibrating and looking again):** offline on a recorded frame, the plan follows a slid picture when the calibration is unchanged (pinch 3.7 cm over for 40 px) and returns to the ruler position when calibrated after the move (results.md); the Calibrate button is the trap; two fixes put to the user (calibrate from the arms, or guard the button), none built; no code changed, tests not re-run · (this commit)
 - 2026-11-18 · **First recorded panel fold analysed: it folded (user: analyze the run):** run `20261118_000529` on the real arms and phone, started from the panel (so the panel's port hand-over works on Windows): both grippers on the far corners at the pinch, corners carried, half fold left on the table; encoders within 0.2 cm of the plan at the pinch; fold score far edge 1.74 cm mean, 2.55 cm max (results.md); the jaw reads -9 deg holding the cloth, the same as empty, so the grasp check cannot work on it; the run before it failed at the look (a 24.5 cm side); `summary.json` shows 0 steps for panel runs (the script writes them), not fixed; no code changed, tests not re-run · (this commit)

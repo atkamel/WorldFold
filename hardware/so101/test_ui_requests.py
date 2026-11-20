@@ -30,7 +30,7 @@ class NoRecording:
 
 
 @pytest.fixture
-def panel(tmp_path, monkeypatch):
+def panel(tmp_path, monkeypatch, request):
     ports = {}
     monkeypatch.setitem(sys.modules, "scservo_sdk", test_ui_lend.make_fake_sdk(ports))
     sys.modules.pop("ui", None)
@@ -44,7 +44,15 @@ def panel(tmp_path, monkeypatch):
         (tmp_path / name / "limits.json").write_text(json.dumps(limits))
         arms_by_name[name] = ui.Arm(name)
     fold_stops = []
-    handler = ui.make_handler(arms_by_name, NoCamera(), NoRecording(), stop_fold=lambda: fold_stops.append(1))
+    class Gamepad:
+        status = "Ready"
+
+        def stop(self):
+            self.status = "Stopped"
+
+    gamepad = Gamepad() if getattr(request, "param", False) else None
+    handler = ui.make_handler(arms_by_name, NoCamera(), NoRecording(), stop_fold=lambda: fold_stops.append(1),
+                              gamepad=gamepad)
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_address[1]
@@ -107,3 +115,16 @@ def test_hold_stops_a_cloth_fold_too(panel):
     _, post, _ = panel
     assert post("/hold", {}) == 200
     assert post.fold_stops == [1]
+
+
+@pytest.mark.parametrize("panel", [True], indirect=True)
+def test_gamepad_panel_reserves_motion_and_routes_stop(panel):
+    arms_by_name, post, port = panel
+    arm = arms_by_name["arm1"]
+    before = dict(arm.target)
+    for path in ("/goal", "/pose", "/idle", "/mirror", "/leader", "/fold/start"):
+        assert post(path, {"arm": "arm1", "pose": {"1": 3000}}) == 409
+    assert arm.target == before
+    assert post("/hold", {}) == 200
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/state", timeout=5) as response:
+        assert json.load(response)["gamepad"] == "Stopped"

@@ -28,7 +28,7 @@ class Reading:
 
 
 @contextmanager
-def read_controller(timeout_ms: int = 250) -> Iterator[Iterator[Reading]]:
+def read_controller(timeout_ms: int = 250, *, heartbeat: bool = False) -> Iterator[Iterator[Reading]]:
     """Claim the USB interface for the lifetime of a stream of raw and decoded reports."""
     if timeout_ms < 1:
         raise ValueError("timeout_ms must be positive")
@@ -74,10 +74,17 @@ def read_controller(timeout_ms: int = 250) -> Iterator[Iterator[Reading]]:
         def readings() -> Iterator[Reading]:
             state = ControllerState()
             saw_main_report = False
+            have_input = False
             while True:
                 try:
                     raw = bytes(endpoint_in.read(endpoint_in.wMaxPacketSize, timeout=timeout_ms))
                 except usb.core.USBTimeoutError:
+                    if heartbeat:
+                        # This controller can go quiet with the sticks held still. Confirm it still answers USB.
+                        active = device.ctrl_transfer(0x80, 0x08, 0, 0, 1, timeout=timeout_ms)
+                        if bytes(active) != bytes((config.bConfigurationValue,)):
+                            raise ControllerError("PowerA lost its active USB configuration")
+                        yield Reading(b"", state if have_input else None)
                     continue
                 try:
                     report = parse_input_report(raw)
@@ -96,7 +103,8 @@ def read_controller(timeout_ms: int = 250) -> Iterator[Iterator[Reading]]:
                 if ack is not None:
                     write(ack)
                 state = report.state(state)
-                yield Reading(raw, state)
+                have_input = have_input or report.command == MAIN_REPORT
+                yield Reading(raw, state if have_input or not heartbeat else None)
 
         stream = readings()
         try:

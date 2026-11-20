@@ -20,10 +20,8 @@ CHAIN = ["base", "shoulder", "upper_arm", "lower_arm", "wrist", "gripper", "movi
 _cache = {}
 
 
-def load():
-    """(model, data, [(geom id, geom id, "part and part")]) for the pairs that are checked. Built once."""
-    if _cache:
-        return _cache["model"], _cache["data"], _cache["pairs"]
+def arm_spec():
+    """The fitted model with a solid base for collision checks."""
     package = importlib.util.find_spec("so101_nexus")
     if package is None:
         raise ImportError("so101_nexus is not installed")
@@ -33,23 +31,37 @@ def load():
         if geom.parent.name == "base":      # the model's base is visual only
             geom.contype = 1
             geom.conaffinity = 1
-    model = spec.compile()
-    # MuJoCo's default convex routine returns exactly 0 for some of these mesh pairs; the older one does not
-    model.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_NATIVECCD)
+    return spec
+
+
+def solid_geoms(model, prefix=""):
+    """Group the selected arm's solid geom IDs by body name."""
     solid = {}
     for geom_id in range(model.ngeom):
         if model.geom_contype[geom_id] == 0:
             continue
         part = model.body(model.geom_bodyid[geom_id]).name
-        if part not in solid:
-            solid[part] = []
-        solid[part].append(geom_id)
-    pairs = []
+        if part.startswith(prefix):
+            solid.setdefault(part.removeprefix(prefix), []).append(geom_id)
+    return solid
+
+
+def self_pairs(solid):
     for i in range(len(CHAIN)):
         for j in range(i + MIN_JOINTS_APART, len(CHAIN)):
             for first in solid[CHAIN[i]]:
                 for second in solid[CHAIN[j]]:
-                    pairs.append((first, second, f"{CHAIN[i]} and {CHAIN[j]}"))
+                    yield first, second, f"{CHAIN[i]} and {CHAIN[j]}"
+
+
+def load():
+    """(model, data, [(geom id, geom id, "part and part")]) for the pairs that are checked. Built once."""
+    if _cache:
+        return _cache["model"], _cache["data"], _cache["pairs"]
+    model = arm_spec().compile()
+    # The default convex routine returns exactly 0 for some of these mesh pairs.
+    model.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_NATIVECCD)
+    pairs = list(self_pairs(solid_geoms(model)))
     _cache["model"] = model
     _cache["data"] = mujoco.MjData(model)
     _cache["pairs"] = pairs

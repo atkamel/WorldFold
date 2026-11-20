@@ -2929,3 +2929,17 @@ No dataset or random seeds apply to the USB check.
 The macOS fast suite plus controller parser tests finished with 261 passed (all three controller tests),
 5 skipped, and 6 failed. The failures were the seed check (#15), the toy placement test (#17), and four
 MuJoCo depth tests reporting `invalid CoreGraphics connection` in the sandboxed runner.
+
+
+## Two-arm gamepad teleop (2026-11-19)
+
+Local check with one PowerA EnWired controller, two simulated servo buses, and the configured side-by-side
+SO-101 model. The PowerA USB check observed 14 input reports and 31 successful idle heartbeats in three seconds.
+With simulated servos, both arms accepted a stick command in one tick from their saved idle positions. Tests
+covered left and right Cartesian jogging, height mode, both jaw latches, deadman release, stale input,
+the panel's Stop routing, and rejection of targets into the other arm or the table. The crossed-path case
+also checked independently advancing arms when each simultaneous endpoint was clear. Windows XInput values
+were checked with a synthetic input structure. Physical motion and the Windows USB link were not exercised.
+No dataset or random seeds apply to these controller checks.
+
+The combined macOS fast suite and controller and SO-101 tests finished with 448 passed, 5 skipped, and 3 failed. The failures were the known seed check (#15), the toy placement test (#17), and the idle test loading an empty servo SDK stand-in. The SDK stand-in failure also reproduced when selecting only the unchanged fold-camera and idle test modules without importing the gamepad integration.

@@ -572,3 +572,29 @@ kinematics against MuJoCo when `mujoco` and `so101-nexus` are installed.
 | `ui.py`, `ui.html`, `phone.html` | teleop; the page also shows the iPhone LiDAR point cloud and has a record button |
 | `teleop_record.py` | what the record button saves: every arm's joints (encoder steps) plus phone color and depth, 10 Hz, into `runs/` |
 | `test_*.py` | tests, see above |
+
+## Two-arm gamepad
+
+Run the panel with both followers and the controller plugged into the same computer. From the repository root,
+using the panel's Python environment:
+
+```sh
+python hardware/so101/ui.py --gamepad
+```
+
+The gamepad mode uses NumPy, MuJoCo, and the same `so101-nexus` collision model as `replay.py`. On Windows it uses
+XInput controller slot 0. On macOS install the dependencies in [the PowerA setup guide](../controller/README.md)
+and close any other process reading the raw USB controller before launching the panel.
+
+The two followers must be configured side by side in `arms.json`, in left-to-right order, with the measured
+`spacing_cm` between the bases. The left stick drives `arm2` on this rig and the right stick drives `arm1`. Either
+stick moves its gripper across the table. Hold LB to use both stick Y axes for height. LT and RT toggle the
+corresponding jaws. Both arms must have torque enabled in the panel. Let the sticks rest at center while the panel
+calibrates them, then hold RB to enable motion. Release RB, press B, or use the panel's Stop button to hold both arms.
+A lost controller or stalled servo requires releasing RB and starting again. If raw USB has not sent its first
+input report, move a stick briefly and then let both sticks rest.
+
+Gamepad mode reserves the two followers and leaves the leader arm unopened. Start the panel without `--gamepad`
+to use keyboard, phone motion, mirror, leader, and cloth-fold controls. The panel's status shows when a proposed
+move is blocked. Clearance is evaluated in the configured two-arm model with the table plane at the bases.
+Physical validation assumes flat, aligned bases and a clear table around the arms.

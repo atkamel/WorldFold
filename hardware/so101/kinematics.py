@@ -63,19 +63,28 @@ class Arm:
         fingertip = p + R @ self.site[0]
         return origins[2], origins[3], fingertip
 
-    def solve(self, target, seed, iters=200):
+    def solve(self, target, seed, iters=200, *, keep_direction=False):
         """Arm angles for the fingertip at `target` (base frame: x forward, y left, z up), on the seed's branch;
         wrist_roll stays 0 (free, it flipped half a turn at the edge of reach). The tip position comes first: the four
         joints leave one freedom at a reachable target, and it goes to keeping the fingers as near straight down as
         that position allows. A joint at its limit is held there and the others go on. Returns (q, tip error m, tilt
-        deg); a tip error means the target is out of reach on this branch."""
+        deg); a tip error means the target is out of reach on this branch. With keep_direction, keep the seed's
+        roll and finger direction for a short jog. An initially out-of-range joint may move toward its limit."""
         down = np.array([0.0, 0.0, -1.0])
-        q = np.clip(np.asarray(seed, float), self.low, self.high)
-        q[4] = 0.0
+        seed = np.asarray(seed, float)
+        if keep_direction:
+            low, high = np.minimum(self.low, seed), np.maximum(self.high, seed)
+            q = seed.copy()
+            direction = self.tip(q)[1]
+        else:
+            low, high = self.low, self.high
+            q = np.clip(seed, low, high)
+            q[4] = 0.0
+            direction = down
         for _ in range(iters):
             f = np.concatenate(self.tip(q))
             J = np.column_stack([(np.concatenate(self.tip(q + dq)) - f) / 1e-6 for dq in np.eye(5)[:4] * 1e-6])
-            e, lean = target - f[:3], down - f[3:]
+            e, lean = target - f[:3], direction - f[3:]
             free = np.ones(4, bool)
             for _ in range(4):                             # drop the joints a limit holds, solve with the rest
                 dq = np.zeros(4)
@@ -87,12 +96,12 @@ class Arm:
                 reach, upright = inv @ e, null @ (Jz.T @ lean)
                 dq[free] = reach * min(1.0, 0.1 / max(float(np.max(np.abs(reach))), 1e-12)) \
                     + upright * min(1.0, 0.05 / max(float(np.max(np.abs(upright))), 1e-12))
-                held = free & (((q[:4] <= self.low[:4]) & (dq < 0)) | ((q[:4] >= self.high[:4]) & (dq > 0)))
+                held = free & (((q[:4] <= low[:4]) & (dq < 0)) | ((q[:4] >= high[:4]) & (dq > 0)))
                 if not held.any():
                     break
                 free &= ~held
             if np.max(np.abs(dq)) < 1e-6:                  # converged: a warm start from the last waypoint takes a
                 break                                      # few steps
-            q[:4] = np.clip(q[:4] + dq, self.low[:4], self.high[:4])
+            q[:4] = np.clip(q[:4] + dq, low[:4], high[:4])
         p, z = self.tip(q)
         return q, float(np.linalg.norm(target - p)), float(np.degrees(np.arccos(np.clip(-z[2], -1.0, 1.0))))

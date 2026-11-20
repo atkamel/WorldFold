@@ -92,6 +92,12 @@
     <button id="idle">Go to idle</button>
     <button id="stop" class="stop">Stop <kbd>Esc</kbd></button>
   </div>
+  <section id="gamepad" hidden>
+    <strong>Two-arm gamepad</strong>
+    <p class="hint">Sticks move the left and right grippers. Hold LB for height and RB to drive.
+      LT and RT toggle the jaws. Press B or release RB to stop.</p>
+    <p class="hint" id="gamepad-status" role="status"></p>
+  </section>
   <section id="camera">
     <strong>iPhone LiDAR</strong>
     <iframe id="cloud" src="/cloud" title="iPhone LiDAR point cloud"></iframe>
@@ -396,6 +402,7 @@ function moveGripper(c, p, pitch) {
   return true;
 }
 function canDrive(arm, needsTwin = true) {
+  if (state.gamepad !== null) return false;
   if (!state.arms[arm].torque) { toast("Torque is off. Turn it on to drive the arm."); return false; }
   if (needsTwin && !calibrated(arm)) { toast("Calibrate the twin first: the gripper moves are worked out from it."); return false; }
   return true;
@@ -411,7 +418,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 function keyStep(now) {
   const dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
   const on = code => held.has(code) ? 1 : 0;
-  if (!state || !active || !MOVE_KEYS.some(k => held.has(k)) || !state.arms[active].torque || !calibrated(active)) {
+  if (!state || state.gamepad !== null || !active || !MOVE_KEYS.some(k => held.has(k)) || !state.arms[active].torque || !calibrated(active)) {
     keyDrive = null;
     return;
   }
@@ -572,6 +579,7 @@ canvas.addEventListener("pointercancel", endDrag);
 // Goals are batched and sent at most every 30 ms, one request per arm; the latest value always goes out.
 let queued = {}, timer = null;
 function setTargets(arm, deg) {          // deg: { id: degrees }, clamped to the joint limits
+  if (state?.gamepad != null) return;
   for (const [k, d] of Object.entries(deg)) {
     const id = +k, [lo, hi] = angleRange(arm, id);
     const pos = toPos(arm, id, Math.min(hi, Math.max(lo, d / DEG)));
@@ -796,7 +804,12 @@ function render() {
   btn.textContent = `Torque: ${on ? "on" : "off"}`;
   btn.classList.toggle("on", on);
   // A leader arm stays limp so a hand can move it.
-  btn.disabled = document.getElementById("idle").disabled = isLeader && !on;
+  btn.disabled = isLeader && !on;
+  const gamepad = state.gamepad !== null;
+  document.getElementById("idle").disabled = gamepad || btn.disabled;
+  document.getElementById("gamepad").hidden = !gamepad;
+  document.getElementById("fold").hidden = gamepad;
+  if (gamepad) document.getElementById("gamepad-status").textContent = state.gamepad;
   for (const b of tabs.children) {
     b.textContent = `${b.dataset.arm} · ${state.arms[b.dataset.arm].torque ? "on" : "off"}`;
     b.classList.toggle("active", b.dataset.arm === active);
@@ -807,7 +820,8 @@ function render() {
   const leaderBtn = document.getElementById("leader");
   leaderBtn.textContent = `Leader arm: ${leading() ? "on" : "off"}`;
   leaderBtn.classList.toggle("on", leading());
-  document.getElementById("mode-hint").textContent = isLeader
+  mirrorBtn.disabled = leaderBtn.disabled = gamepad;
+  document.getElementById("mode-hint").textContent = gamepad ? "Gamepad controls both followers." : isLeader
     ? "Leader arm. Move it by hand; with Leader arm on, its follower copies it."
     : on ? "Holding. Use the keys or drag the orange ball to move the gripper."
     : "Limp. Move the arm by hand; the screen follows it.";
@@ -815,7 +829,7 @@ function render() {
   for (const id of IDS) {
     const r = rows[id], [lo, hi] = angleRange(active, id), t = targetPos(active, id), p = me.present[id];
     r.slider.min = (lo * DEG).toFixed(1); r.slider.max = (hi * DEG).toFixed(1);
-    r.slider.disabled = !on;
+    r.slider.disabled = gamepad || !on;
     if (sliderHeld !== id) r.slider.value = toAngle(active, id, on ? t : p) * DEG;
     r.nums.textContent = `${(toAngle(active, id, p) * DEG).toFixed(0)}°` + (on ? ` → ${(toAngle(active, id, t) * DEG).toFixed(0)}°` : "");
     r.flip.checked = !!twinOf(active).flip[id];
@@ -829,7 +843,7 @@ function render() {
     real.tip.visible = s.torque;
   }
   for (const b of calibratedOnly) {
-    b.disabled = !calibrated(active) || isLeader;
+    b.disabled = gamepad || !calibrated(active) || isLeader;
     b.title = calibrated(active) ? "" : "Calibrate the twin first: these are defined relative to straight up";
   }
   renderMine(active, me.presets ?? {});

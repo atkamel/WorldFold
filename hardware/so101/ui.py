@@ -3,6 +3,7 @@
     .venv/bin/python ui.py             # every arm in arms.json; open http://localhost:8101
     .venv/bin/python ui.py arm2        # just one of them
                                        # phone: open the https link it prints
+    .venv/bin/python ui.py --gamepad    # both followers, left/right sticks and triggers
     On Windows the interpreter is .venv/Scripts/python.exe; set PLATFORM in arms.py.
 
 The page also shows the iPhone LiDAR point cloud and has a record button: a recording saves
@@ -22,6 +23,7 @@ SO-101 moved by hand), e.g. {"arm1": "leader"}. With it on, the follower
 copies the leader's joint angles.
 """
 
+import argparse
 import io
 import json
 import os
@@ -166,10 +168,11 @@ class Arm:
         except IndexError:
             ok = False
         if not ok:
-            return  # keep the last good readings; the next tick retries
-        for m in MOTOR_IDS:
-            if self.reader.isAvailable(m, ADDR_PRESENT_POSITION, 2):
-                self.present[m] = self.reader.getData(m, ADDR_PRESENT_POSITION, 2)
+            return False  # keep the last good readings; the next tick retries
+        available = [m for m in MOTOR_IDS if self.reader.isAvailable(m, ADDR_PRESENT_POSITION, 2)]
+        for m in available:
+            self.present[m] = self.reader.getData(m, ADDR_PRESENT_POSITION, 2)
+        return len(available) == len(MOTOR_IDS)
 
     def send_goals(self, goals):
         """Send every motor its goal in ONE packet, so all joints move in step."""
@@ -177,7 +180,7 @@ class Arm:
         for m, goal in goals.items():
             goal = round(goal)  # command is eased in fractional steps
             sync.addParam(m, [scs.SCS_LOBYTE(goal), scs.SCS_HIBYTE(goal)])
-        sync.txPacket()
+        return sync.txPacket() == scs.COMM_SUCCESS
 
     def apply_torque(self, on):
         if on:
@@ -389,7 +392,7 @@ LOOK_FILE = HERE / "look.png"
 ARM_MOVES = ["/goal", "/torque", "/pose", "/idle"]
 
 
-def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fold=None):
+def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fold=None, gamepad=None):
     # follower -> leader arm, for the pairs whose arms are both running
     leaders = {f: arms_by_name[l] for f, l in arms.CONFIG.get("leaders", {}).items()
                if f in arms_by_name and l in arms_by_name}
@@ -434,6 +437,7 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                     "follow": {a.name: {"leader": a.follows[0].name, "mirror": a.follows[1]}
                                for a in arms_by_name.values() if a.follows},
                     "speed": first.speed,
+                    "gamepad": gamepad.status if gamepad is not None else None,
                 })
             elif path == "/phone":
                 self.reply(PHONE_PAGE_FILE.read_bytes(), "text/html")
@@ -482,6 +486,9 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                 return
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])) or "{}")
             arm = arms_by_name.get(body.get("arm"))
+            if gamepad is not None and self.path in ("/goal", "/pose", "/idle", "/mirror", "/leader", "/fold/start"):
+                self.reply({"error": "The controller has exclusive control in gamepad mode"}, status=409)
+                return
             if self.path.startswith("/fold/"):
                 if fold is None:
                     self.reply({"error": "not available here"}, status=404)
@@ -516,6 +523,8 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                 # Stop everything, mirror and leader arm included, so no arm keeps chasing another. A cloth fold
                 # holds the arms itself, so it is stopped too: `stop_fold` is given to the phone's page as well,
                 # which has no fold buttons.
+                if gamepad is not None:
+                    gamepad.stop()
                 if stop_fold is not None:
                     stop_fold()
                 for a in arms_by_name.values():
@@ -557,33 +566,58 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
 
 
 def main():
-    names = sys.argv[1:] or list(arms.ARMS)
+    parser = argparse.ArgumentParser(description="SO-101 teleop panel")
+    parser.add_argument("arms", nargs="*", metavar="ARM", help="which serial arms to open")
+    parser.add_argument("--gamepad", action="store_true", help="drive the two side-by-side followers")
+    args = parser.parse_args()
+    names = args.arms or list(arms.ARMS)
+    gamepad = None
+    if args.gamepad:
+        from gamepad import Gamepad
+
+        leaders = set(arms.CONFIG.get("leaders", {}).values())
+        followers = [name for name in arms.CONFIG["arms"] if name not in leaders]
+        if arms.CONFIG.get("layout") != "side_by_side" or len(followers) != 2:
+            parser.error("--gamepad requires two side-by-side followers in arms.json, listed left then right")
+        if args.arms and set(args.arms) != set(followers):
+            parser.error("--gamepad requires both followers")
+        names = followers
     unknown = [n for n in names if n not in arms.ARMS]
     if unknown:
-        sys.exit(f"Unknown arm {unknown}; arms.json has {', '.join(arms.ARMS)}")
+        parser.error(f"No serial port for {', '.join(unknown)} on platform {arms.PLATFORM}")
     arms_by_name = {name: Arm(name) for name in names}
-    for arm in arms_by_name.values():
-        threading.Thread(target=run, args=(arm,), daemon=True).start()
+    if args.gamepad:
+        spacing = arms.CONFIG.get("spacing_cm")
+        if spacing is None:
+            parser.error("--gamepad requires spacing_cm in arms.json")
+        gamepad = Gamepad(*arms_by_name.values(), float(spacing) / 100)
+        threading.Thread(target=gamepad.run, daemon=True).start()
+    else:
+        for arm in arms_by_name.values():
+            threading.Thread(target=run, args=(arm,), daemon=True).start()
     camera = panel_camera.Camera()
     # On its own thread: looking for the phone can block, and the arms must not wait for it.
     threading.Thread(target=camera.connect_loop, daemon=True).start()
     recording = teleop_record.TeleopRecording(arms_by_name, camera)
     fold = fold_job.FoldJob(arms_by_name, camera)
     server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name, camera, recording, fold=fold,
-                                                                           stop_fold=fold.stop))
+                                                                           stop_fold=fold.stop, gamepad=gamepad))
 
     print(f"Arms: {', '.join(f'{n} ({arms.port(n)})' for n in names)}")
     print(f"Laptop: http://localhost:{HTTP_PORT}")
-    start_phone_server(arms_by_name, camera, recording, fold.stop)
+    start_phone_server(arms_by_name, camera, recording, fold.stop, gamepad)
     print("Ctrl+C to stop; torque state is left as is.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print()
+    if gamepad is not None:
+        gamepad.shutdown.set()
+        gamepad.stop()
     recording.stop()
 
 
-def start_phone_server(arms_by_name, camera, recording, stop_fold=None):
+def start_phone_server(arms_by_name, camera, recording, stop_fold=None, gamepad=None):
     """The phone teleop page over HTTPS. Skipped when openssl is missing (a stock Windows install)."""
     try:
         ensure_certificate()
@@ -592,7 +626,7 @@ def start_phone_server(arms_by_name, camera, recording, stop_fold=None):
         return
     token = secrets.token_urlsafe(8)
     phone_server = ThreadingHTTPServer(("0.0.0.0", PHONE_PORT), make_handler(arms_by_name, camera, recording, token,
-                                                                           stop_fold=stop_fold))
+                                                                           stop_fold=stop_fold, gamepad=gamepad))
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(CERT_FILE, KEY_FILE)
     phone_server.socket = context.wrap_socket(phone_server.socket, server_side=True)
