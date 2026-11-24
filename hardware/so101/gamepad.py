@@ -21,15 +21,16 @@ CALIBRATE_FOR = 0.35
 CENTER_RANGE = 8500
 CENTER_MOTION = 3000
 DEAD_ZONE = 9000  # raw stick units from the centre that count as rest; a released stick settles thousands off
-TRIGGER_PRESS = 550
+TRIGGER_START = 100  # of 1023: a trigger pulled less than this is at rest
 TRIGGER_RELEASE = 350
 REACH_SPEED = 0.20  # m/s the fingertip moves out, in, up or down with a stick fully over
 PAN_SPEED = 90  # deg/s the base turns with a stick fully over
-WRIST_SPEED = 60  # deg/s the wrist tilts while a bumper or trigger is held
+LIFT_SPEED = 0.15  # m/s up with a bumper held, and down with a trigger pulled all the way
+WRIST_SPEED = 60  # deg/s the wrist tilts while a tilt key is held
 MAX_JOINT_SPEED = 120  # deg/s
 JAW_SPEED = 90  # deg/s of a claw on its way open or closed
 ROLL_SPEED = 90  # deg/s a claw turns about the wrist while a roll key is held
-ROLL_HOLD = 0.3  # s a roll key counts as held after the page last said so
+KEY_HOLD = 0.3  # s a roll or tilt key counts as held after the page last said so
 CLAW_OPEN = 30  # deg the claw opens to (the jaw's model angle; shut is about -10, its limit about 120)
 LAG_TIME = 0.15  # s of its own top speed an arm joint may trail its command before that arm waits
 HOME_SPEED = 30  # deg/s of the fastest joint on the glide to the idle poses
@@ -83,17 +84,17 @@ class Gamepad:
         self.center_candidate = None
         self.enabled = False
         self.a_was_down = False
-        self.click_was_down = [False, False]
-        self.height = [False, False]
         self.last_tick = None
         self.loop_ms = 0.0
         self.homing = False
         self.y_was_down = False
         self.tips = [None, None]  # per arm: a fingertip point dragged in the panel, base frame, m
         self.claws = [None, None]  # per arm: the jaw limit a claw key sent it to, until it is there
-        self.rolls = [0, 0]  # per arm: -1, 0 or 1, the way a held roll key turns the claw
-        self.roll_fresh = [False, False]  # the page has just said the key is held
-        self.roll_until = [0.0, 0.0]  # loop time after which a key not heard of again counts as let go
+        # Keys held on the panel's page. Per kind of move and arm: -1, 0 or 1, whether the page has just said
+        # so, and the loop time after which a key not heard of again counts as let go.
+        self.held = {"roll": [0, 0], "tilt": [0, 0]}
+        self.held_fresh = {"roll": [False, False], "tilt": [False, False]}
+        self.held_until = {"roll": [0.0, 0.0], "tilt": [0.0, 0.0]}
         self.fails = 0  # servo reads or writes missed in a row
         self.log = None  # a text file the panel opens: what the loop did, for reading after a run
         self.logged_status = None
@@ -162,10 +163,9 @@ class Gamepad:
         self.status = status
         self.enabled = False
         self.homing = False
-        self.height = [False, False]
         self.tips = [None, None]
         self.claws = [None, None]
-        self.rolls = [0, 0]
+        self.held = {"roll": [0, 0], "tilt": [0, 0]}
         for arm in self.arms:
             arm.target = dict(arm.command)
 
@@ -244,18 +244,21 @@ class Gamepad:
                 return True
             return False
 
-    def set_roll(self, name, way):
-        """Turn the claw of the arm called `name` about its wrist: `way` is -1 or 1 while a roll key is held, 0
-        when it is let go. The page repeats a held key; one it stops repeating is let go after ROLL_HOLD. False
-        when driving is off or the arm is not one of the two."""
+    def set_hold(self, name, what, way):
+        """A key held on the panel's page for the arm called `name`. `what` is "roll" (the claw turns about the
+        wrist) or "tilt" (the wrist joint, 1 is up); `way` is -1 or 1 while the key is held and 0 when it is let
+        go. The page repeats a held key; one it stops repeating is let go after KEY_HOLD. False when driving is
+        off, or the arm or the move is not known."""
+        if what not in self.held:
+            return False
         left, right = self.arms
         with left.lock, right.lock:
             if not self.enabled:
                 return False
             for i in range(2):
                 if self.arms[i].name == name:
-                    self.rolls[i] = way
-                    self.roll_fresh[i] = way != 0
+                    self.held[what][i] = way
+                    self.held_fresh[what][i] = way != 0
                     return True
             return False
 
@@ -294,19 +297,26 @@ class Gamepad:
         outward = self.kinematics.tip(stretched)[0][:2] - self.pan_axis
         return outward / np.linalg.norm(outward)
 
-    def stick_step(self, arm, mapping, xy, height, dt):
+    def stick_step(self, arm, mapping, xy, dt):
         """(fingertip step (3,) m, base turn rad) a stick asks for in one step. Stick x turns the base. Stick y
-        moves the fingertip out and in the way the arm faces, or up and down in height mode."""
+        moves the fingertip out and in the way the arm faces."""
         step = np.zeros(3)
-        distance = xy[1] * REACH_SPEED * dt
-        if height:
-            step[2] = distance
-        else:
-            pan = mapping.to_rad(JOINTS[0], arm.command[JOINTS[0]])
-            step[:2] = self.facing(pan) * distance
+        pan = mapping.to_rad(JOINTS[0], arm.command[JOINTS[0]])
+        step[:2] = self.facing(pan) * xy[1] * REACH_SPEED * dt
         # On the gamepad positive x is right.
         turn = -self.pan_left * xy[0] * np.radians(PAN_SPEED) * dt
         return step, turn
+
+    def lift_step(self, bumper, trigger, dt):
+        """The height (m) a bumper and a trigger ask for in one step: the bumper is up at LIFT_SPEED, the trigger
+        is down, faster the further it is pulled."""
+        rise = 0.0
+        if bumper:
+            rise = rise + LIFT_SPEED * dt
+        if trigger > TRIGGER_START:
+            pulled = (trigger - TRIGGER_START) / (1023 - TRIGGER_START)
+            rise = rise - pulled * LIFT_SPEED * dt
+        return rise
 
     def tip_step(self, arm, mapping, point, dt):
         """(fingertip step (3,) m toward the dragged `point`, whether the fingertip is there)."""
@@ -473,7 +483,7 @@ class Gamepad:
             self.csv_rows = csv.writer(self.csv_file)
             header = ["time_s", "loop_ms", "status", "buttons", "left_trigger", "right_trigger",
                       "left_stick_x", "left_stick_y", "right_stick_x", "right_stick_y",
-                      "left_raw_x", "left_raw_y", "right_raw_x", "right_raw_y", "left_mode", "right_mode"]
+                      "left_raw_x", "left_raw_y", "right_raw_x", "right_raw_y"]
             for side in ("left", "right"):
                 for m in JOINTS:
                     header.append(f"{side}_command_{m}")
@@ -491,11 +501,6 @@ class Gamepad:
                self.shown_triggers[0], self.shown_triggers[1],
                sticks["left"][0], sticks["left"][1], sticks["right"][0], sticks["right"][1],
                sticks["raw"]["left"][0], sticks["raw"]["left"][1], sticks["raw"]["right"][0], sticks["raw"]["right"][1]]
-        for i in range(2):
-            if self.height[i]:
-                row.append("up and down")
-            else:
-                row.append("over the table")
         for arm, mapping in zip(self.arms, self.maps):
             with arm.lock:
                 command = dict(arm.command)
@@ -646,17 +651,12 @@ class Gamepad:
             buttons = state.buttons
             triggers = (state.left_trigger, state.right_trigger)
             bumpers = ("lb" in buttons, "rb" in buttons)
-            clicks = ("left_stick" in buttons, "right_stick" in buttons)
             a_down = "a" in buttons
             a_pressed = a_down and not self.a_was_down
             self.a_was_down = a_down
             y_down = "y" in buttons
             y_pressed = y_down and not self.y_was_down
             self.y_was_down = y_down
-            clicked = [False, False]
-            for i in range(2):
-                clicked[i] = clicks[i] and not self.click_was_down[i]
-                self.click_was_down[i] = clicks[i]
             axes = np.array([state.left_x, state.left_y, state.right_x, state.right_y])
             self.shown_buttons = " ".join(buttons)
             self.shown_triggers = triggers
@@ -715,35 +715,19 @@ class Gamepad:
                 self.stop_locked(self.status)
                 return
             jaw_goals = [None, None]
-            tilts = [0.0, 0.0]
             for i in range(2):
-                if clicked[i]:
-                    self.height[i] = not self.height[i]
-                # A bumper tilts that wrist up and a trigger tilts it down, while held.
-                up = bumpers[i]
-                down = triggers[i] >= TRIGGER_PRESS
-                if up != down:
-                    way = self.wrist_up
-                    if down:
-                        way = -way
-                    tilts[i] = way * np.radians(WRIST_SPEED) * dt
-                if self.roll_fresh[i]:
-                    self.roll_fresh[i] = False
-                    self.roll_until[i] = now + ROLL_HOLD
-                if now > self.roll_until[i]:
-                    self.rolls[i] = 0
+                for what in self.held:
+                    if self.held_fresh[what][i]:
+                        self.held_fresh[what][i] = False
+                        self.held_until[what][i] = now + KEY_HOLD
+                    if now > self.held_until[what][i]:
+                        self.held[what][i] = 0
                 if self.claws[i] is not None:
                     if abs(self.arms[i].command[replay.GRIPPER_ID] - self.claws[i]) < 0.5:
                         self.claws[i] = None
                     else:
                         jaw_goals[i] = self.claws[i]
-            modes = []
-            for i in range(2):
-                if self.height[i]:
-                    modes.append("up and down")
-                else:
-                    modes.append("over the table")
-            driving = f"Driving. Left stick: {modes[0]}. Right stick: {modes[1]}."
+            driving = "Driving."
             names = ("Left", "Right")
             notes = []
             goals = []
@@ -755,18 +739,21 @@ class Gamepad:
                     continue
                 step = np.zeros(3)
                 turn = 0.0
-                if np.any(sticks[i]):
-                    # A stick takes over from a point dragged in the panel.
+                rise = self.lift_step(bumpers[i], triggers[i], dt)
+                if np.any(sticks[i]) or rise != 0:
+                    # The controller takes over from a point dragged in the panel.
                     self.tips[i] = None
-                    step, turn = self.stick_step(arm, self.maps[i], sticks[i], self.height[i], dt)
+                    step, turn = self.stick_step(arm, self.maps[i], sticks[i], dt)
+                    step[2] = rise
                 elif self.tips[i] is not None:
                     step, arrived = self.tip_step(arm, self.maps[i], self.tips[i], dt)
                     if arrived:
                         self.tips[i] = None
                     else:
                         notes.append(f"{names[i]} arm: going to the dragged point.")
-                roll = self.rolls[i] * np.radians(ROLL_SPEED) * dt
-                goal, reachable = self.proposed(arm, self.maps[i], step, turn, tilts[i], roll, jaw_goals[i], dt)
+                roll = self.held["roll"][i] * np.radians(ROLL_SPEED) * dt
+                tilt = self.held["tilt"][i] * self.wrist_up * np.radians(WRIST_SPEED) * dt
+                goal, reachable = self.proposed(arm, self.maps[i], step, turn, tilt, roll, jaw_goals[i], dt)
                 if not reachable:
                     notes.append(f"{names[i]} arm: out of reach.")
                 goals.append(goal)

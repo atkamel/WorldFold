@@ -624,23 +624,31 @@ and close any other process reading the raw USB controller before launching the 
 The two followers must be configured side by side in `arms.json`, in left-to-right order, with the measured
 `spacing_cm` between the bases. The left stick drives `arm2` on this rig and the right stick drives `arm1`.
 
-| control | what it does |
+Two people drive it: one on the controller places the two grippers, one on the keyboard of the panel's page sets
+their angle and works the claws. Each uses the left hand for the left arm and the right hand for the right.
+
+| on the controller | what it does |
 |---|---|
 | left stick, right stick | sideways turns that arm's base; forward and back reach the fingertip out and in the way the arm faces |
-| click a stick | switches that arm's forward and back to up and down (stick forward is up); sideways still turns the base |
-| LB, RB | tilts the left, right wrist joint up while held |
-| LT, RT | tilts the left, right wrist joint down while held |
-| S, K on the keyboard | while driving: the left, right claw opens a little (30 deg, `CLAW_OPEN`) or shuts (the panel's page must have the keyboard) |
-| A, D on the keyboard | while driving: turns the left claw about its wrist, one way and the other, while held (90 deg/s, `ROLL_SPEED`) |
-| J, L on the keyboard | the same for the right claw |
-| A | starts driving, with the sticks centred and the claw buttons released; A again holds both arms |
+| LB, RB | the left, right arm up while held (15 cm/s, `LIFT_SPEED`) |
+| LT, RT | the left, right arm down, faster the further the trigger is pulled |
+| A | starts driving, with the sticks centred and the bumpers and triggers released; A again holds both arms |
 | B | stops; A drives again |
 | Y | while stopped or holding: both arms glide to their saved idle poses; B stops the glide |
-| drag the orange ball in the 3D view | while driving: that arm's fingertips go to where the ball is dropped (Shift-drag: up and down) |
+
+| on the keyboard, while driving | left arm | right arm |
+|---|---|---|
+| tilt the wrist joint up, down, while held (60 deg/s, `WRIST_SPEED`) | W, S | I, K |
+| turn the claw about the wrist, while held (90 deg/s, `ROLL_SPEED`) | A, D | J, L |
+| open the claw a little (30 deg, `CLAW_OPEN`) or shut it | E | U |
+| stop both arms | Space or Esc | |
+
+The panel's page must have the keyboard: click it once. Clicking a stick does nothing. In the 3D view, dragging an
+arm's orange ball while driving sends its fingertips to where the ball is dropped (Shift-drag: up and down).
 
 Both arms must have torque enabled in the panel. Let the sticks rest at center while the panel calibrates them,
 then press A, with the sticks centred and the bumpers and triggers released. B, the panel's Stop button or a lost
-controller holds both arms until A is pressed again, and both sticks go back to over the table. If raw USB has not sent its first input report, move a stick
+controller holds both arms until A is pressed again,  If raw USB has not sent its first input report, move a stick
 briefly and then let both sticks rest. From the folded idle pose, raise an arm before reaching out with it.
 
 A missed encoder read skips that one step and driving stays on; only reads missed for 15 steps in a row (0.3 s,
@@ -678,10 +686,10 @@ button is for the arm, the right button turns the view (with Shift it slides it)
 driving is off. In gamepad mode only the gripper can be dragged; turning one joint by its part is for the panel
 without `--gamepad`.
 
-A held roll key is repeated by the page ten times a second (`POST /gamepad/roll`: the arm and a way of -1, 0 or
-1). A key the loop stops hearing about for 0.3 s (`ROLL_HOLD`) counts as let go, so a page that loses the keyboard
-cannot leave a claw turning. The turn stops at the joint's recorded limits and goes through the same check; the
-moving jaw against the wrist is not in that check.
+A held tilt or roll key is repeated by the page ten times a second (`POST /gamepad/hold`: the arm, `roll` or
+`tilt`, and a way of -1, 0 or 1). A key the loop stops hearing about for 0.3 s (`KEY_HOLD`) counts as let go, so a
+page that loses the keyboard cannot leave a wrist or a claw turning. The turn stops at the joint's recorded limits
+and goes through the same check; the moving jaw against the wrist is not in that check.
 
 The glide to idle moves every joint of an arm straight to its idle value, the fastest at 30 deg/s
 (`HOME_SPEED`), through the same check as driving. The folded idle pose rests closer to itself than the clearances

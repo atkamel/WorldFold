@@ -138,14 +138,17 @@
         <span><kbd>A</kbd></span><span>drive, with the sticks centred; again to hold</span>
         <span><kbd>B</kbd></span><span>stop</span>
         <span>stick sideways</span><span>turn that arm's base</span>
-        <span>stick forward, back</span><span>reach out and in</span>
-        <span>click a stick</span><span>switch that arm's forward and back to up and down</span>
-        <span><kbd>LB</kbd> <kbd>RB</kbd></span><span>tilt the left, right wrist up</span>
-        <span><kbd>LT</kbd> <kbd>RT</kbd></span><span>tilt the left, right wrist down</span>
-        <span>keyboard <kbd>S</kbd> <kbd>K</kbd></span><span>open or close the left, right claw (click this page first)</span>
-        <span>keyboard <kbd>A</kbd> <kbd>D</kbd></span><span>turn the left claw one way, the other, while held</span>
-        <span>keyboard <kbd>J</kbd> <kbd>L</kbd></span><span>turn the right claw one way, the other, while held</span>
+        <span>stick forward, back</span><span>reach out, pull back</span>
+        <span><kbd>LB</kbd> <kbd>RB</kbd></span><span>left, right arm up</span>
+        <span><kbd>LT</kbd> <kbd>RT</kbd></span><span>left, right arm down, faster the further it is pulled</span>
         <span><kbd>Y</kbd></span><span>while stopped: both arms go to their idle poses</span>
+      </div>
+      <span class="label">Keyboard (click this page first)</span>
+      <div class="keys">
+        <span><kbd>W</kbd> <kbd>S</kbd> &nbsp; <kbd>I</kbd> <kbd>K</kbd></span><span>tilt the left, right wrist up and down</span>
+        <span><kbd>A</kbd> <kbd>D</kbd> &nbsp; <kbd>J</kbd> <kbd>L</kbd></span><span>turn the left, right claw</span>
+        <span><kbd>E</kbd> &nbsp; <kbd>U</kbd></span><span>open or shut the left, right claw</span>
+        <span><kbd>Space</kbd> <kbd>Esc</kbd></span><span>stop both arms</span>
         <span>drag the orange ball</span><span>while driving: that gripper goes to where you drop it, as far as it can reach</span>
         <span>right-drag, wheel</span><span>turn the view, zoom</span>
       </div>
@@ -553,19 +556,23 @@ function toggleGripper() {
   const open = Math.min(hi, GRIP_OPEN), closed = Math.max(0, lo);
   setTargets(active, { 6: targetDeg(active, 6) > (open + closed) / 2 ? closed : open });
 }
-// In gamepad mode the keyboard works the claws: S the left arm's, K the right arm's, each between its roll keys.
-const CLAW_KEYS = { KeyS: 0, KeyK: 1 };
+// In gamepad mode the keyboard works the claws: E the left arm's, U the right arm's, under each index finger.
+const CLAW_KEYS = { KeyE: 0, KeyU: 1 };
 async function toggleClaw(arm) {
   const answer = await post("/gamepad/claw", { arm });
   if (!answer.ok) toast((await answer.json()).error);
 }
-// A and D turn the left arm's claw about its wrist while held, J and L the right arm's. The page says a key is
-// held ten times a second; the controller loop takes a key it stops hearing about as let go.
-const ROLL_KEYS = { KeyA: [0, -1], KeyD: [0, 1], KeyJ: [1, -1], KeyL: [1, 1] };
+// Keys held in gamepad mode, the same shape under each hand: W and S tilt the left wrist up and down, A and D turn
+// the left claw; I and K, J and L do the same for the right arm. The page says a key is held ten times a second;
+// the controller loop takes a key it stops hearing about as let go.
+const ROLL_KEYS = {
+  KeyW: [0, "tilt", 1], KeyS: [0, "tilt", -1], KeyA: [0, "roll", -1], KeyD: [0, "roll", 1],
+  KeyI: [1, "tilt", 1], KeyK: [1, "tilt", -1], KeyJ: [1, "roll", -1], KeyL: [1, "roll", 1],
+};
 const rolling = {};             // key code -> the timer that keeps saying it is held
-function sendRoll(code) {
-  const [index, way] = ROLL_KEYS[code];
-  return post("/gamepad/roll", { arm: names[index], way });
+function sendRoll(code, letGo) {
+  const [index, what, way] = ROLL_KEYS[code];
+  return post("/gamepad/hold", { arm: names[index], what, way: letGo ? 0 : way });
 }
 async function startRoll(code) {
   if (rolling[code] || !names[ROLL_KEYS[code][0]]) return;
@@ -577,7 +584,7 @@ function endRoll(code) {
   if (!rolling[code]) return;
   clearInterval(rolling[code]);
   delete rolling[code];
-  post("/gamepad/roll", { arm: names[ROLL_KEYS[code][0]], way: 0 });
+  sendRoll(code, true);
 }
 addEventListener("keyup", e => endRoll(e.code));
 addEventListener("blur", () => { for (const code of Object.keys(rolling)) endRoll(code); });
@@ -585,6 +592,7 @@ addEventListener("keydown", e => {
   if (e.key === "Escape") { stop(); return; }
   if (!state || e.metaKey || e.ctrlKey || e.altKey) return;   // leave browser shortcuts alone
   if (state.gamepad !== null) {
+    if (e.code === "Space") { e.preventDefault(); if (!e.repeat) stop(); return; }
     if (e.code in CLAW_KEYS && !e.repeat && names[CLAW_KEYS[e.code]]) {
       e.preventDefault();
       toggleClaw(names[CLAW_KEYS[e.code]]);

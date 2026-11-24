@@ -522,17 +522,18 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
             if gamepad is not None and self.path in ("/goal", "/pose", "/idle", "/mirror", "/leader", "/fold/start"):
                 self.reply({"error": "The controller has exclusive control in gamepad mode"}, status=409)
                 return
-            if self.path == "/gamepad/roll":
-                # A roll key held or let go on the page: that arm's claw turns about its wrist.
+            if self.path == "/gamepad/hold":
+                # A roll or tilt key held or let go on the page.
                 if gamepad is None:
                     self.reply({"error": "not in gamepad mode"}, status=404)
                     return
                 way = body.get("way")
-                if arm is None or isinstance(way, bool) or way not in (-1, 0, 1):
-                    self.reply({"error": "send an arm and a way of -1, 0 or 1"}, status=400)
+                what = body.get("what")
+                if arm is None or what not in ("roll", "tilt") or isinstance(way, bool) or way not in (-1, 0, 1):
+                    self.reply({"error": "send an arm, roll or tilt, and a way of -1, 0 or 1"}, status=400)
                     return
-                if not gamepad.set_roll(arm.name, int(way)) and way != 0:
-                    self.reply({"error": "Press A on the controller to drive, then use the roll keys"}, status=409)
+                if not gamepad.set_hold(arm.name, what, int(way)) and way != 0:
+                    self.reply({"error": "Press A on the controller to drive, then use the keys"}, status=409)
                     return
                 self.reply({"ok": True})
                 return
