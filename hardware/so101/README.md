@@ -13,8 +13,13 @@ Where the first session on the real arms stopped, and what to do next. The secti
 - **Limits.** `check_limits.py` read every motor on both arms: min, max and homing offset match `limits.json`.
   Arm 2's joints 2 and 3 hold identical limits (870 / 3225); not swept by hand to confirm.
 - **Idle poses.** Recorded for both arms in the folded rest pose, where they stay with torque off.
-- **Twin (the 3D render).** `arm1/twin.json` is the calibration checked on the arm; `arm2/twin.json` is a copy of
-  it, not calibrated on arm 2 itself.
+- **3D view.** The panel draws each arm from `so101.urdf` with the real parts' meshes (the STL files of the
+  installed `so101_nexus` package, loaded with `urdf-loader` from the CDN that serves three.js), posed through the
+  arm model's tick map (`urdf.json`), so the picture is the arm the collision check sees. Checked in Chrome on a
+  stand-in servo bus: the drawn fingertip is where `kinematics.py` puts it. Not yet looked at beside the real arms.
+- **Twin.** Only the keyboard and the gripper drag use it: their arm maths runs in the page on rounded link lengths
+  from a straight-up reference. `arm1/twin.json` is the calibration checked on the arm; `arm2/twin.json` is a copy
+  of it, not calibrated on arm 2 itself.
 - **Panel (`ui.py`).** Driven on both real arms. It shows the LiDAR point cloud and records runs into `runs/`. The
   record button was tried with the real phone and a stand-in servo bus, not yet with the real arms.
 - **Phone.** Record3D over USB works on Windows once Apple Mobile Device Support is installed

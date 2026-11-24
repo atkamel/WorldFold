@@ -185,12 +185,15 @@
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "urdf-loader": "https://cdn.jsdelivr.net/npm/urdf-loader@0.13.1/src/URDFLoader.js"
 } }
 </script>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import URDFLoader from "urdf-loader";
 
 const IDS = [1, 2, 3, 4, 5, 6];
 // Every joint uses one convention: a POSITIVE angle means the right-hand end of
@@ -243,11 +246,20 @@ function targetPos(arm, id) {
   return l && (drag?.arm === arm || performance.now() < l.until) ? l.pos : state.arms[arm].target[id];
 }
 const targetDeg = (arm, id) => toAngle(arm, id, targetPos(arm, id)) * DEG;
+// The drawn arm uses the map of the arm model (urdf.json), the one the collision check uses. The twin
+// calibration above is only for the keyboard and the gripper drag.
+function modelAngle(arm, id, pos) {
+  const map = state.arms[arm].model;
+  return map.sign[id] * (pos - map.zero[id]) * RAD_PER_STEP;
+}
+function modelPos(arm, id, angle) {
+  const map = state.arms[arm].model;
+  return Math.round(map.zero[id] + map.sign[id] * angle / RAD_PER_STEP);
+}
 
 // ---------- 3D model ----------
-// Each joint is a THREE.Group nested inside the previous one, so turning a
-// joint carries everything after it, like the real arm. All angles 0 = straight up.
-// Model sizes are in cm; the world group scales them to scene units of 10 cm.
+// Each arm is drawn from so101.urdf with the real parts' meshes, one copy at the measured pose and a
+// see-through copy at the target. The scene is in units of 10 cm; the world group holds cm.
 const view = document.getElementById("view");
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 50);
@@ -261,43 +273,54 @@ const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(3, 6, 4)
 scene.add(new THREE.GridHelper(10, 20, 0x999999, 0xcccccc));
 const world = new THREE.Group(); world.scale.setScalar(0.1); scene.add(world);
 
-const BODY = 0xf2f0ea, MOTOR = 0x2a2a28, JAW = 0xd9632b;
+const JAW = 0xd9632b;
+const METRES_TO_CM = 100;
+
+// The description and its meshes are loaded once; every drawn arm is a copy.
+let robotTemplate = null;
+let robotReady = false;
+const robotManager = new THREE.LoadingManager();
+robotManager.onLoad = () => { robotReady = true; };
+robotManager.onError = url => { document.getElementById("status").textContent = `could not load ${url}`; };
+new URDFLoader(robotManager).load("/so101.urdf", robot => { robotTemplate = robot; });
 
 function buildArm(name, ghost) {
-  const meshes = [];
+  // Base frame: x = the arm's front, y = up, z = its right, in cm. The layout places it.
+  const base = new THREE.Group(); world.add(base);
+  // The description is in metres with z up and y to the arm's left.
+  const holder = new THREE.Group();
+  holder.rotation.x = -Math.PI / 2;
+  holder.scale.setScalar(METRES_TO_CM);
+  base.add(holder);
+  const robot = robotTemplate.clone();
+  // Its base link starts at the CAD origin; baseframe is the point on the table under the arm.
+  robot.position.copy(robot.joints["baseframe_frame"].position).negate();
+  holder.add(robot);
+  if (!ghost) base.add(new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(6, 0.1, 0), 11, JAW, 2.5, 1.8));
+
   const material = color => new THREE.MeshStandardMaterial({
     color: ghost ? 0x4a90d9 : color, roughness: 0.55,
     transparent: ghost, opacity: ghost ? 0.25 : 1, depthWrite: !ghost });
-  function add(parent, joint, geometry, color, x, y) {
-    const m = new THREE.Mesh(geometry, material(color));
-    m.position.set(x, y, 0); m.userData = { arm: name, joint }; parent.add(m); meshes.push(m);
-    return m;
-  }
-  const box = (parent, joint, w, h, d, color, y = h / 2, x = 0) =>
-    add(parent, joint, new THREE.BoxGeometry(w, h, d), color, x, y);
-  function group(parent, joint, x, y) {
-    const g = new THREE.Group(); g.position.set(x, y, 0); parent.add(g);
-    if (JOINTS[joint].axis === "z" && joint !== 6)        // motor hub drawn along the pivot axis
-      add(g, joint, new THREE.CylinderGeometry(1.6, 1.6, 3.4, 24), MOTOR, 0, 0).rotation.x = Math.PI / 2;
-    return g;
-  }
-  // Base frame: x = the arm's front, y = up, z = its right. The layout places it.
-  const base = new THREE.Group(); world.add(base);
-  if (!ghost) {
-    box(base, 0, 9, 3.5, 9, BODY);
-    base.add(new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(6, 0.1, 0), 11, JAW, 2.5, 1.8));
-  }
-  const fingers = L3 - WRIST_TO_ROLL;
+  // A part belongs to the last joint before it; the base's own parts get 0 and cannot be grabbed.
+  const jointOf = new Map();
   const g = {};
-  g[1] = group(base, 1, 0, 3.5);              box(g[1], 1, 5, 6.5, 5, MOTOR);
-  g[2] = group(g[1], 2, 0, SHOULDER_H - 3.5); box(g[2], 2, 2.8, L1, 3, BODY);
-  g[3] = group(g[2], 3, 0, L1);               box(g[3], 3, 2.6, L2, 2.8, BODY);
-  g[4] = group(g[3], 4, 0, L2);               box(g[4], 4, 2.4, WRIST_TO_ROLL, 2.6, BODY);
-  g[5] = group(g[4], 5, 0, WRIST_TO_ROLL);    box(g[5], 5, 3.6, 2.5, 3, MOTOR);
-                                              box(g[5], 5, 0.8, fingers - 1.8, 2.2, JAW, (fingers + 1.8) / 2, -1.2);
-  g[6] = group(g[5], 6, 1.2, 2.5);            box(g[6], 6, 0.8, fingers - 2.5, 2.2, JAW);
+  for (const id of IDS) {
+    g[id] = robot.joints[id];
+    g[id].ignoreLimits = true;             // draw what the encoders say, also past the description's limits
+    g[id].traverse(part => jointOf.set(part, id));
+  }
+  const meshes = [];
+  robot.traverse(part => {
+    if (!part.isMesh) return;
+    part.material = material(part.material.color.getHex());
+    part.userData = { arm: name, joint: jointOf.get(part) ?? 0 };
+    meshes.push(part);
+  });
   // The handle for dragging the gripper: the point between the fingertips.
-  const tip = add(g[5], "tip", new THREE.SphereGeometry(1.1, 20, 14), JAW, 0, fingers);
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.011, 20, 14), material(JAW));
+  tip.userData = { arm: name, joint: "tip" };
+  robot.links["gripperframe"].add(tip);
+  meshes.push(tip);
   return { base, g, meshes, tip };
 }
 
@@ -325,12 +348,7 @@ function buildModels() {
 }
 
 function poseArm(model, arm, posOf) {
-  for (const id of IDS) {
-    let a = toAngle(arm, id, posOf(id));
-    if (id === 6) a = Math.max(0, a);          // the jaw only opens outward
-    // Negative rotation: tilts +Y toward +X (forward) and turns clockwise seen from above.
-    model.g[id].rotation[JOINTS[id].axis] = -a;
-  }
+  for (const id of IDS) model.g[id].setJointValue(modelAngle(arm, id, posOf(id)));
 }
 
 const isGripper = joint => joint === 5 || joint === 6 || joint === "tip";
@@ -500,8 +518,8 @@ function pick(e) {
 function spinPlaneVector(arm, id) {
   // Measured on the ghost: it shows the target, which is what we're turning.
   const g = models[arm].ghost.g[id];
-  const axis = new THREE.Vector3(...(JOINTS[id].axis === "y" ? [0, 1, 0] : [0, 0, 1]))
-    .applyQuaternion(g.parent.getWorldQuaternion(new THREE.Quaternion()));
+  // Every joint of the description turns about its own z, which the turn itself leaves in place.
+  const axis = new THREE.Vector3(0, 0, 1).applyQuaternion(g.getWorldQuaternion(new THREE.Quaternion()));
   const pivot = g.getWorldPosition(new THREE.Vector3());
   if (Math.abs(axis.dot(raycaster.ray.direction)) < 0.12) return null;   // plane seen edge-on
   const hit = raycaster.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(axis, pivot), new THREE.Vector3());
@@ -533,7 +551,7 @@ canvas.addEventListener("pointerdown", e => {
     drag.start = tipHit(drag);
     drag.p0 = drag.gripper.p.clone();
   } else {
-    drag = { arm: part.arm, joint: part.joint, angle: targetDeg(part.arm, part.joint) / DEG,
+    drag = { arm: part.arm, joint: part.joint, angle: modelAngle(part.arm, part.joint, targetPos(part.arm, part.joint)),
              last: spinPlaneVector(part.arm, part.joint), x: e.clientX };
   }
   highlight();
@@ -559,16 +577,16 @@ canvas.addEventListener("pointermove", e => {
   const now = spinPlaneVector(drag.arm, drag.joint);
   let turned;
   if (now && drag.last) {
-    // Signed angle swept around the axis (right-hand rule); rotation = -angle, so negate.
-    turned = -Math.atan2(now.axis.dot(drag.last.v.clone().cross(now.v)), drag.last.v.dot(now.v));
+    // Signed angle swept around the joint's axis (right-hand rule), which is the model angle's direction.
+    turned = Math.atan2(now.axis.dot(drag.last.v.clone().cross(now.v)), drag.last.v.dot(now.v));
   } else {
     turned = (e.clientX - drag.x) * 0.01;  // edge-on fallback: drag right = positive
   }
   drag.last = now; drag.x = e.clientX;
   drag.angle += turned;
-  const [lo, hi] = angleRange(drag.arm, drag.joint);
-  drag.angle = Math.min(hi, Math.max(lo, drag.angle));
-  setTargets(drag.arm, { [drag.joint]: drag.angle * DEG });
+  const ends = state.arms[drag.arm].limits[drag.joint].map(p => modelAngle(drag.arm, drag.joint, p));
+  drag.angle = Math.min(Math.max(...ends), Math.max(Math.min(...ends), drag.angle));
+  setPositions(drag.arm, { [drag.joint]: modelPos(drag.arm, drag.joint, drag.angle) });
 });
 function endDrag() {
   if (!drag) return;
@@ -581,10 +599,17 @@ canvas.addEventListener("pointercancel", endDrag);
 // Goals are batched and sent at most every 30 ms, one request per arm; the latest value always goes out.
 let queued = {}, timer = null;
 function setTargets(arm, deg) {          // deg: { id: degrees }, clamped to the joint limits
-  if (state?.gamepad != null) return;
+  const positions = {};
   for (const [k, d] of Object.entries(deg)) {
     const id = +k, [lo, hi] = angleRange(arm, id);
-    const pos = toPos(arm, id, Math.min(hi, Math.max(lo, d / DEG)));
+    positions[id] = toPos(arm, id, Math.min(hi, Math.max(lo, d / DEG)));
+  }
+  setPositions(arm, positions);
+}
+function setPositions(arm, positions) {  // positions: { id: encoder steps }
+  if (state?.gamepad != null) return;
+  for (const [k, pos] of Object.entries(positions)) {
+    const id = +k;
     (local[arm] ??= {})[id] = { pos, until: performance.now() + 600 };
     (queued[arm] ??= {})[id] = pos;
   }
@@ -866,7 +891,7 @@ setInterval(async () => {
       twins[arm] = { zero: s.twin?.zero ?? {}, flip: s.twin?.flip ?? {} };
       if (!s.torque) delete local[arm];
     }
-    if (!models) {
+    if (!models && robotReady) {
       names = Object.keys(state.arms);
       buildModels();
       buildTabs();

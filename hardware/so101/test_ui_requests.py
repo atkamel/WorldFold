@@ -70,6 +70,15 @@ def panel(tmp_path, monkeypatch, request):
         except urllib.error.HTTPError as err:
             return err.code
 
+    def get(path):
+        """(HTTP status, body) of a GET to the panel."""
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as answer:
+                return answer.status, answer.read()
+        except urllib.error.HTTPError as err:
+            return err.code, b""
+
+    post.get = get
     post.fold_stops = fold_stops
     yield arms_by_name, post, port
     server.shutdown()
@@ -128,3 +137,27 @@ def test_gamepad_panel_reserves_motion_and_routes_stop(panel):
     assert post("/hold", {}) == 200
     with urllib.request.urlopen(f"http://127.0.0.1:{port}/state", timeout=5) as response:
         assert json.load(response)["gamepad"] == "Stopped"
+
+
+def test_the_state_carries_each_arm_s_map_from_encoder_steps_to_model_angles(panel):
+    _, post, _ = panel
+    status, body = post.get("/state")
+    assert status == 200
+    model = json.loads(body)["arms"]["arm1"]["model"]
+    assert sorted(model["zero"]) == ["1", "2", "3", "4", "5", "6"]
+    for motor in model["sign"]:
+        assert model["sign"][motor] in (1, -1)
+
+
+def test_the_panel_serves_the_arm_description_and_only_its_mesh_files(panel):
+    pytest.importorskip("so101_nexus")
+    _, post, _ = panel
+    status, body = post.get("/so101.urdf")
+    assert status == 200
+    assert b"<robot" in body
+    status, body = post.get("/assets/base_so101_v2.stl")
+    assert status == 200
+    assert len(body) > 1000
+    assert post.get("/assets/base_so101_v2.part")[0] == 404
+    assert post.get("/assets/..%2Fso101_new_calib.urdf")[0] == 404
+    assert post.get("/assets/../so101_new_calib.urdf")[0] == 404

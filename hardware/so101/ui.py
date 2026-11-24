@@ -24,6 +24,7 @@ copies the leader's joint angles.
 """
 
 import argparse
+import importlib.util
 import io
 import json
 import os
@@ -47,6 +48,7 @@ sys.path.insert(0, str(HERE.parent.parent))
 import arms  # noqa: E402
 import fold_job  # noqa: E402
 import panel_camera  # noqa: E402
+import replay  # noqa: E402
 import teleop_record  # noqa: E402
 from hardware.iphone_lidar.pointcloud import pack_frame, pack_no_points  # noqa: E402
 
@@ -62,6 +64,7 @@ MAX_SPEED = 180  # deg/s ceiling for the speed slider
 MAX_BURST_SPEED = 270  # deg/s ceiling for one-off fast moves (punches); near the motor's top speed
 
 PAGE_FILE = HERE / "ui.html"
+URDF_FILE = HERE / "so101.urdf"
 PHONE_PAGE_FILE = HERE / "phone.html"
 CERT_FILE = HERE / "certs" / "cert.pem"
 KEY_FILE = HERE / "certs" / "key.pem"
@@ -141,6 +144,9 @@ class Arm:
         self.pending_torque = None
         self.pending_pose = None
         self.speed = DEFAULT_SPEED
+        # The map the collision check and the fold use, so the page draws the arm they see.
+        follower = replay.Follower(name)
+        self.model = {"zero": follower.zero, "sign": follower.sign}
         self.burst_speed = None  # temporary faster speed until the current pose is reached
         self.pending_burst = None
         self.twin = json.loads(self.twin_file.read_text()) if self.twin_file.exists() else None
@@ -323,6 +329,7 @@ class Arm:
                 "lent": self.lent,
                 "limits": self.limits,
                 "twin": self.twin,
+                "model": self.model,
                 "presets": self.load_presets(),
             }
 
@@ -335,6 +342,18 @@ class Arm:
                 measured.append(self.present[m])
                 target.append(self.target[m])
             return measured, target
+
+
+def mesh_files():
+    """{file name: path} of the arm's mesh files, which ship with the so101_nexus package. Empty without it."""
+    package = importlib.util.find_spec("so101_nexus")
+    if package is None:
+        return {}
+    folder = Path(package.submodule_search_locations[0]) / "assets" / "SO101" / "assets"
+    found = {}
+    for file in folder.glob("*.stl"):
+        found[file.name] = file
+    return found
 
 
 def cloud_blob(camera):
@@ -400,6 +419,8 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
     """token=None: trusted (localhost). Otherwise every request must carry ?t=token,
     so only someone with the printed link can drive the arm over Wi-Fi."""
 
+    meshes = mesh_files()
+
     class Handler(BaseHTTPRequestHandler):
         def reply(self, body, content_type="application/json", status=200):
             data = body if isinstance(body, bytes) else json.dumps(body).encode()
@@ -451,6 +472,15 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                     self.reply(VENDOR_FILES[file_name].read_bytes(), "text/javascript")
                 else:
                     self.reply({"error": "not found"}, status=404)
+            elif path == "/so101.urdf":
+                self.reply(URDF_FILE.read_bytes(), "application/xml")
+            elif path.startswith("/assets/"):
+                # Only a name from the listing is served, so the request cannot reach another file.
+                file = meshes.get(path[len("/assets/"):])
+                if file is None:
+                    self.reply({"error": "not found"}, status=404)
+                else:
+                    self.reply(file.read_bytes(), "model/stl")
             elif path == "/record":
                 status = recording.status()
                 status["camera"] = camera.status()
