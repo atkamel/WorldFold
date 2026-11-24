@@ -68,7 +68,11 @@ class Gamepad:
             saved = json.loads((arms.folder(arm.name) / "idle_pose.json").read_text())
             ticks = {}
             for m in JOINTS:
-                ticks[m] = saved[str(m)]
+                low, high = arm.limits[m]
+                value = float(saved[str(m)])
+                if not np.isfinite(value):
+                    raise ValueError(f"{arm.name}: the idle pose of motor {m} is not a number")
+                ticks[m] = max(low, min(high, value))
             self.idle.append(ticks)
             idle_poses.append(self.pose(mapping, ticks))
         # The folded arm rests closer to itself than the clearances allow. The glide to idle may come that close.
@@ -206,8 +210,10 @@ class Gamepad:
             ahead.append(np.unique([proposed, (measured + proposed) / 2], axis=0))
         floors = self.guard.floors(held[0], held[1])
         if to_idle and floors is not None and self.idle_floors is not None:
+            # Only an arm against itself: the table and the other arm keep their full clearance.
             for i in range(len(floors)):
-                floors[i] = min(floors[i], self.idle_floors[i])
+                if self.guard.pairs[i][3] == "within an arm":
+                    floors[i] = min(floors[i], self.idle_floors[i])
         options = []
         if moving[0] and moving[1]:
             options.append((True, True))
@@ -244,7 +250,11 @@ class Gamepad:
                 return True
         return False
 
-    def home_step(self, dt):
+    def too_late(self, now, captured, started):
+        """Whether the controller sample has gone stale while this step was worked out."""
+        return now - captured + time.monotonic() - started > STALE_AFTER
+
+    def home_step(self, dt, now, captured, started):
         """One step of both arms straight toward their idle poses, every joint of an arm arriving together."""
         goals = []
         for i in range(2):
@@ -275,6 +285,12 @@ class Gamepad:
         chosen, blocked = self.choose(goals, True)
         if chosen is None:
             self.stop_locked(f"Stopped on the way to idle: clearance {blocked}. Move the arm clear, then press Y")
+            return
+        if self.too_late(now, captured, started):
+            self.center = self.center_candidate = None
+            self.stop_locked("Controller input timed out")
+            return
+        if self.shutdown.is_set():
             return
         if self.send(goals, chosen):
             self.status = "Going to the idle poses. B stops"
@@ -362,9 +378,13 @@ class Gamepad:
                 self.enabled = True
             if not self.enabled:
                 if y_pressed:
-                    self.homing = True
+                    if sticks_centered and claws_released:
+                        self.homing = True
+                    else:
+                        self.stop_locked("Center both sticks and release the claw buttons, then press Y")
+                        return
                 if self.homing:
-                    self.home_step(dt)
+                    self.home_step(dt, now, captured, started)
                     return
                 self.stop_locked(self.status)
                 return
@@ -409,7 +429,7 @@ class Gamepad:
             for i in range(2):
                 if moving[i] and not chosen[i]:
                     notes.append(f"{names[i]} arm blocked: clearance {blocked}.")
-            if now - captured + time.monotonic() - started > STALE_AFTER:
+            if self.too_late(now, captured, started):
                 self.center = self.center_candidate = None
                 self.stop_locked("Controller input timed out")
                 return

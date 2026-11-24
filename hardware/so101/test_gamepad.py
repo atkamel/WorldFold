@@ -352,3 +352,34 @@ def test_a_glide_to_idle_that_is_blocked_stops_and_says_why(mode, monkeypatch):
     assert driver.write_counts() == [0, 0]
     assert not mode.homing
     assert "table" in mode.status
+
+
+def test_a_saved_idle_pose_outside_the_limits_is_held_to_them(mode):
+    for arm, idle in zip(mode.arms, mode.idle):
+        for m in idle:
+            low, high = arm.limits[m]
+            assert low <= idle[m] <= high
+
+
+def test_y_with_a_stick_pushed_does_not_start_the_glide(mode):
+    driver = calibrated(mode)
+    driver.send(ControllerState(buttons=("y",), left_y=32767))
+    driver.send(ControllerState(left_y=32767))
+    assert driver.write_counts() == [0, 0]
+    assert not mode.homing
+
+
+def test_a_glide_step_is_not_sent_once_the_controller_input_is_stale(mode, monkeypatch):
+    driver = calibrated(mode)
+    gamepad = sys.modules["gamepad"]
+    clock = [100.0]
+
+    def slow_check(*samples):
+        clock[0] += 1.0
+        return None
+
+    monkeypatch.setattr(gamepad.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(mode.guard, "obstruction", slow_check)
+    driver.send(ControllerState(buttons=("y",)))
+    assert driver.write_counts() == [0, 0]
+    assert not mode.homing
