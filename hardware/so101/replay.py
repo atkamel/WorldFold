@@ -470,9 +470,6 @@ def run_poses(followers, poses, log=None, phase=None):
             for name in pose:
                 present[name] = followers[name].read_present()
             log.step(phase, None, pose, present)
-        late = time.monotonic() - (t0 + i * TICK_SECONDS)
-        if late > TICK_SECONDS:     # a slow read: later poses keep their pace (see play)
-            t0 += late
         for name, goals in pose.items():
             followers[name].send_goals(goals)
 
@@ -494,10 +491,6 @@ def play(followers, ticks, dt, speed, motors, progress, steps=None, log=None):
         progress["step"] = k
         if log is not None:
             log.append((k, time.monotonic(), {name: f.read_present() for name, f in followers.items()}))
-        late = time.monotonic() - row_start
-        if late > TICK_SECONDS:     # a slow read: the rest of the run starts later, at its usual pace. Left alone,
-            t0 += late              # the overdue rows would go out back to back and the arm would jump
-            row_start += late
         before = {}
         for name in followers:
             before[name] = dict(command[name])
@@ -679,9 +672,6 @@ def replay(args, progress):
         validate(traj)
     except (OSError, ValueError) as err:
         sys.exit(f"Bad trajectory {args.trajectory}: {err}")
-    if args.grasp_check and "empty" not in (traj.get("marks") or {}):
-        sys.exit("--grasp-check needs the jaw's empty reading, which this trajectory was planned without: plan it "
-                 "with fold_traj.py --grasp-check")
     print(f"layout: {traj.get('layout')}\nsource: {traj.get('source')}")
     T, dt = len(traj["arms"]["left"]["target"]), traj["dt"]
     print(f"{T} steps, dt {dt} s, speed {args.speed}: {T * dt / args.speed:.1f} s")
