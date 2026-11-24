@@ -1,5 +1,6 @@
 """An exclusive panel mode that drives both followers from one controller."""
 
+import csv
 import json
 import threading
 import time
@@ -36,6 +37,9 @@ MAX_STEP_TIME = 0.06  # s of motion one step may cover when the loop runs late
 ARRIVED = 0.002  # m from a dragged point at which the fingertip counts as there
 TIP_FLOOR = 0.01  # m above the model's table: the lowest a dragged point may sit
 SOLVE_ITERS = 20  # solver steps for one step of the fingertip
+# A step the solver cannot make exactly, as with a joint at its limit, is still taken when the fingertip gets at
+# least this share of the way in the asked direction; less counts as out of reach.
+FOLLOW_SHARE = 0.3
 SNAP_ITERS = 60  # solver steps spent finding the nearest reachable place for a dragged point
 MAX_LAG = 100  # encoder ticks an arm joint may trail its command before that arm waits; the jaw may be gripping
 MAX_FAILS = 15  # servo reads or writes missed in a row before driving is switched off (0.3 s)
@@ -59,6 +63,18 @@ class Gamepad:
         self.arms = (left, right)
         self.maps = tuple(replay.Follower(arm.name) for arm in self.arms)
         self.kinematics = kinematics.Arm()
+        # One solver per arm, held to that arm's recorded limits: the model's own are narrower on some joints
+        # (elbow, pan) and wider on others, and neither is where this arm stops.
+        self.solvers = []
+        for arm, mapping in zip(self.arms, self.maps):
+            solver = kinematics.Arm()
+            for i in range(5):
+                m = JOINTS[i]
+                first = mapping.to_rad(m, arm.limits[m][0])
+                second = mapping.to_rad(m, arm.limits[m][1])
+                solver.low[i] = min(first, second)
+                solver.high[i] = max(first, second)
+            self.solvers.append(solver)
         self.guard = PairClearance(spacing)
         self.shutdown = threading.Event()
         self.sample = (None, 0.0, "Waiting for the controller")
@@ -86,6 +102,13 @@ class Gamepad:
         self.failed_writes = 0
         self.most_lag = 0
         self.most_stick = [0.0, 0.0]  # how far each stick was pushed since the last counts, 0 to 1
+        self.csv_folder = None  # where the panel wants a file for every stretch of driving
+        self.csv_file = None
+        self.csv_rows = None
+        self.csv_started = 0.0
+        self.csv_count = 0
+        self.shown_buttons = ""
+        self.shown_triggers = (0, 0)
         self.idle = []
         idle_poses = []
         for arm, mapping in zip(self.arms, self.maps):
@@ -163,7 +186,7 @@ class Gamepad:
         if wanted[2] < TIP_FLOOR:
             wanted[2] = TIP_FLOOR
         seed = self.pose(mapping, command)[:5]
-        solved, error, _ = self.kinematics.solve(wanted, seed, iters=SNAP_ITERS, keep_direction=True)
+        solved, error, _ = self.solvers[index].solve(wanted, seed, iters=SNAP_ITERS, keep_direction=True)
         if not np.isfinite(solved).all() or not np.isfinite(error):
             return None
         for i in range(5):
@@ -330,11 +353,15 @@ class Gamepad:
             wanted = angles[:5].copy()
             if np.any(step):
                 tip = self.kinematics.tip(wanted)[0]
-                solved, error, _ = self.kinematics.solve(tip + step, wanted, iters=SOLVE_ITERS, keep_direction=True)
-                # A step the solver gets all but a twentieth of is taken; one it cannot follow is out of reach.
-                close_enough = max(0.0002, 0.05 * float(np.linalg.norm(step)))
-                if np.isfinite(solved).all() and np.isfinite(error) and error <= close_enough:
-                    wanted = solved
+                solver = self.solvers[self.arms.index(arm)]
+                solved, error, _ = solver.solve(tip + step, wanted, iters=SOLVE_ITERS, keep_direction=True)
+                if np.isfinite(solved).all() and np.isfinite(error):
+                    moved = self.kinematics.tip(solved)[0] - tip
+                    share = float(np.dot(moved, step) / np.dot(step, step))
+                    if share >= FOLLOW_SHARE:
+                        wanted = solved
+                    else:
+                        reachable = False
                 else:
                     reachable = False
             wanted[0] = wanted[0] + turn
@@ -433,6 +460,62 @@ class Gamepad:
         self.fails = 0
         return True
 
+    def drive_log(self, now):
+        """One row for this step in the CSV file of the stretch of driving (or glide to idle) under way. Every
+        stretch gets its own file; the row after it ends holds why it ended."""
+        if self.csv_folder is None:
+            return
+        moving = self.enabled or self.homing
+        if moving and self.csv_file is None:
+            self.csv_count += 1
+            name = f"gamepad_{time.strftime('%Y%m%d_%H%M%S')}_{self.csv_count:03d}.csv"
+            self.csv_file = open(self.csv_folder / name, "w", newline="", buffering=1, encoding="utf-8")
+            self.csv_rows = csv.writer(self.csv_file)
+            header = ["time_s", "loop_ms", "status", "buttons", "left_trigger", "right_trigger",
+                      "left_stick_x", "left_stick_y", "right_stick_x", "right_stick_y",
+                      "left_raw_x", "left_raw_y", "right_raw_x", "right_raw_y", "left_mode", "right_mode"]
+            for side in ("left", "right"):
+                for m in JOINTS:
+                    header.append(f"{side}_command_{m}")
+                for m in JOINTS:
+                    header.append(f"{side}_present_{m}")
+                for m in JOINTS:
+                    header.append(f"{side}_deg_{m}")
+                header.extend([f"{side}_tip_x_cm", f"{side}_tip_y_cm", f"{side}_tip_z_cm"])
+            self.csv_rows.writerow(header)
+            self.csv_started = now
+        if self.csv_file is None:
+            return
+        sticks = self.shown_sticks
+        row = [f"{now - self.csv_started:.3f}", f"{self.loop_ms:.1f}", self.status, self.shown_buttons,
+               self.shown_triggers[0], self.shown_triggers[1],
+               sticks["left"][0], sticks["left"][1], sticks["right"][0], sticks["right"][1],
+               sticks["raw"]["left"][0], sticks["raw"]["left"][1], sticks["raw"]["right"][0], sticks["raw"]["right"][1]]
+        for i in range(2):
+            if self.height[i]:
+                row.append("up and down")
+            else:
+                row.append("over the table")
+        for arm, mapping in zip(self.arms, self.maps):
+            with arm.lock:
+                command = dict(arm.command)
+                present = dict(arm.present)
+            for m in JOINTS:
+                row.append(f"{command[m]:.1f}")
+            for m in JOINTS:
+                row.append(present[m])
+            angles = self.pose(mapping, present)
+            for i in range(len(JOINTS)):
+                row.append(f"{np.degrees(angles[i]):.1f}")
+            tip = self.kinematics.tip(angles[:5])[0]
+            for value in tip:
+                row.append(f"{value * 100:.1f}")
+        self.csv_rows.writerow(row)
+        if not moving:
+            self.csv_file.close()
+            self.csv_file = None
+            self.csv_rows = None
+
     def record(self, now):
         """Write a line to the log when the status changes, and the counts every LOG_EVERY seconds."""
         if self.log is None:
@@ -526,6 +609,7 @@ class Gamepad:
                 self.tick(state, captured, started, message)
                 self.loop_ms = 0.9 * self.loop_ms + 0.1 * 1000 * (time.monotonic() - started)
                 self.record(started)
+                self.drive_log(started)
             except (OSError, ValueError, np.linalg.LinAlgError) as exc:
                 self.shutdown.set()
                 self.stop()
@@ -574,6 +658,8 @@ class Gamepad:
                 clicked[i] = clicks[i] and not self.click_was_down[i]
                 self.click_was_down[i] = clicks[i]
             axes = np.array([state.left_x, state.left_y, state.right_x, state.right_y])
+            self.shown_buttons = " ".join(buttons)
+            self.shown_triggers = triggers
             used = [np.zeros(2), np.zeros(2)]
             if self.center is not None:
                 used = [stick(*axes[:2], self.center[:2]), stick(*axes[2:], self.center[2:])]

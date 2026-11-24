@@ -680,7 +680,8 @@ def main():
         log_folder.mkdir(exist_ok=True)
         log_file = log_folder / f"gamepad_{time.strftime('%Y%m%d_%H%M%S')}.log"
         gamepad.log = open(log_file, "w", buffering=1, encoding="utf-8")
-        print(f"Gamepad log: {log_file}")
+        gamepad.csv_folder = log_folder
+        print(f"Gamepad log: {log_file}, and a gamepad_<date_time>_<n>.csv beside it for every stretch of driving")
         threading.Thread(target=gamepad.run, daemon=True).start()
     else:
         for arm in arms_by_name.values():

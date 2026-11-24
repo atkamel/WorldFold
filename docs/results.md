@@ -3172,3 +3172,34 @@ by reading: a stick resting further than 5000 raw units (15% of its travel) from
 read as pushed. Most lag at the doubled speeds: 191 steps at the highest (0 missed reads, 0 failed writes).
 
 The dead zone is now 9000 raw units, and the log holds each stick's largest push and raw values every 2 s.
+
+## Gamepad: lifts refused with a joint at its limit (2026-11-23)
+
+On the rig (user): sometimes the arm cannot be lifted, or only after the wrist is moved. Session log
+`runs/gamepad_20261123_224936.log`: the left arm in up and down mode read "out of reach" on 17 status lines.
+
+Two causes in the code. The solver worked inside the arm model's limits, not the arm's recorded ones (deg, arm 2):
+
+| joint | model | recorded |
+|---|---|---|
+| pan | -110 to 110 | -119 to 120 |
+| shoulder lift | -100 to 100 | -103 to 104 |
+| elbow | -97 to 97 | -116 to 91 |
+| wrist | -95 to 95 | -99 to 99 |
+| roll | -157 to 163 | -168 to 168 |
+
+And a step was taken only if the solver made it to within a twentieth, so a lift that a pinned joint bends off the
+straight line was refused outright. In the model, arm 2, poses drawn evenly inside the recorded limits (pan within
+29 deg, fingertip 3 to 30 cm up and 8 cm or more forward, `default_rng(1)`), 4 cm straight up asked in ten steps,
+n = 300 poses a row; the count is of poses that rose 2 cm or more / under 0.5 cm:
+
+| joint held at its limit | exact steps only | a step that gets 30% of the way also taken |
+|---|---|---|
+| wrist, low end | 297 / 2 | 300 / 0 |
+| wrist, high end | 258 / 29 | 289 / 4 |
+| elbow folded | 283 / 8 | 297 / 3 |
+| elbow folded and wrist at its low end | 236 / 64 | 300 / 0 |
+
+Through the control loop's own step, 400 poses anywhere inside the limits (`default_rng(0)`, fingertip 5 to 30 cm
+up and 10 cm or more forward): 377 rose 2 cm or more before (17 out of reach, 6 short), 395 after (0 out of
+reach, 5 short). Model only; not run on the arms.

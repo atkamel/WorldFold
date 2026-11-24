@@ -652,6 +652,15 @@ writes missed, the most a joint trailed its command, how far each stick was push
 values at that moment. A stick within 9000 raw units of its centre counts as at rest (`DEAD_ZONE`, 27% of its
 travel): a released stick does not come back to the same place, and a stick read as pushed moves its arm. Read it before changing a setting.
 
+Every stretch of driving, from A to whatever ends it, and every glide to idle is also written to its own
+`runs/gamepad_<date_time>_<n>.csv`, one row a step (about 50 a second): the status, the buttons, triggers and both
+sticks (acted-on and raw), each arm's commanded and measured encoder steps, its joint angles in the model and its
+fingertip position. The row after a stretch ends holds why it ended.
+
+The solver works inside each arm's own recorded limits. A step it cannot make exactly, as when the wrist or the
+elbow is at its limit, is still taken when the fingertip gets at least 30% of the way in the asked direction
+(`FOLLOW_SHARE`), so a lift with a joint pinned still raises the arm, a little off the straight line.
+
 The two arms move at the same time and each on its own: an arm whose step is refused, out of reach, or more than
 about 9 deg behind its command holds while the other goes on (`MAX_LAG`; 0.15 s of its top speed where that is
 more, `LAG_TIME`), and the panel's status says which and why, with the loop's time per step. With a stick fully

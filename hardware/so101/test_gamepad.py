@@ -1,6 +1,7 @@
 """Gamepad routing and clearance checks with fake servo transport."""
 
 from dataclasses import replace
+import csv
 import importlib
 import io
 import sys
@@ -666,3 +667,75 @@ def test_a_roll_key_turns_that_claw_while_it_is_held_and_stops_when_it_goes_quie
     counts = driver.write_counts()
     driver.send(ControllerState())
     assert driver.write_counts() == counts
+
+
+def test_the_solver_works_inside_each_arm_s_own_recorded_limits(mode):
+    for arm, mapping, solver in zip(mode.arms, mode.maps, mode.solvers):
+        for i in range(5):
+            m = i + 1
+            ends = [mapping.to_rad(m, arm.limits[m][0]), mapping.to_rad(m, arm.limits[m][1])]
+            assert abs(solver.low[i] - min(ends)) < 1e-9
+            assert abs(solver.high[i] - max(ends)) < 1e-9
+
+
+def test_a_lift_with_the_elbow_folded_and_the_wrist_at_its_limit_still_raises_the_arm(mode):
+    left = mode.arms[0]
+    mapping = mode.maps[0]
+    solver = mode.solvers[0]
+    left.speed = 180
+    rng = np.random.default_rng(1)
+    raised = 0
+    tried = 0
+    while tried < 40:
+        angles = rng.uniform(solver.low, solver.high)
+        angles[0] = 0.0
+        angles[2] = solver.high[2]
+        angles[3] = solver.low[3]
+        angles[4] = 0.0
+        tip = mode.kinematics.tip(angles)[0]
+        if tip[2] < 0.03 or tip[2] > 0.30 or tip[0] < 0.08:
+            continue
+        tried += 1
+        ticks = {m: round(mapping.to_ticks(m, angles[m - 1])) for m in range(1, 6)}
+        ticks[6] = left.command[6]
+        left.command = dict(ticks)
+        start = mode.kinematics.tip(mode.pose(mapping, left.command)[:5])[0]
+        for _ in range(10):
+            goal, _ = mode.proposed(left, mapping, np.array([0.0, 0.0, 0.004]), 0.0, 0.0, 0.0, None, 0.02)
+            left.command = goal
+        end = mode.kinematics.tip(mode.pose(mapping, left.command)[:5])[0]
+        if end[2] - start[2] > 0.02:
+            raised += 1
+    assert raised >= 38
+
+
+def test_every_stretch_of_driving_is_written_to_its_own_csv_file(mode, tmp_path):
+    mode.csv_folder = tmp_path
+    driver = Driver(mode)
+    driver.enable()
+    mode.drive_log(driver.now)
+    for _ in range(5):
+        driver.send(ControllerState(left_y=32767, buttons=("lb",)))
+        mode.drive_log(driver.now)
+    driver.send(ControllerState(buttons=("b",)))
+    mode.drive_log(driver.now)
+    assert len(list(tmp_path.glob("*.csv"))) == 1
+
+    driver.send(ControllerState())
+    mode.drive_log(driver.now)
+    driver.send(ControllerState(buttons=("a",)))
+    mode.drive_log(driver.now)
+    driver.send(ControllerState(buttons=("b",)))
+    mode.drive_log(driver.now)
+    files = sorted(tmp_path.glob("*.csv"))
+    assert len(files) == 2
+
+    with open(files[0], newline="", encoding="utf-8") as first:
+        rows = list(csv.DictReader(first))
+    assert len(rows) == 7
+    assert float(rows[3]["left_stick_y"]) > 0.9
+    assert "lb" in rows[3]["buttons"]
+    assert float(rows[5]["left_command_2"]) != float(rows[0]["left_command_2"])
+    assert rows[5]["left_present_2"] != ""
+    assert float(rows[5]["left_tip_z_cm"]) > 0
+    assert "Stopped" in rows[6]["status"]
