@@ -2782,3 +2782,281 @@ model range is -10° to 100°, the middle of its travel is 45°). Its zero is no
 
 **Recorder:** about 215 to 245 kB per frame (720 x 960 JPEG and 192 x 256 depth), 130 to 150 MB per minute at 10
 frames per second, on synthetic noisy frames.
+
+## SO-101 arm 2 tick map, measured on the arm (2026-11-17)
+
+One reading, by hand, no repeats, no interval. Torque off, arm 2 held in the model's zero pose (upper arm against an
+upright book, forearm and gripper level by eye, jaw shut), angles from `replay.py --read arm2` through the default map:
+
+| joint | reading in the zero pose | expected |
+|---|---|---|
+| shoulder_pan | -1.1° | 0 |
+| shoulder_lift | 3.2° | 0 |
+| elbow_flex | 12.2° | 0 |
+| wrist_flex | 1.3° | 0 |
+| gripper (shut) | -9.7° | -10 |
+
+Elbow zero moved to tick 2186 (2047 + 12.2 x 11.378) in `arm2/urdf.json`; the others left at the default. Under
+power at the zero pose after the change (user, by eye): forearm level, gripper level, upper arm upright, moving
+finger on top, jaw slightly open, all as the model says. Fold dry run with the new zero: 0 clamped steps, elbow peak
+79.6° against about 91° of travel left on that side.
+
+## SO-101 arm 1 tick map, measured on the arm (2026-11-17)
+
+One reading, by hand, no repeats, no interval. Same method as arm 2, with the fingers stacked and the moving one on
+top, angles from `replay.py --read arm1` through the default map:
+
+| joint | reading in the zero pose | expected |
+|---|---|---|
+| shoulder_pan | -3.0° | 0 |
+| shoulder_lift | 1.6° | 0 |
+| elbow_flex | 5.5° | 0 |
+| wrist_flex | -0.4° | 0 |
+| wrist_roll | 0.7° | 0 |
+| gripper (shut) | -9.6° | -10 |
+
+Elbow zero moved to tick 2110 (2047 + 5.5 x 11.378) in `arm1/urdf.json`; the others left at the default (pan left
+alone by the user's choice). Under power at the zero pose after the change (user, by eye): forearm level, gripper
+level, upper arm upright, fingers and jaw as on arm 2. Fold dry run on both arms: 0 clamped steps.
+
+## First fold played on arm 2: hit its own base (2026-11-17)
+
+Arm 2 alone, no cloth, `half_fold_30cm.json`, `--speed 0.3 --torque-limit 50`. n = 1. The user saw the arm strike
+its base and move in jerks, and stopped it at step 244 of 353 (the release at the near edge).
+
+The committed trajectory in the arm model (so101_new_calib, so101-nexus 0.4.8, collision geoms only, MuJoCo
+`mj_geomDistance`, every step): the gripper is inside the shoulder housing from step 218 to step 269, deepest
+33.9 mm at step 232; the wrist is 3.7 mm inside at step 232. The first step inside has the fingertip 11.9 cm in front
+of the base origin and 5.0 cm up. The release is planned at 8.0 cm (near edge 1.5 cm from the base front). The
+model's base body has no collision geoms, so the real overlap is at least this.
+
+`replay.py` sends one target per trajectory row, every `dt / speed` seconds: 0.167 s at speed 0.3, with up to
+2.7 deg between rows, so the goals arrive as steps 6 times a second. Not measured on the arm; `--log` was off.
+
+## Self-collision check and the short fold (2026-11-17)
+
+Arm model only (so101_new_calib, so101-nexus 0.4.8, MuJoCo 3.11.0 as installed), nothing here run on an arm.
+`hardware/so101/collision.py`: signed distance between the collision shapes of parts 3 or more joints apart, base
+meshes made solid, `mj_geomDistance` with the native convex routine off. With it on, 99 of 13,098 calls over the old
+fold returned exactly 0 for shapes whose nearest points were up to 4 cm apart; with it off, none did.
+
+One-arm plan, pinch at 38 cm, straight ahead, release at each distance from the base origin, nearest approach over
+the whole plan (always the shoulder housing and the gripper):
+
+| release | nearest approach |
+|---|---|
+| 8 cm (the near edge) | -67.0 mm |
+| 10 cm | -28.1 mm |
+| 11 cm | -13.9 mm |
+| 12 cm | -2.8 mm |
+| 13 cm | 9.6 mm |
+| 14 cm | 21.5 mm |
+| 15 cm | 32.1 mm |
+| 16 cm | 42.7 mm |
+
+The overlap depth differs between the two convex routines (33.9 mm native, 67.0 mm older, same pose); the sign
+agrees. With a 10 mm clearance and 5 mm steps the planner releases at 13.5 cm: 5.5 cm short of the near edge of the
+30 cm cloth, nearest approach 15.6 mm, 325 steps (was 353). The old trajectory is refused by `replay.py`.
+
+Not checked by this: parts 1 or 2 joints apart (both idle poses read as 6 to 8 mm overlaps there, the arm resting
+on itself), the table, the other arm, and the glides to and from the idle pose.
+
+## First two-arm fold with the cloth; the jaw lagged the plan (2026-11-17)
+
+Both arms, 30 cm cloth, `half_fold_30cm.json` (325 steps), `--speed 0.3 --torque-limit 50 --grasp-check`. n = 1.
+The user: the fold worked apart from the grasp check. No fold score was taken.
+
+| | left (arm 2) | right (arm 1) |
+|---|---|---|
+| jaw at the empty reading (should be about -9.7) | 12.6 deg | 12.5 deg |
+| jaw lifted, attempts 1 to 3 | -9.3, -9.5, -9.4 deg | -9.5, -9.5, -9.6 deg |
+| verdict printed | MISSED x 3 | MISSED x 3 |
+| final pose error, largest joint | 0.6 deg (shoulder lift) | 0.5 deg (shoulder lift) |
+
+The rate cap engaged 320 times. The trajectory asked the jaw for up to 7.45 deg per row and `replay.py` allows
+3 deg per row (60 deg/s), so the jaw ran behind the plan: the empty reading was taken mid-close, which no lifted
+reading could beat, and the pinch was about 7 deg from shut when the lift began. The verdicts say nothing about the
+grasp. Regenerated with the jaw at 2.68 deg per row at most: 379 steps, empty reading 6 rows after the jaw is shut.
+Not rerun on the arms.
+
+## First recorded camera fold from the control panel: it folded (2026-11-18)
+
+Both arms, light blue 30 cm cloth, started from the panel, speed 0.6, torque cap 50 %, grasp check off. n = 1.
+Run folder `hardware/so101/runs/20261118_000529` (not in git): 374 frames, 555 step lines, exit code 0.
+
+| | value |
+|---|---|
+| cloth found by the look (table cm) | near edge Y 7.1, far corners X -16.3 / 16.2, Y 37.6 / 38.1 |
+| pinch aimed at (each arm's frame, cm) | left 0.6 left of straight ahead, 36.9 forward; right 0.5 right, 37.3 forward |
+| fingertip at the pinch, from the encoders against the plan | within 0.1 cm sideways and forward, 0.2 cm low, both arms |
+| largest joint lag over the fold | 5.6 deg |
+| jaw reading while carrying the cloth | -9 deg on both arms (shut on nothing reads -9.3 to -9.5) |
+| release | planned 7.0 cm short of the near edge, 14 mm clear of the base in the model |
+| fold score from the first and last frames | far edge 1.74 cm mean, 2.55 cm max from the half line; overhang 2.23 cm; near half uncovered 0.0; area ratio 1.26 |
+| folded cloth on the table | Y 5.1 to 22.1 cm (ideal 7.1 to 22.1): the bottom layer ended about 2 cm nearer the arms |
+
+The frames show both grippers on the far corners at the pinch, both corners lifted and carried, and a half fold
+left on the table. The jaw reads the same holding this cloth as empty, so the position-based grasp check cannot
+see a grasp on it. The run before it (`20261118_000433`) stopped at the look: one side of the outline read 24.5 cm.
+`summary.json` counts 0 steps in a panel run because the script, not the recorder, writes `steps.jsonl`.
+
+## Does the camera fold follow a moved cloth? (2026-11-18)
+
+Offline, on frame 0 of run `20261118_000529` with that run's `camera.json`: the whole picture slid by a number of
+pixels to stand in for a moved cloth, then `fold_camera.plan`. n = 1 frame, no arm moved.
+
+| picture | far-left corner (table cm) | left pinch (right, forward cm) | right pinch (right, forward cm) |
+|---|---|---|---|
+| as recorded | -16.2, 37.6 | -0.5, 36.9 | 0.8, 36.7 |
+| 40 px right, same calibration | -12.5, 37.8 | 3.2, 37.1 | 4.4, 36.9 |
+| 40 px left, same calibration | -20.0, 37.4 | -4.2, 36.8 | -2.8, 36.6 |
+| 30 px nearer the arms, same calibration | -15.1, 32.9 | 0.7, 32.3 | 0.2, 32.2 |
+| 40 px right, calibrated again, then the look | -15.0, 38.0 | 0.7, 37.3 | -0.7, 37.3 |
+
+With the calibration left alone the pinch points move with the cloth (about 3.7 cm for 40 px). Calibrating after
+the move puts them back at the ruler position, because the calibration takes the cloth's place as the ruler
+position. That is the sequence the user ran on the rig when the arms went to the same place every time.
+
+
+## PowerA wired controller (2026-11-19)
+
+Local macOS USB smoke test with one PowerA EnWired Lavender Swirl (`20d6:2026`, firmware descriptor `0x0101`).
+USB configuration and startup succeeded. The reader received main input reports with a 32-byte payload. An
+initial report with four minimum stick values was filtered from live state output. Captured input replay and
+live JSON both returned signed stick values. Button, trigger, Share, and Guide assertions used synthetic packets.
+No dataset or random seeds apply to the USB check.
+
+The macOS fast suite plus controller parser tests finished with 261 passed (all three controller tests),
+5 skipped, and 6 failed. The failures were the seed check (#15), the toy placement test (#17), and four
+MuJoCo depth tests reporting `invalid CoreGraphics connection` in the sandboxed runner.
+
+
+## Two-arm gamepad teleop (2026-11-19)
+
+Local check with one PowerA EnWired controller, two simulated servo buses, and the configured side-by-side
+SO-101 model. The PowerA USB check observed 14 input reports and 31 successful idle heartbeats in three seconds.
+With simulated servos, both arms accepted a stick command in one tick from their saved idle positions. Tests
+covered left and right Cartesian jogging, height mode, both jaw latches, deadman release, stale input,
+the panel's Stop routing, and rejection of targets into the other arm or the table. The crossed-path case
+also checked independently advancing arms when each simultaneous endpoint was clear. Windows XInput values
+were checked with a synthetic input structure. Physical motion and the Windows USB link were not exercised.
+No dataset or random seeds apply to these controller checks.
+
+The combined macOS fast suite and controller and SO-101 tests finished with 448 passed, 5 skipped, and 3 failed. The failures were the known seed check (#15), the toy placement test (#17), and the idle test loading an empty servo SDK stand-in. The SDK stand-in failure also reproduced when selecting only the unchanged fold-camera and idle test modules without importing the gamepad integration.
+## Camera calibration from the arms on the rig; the pinch lands past the corner (2026-11-19)
+Rig: both followers on the Windows laptop, bases side by side, the phone behind them turned on its side (the
+picture arrives sideways, 960 x 720, arms on its left: `--near left`). Touches with `arm_calibration.py touch
+--outer 0` (9 per arm, every one between the arm's centre line and its inner edge), speed 0.3, 50% torque cap; all
+18 fingertips clicked by the user. The usual fan and an upright phone were tried first: the left arm's fingertip was
+clear in 4 of 9 pictures.
+| arm | touches | fit error rms | worst | a touch left out of the fit lands within |
+|---|---|---|---|---|
+| left (arm 2) | 9 | 1.3 mm | 2.4 mm | 4.7 mm |
+| right (arm 1) | 9 | 1.6 mm | 2.5 mm | 5.6 mm |
+Looks through these maps with no calibration between them (the cloth moved by hand, n = 1 look each):
+| cloth | near-left corner X (left arm frame, cm) | far-left corner X | result |
+|---|---|---|---|
+| in front of the bases | 10.1 | 39.2 | reachable, fingers tilted 30.9 / 31.8 deg |
+| pushed away | 18.5 | 48.9 | out of reach, pinch missed by 18.0 / 21.1 mm, refused |
+| part of the way back | 12.9 | 42.7 | reachable, fingers tilted 44.0 / 42.9 deg |
+| turned | 13.6 | 41.7 | reachable, left pinch 40.8 cm forward, right 30.9 cm |
+The cloth is not a 30 cm square: its near edge reads 24.6 to 25.5 cm in both arms' maps and the other sides 28.4
+to 31.2 cm, so the look runs with `--cloth 0.28`. Its blue is faint: the Otsu thresholds (172 to 212) dropped the
+hems and a dim corner, `--dark 245` finds the whole cloth and nothing else in view.
+Where the grippers land, from the panel fold `20261119_205147` (run folders are not in git), one frame at the
+pinch row, read by eye against 1 cm steps drawn through each arm's map, good to about 0.5 cm, n = 1 fold:
+| arm | planned pinch | fingertip seen |
+|---|---|---|
+| left | 1 cm in from the far-left corner | about 1.4 cm further forward, 0.8 cm further left: on the corner's edge |
+| right | 1 cm in from the far-right corner | about 1.0 cm further forward, 1.1 cm further right: on the corner's edge, just off the cloth |
+Both encoders ended within 1 deg of the plan, so the error is in where the picture puts the corner: forward and
+outward on both arms, the opposite of the inset's direction. Not separated: clicks short of the true contact point,
+the cloth's thickness under a slanted camera, and corners 4 to 6 cm past the furthest touch (36 cm). Offline on
+frame 0 of that run, an inset of 3 cm moves the pinch to 38.7 / 29.4 cm forward (from 40.4 / 30.3), both reachable,
+left arm 10.0 mm clear of itself with the release 1.5 cm short. Not yet played on the arms.
+
+## The arms shake at the factory gain; flat fingers do not hold a corner (2026-11-19)
+
+Shake. Every motor on both arms held the factory position gains (P 32, D 32, I 0, acceleration 0, read from the
+motors). In fold `20261119_210113` (speed 0.3, 50% cap) the rows went out every 167 ms within 1 ms and a read of both
+arms took 2 ms, so the playback's timing was not the cause; the joints lagged their targets by up to 4.8 deg. With
+P 16 written to joints 1 to 5 of both arms the user reports the fast shake while moving much reduced (one fold, by
+eye, no measurement). The write was made with the servo's write lock on (read as 1); whether it outlasts a power
+cycle is not checked.
+
+Finger tilt at the pinch against the grasp, every camera fold so far (tilt is the planner's largest lean from
+upright over the fold; the reach is where the pinch was planned, not measured):
+
+| run | arm | pinch planned (cm forward) | tilt (deg) | held the corner |
+|---|---|---|---|---|
+| `20261118_000529` | left / right | 36.9 / 37.3 | 25.3 / 26.8 | yes / yes (frames) |
+| `20261119_210113`, inset 3 cm | right | 28.6 | 8.4 | yes (user) |
+| `20261119_210113`, inset 3 cm | left | 39.2 | 33.8 | no (user) |
+| `20261119_210916`, inset 3 cm, P 16 | left / right | about 40 / 38 | 36.4 / 23.6 | no / no (frames: the cloth lies flat after the carry) |
+
+The user on the last one: the claw was in the right place and too flat. In the arm model the tilt at a pinch
+straight ahead is 18.6 deg at 36 cm, 25.8 at 38, 33.4 at 40 and 41.7 at 42, about 4 deg per cm. The right arm's miss
+at 23.6 deg is not explained by the tilt: with the 3 cm inset its fingertip came down on top of the cloth. n = 4
+folds, one cloth; the 30 deg limit is a first setting, not a measured threshold.
+
+## Where the fingertips land against where they are sent, second recorded fold (2026-11-19)
+
+Panel fold `20261119_212409` (inset 3 cm, P gain 16, speed 0.3, 50% cap; the cloth turned about 16 deg), one frame
+at the pinch row, read by eye against each arm's map, good to about 0.5 cm, n = 1 fold. Neither corner was held.
+
+| arm | pinch planned (cm forward, tilt) | fingertip seen against the plan | fingertip height from the encoders at the end of the hold |
+|---|---|---|---|
+| left | 30.6, 10.1 deg | about 0.8 cm further forward, 0.3 cm further left | 5.4 mm above the table in the model |
+| right | 37.6, 29.0 deg | about 0.8 cm further forward, 0.9 cm further right | 1.4 mm below the table in the model |
+
+With `20261119_205147` (1.4 / 0.8 cm and 1.0 / 1.1 cm) that is two folds with the fingertips forward and outward of
+the plan on both arms. The user saw both stop about 0.5 cm above the cloth, though the encoders put the two
+fingertips 7 mm apart in height, so the model's table height is not good to 5 mm and differs between the arms. The
+look takes the tip of each corner, which on this cloth stands about 1 cm past its straight edges: the right pinch,
+3 cm in along the diagonal, was about 1 cm inside the hem. Offline on frame 0 of this run with `--overshoot 0.010
+0.007 --pinch-height 0`: the arms are sent to 29.6 / 36.6 cm forward (from 30.6 / 37.6) at 0.0 cm, tilts 11.3 /
+25.9 deg (from 10.6 / 29.0), both clear of themselves (14.8 / 14.7 mm). Not yet played on the arms.
+
+## The two arms do not agree on where the table is; how the jaw closes (2026-11-19)
+
+Fingertip height at the end of the pinch's hold, from the encoders through the arm model, against the height the arm
+was sent to (command-line folds, speed 0.7, 50% cap, P gain 16, n = 1 fold each):
+
+| run | sent to (model cm) | left ended | right ended | left jaw in the carry | right jaw in the carry | held (user) |
+|---|---|---|---|---|---|---|
+| `20261119_215721` | 0.0 | 1.3 mm above | 1.9 mm below | not read | not read | left yes, right no |
+| `20261119_220226` | -0.5 | 3.0 mm above | 0.2 mm below | -8.15 deg | -9.47 deg | left yes, right no |
+
+At -0.5 cm the left fingertip stopped 3 mm short of where it was sent, so the table met it at about -0.2 cm in the
+model; the right one reached -0.5 cm unhindered, so for the right arm (arm 1) the table lies lower than that. The
+left jaw read 1.2 to 1.3 deg more open while carrying the cloth than the right jaw shut on nothing (-9.4 to -9.5 on
+both arms empty): a held corner shows in the jaw reading on this cloth.
+
+In the so101_nexus model at the right arm's pinch of `20261119_215924` (35.1 cm forward, fingers 23 deg from
+upright, tip sent to 0.0 cm): the fixed finger's lowest point is 0.7 cm below the tip point; the moving finger's
+lowest point is 8 cm further out and 4.6 cm up with the jaw open at 57 deg, and over the last 15 deg of closing it
+travels from 3.8 cm out at 0.4 cm up to the fixed finger at -0.3 cm. At the left arm's pinch of the same fold (6 deg
+from upright) it travels at -0.5 to -0.6 cm. So flatter fingers carry the moving finger 3 to 5 mm higher through the
+sweep that has to catch the cloth. Model geometry only; not checked against the arm.
+
+## A steep claw touching the table still closes empty when it is far inside the cloth (2026-11-19)
+
+Command-line folds, speed 0.7, 50% cap, P gain 16, the cloth lying turned (far-right corner about 39 cm from the
+right arm, far-left about 33.5 cm from the left), n = 1 fold each. Claw angle is the planned lean from upright at
+the pinch row; "table" is the fingertip's height against where it was sent at the end of the hold (above = the
+table stopped it); the jaw reading is the mean over the carry, about -9.45 deg when empty.
+
+| run | arm | pinch (cm forward) | inside the far corner | claw | sent to (cm) | table | jaw | held |
+|---|---|---|---|---|---|---|---|---|
+| `20261119_223818` | left | 31.5 | 1.7 cm | 2.1 deg | -0.5 | 3.0 mm above | -7.63 | yes |
+| `20261119_223818` | right, `--pinch-tilt 10` | 33.0 | 6.1 cm | 9.9 deg | -0.8 | 0.4 mm above | -9.47 | no |
+| `20261119_224147` | left | 31.8 | 1.7 cm | 3.1 deg | -0.5 | 3.6 mm above | -7.89 | yes |
+| `20261119_224147` | right, `--pinch-tilt 10` | 32.8 | 6.4 cm | 9.2 deg | -1.4 | 2.9 mm above | -9.30 | no |
+
+The right fingertip meets the table at about -1.1 cm in the model at 33 cm (the left at about -0.2 cm at 32 cm). With
+the right claw as steep as the left's earlier grabs and resting on the table it still shut on nothing. What then
+differs is where the far edge lies: under 2 cm beyond the left arm's fixed finger, over 6 cm beyond the right's,
+because `--pinch-tilt` buys the angle by moving the pinch into the cloth. Read with the model's closing sweep (the
+moving finger comes in along the table from about 3.8 cm out), the grab on this cloth looks like the moving finger
+hooking the far edge against the fixed one; landing on top of the cloth it slides over. Not shown directly: no run
+yet has the right arm both near the edge and on the table.

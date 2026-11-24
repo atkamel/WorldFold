@@ -169,3 +169,17 @@ def test_phone_start_exits(fake_record3d):
     FakeStream.devices, FakeStream.refuse = ["dev"], True
     with pytest.raises(SystemExit):
         rgbd.Phone().start()
+
+
+def test_the_stream_object_outlives_the_phone(fake_record3d):
+    import gc
+    import weakref
+
+    phone = rgbd.Phone()
+    phone.start()
+    stream = weakref.ref(FakeStream.last)
+    FakeStream.last = None
+    phone.stop()
+    del phone
+    gc.collect()
+    assert stream() is not None     # Record3D corrupts the heap when its stream object is freed mid-stream

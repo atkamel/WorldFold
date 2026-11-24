@@ -27,6 +27,20 @@
   aside { background: var(--panel); border-left: 1px solid var(--line); padding: 16px;
           overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
   h1 { font-size: 16px; margin: 0; }
+  #cloud { width: 100%; height: 240px; border: 1px solid var(--line); border-radius: 8px; }
+  #record.on { background: var(--stop); color: #fff; border-color: var(--stop); font-weight: 600; }
+  #camera a { color: inherit; }
+  #fold img { width: 100%; border: 1px solid var(--line); border-radius: 8px; }
+  .fold-options { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 12px; color: var(--muted); }
+  .fold-options label { display: flex; flex-direction: column; gap: 2px; }
+  .fold-options label.tick { flex-direction: row; align-items: center; gap: 6px; }
+  .fold-options select, .fold-options input[type=number] {
+    font: inherit; padding: 5px 6px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); }
+  #fold-prompt p { margin: 0 0 8px; }
+  #fold-output { margin: 0; max-height: 220px; overflow: auto; padding: 8px; border-radius: 8px;
+                 border: 1px solid var(--line); background: var(--bg);
+                 font: 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
   .buttons { display: flex; gap: 8px; }
   button { flex: 1; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
            background: var(--bg); color: var(--ink); font: inherit; cursor: pointer; }
@@ -78,6 +92,48 @@
     <button id="idle">Go to idle</button>
     <button id="stop" class="stop">Stop <kbd>Esc</kbd></button>
   </div>
+  <section id="gamepad" hidden>
+    <strong>Two-arm gamepad</strong>
+    <p class="hint">Sticks move the left and right grippers. Hold LB for height and RB to drive.
+      LT and RT toggle the jaws. Press B or release RB to stop.</p>
+    <p class="hint" id="gamepad-status" role="status"></p>
+  </section>
+  <section id="camera">
+    <strong>iPhone LiDAR</strong>
+    <iframe id="cloud" src="/cloud" title="iPhone LiDAR point cloud"></iframe>
+    <p class="hint"><span id="camera-status" role="status">Camera: connecting…</span> ·
+      <a href="/cloud" target="_blank" rel="noopener">open large</a></p>
+    <button id="record">Start recording</button>
+    <p class="hint" id="record-status" role="status">Not recording</p>
+  </section>
+  <section id="fold">
+    <strong>Cloth fold</strong>
+    <img id="camera-picture" alt="Live camera picture" hidden>
+    <p class="hint" id="camera-picture-hint">No camera picture yet.</p>
+    <div class="fold-options">
+      <label>Cloth colour
+        <select id="fold-colour"><option value="blue">blue</option><option value="dark">dark</option></select></label>
+      <label>Speed <input type="number" id="fold-speed" min="0.1" max="1" step="0.1" value="0.3"></label>
+      <label>Torque cap % <input type="number" id="fold-torque" min="10" max="100" step="5" value="50"></label>
+      <label class="tick"><input type="checkbox" id="fold-grasp"> Grasp check</label>
+    </div>
+    <div class="buttons">
+      <button id="fold-calibrate">Calibrate</button>
+      <button id="fold-look">Look</button>
+      <button id="fold-run">Fold</button>
+      <button id="fold-stop" class="stop" disabled>Stop</button>
+    </div>
+    <p class="hint" id="fold-status" role="status">Idle.</p>
+    <div class="banner" id="fold-prompt" hidden>
+      <p id="fold-prompt-text"></p>
+      <div class="buttons">
+        <button id="fold-continue" class="on">Continue</button>
+        <button id="fold-cancel">Cancel</button>
+      </div>
+    </div>
+    <img id="fold-look-picture" alt="The last look: cloth outline in green, pinch points in red, place points in blue" hidden>
+    <pre id="fold-output" aria-live="polite" hidden></pre>
+  </section>
   <button id="mirror" hidden>Mirror: off</button>
   <button id="leader" hidden>Leader arm: off</button>
   <p class="hint" id="mode-hint"></p>
@@ -346,6 +402,7 @@ function moveGripper(c, p, pitch) {
   return true;
 }
 function canDrive(arm, needsTwin = true) {
+  if (state.gamepad !== null) return false;
   if (!state.arms[arm].torque) { toast("Torque is off. Turn it on to drive the arm."); return false; }
   if (needsTwin && !calibrated(arm)) { toast("Calibrate the twin first: the gripper moves are worked out from it."); return false; }
   return true;
@@ -361,7 +418,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 function keyStep(now) {
   const dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
   const on = code => held.has(code) ? 1 : 0;
-  if (!state || !active || !MOVE_KEYS.some(k => held.has(k)) || !state.arms[active].torque || !calibrated(active)) {
+  if (!state || state.gamepad !== null || !active || !MOVE_KEYS.some(k => held.has(k)) || !state.arms[active].torque || !calibrated(active)) {
     keyDrive = null;
     return;
   }
@@ -522,6 +579,7 @@ canvas.addEventListener("pointercancel", endDrag);
 // Goals are batched and sent at most every 30 ms, one request per arm; the latest value always goes out.
 let queued = {}, timer = null;
 function setTargets(arm, deg) {          // deg: { id: degrees }, clamped to the joint limits
+  if (state?.gamepad != null) return;
   for (const [k, d] of Object.entries(deg)) {
     const id = +k, [lo, hi] = angleRange(arm, id);
     const pos = toPos(arm, id, Math.min(hi, Math.max(lo, d / DEG)));
@@ -545,6 +603,7 @@ function stop() {
   for (const arm of names) delete local[arm];
   queued = {}; held.clear(); keyDrive = null;
   post("/hold");
+  post("/fold/stop");   // the Stop button and Esc end a running cloth fold too
   toast("Stopped.");
 }
 
@@ -745,7 +804,12 @@ function render() {
   btn.textContent = `Torque: ${on ? "on" : "off"}`;
   btn.classList.toggle("on", on);
   // A leader arm stays limp so a hand can move it.
-  btn.disabled = document.getElementById("idle").disabled = isLeader && !on;
+  btn.disabled = isLeader && !on;
+  const gamepad = state.gamepad !== null;
+  document.getElementById("idle").disabled = gamepad || btn.disabled;
+  document.getElementById("gamepad").hidden = !gamepad;
+  document.getElementById("fold").hidden = gamepad;
+  if (gamepad) document.getElementById("gamepad-status").textContent = state.gamepad;
   for (const b of tabs.children) {
     b.textContent = `${b.dataset.arm} · ${state.arms[b.dataset.arm].torque ? "on" : "off"}`;
     b.classList.toggle("active", b.dataset.arm === active);
@@ -756,7 +820,8 @@ function render() {
   const leaderBtn = document.getElementById("leader");
   leaderBtn.textContent = `Leader arm: ${leading() ? "on" : "off"}`;
   leaderBtn.classList.toggle("on", leading());
-  document.getElementById("mode-hint").textContent = isLeader
+  mirrorBtn.disabled = leaderBtn.disabled = gamepad;
+  document.getElementById("mode-hint").textContent = gamepad ? "Gamepad controls both followers." : isLeader
     ? "Leader arm. Move it by hand; with Leader arm on, its follower copies it."
     : on ? "Holding. Use the keys or drag the orange ball to move the gripper."
     : "Limp. Move the arm by hand; the screen follows it.";
@@ -764,7 +829,7 @@ function render() {
   for (const id of IDS) {
     const r = rows[id], [lo, hi] = angleRange(active, id), t = targetPos(active, id), p = me.present[id];
     r.slider.min = (lo * DEG).toFixed(1); r.slider.max = (hi * DEG).toFixed(1);
-    r.slider.disabled = !on;
+    r.slider.disabled = gamepad || !on;
     if (sliderHeld !== id) r.slider.value = toAngle(active, id, on ? t : p) * DEG;
     r.nums.textContent = `${(toAngle(active, id, p) * DEG).toFixed(0)}°` + (on ? ` → ${(toAngle(active, id, t) * DEG).toFixed(0)}°` : "");
     r.flip.checked = !!twinOf(active).flip[id];
@@ -778,7 +843,7 @@ function render() {
     real.tip.visible = s.torque;
   }
   for (const b of calibratedOnly) {
-    b.disabled = !calibrated(active) || isLeader;
+    b.disabled = gamepad || !calibrated(active) || isLeader;
     b.title = calibrated(active) ? "" : "Calibrate the twin first: these are defined relative to straight up";
   }
   renderMine(active, me.presets ?? {});
@@ -819,6 +884,120 @@ setInterval(async () => {
     if (!(err instanceof TypeError)) console.error(err);
   } finally { inFlight = false; }
 }, 33);
+</script>
+<script>
+// The camera and the recording have their own slower poll, apart from the arm state above.
+const recordButton = document.getElementById("record");
+let recording = false;
+
+async function refreshRecording() {
+  try {
+    const status = await (await fetch("/record")).json();
+    recording = status.recording;
+    recordButton.textContent = recording ? "Stop recording" : "Start recording";
+    recordButton.classList.toggle("on", recording);
+    document.getElementById("record-status").textContent = recording
+      ? `Recording: ${status.steps} steps to ${status.folder}`
+      : "Not recording";
+    document.getElementById("camera-status").textContent = `Camera: ${status.camera}`;
+  } catch {
+    document.getElementById("camera-status").textContent = "Camera: no answer from ui.py";
+  }
+}
+
+recordButton.onclick = async () => {
+  await fetch(recording ? "/record/stop" : "/record/start",
+              { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  refreshRecording();
+};
+refreshRecording();
+setInterval(refreshRecording, 500);
+</script>
+<script>
+// Cloth fold: the live camera picture, and fold_camera.py run by the server (fold_job.py).
+const foldButtons = {
+  calibrate: document.getElementById("fold-calibrate"),
+  look: document.getElementById("fold-look"),
+  fold: document.getElementById("fold-run"),
+};
+const foldStop = document.getElementById("fold-stop");
+const foldStatus = document.getElementById("fold-status");
+const foldPrompt = document.getElementById("fold-prompt");
+const foldOutput = document.getElementById("fold-output");
+const lookPicture = document.getElementById("fold-look-picture");
+const cameraPicture = document.getElementById("camera-picture");
+const cameraHint = document.getElementById("camera-picture-hint");
+const FOLD_WORDS = {
+  idle: "Idle.", running: "Running", waiting: "Waiting for you", done: "Finished", failed: "Failed", stopped: "Stopped",
+};
+let foldState = "idle", colourSet = false, foldMessage = "";
+
+function sendFold(path, body) {
+  return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                       body: JSON.stringify(body ?? {}) });
+}
+
+async function startFold(mode) {
+  const options = { colour: document.getElementById("fold-colour").value };
+  if (mode === "fold") {
+    options.speed = Number(document.getElementById("fold-speed").value);
+    options.torque = Number(document.getElementById("fold-torque").value);
+    options.grasp_check = document.getElementById("fold-grasp").checked;
+  }
+  const answer = await sendFold("/fold/start", { mode, options });
+  foldMessage = answer.ok ? "" : `Not started: ${(await answer.json()).error}.`;
+  refreshFold();
+}
+
+async function refreshFold() {
+  let status;
+  try {
+    status = await (await fetch("/fold")).json();
+  } catch {
+    foldStatus.textContent = "No answer from ui.py.";
+    return;
+  }
+  if (status.error) { foldStatus.textContent = "Cloth fold is not available on this page."; return; }
+  const busy = status.state === "running" || status.state === "waiting";
+  if (!colourSet && status.colour) { document.getElementById("fold-colour").value = status.colour; colourSet = true; }
+  for (const button of Object.values(foldButtons)) button.disabled = busy;
+  foldStop.disabled = !busy;
+  const what = status.mode ? `${status.mode}: ` : "";
+  foldStatus.textContent = foldMessage || (status.state === "idle" ? FOLD_WORDS.idle : what + FOLD_WORDS[status.state] + ".");
+  foldPrompt.hidden = status.state !== "waiting";
+  document.getElementById("fold-prompt-text").textContent = status.prompt;
+  const text = status.lines.join("\n");
+  if (foldOutput.textContent !== text) {
+    foldOutput.textContent = text;
+    foldOutput.hidden = text === "";
+    foldOutput.scrollTop = foldOutput.scrollHeight;
+  }
+  if (status.state !== foldState) {     // a job moved on: the script may have written a new look.png
+    foldState = status.state;
+    if (status.state !== "running") lookPicture.src = `/look.png?${Date.now()}`;
+  }
+}
+
+lookPicture.onload = () => { lookPicture.hidden = false; };
+lookPicture.onerror = () => { lookPicture.hidden = true; };
+for (const [mode, button] of Object.entries(foldButtons)) button.onclick = () => startFold(mode);
+foldStop.onclick = () => sendFold("/fold/stop").then(refreshFold);
+document.getElementById("fold-continue").onclick = () => sendFold("/fold/continue").then(refreshFold);
+document.getElementById("fold-cancel").onclick = () => sendFold("/fold/stop").then(refreshFold);
+refreshFold();
+setInterval(refreshFold, 500);
+
+// The picture is asked for again only once the last one has arrived, about 5 times a second.
+function nextPicture() { cameraPicture.src = `/camera.jpg?${Date.now()}`; }
+cameraPicture.onload = () => {
+  cameraPicture.hidden = false; cameraHint.hidden = true;
+  setTimeout(nextPicture, 200);
+};
+cameraPicture.onerror = () => {
+  cameraPicture.hidden = true; cameraHint.hidden = false;
+  setTimeout(nextPicture, 1000);
+};
+nextPicture();
 </script>
 </body>
 </html>

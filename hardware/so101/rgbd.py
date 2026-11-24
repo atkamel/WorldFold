@@ -28,6 +28,11 @@ class Frame:
     K: tuple            # (fx, fy, cx, cy) for the RGB resolution
 
 
+# Every Record3D stream object made, held until the process ends: the library corrupts the heap (Windows error
+# 0xc0000374) when one is freed while the phone is still streaming into it.
+OPEN_STREAMS = []
+
+
 class Phone:
     """Record3D over USB: the latest frame.
 
@@ -48,6 +53,7 @@ class Phone:
         if len(devices) <= self.device:
             sys.exit(f"No iPhone at index {self.device}. Plug it in, unlock it, open Record3D.")
         self.session = Record3DStream()
+        OPEN_STREAMS.append(self.session)
         self.session.on_new_frame = self._on_frame
         self.session.on_stream_stopped = lambda: None
         if self.session.connect(devices[self.device]) is False:
@@ -74,7 +80,7 @@ class Phone:
     def wait(self, timeout=5.0):
         with self.cond:
             if not self.cond.wait_for(lambda: self.count > self.seen, timeout):
-                sys.exit("Record3D sent no new frame.")
+                sys.exit("Record3D sent no new frame. Unlock the phone and bring the Record3D app to the front.")
             self.seen = self.count
         return self._read()
 

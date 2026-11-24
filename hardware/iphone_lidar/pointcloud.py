@@ -58,3 +58,21 @@ def pack_points(points, colors):
     count = points.shape[0]
     header = struct.pack("<i", count)
     return header + points.astype("<f4").tobytes() + colors.astype(np.uint8).tobytes()
+
+
+def pack_frame(rgb, depth, intrinsics):
+    """A camera frame as packed points. intrinsics: (fx, fy, cx, cy) of the color image."""
+    # Record3D reports intrinsics for the color image; the depth image is smaller.
+    fx, fy, cx, cy = scale_intrinsics(
+        intrinsics[0], intrinsics[1], intrinsics[2], intrinsics[3],
+        from_width=rgb.shape[1], to_width=depth.shape[1],
+    )
+    points, colors = depth_to_points(depth, rgb, fx, fy, cx, cy)
+    return pack_points(points, colors)
+
+
+def pack_no_points():
+    """What the viewer gets while there is no camera frame."""
+    empty_points = np.zeros((0, 3), dtype=np.float32)
+    empty_colors = np.zeros((0, 3), dtype=np.uint8)
+    return pack_points(empty_points, empty_colors)
