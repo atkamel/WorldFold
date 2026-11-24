@@ -221,6 +221,9 @@ def test_a_claw_toggles_open_and_closed_from_the_panel_while_driving(mode):
     driver = Driver(mode)
     right = mode.arms[1]
     assert not mode.toggle_claw(right.name)
+    gamepad = sys.modules["gamepad"]
+    right.command[6] = mode.jaw_closed[1]
+    right.present[6] = mode.jaw_closed[1]
     driver.enable()
     assert not mode.toggle_claw("no such arm")
     start = driver.jaws()
@@ -229,7 +232,11 @@ def test_a_claw_toggles_open_and_closed_from_the_panel_while_driving(mode):
     for _ in range(150):
         driver.send(ControllerState())
     opened = driver.jaws()
-    assert opened[1] > start[1] + 0.5
+    # Open is a little way, not the jaw's whole travel.
+    assert abs(opened[1] - np.radians(gamepad.CLAW_OPEN)) < 0.02
+    low, high = right.limits[6]
+    widest = max(mode.maps[1].to_rad(6, low), mode.maps[1].to_rad(6, high))
+    assert opened[1] < widest - 0.5
     assert opened[0] == start[0]
     counts = driver.write_counts()
     driver.send(ControllerState())
@@ -238,7 +245,7 @@ def test_a_claw_toggles_open_and_closed_from_the_panel_while_driving(mode):
     assert mode.toggle_claw(right.name)
     for _ in range(150):
         driver.send(ControllerState())
-    assert driver.jaws()[1] < start[1]
+    assert abs(driver.jaws()[1] - start[1]) < 0.02
 
 
 def test_a_faster_arm_may_trail_its_command_further_before_it_waits(mode):

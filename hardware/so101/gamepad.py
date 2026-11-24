@@ -27,6 +27,7 @@ PAN_SPEED = 90  # deg/s the base turns with a stick fully over
 WRIST_SPEED = 60  # deg/s the wrist tilts while a bumper or trigger is held
 MAX_JOINT_SPEED = 120  # deg/s
 JAW_SPEED = 90  # deg/s of a claw on its way open or closed
+CLAW_OPEN = 30  # deg the claw opens to (the jaw's model angle; shut is about -10, its limit about 120)
 LAG_TIME = 0.15  # s of its own top speed an arm joint may trail its command before that arm waits
 HOME_SPEED = 30  # deg/s of the fastest joint on the glide to the idle poses
 MAX_STEP_TIME = 0.06  # s of motion one step may cover when the loop runs late
@@ -109,11 +110,16 @@ class Gamepad:
         for arm, mapping in zip(self.arms, self.maps):
             low, high = arm.limits[replay.GRIPPER_ID]
             if mapping.to_rad(replay.GRIPPER_ID, high) > mapping.to_rad(replay.GRIPPER_ID, low):
-                self.jaw_open.append(high)
-                self.jaw_closed.append(low)
+                widest = high
+                shut = low
             else:
-                self.jaw_open.append(low)
-                self.jaw_closed.append(high)
+                widest = low
+                shut = high
+            # Open is CLAW_OPEN, held inside the jaw's limits.
+            a_little = mapping.to_ticks(replay.GRIPPER_ID, np.radians(CLAW_OPEN))
+            a_little = max(min(low, high), min(max(low, high), a_little))
+            self.jaw_open.append(round(a_little))
+            self.jaw_closed.append(shut)
 
     def input_loop(self):
         while not self.shutdown.is_set():

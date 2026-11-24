@@ -630,7 +630,7 @@ The two followers must be configured side by side in `arms.json`, in left-to-rig
 | click a stick | switches that arm's forward and back to up and down (stick forward is up); sideways still turns the base |
 | LB, RB | tilts the left, right wrist joint up while held |
 | LT, RT | tilts the left, right wrist joint down while held |
-| Q, E on the keyboard | while driving: the left, right claw goes to its other end, open or closed (the panel's page must have the keyboard) |
+| Q, E on the keyboard | while driving: the left, right claw opens a little (30 deg, `CLAW_OPEN`) or shuts (the panel's page must have the keyboard) |
 | A | starts driving, with the sticks centred and the claw buttons released; A again holds both arms |
 | B | stops; A drives again |
 | Y | while stopped or holding: both arms glide to their saved idle poses; B stops the glide |
