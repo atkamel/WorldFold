@@ -423,3 +423,27 @@ def test_a_stick_takes_over_from_a_dragged_point_and_b_drops_it(mode):
     assert mode.set_tip(right.name, list(point))
     driver.send(ControllerState(buttons=("b",)))
     assert mode.tips_state()[right.name] is None
+
+
+def test_a_point_dragged_past_the_arm_s_reach_snaps_to_the_nearest_place_it_can_go(mode):
+    driver = Driver(mode)
+    driver.enable()
+    right = mode.arms[1]
+    start = driver.tips()[1]
+
+    near = start + np.array([0.02, 0.0, 0.01])
+    assert mode.set_tip(right.name, list(near))
+    assert np.linalg.norm(np.array(mode.tips_state()[right.name]) - near) < 0.001
+
+    far = start + np.array([1.0, 0.0, 0.0])
+    assert mode.set_tip(right.name, list(far))
+    snapped = np.array(mode.tips_state()[right.name])
+    assert snapped[0] > start[0] + 0.02
+    assert np.linalg.norm(snapped) < 0.6
+    seed = mode.pose(mode.maps[1], right.command)[:5]
+    _, error, _ = mode.kinematics.solve(snapped, seed, iters=200, keep_direction=True)
+    assert error < 0.002
+
+    under = start + np.array([0.0, 0.0, -0.5])
+    assert mode.set_tip(right.name, list(under))
+    assert mode.tips_state()[right.name][2] > 0

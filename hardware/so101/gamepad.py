@@ -29,6 +29,8 @@ JAW_SPEED = 60  # deg/s while a claw button is held
 HOME_SPEED = 30  # deg/s of the fastest joint on the glide to the idle poses
 MAX_STEP_TIME = 0.06  # s of motion one step may cover when the loop runs late
 ARRIVED = 0.002  # m from a dragged point at which the fingertip counts as there
+TIP_FLOOR = 0.01  # m above the model's table: the lowest a dragged point may sit
+SNAP_ITERS = 60  # solver steps spent finding the nearest reachable place for a dragged point
 MAX_LAG = 50  # encoder ticks; applies to arm joints, since a closed jaw may be gripping something
 JOINTS = tuple(replay.MOTOR_IDS)
 
@@ -119,18 +121,53 @@ class Gamepad:
         with left.lock, right.lock:
             self.stop_locked("Stopped. Press A to drive again")
 
+    def reachable_point(self, index, point):
+        """The place nearest `point` (the arm's base frame, m) that the fingertip can be brought to from where the
+        arm is, with its joints inside their recorded limits and the point above the table. None when the solver
+        gives no answer."""
+        arm = self.arms[index]
+        mapping = self.maps[index]
+        with arm.lock:
+            command = dict(arm.command)
+        wanted = np.array(point, dtype=float)
+        if wanted[2] < TIP_FLOOR:
+            wanted[2] = TIP_FLOOR
+        seed = self.pose(mapping, command)[:5]
+        solved, error, _ = self.kinematics.solve(wanted, seed, iters=SNAP_ITERS, keep_direction=True)
+        if not np.isfinite(solved).all() or not np.isfinite(error):
+            return None
+        for i in range(5):
+            m = JOINTS[i]
+            first = mapping.to_rad(m, arm.limits[m][0])
+            second = mapping.to_rad(m, arm.limits[m][1])
+            # A joint resting past a recorded limit may stay where it is.
+            low = min(first, second, seed[i])
+            high = max(first, second, seed[i])
+            solved[i] = max(low, min(high, solved[i]))
+        nearest = self.kinematics.tip(solved)[0]
+        if np.linalg.norm(nearest - wanted) < ARRIVED:
+            return wanted
+        return nearest
+
     def set_tip(self, name, point):
-        """Take a fingertip point dragged in the panel for the arm called `name` (its base frame, metres). False
-        when driving is off or the arm is not one of the two."""
+        """Take a fingertip point dragged in the panel for the arm called `name` (its base frame, metres), moved
+        to the nearest place the arm can reach. False when driving is off or the arm is not one of the two."""
+        index = None
+        for i in range(2):
+            if self.arms[i].name == name:
+                index = i
+        if index is None or not self.enabled:
+            return False
+        # Worked out before the locks are taken, so the control loop is not held up.
+        nearest = self.reachable_point(index, point)
+        if nearest is None:
+            return False
         left, right = self.arms
         with left.lock, right.lock:
             if not self.enabled:
                 return False
-            for i in range(2):
-                if self.arms[i].name == name:
-                    self.tips[i] = np.array(point, dtype=float)
-                    return True
-            return False
+            self.tips[index] = nearest
+            return True
 
     def tips_state(self):
         """{arm name: the dragged point it is going to, or None}, for the panel's marker."""

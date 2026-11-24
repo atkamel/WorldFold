@@ -138,7 +138,8 @@
         <span><kbd>LB</kbd> <kbd>RB</kbd></span><span>open the left, right claw</span>
         <span><kbd>LT</kbd> <kbd>RT</kbd></span><span>close the left, right claw</span>
         <span><kbd>Y</kbd></span><span>while stopped: both arms go to their idle poses</span>
-        <span>drag the orange ball</span><span>while driving: that gripper goes to where you drop it</span>
+        <span>drag the orange ball</span><span>while driving: that gripper goes to where you drop it, as far as it can reach</span>
+        <span>right-drag, wheel</span><span>turn the view, zoom</span>
       </div>
     </div>
   </details>
@@ -329,6 +330,8 @@ renderer.setPixelRatio(devicePixelRatio);
 view.appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+// The left button is for the arm: the right one turns the view (with Shift it slides it), the wheel zooms.
+controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
 scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 2.2));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(3, 6, 4); scene.add(sun);
 scene.add(new THREE.GridHelper(10, 20, 0x999999, 0xcccccc));
@@ -603,6 +606,7 @@ function tipHit(d) {
 
 const canvas = renderer.domElement;
 canvas.addEventListener("pointerdown", e => {
+  if (e.button !== 0) return;            // only the left button takes hold of the arm
   const part = pick(e);
   if (!part) return;                     // empty space: let OrbitControls orbit
   setActive(part.arm);
@@ -937,8 +941,8 @@ function render() {
   const gamepad = state.gamepad !== null;
   document.body.classList.toggle("pad", gamepad);
   document.getElementById("help").textContent = gamepad
-    ? "Drag the orange ball to send that gripper there (Shift-drag: up and down). Drag empty space to orbit. Solid is the arm, blue is where it is going."
-    : "Keys move the gripper as seen from this view. Drag the orange ball to move it (Shift-drag: up and down), drag another part to turn its joint, drag empty space to orbit. Solid is the arm, blue is where you are sending it.";
+    ? "After A on the controller, drag the orange ball with the left button to send that gripper there (Shift-drag: up and down). The blue ball stops where the arm can reach. Right-drag turns the view, the wheel zooms. Solid is the arm, blue is where it is going."
+    : "Keys move the gripper as seen from this view. With the left button, drag the orange ball to move it (Shift-drag: up and down) or another part to turn its joint. Right-drag turns the view, the wheel zooms. Solid is the arm, blue is where you are sending it.";
   document.getElementById("idle").disabled = gamepad || btn.disabled;
   document.getElementById("gamepad").hidden = !gamepad;
   document.getElementById("fold").hidden = gamepad;

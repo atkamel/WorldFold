@@ -647,8 +647,11 @@ loop's time per step. With a stick fully over the fingertip moves 10 cm/s and th
 lower, the claw included. A step covers the time since the last one, so a slow loop does not slow the arms.
 
 A dragged point goes to the controller loop (`POST /gamepad/target`: the arm and a point in its base frame, three
-numbers within a metre), which walks the fingertips to it at the sticks' speed through the same check. A blue ball
-marks the point until the gripper is there. A stick takes over from it, B drops it, and it is refused while
+numbers within a metre), which walks the fingertips to it at the sticks' speed through the same check. A point
+dragged past where the arm can go is moved to the nearest place it can: the solver is run toward it from the
+arm's pose with the joints inside their recorded limits, and the point is kept 1 cm above the model's table
+(`TIP_FLOOR`). A blue ball marks the point, moved or not, until the gripper is there. In the 3D view the left
+button is for the arm, the right button turns the view (with Shift it slides it) and the wheel zooms. A stick takes over from it, B drops it, and it is refused while
 driving is off. In gamepad mode only the gripper can be dragged; turning one joint by its part is for the panel
 without `--gamepad`.
 
