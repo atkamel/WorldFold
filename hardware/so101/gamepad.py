@@ -31,7 +31,9 @@ MAX_STEP_TIME = 0.06  # s of motion one step may cover when the loop runs late
 ARRIVED = 0.002  # m from a dragged point at which the fingertip counts as there
 TIP_FLOOR = 0.01  # m above the model's table: the lowest a dragged point may sit
 SNAP_ITERS = 60  # solver steps spent finding the nearest reachable place for a dragged point
-MAX_LAG = 50  # encoder ticks; applies to arm joints, since a closed jaw may be gripping something
+MAX_LAG = 100  # encoder ticks an arm joint may trail its command before that arm waits; the jaw may be gripping
+MAX_FAILS = 15  # servo reads or writes missed in a row before driving is switched off (0.3 s)
+LOG_EVERY = 2.0  # s between the counts written to the log
 JOINTS = tuple(replay.MOTOR_IDS)
 
 
@@ -66,6 +68,13 @@ class Gamepad:
         self.homing = False
         self.y_was_down = False
         self.tips = [None, None]  # per arm: a fingertip point dragged in the panel, base frame, m
+        self.fails = 0  # servo reads or writes missed in a row
+        self.log = None  # a text file the panel opens: what the loop did, for reading after a run
+        self.logged_status = None
+        self.logged_at = None
+        self.missed_reads = 0
+        self.failed_writes = 0
+        self.most_lag = 0
         self.idle = []
         idle_poses = []
         for arm, mapping in zip(self.arms, self.maps):
@@ -309,25 +318,58 @@ class Gamepad:
                 blocked = obstruction
         return None, blocked
 
+    def link_failed(self, what):
+        """Count one missed read or write. The step is skipped and the next one tries again; driving is switched
+        off only when the link stays down."""
+        self.fails += 1
+        if self.fails > MAX_FAILS:
+            self.stop_locked(f"The servo link dropped out ({what}). Check the cables, then press A")
+        else:
+            self.status = f"Waiting for the servos ({what})"
+
     def send(self, goals, chosen):
-        """Send the chosen arms their goals. False (and stopped) when a write fails."""
+        """Send the chosen arms their goals. False when a write fails: that arm keeps its last command and the
+        next step sends again."""
         for i in range(2):
             arm = self.arms[i]
             goal = goals[i]
             if chosen[i] and goal != arm.command:
-                # A failed write can leave this physical goal uncertain. Preserve the prior software target.
                 if not arm.send_goals(goal):
-                    self.stop_locked(f"Could not command {arm.name}. Press A to drive again")
+                    self.failed_writes += 1
+                    self.link_failed(f"{arm.name} did not take a command")
                     return False
                 arm.command = dict(goal)
                 arm.target = dict(goal)
+        self.fails = 0
         return True
 
+    def record(self, now):
+        """Write a line to the log when the status changes, and the counts every LOG_EVERY seconds."""
+        if self.log is None:
+            return
+        status = self.status.split(" Loop ")[0]
+        if status != self.logged_status:
+            self.log.write(f"{now:.2f} {status}\n")
+            self.logged_status = status
+        if self.logged_at is None:
+            self.logged_at = now
+        if now - self.logged_at >= LOG_EVERY:
+            self.log.write(f"{now:.2f} loop {self.loop_ms:.0f} ms, missed reads {self.missed_reads}, "
+                           f"failed writes {self.failed_writes}, most lag {self.most_lag} steps\n")
+            self.logged_at = now
+            self.missed_reads = 0
+            self.failed_writes = 0
+            self.most_lag = 0
+
     def lagging(self, arm):
+        behind = False
         for m in JOINTS[:-1]:
-            if abs(arm.present[m] - arm.command[m]) > MAX_LAG:
-                return True
-        return False
+            lag = abs(arm.present[m] - arm.command[m])
+            if lag > self.most_lag:
+                self.most_lag = round(lag)
+            if lag > MAX_LAG:
+                behind = True
+        return behind
 
     def too_late(self, now, captured, started):
         """Whether the controller sample has gone stale while this step was worked out."""
@@ -382,6 +424,7 @@ class Gamepad:
             try:
                 self.tick(state, captured, started, message)
                 self.loop_ms = 0.9 * self.loop_ms + 0.1 * 1000 * (time.monotonic() - started)
+                self.record(started)
             except (OSError, ValueError, np.linalg.LinAlgError) as exc:
                 self.shutdown.set()
                 self.stop()
@@ -438,11 +481,16 @@ class Gamepad:
                 else:
                     self.stop_locked("Press A to drive both arms")
                 return
-            if not all(reads) or not all(arm.torque for arm in self.arms) or torque_changed:
-                self.stop_locked("Turn on torque for both arms and check the servo links")
-                return
             if "b" in buttons:
                 self.stop_locked("Stopped. Press A to drive again")
+                return
+            if not all(arm.torque for arm in self.arms) or torque_changed:
+                self.stop_locked("Turn on torque for both arms, then press A")
+                return
+            if not all(reads):
+                # A missed read is routine on the serial link: skip this step and keep driving.
+                self.missed_reads += 1
+                self.link_failed("an encoder read was missed")
                 return
             sticks = (stick(*axes[:2], self.center[:2]), stick(*axes[2:], self.center[2:]))
             sticks_centered = not np.any(sticks[0]) and not np.any(sticks[1])

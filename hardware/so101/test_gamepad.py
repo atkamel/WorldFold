@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 import importlib
+import io
 import sys
 import threading
 
@@ -32,13 +33,21 @@ class SimulatedArm:
         self.speed = 50
         self.writes = []
         self.stuck = False
+        self.missed_reads = 0
+        self.failed_writes = 0
 
     def read_present(self):
+        if self.missed_reads > 0:
+            self.missed_reads -= 1
+            return False
         if not self.stuck:
             self.present = {m: round(v) for m, v in self.command.items()}
         return True
 
     def send_goals(self, goals):
+        if self.failed_writes > 0:
+            self.failed_writes -= 1
+            return False
         self.writes.append(dict(goals))
         return True
 
@@ -268,7 +277,7 @@ def test_a_lagging_arm_waits_and_the_drive_stays_on(mode):
     driver.enable()
     left = mode.arms[0]
     left.stuck = True
-    left.present[2] = left.command[2] + 100
+    left.present[2] = left.command[2] + 300
     for _ in range(5):
         driver.send(ControllerState(left_y=32767, right_y=32767))
     assert driver.write_counts()[0] == 0
@@ -447,3 +456,51 @@ def test_a_point_dragged_past_the_arm_s_reach_snaps_to_the_nearest_place_it_can_
     under = start + np.array([0.0, 0.0, -0.5])
     assert mode.set_tip(right.name, list(under))
     assert mode.tips_state()[right.name][2] > 0
+
+
+def test_a_missed_encoder_read_holds_one_step_and_driving_stays_on(mode):
+    driver = Driver(mode)
+    driver.enable()
+    pushed = ControllerState(left_y=32767, right_y=32767)
+    mode.arms[0].missed_reads = 1
+    driver.send(pushed)
+    assert driver.write_counts() == [0, 0]
+    assert mode.enabled
+    driver.send(pushed)
+    assert driver.write_counts() == [1, 1]
+
+
+def test_a_failed_write_is_tried_again_and_driving_stays_on(mode):
+    driver = Driver(mode)
+    driver.enable()
+    pushed = ControllerState(right_y=32767)
+    mode.arms[1].failed_writes = 1
+    driver.send(pushed)
+    assert driver.write_counts() == [0, 0]
+    assert mode.enabled
+    driver.send(pushed)
+    assert driver.write_counts() == [0, 1]
+
+
+def test_a_servo_link_that_stays_down_stops_the_drive(mode):
+    driver = Driver(mode)
+    driver.enable()
+    mode.arms[0].missed_reads = 1000
+    for _ in range(40):
+        driver.send(ControllerState(left_y=32767))
+    assert not mode.enabled
+    assert driver.write_counts() == [0, 0]
+
+
+def test_what_the_loop_does_is_written_down(mode):
+    mode.log = io.StringIO()
+    driver = Driver(mode)
+    driver.enable()
+    mode.record(driver.now)
+    mode.arms[0].missed_reads = 2
+    for _ in range(5):
+        driver.send(ControllerState(left_y=32767))
+    mode.record(driver.now + 5.0)
+    written = mode.log.getvalue()
+    assert "Driving" in written
+    assert "missed reads 2" in written

@@ -640,8 +640,13 @@ then press A. B, the panel's Stop button, a lost controller, or a stalled servo 
 again, and both sticks go back to over the table. If raw USB has not sent its first input report, move a stick
 briefly and then let both sticks rest. From the folded idle pose, raise an arm before reaching out with it.
 
+A missed encoder read or a command a servo did not take skips that one step and driving stays on; only a link
+that stays down for 15 steps in a row (0.3 s, `MAX_FAILS`) switches it off. Each `--gamepad` session writes
+`runs/gamepad_<date_time>.log`: a line whenever the status changes, and every 2 s the loop time, the reads and
+writes missed, and the most a joint trailed its command. Read it before changing a setting.
+
 The two arms move at the same time and each on its own: an arm whose step is refused, out of reach, or more than
-about 4 deg behind its command holds while the other goes on, and the panel's status says which and why, with the
+about 9 deg behind its command (`MAX_LAG`) holds while the other goes on, and the panel's status says which and why, with the
 loop's time per step. With a stick fully over the fingertip moves 10 cm/s and the base turns 45 deg/s
 (`REACH_SPEED`, `PAN_SPEED` in `gamepad.py`); no joint goes over 60 deg/s or the panel's speed, whichever is
 lower, the claw included. A step covers the time since the last one, so a slow loop does not slow the arms.

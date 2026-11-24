@@ -644,6 +644,11 @@ def main():
         if spacing is None:
             parser.error("--gamepad requires spacing_cm in arms.json")
         gamepad = Gamepad(*arms_by_name.values(), float(spacing) / 100)
+        log_folder = HERE / "runs"
+        log_folder.mkdir(exist_ok=True)
+        log_file = log_folder / f"gamepad_{time.strftime('%Y%m%d_%H%M%S')}.log"
+        gamepad.log = open(log_file, "w", buffering=1, encoding="utf-8")
+        print(f"Gamepad log: {log_file}")
         threading.Thread(target=gamepad.run, daemon=True).start()
     else:
         for arm in arms_by_name.values():
