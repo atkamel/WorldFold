@@ -20,9 +20,11 @@ CENTER_MOTION = 3000
 DEAD_ZONE = 5000
 TRIGGER_PRESS = 550
 TRIGGER_RELEASE = 350
-TIP_SPEED = 0.035  # m/s
-MAX_JOINT_SPEED = 25  # deg/s
+REACH_SPEED = 0.10  # m/s the fingertip moves out, in, up or down with a stick fully over
+PAN_SPEED = 45  # deg/s the base turns with a stick fully over
+MAX_JOINT_SPEED = 60  # deg/s
 JAW_SPEED = 60  # deg/s while a claw button is held
+MAX_STEP_TIME = 0.06  # s of motion one step may cover when the loop runs late
 MAX_LAG = 50  # encoder ticks; applies to arm joints, since a closed jaw may be gripping something
 JOINTS = tuple(replay.MOTOR_IDS)
 
@@ -36,11 +38,6 @@ def stick(x, y, center):
     if length <= dead_zone:
         return np.zeros(2)
     return point * min(1.0, (length - dead_zone) / (1.0 - dead_zone)) / length
-
-
-def cartesian_step(x, y, height_mode):
-    # Model axes are forward, left, up. On the gamepad positive x is right.
-    return TIP_SPEED * PERIOD * np.array([0 if height_mode else y, -x, y if height_mode else 0])
 
 
 class Gamepad:
@@ -58,6 +55,14 @@ class Gamepad:
         self.a_was_down = False
         self.click_was_down = [False, False]
         self.height = [False, False]
+        self.last_tick = None
+        self.loop_ms = 0.0
+        # The base turns about a vertical line through the first joint.
+        self.pan_axis = self.kinematics.links[0][0][:2].copy()
+        if self.facing(0.01)[1] > self.facing(0.0)[1]:
+            self.pan_left = 1.0
+        else:
+            self.pan_left = -1.0
         self.jaw_open = []
         self.jaw_closed = []
         for arm, mapping in zip(self.arms, self.maps):
@@ -102,29 +107,72 @@ class Gamepad:
     def pose(self, mapping, values):
         return np.array([mapping.to_rad(m, values[m]) for m in JOINTS])
 
-    def proposed(self, arm, mapping, xy, height, jaw_goal):
-        """The next commanded ticks for one arm, or None when the fingertip step is out of reach. `jaw_goal` is the
-        jaw limit a held claw button asks for, or None to leave the jaw where it is."""
-        current = np.array([arm.command[m] for m in JOINTS])
+    def facing(self, pan):
+        """The level direction the arm reaches in with its base turned to `pan`: from the turning axis to the
+        fingertip of a pose stretched out in front. The folded arm's own fingertip can sit behind the axis."""
+        stretched = np.radians([0.0, 40.0, -30.0, 80.0, 0.0])
+        stretched[0] = pan
+        outward = self.kinematics.tip(stretched)[0][:2] - self.pan_axis
+        return outward / np.linalg.norm(outward)
+
+    def proposed(self, arm, mapping, xy, height, jaw_goal, dt):
+        """(the next commanded ticks for one arm, whether the reach step could be solved). Stick x turns the base.
+        Stick y moves the fingertip out and in along the arm, or up and down in height mode, with the fingers
+        keeping their lean. `jaw_goal` is the jaw limit a held claw button asks for, or None to leave the jaw."""
+        current = np.array([arm.command[m] for m in JOINTS], dtype=float)
         goal = current.copy()
+        reachable = True
         if np.any(xy):
             angles = self.pose(mapping, arm.command)
-            tip = self.kinematics.tip(angles[:5])[0]
-            target = tip + cartesian_step(*xy, height)
-            wanted, error, _ = self.kinematics.solve(target, angles[:5], iters=8, keep_direction=True)
-            if not np.isfinite(wanted).all() or not np.isfinite(error) or error > 0.0002:
-                return None
-            goal[:5] = [mapping.to_ticks(m, a) for m, a in zip(JOINTS, wanted)]
+            wanted = angles[:5].copy()
+            if xy[1] != 0:
+                tip = self.kinematics.tip(wanted)[0]
+                step = np.zeros(3)
+                distance = xy[1] * REACH_SPEED * dt
+                if height:
+                    step[2] = distance
+                else:
+                    step[:2] = self.facing(wanted[0]) * distance
+                solved, error, _ = self.kinematics.solve(tip + step, wanted, iters=8, keep_direction=True)
+                if np.isfinite(solved).all() and np.isfinite(error) and error <= 0.0002:
+                    wanted = solved
+                else:
+                    reachable = False
+            if xy[0] != 0:
+                # On the gamepad positive x is right.
+                wanted[0] = wanted[0] - self.pan_left * xy[0] * np.radians(PAN_SPEED) * dt
+            for i in range(5):
+                goal[i] = mapping.to_ticks(JOINTS[i], wanted[i])
         if jaw_goal is not None:
             goal[-1] = jaw_goal
 
         limits = np.array([arm.limits[m] for m in JOINTS])
         # The saved idle pose can start slightly past a soft limit. Permit movement back into range.
         goal = np.clip(goal, np.minimum(limits[:, 0], current), np.maximum(limits[:, 1], current))
-        arm_step = min(arm.speed, MAX_JOINT_SPEED) * replay.STEPS_PER_DEGREE * PERIOD
-        maximum = np.full(len(JOINTS), arm_step)
-        maximum[-1] = JAW_SPEED * replay.STEPS_PER_DEGREE * PERIOD
-        return dict(zip(JOINTS, current + np.clip(goal - current, -maximum, maximum)))
+        change = goal - current
+        # Every arm joint is slowed by the same share, so the fingertip keeps its path.
+        arm_step = min(arm.speed, MAX_JOINT_SPEED) * replay.STEPS_PER_DEGREE * dt
+        largest = np.max(np.abs(change[:5]))
+        if largest > arm_step:
+            change[:5] = change[:5] * arm_step / largest
+        jaw_step = min(arm.speed, JAW_SPEED) * replay.STEPS_PER_DEGREE * dt
+        change[-1] = np.clip(change[-1], -jaw_step, jaw_step)
+        return dict(zip(JOINTS, current + change)), reachable
+
+    def clear(self, move, held, ahead, floors):
+        """None when the arms chosen in `move` (left, right) may take their step with the other held, else what
+        is in the way. The held poses against each other set the floors, so only pairings with a pose ahead are
+        tested."""
+        right_poses = held[1]
+        if move[1]:
+            right_poses = np.concatenate([held[1], ahead[1]])
+        if move[0]:
+            obstruction = self.guard.obstruction(ahead[0], right_poses, floors)
+            if obstruction is not None:
+                return obstruction
+        if move[1]:
+            return self.guard.obstruction(held[0], ahead[1], floors)
+        return None
 
     def run(self):
         threading.Thread(target=self.input_loop, daemon=True).start()
@@ -133,6 +181,7 @@ class Gamepad:
             state, captured, message = self.sample
             try:
                 self.tick(state, captured, started, message)
+                self.loop_ms = 0.9 * self.loop_ms + 0.1 * 1000 * (time.monotonic() - started)
             except (OSError, ValueError, np.linalg.LinAlgError) as exc:
                 self.shutdown.set()
                 self.stop()
@@ -142,6 +191,10 @@ class Gamepad:
 
     def tick(self, state, captured, now, message="Waiting for the controller"):
         started = time.monotonic()
+        dt = PERIOD
+        if self.last_tick is not None:
+            dt = min(max(now - self.last_tick, 0.0), MAX_STEP_TIME)
+        self.last_tick = now
         left, right = self.arms
         with left.lock, right.lock:
             # Refresh both encoder snapshots before solving. Torque requests still use the panel's arm API.
@@ -217,19 +270,27 @@ class Gamepad:
                     modes.append("up and down")
                 else:
                     modes.append("over the table")
-            driving = f"Driving. Left stick: {modes[0]}. Right stick: {modes[1]}"
-            if any(abs(arm.present[m] - arm.command[m]) > MAX_LAG for arm in self.arms for m in JOINTS[:-1]):
-                self.stop_locked("A follower is lagging. Press A to drive again")
-                return
-
+            driving = f"Driving. Left stick: {modes[0]}. Right stick: {modes[1]}."
+            names = ("Left", "Right")
+            notes = []
             goals = []
             for i in range(2):
-                goals.append(self.proposed(self.arms[i], self.maps[i], sticks[i], self.height[i], jaw_goals[i]))
-            if any(goal is None for goal in goals):
-                self.status = "Gripper target out of reach"
-                return
-            if all(goal == arm.command for goal, arm in zip(goals, self.arms)):
-                self.status = driving
+                arm = self.arms[i]
+                lagging = False
+                for m in JOINTS[:-1]:
+                    if abs(arm.present[m] - arm.command[m]) > MAX_LAG:
+                        lagging = True
+                if lagging:
+                    goals.append(dict(arm.command))
+                    notes.append(f"{names[i]} arm is catching up.")
+                    continue
+                goal, reachable = self.proposed(arm, self.maps[i], sticks[i], self.height[i], jaw_goals[i], dt)
+                if not reachable:
+                    notes.append(f"{names[i]} arm: out of reach.")
+                goals.append(goal)
+            moving = [goals[0] != self.arms[0].command, goals[1] != self.arms[1].command]
+            if not any(moving):
+                self.status = " ".join([driving] + notes)
                 return
             held = []
             ahead = []
@@ -240,26 +301,43 @@ class Gamepad:
                 held.append(np.unique([measured, commanded], axis=0))
                 ahead.append(np.unique([proposed, (measured + proposed) / 2], axis=0))
             floors = self.guard.floors(held[0], held[1])
-            everywhere_right = np.concatenate([held[1], ahead[1]])
-            # The held poses against each other set the floors, so only pairings with a pose ahead are tested.
-            obstruction = self.guard.obstruction(ahead[0], everywhere_right, floors)
-            if obstruction is None:
-                obstruction = self.guard.obstruction(held[0], ahead[1], floors)
-            if obstruction is not None:
-                self.status = f"Movement blocked: clearance {obstruction}"
+            # Both arms together first. If that is refused, whichever arm can move alone still moves.
+            options = []
+            if moving[0] and moving[1]:
+                options.append((True, True))
+            if moving[0]:
+                options.append((True, False))
+            if moving[1]:
+                options.append((False, True))
+            chosen = None
+            blocked = None
+            for option in options:
+                obstruction = self.clear(option, held, ahead, floors)
+                if obstruction is None:
+                    chosen = option
+                    break
+                if blocked is None:
+                    blocked = obstruction
+            if chosen is None:
+                self.status = f"Movement blocked: clearance {blocked}"
                 return
+            for i in range(2):
+                if moving[i] and not chosen[i]:
+                    notes.append(f"{names[i]} arm blocked: clearance {blocked}.")
             if now - captured + time.monotonic() - started > STALE_AFTER:
                 self.center = self.center_candidate = None
                 self.stop_locked("Controller input timed out")
                 return
             if self.shutdown.is_set():
                 return
-            for arm, goal in zip(self.arms, goals):
-                if goal != arm.command:
+            for i in range(2):
+                arm = self.arms[i]
+                goal = goals[i]
+                if chosen[i] and goal != arm.command:
                     # A failed write can leave this physical goal uncertain. Preserve the prior software target.
                     if not arm.send_goals(goal):
                         self.stop_locked(f"Could not command {arm.name}. Press A to drive again")
                         return
                     arm.command = dict(goal)
                     arm.target = dict(goal)
-            self.status = driving
+            self.status = " ".join([driving] + notes + [f"Loop {self.loop_ms:.0f} ms"])

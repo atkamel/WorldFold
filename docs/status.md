@@ -20,9 +20,10 @@ released, still), user 2026-10-22.
   the table and up and down, LB and RB open the claws and LT and RT close them while held, A starts driving and B
   stops. The paired loop checks both arms and the table in one model before sending a step, and since 2026-11-23
   also parts two joints apart (forearm and shoulder housing, wrist and upper arm), which overlap by up to 7 cm in
-  the model inside the motor limits (results.md); a pair already too close may move apart, not closer. Tested
-  with fake servos and the saved idle poses. Windows XInput decoding checked with a fixture. Physical arm motion
-  in gamepad mode still needs a rig check. See `hardware/so101/README.md`.
+  the model inside the motor limits (results.md); a pair already too close may move apart, not closer. The first
+  drive on the rig (user, 2026-11-23) moved, slowly, with one arm waiting for the other. Since then a stick's
+  sideways turns the base and its forward and back reach along the arm, at 10 cm/s and 45 deg/s, and each arm is
+  judged on its own; that version has only run on fake servos. See `hardware/so101/README.md`.
 - **PowerA USB controller (user, 2026-11-19):** `python -m hardware.controller` streams decoded input from
   the Lavender Swirl EnWired on this Mac. Live USB input and stick reports checked. Button, trigger, Share, and
   Guide mappings checked with fixtures. See `hardware/controller/README.md`.
@@ -118,9 +119,10 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
-Gamepad side track (user, 2026-11-23): the first drive on the rig, torque cap on and a hand on B: raise each
-arm from idle, then over the table, both claws, and a slow approach to the table and to the other arm to see the
-refusals. Watch the loop rate: the check alone can fill the 20 ms period.
+Gamepad side track (user, 2026-11-23): drive the new mapping on the rig with a hand on B: raise each arm from
+idle, reach out, turn the bases, both arms at once, both claws, and a slow approach to the table and to the other
+arm to see the refusals. Read the loop time in the panel's status; if an arm keeps "catching up", `MAX_LAG` or
+the speeds in `gamepad.py` are the knobs.
 
 Hardware side track (user, 2026-11-19), in order: the right arm near the far edge and on the table, which no
 run has had yet (`--pinch-height -0.005 -0.014`, no `--pinch-tilt`), read from the log; if flat fingers still
@@ -197,6 +199,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-23 · **Gamepad: both arms at once and faster (user: it works but the joints barely move, and I want to move both arms at the same time):** on the rig the first drive was slow and one arm waited for the other; causes in the code: 3.5 cm/s and 25 deg/s caps, a fixed step per loop while the check took up to 16 ms, a sideways jog fighting the fingers' fixed direction, and one refused arm stopping both; now a stick's sideways turns the base and its forward and back reach along the way the arm faces (or up and down after a click), 10 cm/s and 45 deg/s with joints under 60 deg/s or the panel's speed (the claw too), a step covers the time since the last one, a refused, out-of-reach or lagging arm holds while the other moves (a lagging arm no longer stops the drive), and the pair check skips parts whose bounding spheres are apart (16.2 to 2.4 ms a step, same distances); simulated from idle: 22 cm up in 3 s, then 12 to 14 cm forward (results.md); not run on the arms; hardware plus controller 208 passed, 4 failed: the 3 of #19 and `test_arm_calibration.py`'s click page test on a dropped socket (passed 2 reruns alone); fast suite not re-run (no file under its test paths changed) · (this commit)
 - 2026-11-23 · **Gamepad controls by claw buttons, and a check on parts two joints apart (user: left and right sticks for the arms, LB LT RB RT for the claws, stay inside limits that depend on the other joints):** `feat/teleop` fast-forwarded to `feat/iphone-lidar` (a872403); a stick click switches that arm between over the table and up and down, LB and RB open and LT and RT close a claw while held (60 deg/s), A starts and B stops (no held enable button is left); in the model the forearm passes up to 7 cm into the shoulder housing and the wrist 1.5 cm into the upper arm inside the motor limits (4000 poses per arm, results.md), which the pair check did not look at: `pair_clearance.py` holds parts two joints apart to 5 mm, and a pair already inside a clearance may move apart and not closer, so the folded idle pose can be left; XInput decodes A and the stick clicks; simulated from the idle poses: up and inward move, forward and outward need the arm raised first; the check can fill the 20 ms period; not run on the arms; fast 263 passed, 5 skipped, 1 failed (#17); hardware plus controller 203 passed, 3 failed in `test_replay.py` (the `replay.py` edit committed in a872403, not this change); `test_ui_requests.py` failed once on a dropped socket and passed 3 reruns · (this commit)
 - 2026-11-19 · **Rig notes in CLAUDE.md; branch rebased onto the gamepad work (user: update claude md, do 1):** `git pull --rebase` put this day's 8 commits on top of 597b28b and 2da7c24 (PowerA controller, two-arm gamepad teleop); conflicts in status.md and results.md resolved keeping both sides; CLAUDE.md gains a hardware rig section (read the run's log before changing a setting, only panel folds save pictures, check the cloth fits the reach before tuning, the model's table differs per arm, calibrate resets what it is not given, stop `ui.py` first, the suite takes 7 minutes); found for a model on the rig: `camera_run.py` does not set the P gain, its table guard stops 3 mm under the model's table where the right arm's table is about 1.1 cm under it, and it has no arm-to-arm check; `rig_dataset.py list`: 36 runs, 0 usable; full hardware run in the tree 195 passed, 3 failed (the uncommitted edit to `replay.py`); fast suite not re-run · (this commit)
 - 2026-11-19 · **A steeper claw on request, and what it showed (user: make the claw angle steeper):** `fold_camera.py --pinch-tilt DEG` pulls each pinch toward its arm until the fingers are within DEG of upright (saved by `calibrate`, off unless given); on the rig the right claw went from 24 to 27 deg to 9 to 10 deg and still shut on nothing, also once lowered to -1.4 cm where the table stops it (about -1.1 cm in the model); the left, 1.7 cm inside its far corner, held both times; so the grab on this cloth looks like the moving finger hooking the far edge, which a pinch pulled 4 cm into the cloth gives up (results.md); `test_arm_calibration.py`, `test_fold_camera.py`, `test_fold_traj.py`, `test_fold_live.py` 42 passed; full hardware and fast suites not re-run · (this commit)

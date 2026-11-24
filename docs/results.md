@@ -3100,3 +3100,29 @@ move apart and not closer. Simulated servos from the saved idle poses of both ar
 Forward and outward are slow or out of reach close to the folded pose: the jog keeps the fingers' direction, and
 near the base that leaves little room. One model pass over the 605 checked pairs takes about 1 ms on the Windows
 laptop, and a step makes at most 16, so the check alone can fill the 20 ms period. Not run on the arms.
+
+## Gamepad: sticks turn the base and reach along the arm; the pair check skips far parts (2026-11-23)
+
+On the rig the first gamepad drive moved, slowly, and one arm waited for the other (user, by feel, no
+measurement). Changed: stick sideways turns the base, forward and back reach along the way the arm faces, speeds
+10 cm/s and 45 deg/s with joints under 60 deg/s, each arm judged on its own. Simulated servos from the saved idle
+poses of both arms, sticks held fully over for 3 s (150 steps of 20 ms), n = 1 run each, no seed. Not yet run on
+the arms.
+
+| start | stick | fingertips moved (cm, left / right) | steps with an arm held |
+|---|---|---|---|
+| idle | up | 21.7 / 22.0 | 0 |
+| idle | sideways, toward the other arm | 2.5 / 4.5 (the base turns; the folded fingertip sits near the axis) | 0 |
+| idle | sideways, away from the other arm | 2.4 / 4.4 | 0 |
+| idle | forward | 0 / 0 | 150, clearance within an arm |
+| idle | back or down | 0 / 0 | 150, out of reach |
+| raised 22 cm | forward | 11.6 / 14.3 | 88, out of reach at the end of the reach |
+| raised 22 cm | down | 20.4 / 19.6 | 12, out of reach |
+
+Before the change the same 3 s gave 10.5 cm up and 1.6 / 2.7 cm forward (table above).
+
+The pair check measures a pair of parts only when their bounding spheres are within the pair's clearance. One
+step's 16 model passes over the 605 pairs on the Windows laptop, mean of 20 repeats: 16.2 ms measuring every
+pair, 2.4 ms with far pairs skipped (arms 16 cm apart at the fingertips) and 2.6 ms (fingertips crossing). The
+distances are the same with and without the skip on three pose pairs (`test_gamepad.py`). Whole simulated steps,
+serial time not included: 14 ms at worst.

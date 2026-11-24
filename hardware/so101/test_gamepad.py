@@ -31,9 +31,11 @@ class SimulatedArm:
         self.pending_torque = None
         self.speed = 50
         self.writes = []
+        self.stuck = False
 
     def read_present(self):
-        self.present = {m: round(v) for m, v in self.command.items()}
+        if not self.stuck:
+            self.present = {m: round(v) for m, v in self.command.items()}
         return True
 
     def send_goals(self, goals):
@@ -96,8 +98,8 @@ class Driver:
         self.mode = mode
         self.now = 10.0
 
-    def send(self, state, age=0.0):
-        self.now += 0.02
+    def send(self, state, age=0.0, gap=0.02):
+        self.now += gap
         self.mode.tick(state, self.now - age, self.now)
 
     def enable(self):
@@ -211,3 +213,89 @@ def test_clearance_refusal_sends_neither_goal(mode, monkeypatch):
     driver.send(ControllerState(left_y=32767, right_y=32767))
     assert driver.write_counts() == [0, 0]
     assert "between arms" in mode.status
+
+
+def test_far_apart_parts_are_skipped_without_changing_any_distance():
+    guard = PairClearance(0.30)
+    poses = [
+        (work_pose(.25, .08, .10), work_pose(.25, -.08, .10)),
+        (work_pose(.25, -.15, .10), work_pose(.25, .15, .10)),
+        (np.radians([0, -104, 90, -96, 0, 0]), work_pose(.24, 0, .01)),
+    ]
+    for left, right in poses:
+        guard.skip_far = True
+        quick = guard.distances(left, right)
+        guard.skip_far = False
+        full = guard.distances(left, right)
+        assert np.allclose(quick, full, atol=1e-9)
+
+
+def test_a_blocked_arm_holds_while_the_other_keeps_moving(mode):
+    driver = Driver(mode)
+    driver.enable()
+    driver.send(ControllerState(buttons=("left_stick",)))
+    driver.send(ControllerState())
+    for _ in range(100):
+        driver.send(ControllerState(left_y=-32767))
+    assert "table" in mode.status
+    assert driver.tips()[0][2] > 0
+
+    before = driver.tips()
+    counts = driver.write_counts()
+    for _ in range(5):
+        driver.send(ControllerState(left_y=-32767, right_y=32767))
+    after = driver.tips()
+    assert driver.write_counts()[0] == counts[0]
+    assert after[1][0] - before[1][0] > 0.002
+
+
+def test_an_arm_out_of_reach_holds_while_the_other_keeps_moving(mode):
+    driver = Driver(mode)
+    driver.enable()
+    for _ in range(200):
+        driver.send(ControllerState(left_y=32767))
+    counts = driver.write_counts()
+    before = driver.tips()
+    for _ in range(5):
+        driver.send(ControllerState(left_y=32767, right_y=32767))
+    after = driver.tips()
+    assert driver.write_counts()[0] == counts[0]
+    assert after[1][0] - before[1][0] > 0.002
+
+
+def test_a_lagging_arm_waits_and_the_drive_stays_on(mode):
+    driver = Driver(mode)
+    driver.enable()
+    left = mode.arms[0]
+    left.stuck = True
+    left.present[2] = left.command[2] + 100
+    for _ in range(5):
+        driver.send(ControllerState(left_y=32767, right_y=32767))
+    assert driver.write_counts()[0] == 0
+    assert driver.write_counts()[1] == 5
+    assert mode.enabled
+
+
+def test_a_late_step_covers_the_time_that_passed(mode):
+    driver = Driver(mode)
+    driver.enable()
+    pushed = ControllerState(right_y=32767)
+    start = driver.tips()[1][0]
+    driver.send(pushed)
+    usual = driver.tips()[1][0] - start
+    driver.send(pushed, gap=0.04)
+    late = driver.tips()[1][0] - start - usual
+    assert 1.6 < late / usual < 2.4
+
+
+def test_sideways_on_a_stick_turns_the_base_and_keeps_the_reach(mode):
+    driver = Driver(mode)
+    driver.enable()
+    axis = mode.pan_axis
+    before = driver.tips()[1]
+    for _ in range(10):
+        driver.send(ControllerState(right_x=32767))
+    after = driver.tips()[1]
+    assert after[1] < before[1] - 0.005
+    assert abs(np.linalg.norm(after[:2] - axis) - np.linalg.norm(before[:2] - axis)) < 0.001
+    assert abs(after[2] - before[2]) < 0.001

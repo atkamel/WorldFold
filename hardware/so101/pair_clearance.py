@@ -49,6 +49,15 @@ class PairClearance:
                               for a, b, _ in collision.self_pairs(arm))
             for a, b in near_pairs(arm):
                 self.pairs.append((a, b, NEAR_CLEARANCE, "within an arm"))
+        # A pair whose bounding spheres are further apart than its clearance is not measured. The table plane
+        # has no sphere (radius 0), so its pairs are always measured.
+        self.skip_far = True
+        self.first = np.array([pair[0] for pair in self.pairs])
+        self.second = np.array([pair[1] for pair in self.pairs])
+        self.clearances = np.array([pair[2] for pair in self.pairs])
+        radius = self.model.geom_rbound
+        self.spheres = radius[self.first] + radius[self.second]
+        self.has_spheres = (radius[self.first] > 0) & (radius[self.second] > 0)
 
     def distances(self, lq, rq):
         """The distance of every checked pair with the arms at `lq` and `rq`, each capped at the pair's clearance.
@@ -57,8 +66,15 @@ class PairClearance:
         if not np.isfinite(self.data.qpos).all():
             return None
         mujoco.mj_kinematics(self.model, self.data)
+        centres = self.data.geom_xpos
+        apart = np.linalg.norm(centres[self.first] - centres[self.second], axis=1) - self.spheres
+        far = self.has_spheres & (apart > self.clearances)
         found = []
-        for a, b, clearance, _ in self.pairs:
+        for i in range(len(self.pairs)):
+            a, b, clearance, _ = self.pairs[i]
+            if self.skip_far and far[i]:
+                found.append(clearance)
+                continue
             distance = mujoco.mj_geomDistance(self.model, self.data, a, b, clearance, None)
             if not np.isfinite(distance):
                 return None

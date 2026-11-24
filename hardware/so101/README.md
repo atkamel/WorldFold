@@ -621,8 +621,8 @@ The two followers must be configured side by side in `arms.json`, in left-to-rig
 
 | control | what it does |
 |---|---|
-| left stick, right stick | moves that arm's fingertip over the table: forward, back, left, right |
-| click a stick | switches that arm between over the table and up and down (stick forward is up) |
+| left stick, right stick | sideways turns that arm's base; forward and back reach the fingertip out and in the way the arm faces |
+| click a stick | switches that arm's forward and back to up and down (stick forward is up); sideways still turns the base |
 | LB, RB | opens the left, right claw while held |
 | LT, RT | closes the left, right claw while held |
 | A | starts driving, with the sticks centred and the claw buttons released; A again holds both arms |
@@ -631,11 +631,16 @@ The two followers must be configured side by side in `arms.json`, in left-to-rig
 Both arms must have torque enabled in the panel. Let the sticks rest at center while the panel calibrates them,
 then press A. B, the panel's Stop button, a lost controller, or a stalled servo holds both arms until A is pressed
 again, and both sticks go back to over the table. If raw USB has not sent its first input report, move a stick
-briefly and then let both sticks rest. From the folded idle pose, raise an arm before moving it over the table.
+briefly and then let both sticks rest. From the folded idle pose, raise an arm before reaching out with it.
 
-Every step is checked in the two-arm model before it is sent, and a refused step moves neither arm; the panel's
-status names what blocked it. A joint stays inside its recorded limits and under 25 deg/s (the claw 60 deg/s). The
-model also holds what the limits of one motor cannot see:
+The two arms move at the same time and each on its own: an arm whose step is refused, out of reach, or more than
+about 4 deg behind its command holds while the other goes on, and the panel's status says which and why, with the
+loop's time per step. With a stick fully over the fingertip moves 10 cm/s and the base turns 45 deg/s
+(`REACH_SPEED`, `PAN_SPEED` in `gamepad.py`); no joint goes over 60 deg/s or the panel's speed, whichever is
+lower, the claw included. A step covers the time since the last one, so a slow loop does not slow the arms.
+
+Every step is checked in the two-arm model before it is sent. A joint stays inside its recorded limits. The model
+also holds what the limits of one motor cannot see:
 
 | checked | kept clear by |
 |---|---|
