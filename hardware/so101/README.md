@@ -640,8 +640,10 @@ then press A. B, the panel's Stop button, a lost controller, or a stalled servo 
 again, and both sticks go back to over the table. If raw USB has not sent its first input report, move a stick
 briefly and then let both sticks rest. From the folded idle pose, raise an arm before reaching out with it.
 
-A missed encoder read or a command a servo did not take skips that one step and driving stays on; only a link
-that stays down for 15 steps in a row (0.3 s, `MAX_FAILS`) switches it off. Each `--gamepad` session writes
+A missed encoder read skips that one step and driving stays on; only reads missed for 15 steps in a row (0.3 s,
+`MAX_FAILS`) switch it off. A command a servo did not take switches it off at once. The Gamepad group of the panel
+shows both sticks' readings: the value the loop acts on (-1 to 1, after the centre and the dead zone) and the raw
+value under it. Each `--gamepad` session writes
 `runs/gamepad_<date_time>.log`: a line whenever the status changes, and every 2 s the loop time, the reads and
 writes missed, and the most a joint trailed its command. Read it before changing a setting.
 
@@ -671,11 +673,13 @@ also holds what the limits of one motor cannot see:
 | checked | kept clear by |
 |---|---|
 | parts of one arm three or more joints apart (gripper and base, jaw and upper arm) | 10 mm |
-| parts of one arm two joints apart (forearm and shoulder housing, wrist and upper arm, upper arm and base) | 5 mm |
+| parts of one arm two joints apart (forearm and shoulder housing, wrist and upper arm, upper arm and base) | 5 mm, or 5 mm closer than at the idle pose where that is less |
 | any part of one arm and any part of the other | 10 mm |
 | every moving part and the table plane at the bases | 2 mm |
 
-A pair already inside its clearance, as in the folded idle pose, may move apart and may not come closer. Not
+The model draws the folded idle pose up to 12 mm inside itself where the real arm rests clear, so parts two
+joints apart are judged against the idle pose: they may come 5 mm closer than they are there (`NEAR_SLACK`). A pair
+already inside its clearance may move apart and may not come closer. Not
 checked: parts next to each other (the motor limits hold those), the moving jaw against the wrist (the jaw runs at
 half torque), the cloth, cables, and anything else on the table. The model's table is not the real one and differs
 between the arms.

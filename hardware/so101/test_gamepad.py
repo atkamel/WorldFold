@@ -470,16 +470,14 @@ def test_a_missed_encoder_read_holds_one_step_and_driving_stays_on(mode):
     assert driver.write_counts() == [1, 1]
 
 
-def test_a_failed_write_is_tried_again_and_driving_stays_on(mode):
+def test_a_failed_write_stops_the_drive(mode):
     driver = Driver(mode)
     driver.enable()
     pushed = ControllerState(right_y=32767)
     mode.arms[1].failed_writes = 1
     driver.send(pushed)
     assert driver.write_counts() == [0, 0]
-    assert mode.enabled
-    driver.send(pushed)
-    assert driver.write_counts() == [0, 1]
+    assert not mode.enabled
 
 
 def test_a_servo_link_that_stays_down_stops_the_drive(mode):
@@ -504,3 +502,49 @@ def test_what_the_loop_does_is_written_down(mode):
     written = mode.log.getvalue()
     assert "Driving" in written
     assert "missed reads 2" in written
+
+
+def idle_mode(mode):
+    """The same mode with both simulated arms at their saved idle poses."""
+    for arm, idle in zip(mode.arms, mode.idle):
+        arm.present = {m: round(v) for m, v in idle.items()}
+        arm.command = dict(arm.present)
+        arm.target = dict(arm.present)
+    return mode
+
+
+@pytest.mark.parametrize("pushed", [
+    ControllerState(left_y=32767, right_y=32767),
+    ControllerState(left_x=32767, right_x=-32767),
+    ControllerState(left_x=-32767, right_x=32767),
+])
+def test_from_the_folded_pose_the_sticks_are_not_refused_by_the_arm_s_own_parts(mode, pushed):
+    driver = Driver(idle_mode(mode))
+    driver.enable()
+    refused = 0
+    for _ in range(100):
+        driver.send(pushed)
+        if "blocked" in mode.status:
+            refused += 1
+    assert refused == 0
+    assert driver.write_counts()[0] > 50
+    assert driver.write_counts()[1] > 50
+
+
+def test_a_forearm_deep_in_the_shoulder_housing_is_still_refused(mode):
+    idle = [mode.pose(mapping, ticks) for mapping, ticks in zip(mode.maps, mode.idle)]
+    deep = np.radians([0, 20, 91, -96, 0, 0])
+    floors = mode.guard.floors([idle[0]], [idle[1]])
+    assert mode.guard.obstruction([idle[0]], [idle[1]], floors) is None
+    assert mode.guard.obstruction([deep], [idle[1]], floors) == "within an arm"
+
+
+def test_the_stick_readings_are_reported(mode):
+    driver = Driver(mode)
+    driver.enable()
+    driver.send(ControllerState(left_x=32767, right_y=-32767))
+    shown = mode.sticks_state()
+    assert shown["left"][0] > 0.9
+    assert abs(shown["left"][1]) < 0.01
+    assert shown["right"][1] < -0.9
+    assert shown["raw"]["left"][0] == 32767

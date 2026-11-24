@@ -3126,3 +3126,28 @@ step's 16 model passes over the 605 pairs on the Windows laptop, mean of 20 repe
 pair, 2.4 ms with far pairs skipped (arms 16 cm apart at the fingertips) and 2.6 ms (fingertips crossing). The
 distances are the same with and without the skip on three pose pairs (`test_gamepad.py`). Whole simulated steps,
 serial time not included: 14 ms at worst.
+
+## Gamepad on the rig: refused by the arm's own parts from the folded pose (2026-11-23)
+
+Session log `runs/gamepad_20261123_221439.log` (the first on the arms with a log, both sticks kept over the
+table, started from the idle poses after a glide): 0 missed reads and 0 failed writes in 185 two-second counts
+(read while the session was still open), loop 3 ms idle and up to 24 ms moving, most lag 59 steps. Of its 159
+status lines, 52 were both arms
+refused with "clearance within an arm" and 58 one arm refused with it, 12 an arm out of reach. So the drop-outs
+were refusals by the check on parts two joints apart, not the servo link.
+
+In the model, sticks held fully over for 4 s from the saved idle poses with that check left out (simulated
+servos, n = 1 run each, no seed), the nearest those parts come, at idle and at their closest (mm, negative =
+overlap in the model):
+
+| stick | left arm | right arm | fingertips end (cm forward) |
+|---|---|---|---|
+| forward | shoulder and forearm -9.3 to -11.0; upper arm and wrist 13.7 to 12.0 | -9.7 to -10.9; 13.3 to 12.4 | 39.5 / 38.1 |
+| sideways, either way | base and upper arm -12.0 to -14.5 | -11.5 to -14.5 | 3.8 to 5.8 |
+| back, up, down | none closer | none closer | |
+
+Every direction but back, up and down brings a pair 1 to 3 mm closer than at idle, which the rule "inside its
+clearance, never closer" refused. With the elbow folded to its limit and the shoulder swung forward the same
+pair reads -32 mm at 40 deg and -50 mm at 100 deg. The check now holds those pairs to 5 mm closer than at the
+idle pose: from idle, 100 steps forward and 100 sideways each way are sent with none refused, and the folded
+elbow with the shoulder at 20 deg is still refused (`test_gamepad.py`). Not yet run on the arms.

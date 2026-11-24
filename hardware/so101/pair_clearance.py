@@ -12,6 +12,11 @@ TABLE_CLEARANCE = 0.002  # m above the nominal table plane in the base frame
 # rests inside it, so a step is refused only when it also brings the parts closer than they are.
 NEAR_CLEARANCE = 0.005
 NEAR_JOINTS_APART = 2
+# m parts two joints apart may come closer than they are at the rest pose given to `rest`. The model draws the
+# folded arm up to 12 mm inside itself where the real one rests clear, and every stick direction from there brings
+# such a pair 1 to 3 mm closer in the model (results.md). The forearm deep in the shoulder housing is 20 mm and more.
+NEAR_SLACK = 0.005
+REST_RANGE = 0.05        # m: how far apart a pair is still measured at the rest pose
 CLOSER = 1e-6            # m a pair inside its clearance may close in one step: rounding, not motion
 
 
@@ -59,6 +64,22 @@ class PairClearance:
         self.spheres = radius[self.first] + radius[self.second]
         self.has_spheres = (radius[self.first] > 0) & (radius[self.second] > 0)
 
+    def rest(self, lq, rq):
+        """Take `lq` and `rq` as a pose the real arms rest in untouched. A pair of parts two joints apart is then
+        held to NEAR_CLEARANCE or to NEAR_SLACK closer than it is in this pose, whichever is closer."""
+        self.data.qpos[:] = (*lq, *rq)
+        mujoco.mj_kinematics(self.model, self.data)
+        for i in range(len(self.pairs)):
+            a, b, clearance, region = self.pairs[i]
+            if clearance != NEAR_CLEARANCE:
+                continue
+            at_rest = mujoco.mj_geomDistance(self.model, self.data, a, b, REST_RANGE, None)
+            if not np.isfinite(at_rest):
+                continue
+            allowed = min(NEAR_CLEARANCE, at_rest - NEAR_SLACK)
+            self.pairs[i] = (a, b, allowed, region)
+            self.clearances[i] = allowed
+
     def distances(self, lq, rq):
         """The distance of every checked pair with the arms at `lq` and `rq`, each capped at the pair's clearance.
         None for a pose or a distance that is not a number."""
@@ -68,14 +89,16 @@ class PairClearance:
         mujoco.mj_kinematics(self.model, self.data)
         centres = self.data.geom_xpos
         apart = np.linalg.norm(centres[self.first] - centres[self.second], axis=1) - self.spheres
-        far = self.has_spheres & (apart > self.clearances)
+        far = self.has_spheres & (apart > np.maximum(self.clearances, 0.001))
         found = []
         for i in range(len(self.pairs)):
             a, b, clearance, _ = self.pairs[i]
             if self.skip_far and far[i]:
                 found.append(clearance)
                 continue
-            distance = mujoco.mj_geomDistance(self.model, self.data, a, b, clearance, None)
+            # A pair allowed to overlap in the model is still measured from just apart.
+            reach = max(clearance, 0.001)
+            distance = mujoco.mj_geomDistance(self.model, self.data, a, b, reach, None)
             if not np.isfinite(distance):
                 return None
             found.append(distance)

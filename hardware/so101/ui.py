@@ -461,6 +461,7 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                     "speed": first.speed,
                     "gamepad": gamepad.status if gamepad is not None else None,
                     "gamepad_tips": gamepad.tips_state() if gamepad is not None else None,
+                    "gamepad_sticks": gamepad.sticks_state() if gamepad is not None else None,
                 })
             elif path == "/phone":
                 self.reply(PHONE_PAGE_FILE.read_bytes(), "text/html")

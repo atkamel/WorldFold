@@ -61,6 +61,9 @@ def panel(tmp_path, monkeypatch, request):
         def tips_state(self):
             return {"arm1": None, "arm2": None}
 
+        def sticks_state(self):
+            return {"left": [0.0, 0.0], "right": [0.0, 0.0], "raw": {"left": [0, 0], "right": [0, 0]}}
+
     gamepad = Gamepad() if getattr(request, "param", False) else None
     handler = ui.make_handler(arms_by_name, NoCamera(), NoRecording(), stop_fold=lambda: fold_stops.append(1),
                               gamepad=gamepad)

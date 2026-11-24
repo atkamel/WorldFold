@@ -88,8 +88,10 @@ class Gamepad:
                 ticks[m] = max(low, min(high, value))
             self.idle.append(ticks)
             idle_poses.append(self.pose(mapping, ticks))
-        # The folded arm rests closer to itself than the clearances allow. The glide to idle may come that close.
+        # The real arms rest in their idle poses, which the model draws partly inside themselves.
+        self.guard.rest(idle_poses[0], idle_poses[1])
         self.idle_floors = self.guard.floors([idle_poses[0]], [idle_poses[1]])
+        self.shown_sticks = {"left": [0.0, 0.0], "right": [0.0, 0.0], "raw": {"left": [0, 0], "right": [0, 0]}}
         # The base turns about a vertical line through the first joint.
         self.pan_axis = self.kinematics.links[0][0][:2].copy()
         if self.facing(0.01)[1] > self.facing(0.0)[1]:
@@ -177,6 +179,11 @@ class Gamepad:
                 return False
             self.tips[index] = nearest
             return True
+
+    def sticks_state(self):
+        """The stick readings for the panel: what the loop acts on (-1 to 1, after the centre and the dead zone)
+        and the raw values from the controller."""
+        return self.shown_sticks
 
     def tips_state(self):
         """{arm name: the dragged point it is going to, or None}, for the panel's marker."""
@@ -322,21 +329,21 @@ class Gamepad:
         """Count one missed read or write. The step is skipped and the next one tries again; driving is switched
         off only when the link stays down."""
         self.fails += 1
-        if self.fails > MAX_FAILS:
+        if self.fails >= MAX_FAILS:
             self.stop_locked(f"The servo link dropped out ({what}). Check the cables, then press A")
         else:
             self.status = f"Waiting for the servos ({what})"
 
     def send(self, goals, chosen):
-        """Send the chosen arms their goals. False when a write fails: that arm keeps its last command and the
-        next step sends again."""
+        """Send the chosen arms their goals. False (and stopped) when a write fails."""
         for i in range(2):
             arm = self.arms[i]
             goal = goals[i]
             if chosen[i] and goal != arm.command:
+                # A failed write can leave this physical goal uncertain. Preserve the prior software target.
                 if not arm.send_goals(goal):
                     self.failed_writes += 1
-                    self.link_failed(f"{arm.name} did not take a command")
+                    self.stop_locked(f"Could not command {arm.name}. Press A to drive again")
                     return False
                 arm.command = dict(goal)
                 arm.target = dict(goal)
@@ -473,6 +480,14 @@ class Gamepad:
                 clicked[i] = clicks[i] and not self.click_was_down[i]
                 self.click_was_down[i] = clicks[i]
             axes = np.array([state.left_x, state.left_y, state.right_x, state.right_y])
+            used = [np.zeros(2), np.zeros(2)]
+            if self.center is not None:
+                used = [stick(*axes[:2], self.center[:2]), stick(*axes[2:], self.center[2:])]
+            self.shown_sticks = {
+                "left": [round(float(used[0][0]), 2), round(float(used[0][1]), 2)],
+                "right": [round(float(used[1][0]), 2), round(float(used[1][1]), 2)],
+                "raw": {"left": [int(axes[0]), int(axes[1])], "right": [int(axes[2]), int(axes[3])]},
+            }
             claws_released = not any(bumpers) and max(triggers) < TRIGGER_RELEASE
             if self.center is None:
                 self.calibrate(axes, claws_released and not a_down, now)
