@@ -617,14 +617,38 @@ XInput controller slot 0. On macOS install the dependencies in [the PowerA setup
 and close any other process reading the raw USB controller before launching the panel.
 
 The two followers must be configured side by side in `arms.json`, in left-to-right order, with the measured
-`spacing_cm` between the bases. The left stick drives `arm2` on this rig and the right stick drives `arm1`. Either
-stick moves its gripper across the table. Hold LB to use both stick Y axes for height. LT and RT toggle the
-corresponding jaws. Both arms must have torque enabled in the panel. Let the sticks rest at center while the panel
-calibrates them, then hold RB to enable motion. Release RB, press B, or use the panel's Stop button to hold both arms.
-A lost controller or stalled servo requires releasing RB and starting again. If raw USB has not sent its first
-input report, move a stick briefly and then let both sticks rest.
+`spacing_cm` between the bases. The left stick drives `arm2` on this rig and the right stick drives `arm1`.
+
+| control | what it does |
+|---|---|
+| left stick, right stick | moves that arm's fingertip over the table: forward, back, left, right |
+| click a stick | switches that arm between over the table and up and down (stick forward is up) |
+| LB, RB | opens the left, right claw while held |
+| LT, RT | closes the left, right claw while held |
+| A | starts driving, with the sticks centred and the claw buttons released; A again holds both arms |
+| B | stops; A drives again |
+
+Both arms must have torque enabled in the panel. Let the sticks rest at center while the panel calibrates them,
+then press A. B, the panel's Stop button, a lost controller, or a stalled servo holds both arms until A is pressed
+again, and both sticks go back to over the table. If raw USB has not sent its first input report, move a stick
+briefly and then let both sticks rest. From the folded idle pose, raise an arm before moving it over the table.
+
+Every step is checked in the two-arm model before it is sent, and a refused step moves neither arm; the panel's
+status names what blocked it. A joint stays inside its recorded limits and under 25 deg/s (the claw 60 deg/s). The
+model also holds what the limits of one motor cannot see:
+
+| checked | kept clear by |
+|---|---|
+| parts of one arm three or more joints apart (gripper and base, jaw and upper arm) | 10 mm |
+| parts of one arm two joints apart (forearm and shoulder housing, wrist and upper arm, upper arm and base) | 5 mm |
+| any part of one arm and any part of the other | 10 mm |
+| every moving part and the table plane at the bases | 2 mm |
+
+A pair already inside its clearance, as in the folded idle pose, may move apart and may not come closer. Not
+checked: parts next to each other (the motor limits hold those), the moving jaw against the wrist (the jaw runs at
+half torque), the cloth, cables, and anything else on the table. The model's table is not the real one and differs
+between the arms.
 
 Gamepad mode reserves the two followers and leaves the leader arm unopened. Start the panel without `--gamepad`
-to use keyboard, phone motion, mirror, leader, and cloth-fold controls. The panel's status shows when a proposed
-move is blocked. Clearance is evaluated in the configured two-arm model with the table plane at the bases.
-Physical validation assumes flat, aligned bases and a clear table around the arms.
+to use keyboard, phone motion, mirror, leader, and cloth-fold controls. Physical validation assumes flat, aligned
+bases and a clear table around the arms.

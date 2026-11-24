@@ -8,6 +8,22 @@ import numpy as np
 import collision
 
 TABLE_CLEARANCE = 0.002  # m above the nominal table plane in the base frame
+# m between parts two joints apart (forearm and shoulder housing, wrist and upper arm). The folded idle pose
+# rests inside it, so a step is refused only when it also brings the parts closer than they are.
+NEAR_CLEARANCE = 0.005
+NEAR_JOINTS_APART = 2
+CLOSER = 1e-6            # m a pair inside its clearance may close in one step: rounding, not motion
+
+
+def near_pairs(solid):
+    """Pairs of parts two joints apart. The moving jaw is left out: it sits beside the wrist by construction."""
+    parts = collision.CHAIN[:-1]
+    pairs = []
+    for i in range(len(parts) - NEAR_JOINTS_APART):
+        for first in solid[parts[i]]:
+            for second in solid[parts[i + NEAR_JOINTS_APART]]:
+                pairs.append((first, second))
+    return pairs
 
 
 class PairClearance:
@@ -31,16 +47,51 @@ class PairClearance:
         for arm in solids:
             self.pairs.extend((a, b, collision.CLEARANCE, "within an arm")
                               for a, b, _ in collision.self_pairs(arm))
+            for a, b in near_pairs(arm):
+                self.pairs.append((a, b, NEAR_CLEARANCE, "within an arm"))
 
-    def obstruction(self, left, right):
-        """Test each arm's own progress samples against all progress samples of the other."""
+    def distances(self, lq, rq):
+        """The distance of every checked pair with the arms at `lq` and `rq`, each capped at the pair's clearance.
+        None for a pose or a distance that is not a number."""
+        self.data.qpos[:] = (*lq, *rq)
+        if not np.isfinite(self.data.qpos).all():
+            return None
+        mujoco.mj_kinematics(self.model, self.data)
+        found = []
+        for a, b, clearance, _ in self.pairs:
+            distance = mujoco.mj_geomDistance(self.model, self.data, a, b, clearance, None)
+            if not np.isfinite(distance):
+                return None
+            found.append(distance)
+        return found
+
+    def floors(self, left, right):
+        """How close every pair already is over the poses the arms hold now. None for an invalid pose."""
+        lowest = None
         for lq, rq in product(left, right):
-            self.data.qpos[:] = (*lq, *rq)
-            if not np.isfinite(self.data.qpos).all():
+            found = self.distances(lq, rq)
+            if found is None:
+                return None
+            if lowest is None:
+                lowest = found
+            else:
+                for i in range(len(found)):
+                    lowest[i] = min(lowest[i], found[i])
+        return lowest
+
+    def obstruction(self, left, right, floors=None):
+        """Test each arm's own progress samples against all progress samples of the other. With `floors` (from
+        the poses held now), a pair already inside its clearance may stay as close as it is, so an arm that
+        starts too close can back away, and may not come closer."""
+        for lq, rq in product(left, right):
+            found = self.distances(lq, rq)
+            if found is None:
                 return "invalid joint position"
-            mujoco.mj_kinematics(self.model, self.data)
-            for a, b, clearance, region in self.pairs:
-                distance = mujoco.mj_geomDistance(self.model, self.data, a, b, clearance, None)
-                if not np.isfinite(distance) or distance < clearance:
-                    return region
+            for i in range(len(found)):
+                clearance = self.pairs[i][2]
+                if found[i] >= clearance:
+                    continue
+                if floors is not None and found[i] >= floors[i] - CLOSER:
+                    continue
+                return self.pairs[i][3]
         return None

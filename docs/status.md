@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-19 · **Branch:** `feat/iphone-lidar` (SO-101 and two-arm gamepad side tracks) · **Phase:** Q, the
+**Updated:** 2026-11-23 · **Branch:** `feat/teleop` (SO-101 and two-arm gamepad side tracks) · **Phase:** Q, the
 quarter fold on Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -15,11 +15,14 @@ the revised plan in [reviews/2026-10-22-quarter-fold-reevaluation.md](reviews/20
 with at least one recorded clean demo. Bar: mean ≤ 2.0 cm and edge ≤ 3.0 cm on gated episodes (flat on the table,
 released, still), user 2026-10-22.
 
-- **Two-arm PowerA teleop (user, 2026-11-19):** `python hardware/so101/ui.py --gamepad` gives the left and right
-  sticks their own followers. LB switches to height, LT and RT toggle the jaws, and RB enables motion. The paired
-  loop checks both arms and the table in one model before sending a step. Tested with fake servos, the saved idle
-  poses, and live controller USB input. Windows XInput decoding checked with a fixture. Physical arm motion in
-  gamepad mode still needs a rig check. See `hardware/so101/README.md`.
+- **Two-arm gamepad teleop (user, 2026-11-19, controls changed 2026-11-23):** `python hardware/so101/ui.py
+  --gamepad` gives the left and right sticks their own followers. A stick click switches that arm between over
+  the table and up and down, LB and RB open the claws and LT and RT close them while held, A starts driving and B
+  stops. The paired loop checks both arms and the table in one model before sending a step, and since 2026-11-23
+  also parts two joints apart (forearm and shoulder housing, wrist and upper arm), which overlap by up to 7 cm in
+  the model inside the motor limits (results.md); a pair already too close may move apart, not closer. Tested
+  with fake servos and the saved idle poses. Windows XInput decoding checked with a fixture. Physical arm motion
+  in gamepad mode still needs a rig check. See `hardware/so101/README.md`.
 - **PowerA USB controller (user, 2026-11-19):** `python -m hardware.controller` streams decoded input from
   the Lavender Swirl EnWired on this Mac. Live USB input and stick reports checked. Button, trigger, Share, and
   Guide mappings checked with fixtures. See `hardware/controller/README.md`.
@@ -115,6 +118,10 @@ The pre-VLA milestones are all closed (✅ or ❌ with evidence, 2026-09-26). Be
 3. Then RL (residual or corrector) on fold 2 from fold-1 snapshots, judged on settled gated paired episodes against
    the scripted base.
 
+Gamepad side track (user, 2026-11-23): the first drive on the rig, torque cap on and a hand on B: raise each
+arm from idle, then over the table, both claws, and a slow approach to the table and to the other arm to see the
+refusals. Watch the loop rate: the check alone can fill the 20 ms period.
+
 Hardware side track (user, 2026-11-19), in order: the right arm near the far edge and on the table, which no
 run has had yet (`--pinch-height -0.005 -0.014`, no `--pinch-tilt`), read from the log; if flat fingers still
 skim the cloth there, the far-right corner has to come within about 35 cm (the cloth squared up, a 24 cm
@@ -130,7 +137,7 @@ step count for panel runs; `fold_live.py --dry-run`, then `fold_live.py --grasp-
 |---|---|
 | pins | `imitation/requirements.txt`: mujoco **3.10.0**, so101-nexus **0.4.8**, numpy 2.5.1, gymnasium 1.3.0. The root `requirements.txt` adds stable-baselines3, pyyaml and matplotlib |
 | Isaac | Docker image from `isaac/Dockerfile` on WATcloud (`isaac/watcloud.sbatch`): Isaac Sim 5.1.0, LeHome a805ad2, IsaacLab fork 69f6fa5. On Windows, `.venv-isaac` from the hashed locks in `isaac/` (Kit on D3D12) |
-| tests | macOS 2026-11-19: fast plus controller and SO-101 448 passed, 5 skipped, and 3 failed, see results.md; Windows 2026-11-19: hardware 198 passed with the committed code (195 in the tree, where an uncommitted edit to replay.py fails 3); macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
+| tests | Windows 2026-11-23: fast 263 passed, 5 skipped, 1 failed (#17); hardware plus controller 203 passed, 3 failed (`test_replay.py`, the `replay.py` edit committed in a872403); macOS 2026-11-19: fast plus controller and SO-101 448 passed, 5 skipped, and 3 failed, see results.md; Windows 2026-11-19: hardware 198 passed with the committed code (195 in the tree, where an uncommitted edit to replay.py fails 3); macOS 2026-10-29: slow 12 passed, 8 skipped (Isaac runtime unavailable) |
 
 ## Frozen datasets
 
@@ -167,6 +174,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 | # | defect | blocks | milestone |
 |---|---|---|---|
+| 19 | `hardware/so101/test_replay.py` fails 3 tests since a872403 ("replay"): the edit removes the slow-read pacing and the grasp-check guard those tests hold | hardware suite | — |
 | 17 | `isaac/tests/test_rlpd.py::test_learns_toy_placement` fails on Windows (2026-11-14, twice in a row): learned mean 0.0667 against the 0.05 bar; also failed on macOS (2026-11-19); cause not looked into | fast suite | Q |
 | 16 | WATcloud jobs rebuild the image each time (~10 min on trpro, 29 min on thor 2026-10-20): `docker save` kills the job (memory); rsync to WATcloud fails mid-protocol since 2026-10-15 (code goes over `tar \| ssh`) | long Isaac jobs | Q |
 | 15 | `tests/imitation/test_seeds.py::test_mujoco_eval_sets_unchanged` fails on macOS arm64: `shifted_pose(200000)` differs from the Windows-pinned value by 3.5e-18 (1 ulp) | fast suite on the Mac | — |
@@ -189,6 +197,7 @@ Ordered by what they block. Each is a roadmap milestone.
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
 
+- 2026-11-23 · **Gamepad controls by claw buttons, and a check on parts two joints apart (user: left and right sticks for the arms, LB LT RB RT for the claws, stay inside limits that depend on the other joints):** `feat/teleop` fast-forwarded to `feat/iphone-lidar` (a872403); a stick click switches that arm between over the table and up and down, LB and RB open and LT and RT close a claw while held (60 deg/s), A starts and B stops (no held enable button is left); in the model the forearm passes up to 7 cm into the shoulder housing and the wrist 1.5 cm into the upper arm inside the motor limits (4000 poses per arm, results.md), which the pair check did not look at: `pair_clearance.py` holds parts two joints apart to 5 mm, and a pair already inside a clearance may move apart and not closer, so the folded idle pose can be left; XInput decodes A and the stick clicks; simulated from the idle poses: up and inward move, forward and outward need the arm raised first; the check can fill the 20 ms period; not run on the arms; fast 263 passed, 5 skipped, 1 failed (#17); hardware plus controller 203 passed, 3 failed in `test_replay.py` (the `replay.py` edit committed in a872403, not this change); `test_ui_requests.py` failed once on a dropped socket and passed 3 reruns · (this commit)
 - 2026-11-19 · **Rig notes in CLAUDE.md; branch rebased onto the gamepad work (user: update claude md, do 1):** `git pull --rebase` put this day's 8 commits on top of 597b28b and 2da7c24 (PowerA controller, two-arm gamepad teleop); conflicts in status.md and results.md resolved keeping both sides; CLAUDE.md gains a hardware rig section (read the run's log before changing a setting, only panel folds save pictures, check the cloth fits the reach before tuning, the model's table differs per arm, calibrate resets what it is not given, stop `ui.py` first, the suite takes 7 minutes); found for a model on the rig: `camera_run.py` does not set the P gain, its table guard stops 3 mm under the model's table where the right arm's table is about 1.1 cm under it, and it has no arm-to-arm check; `rig_dataset.py list`: 36 runs, 0 usable; full hardware run in the tree 195 passed, 3 failed (the uncommitted edit to `replay.py`); fast suite not re-run · (this commit)
 - 2026-11-19 · **A steeper claw on request, and what it showed (user: make the claw angle steeper):** `fold_camera.py --pinch-tilt DEG` pulls each pinch toward its arm until the fingers are within DEG of upright (saved by `calibrate`, off unless given); on the rig the right claw went from 24 to 27 deg to 9 to 10 deg and still shut on nothing, also once lowered to -1.4 cm where the table stops it (about -1.1 cm in the model); the left, 1.7 cm inside its far corner, held both times; so the grab on this cloth looks like the moving finger hooking the far edge, which a pinch pulled 4 cm into the cloth gives up (results.md); `test_arm_calibration.py`, `test_fold_camera.py`, `test_fold_traj.py`, `test_fold_live.py` 42 passed; full hardware and fast suites not re-run · (this commit)
 - 2026-11-19 · **A pinch height and an overshoot for each arm (user: the right arm still misses; only one arm overshoots):** in fold `20261119_220226` the left fingertip, sent to -0.5 cm, was stopped by the table 3 mm short and its jaw carried the cloth 1.2 deg open, while the right reached -0.5 cm unhindered and shut on nothing: the model's table height differs between the arms; `fold_traj.fold(pinch_z=)` takes a height per arm and keeps the two plans in step (the descent is stretched to the longer one), `fold_camera.py --pinch-height LEFT RIGHT` down to -2 cm and `--overshoot` with a pair per arm, saved by `calibrate`, each checked at the look; the jaw's closing sweep worked out in the arm model (results.md); not yet played with per-arm values; full hardware run in the tree 188 passed, 3 failed (the uncommitted edit to `replay.py`), started before the per-arm overshoot went in; after it `test_arm_calibration.py` and `test_fold_camera.py` 27 passed; fast suite not re-run · (this commit)

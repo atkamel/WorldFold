@@ -3060,3 +3060,43 @@ because `--pinch-tilt` buys the angle by moving the pinch into the cloth. Read w
 moving finger comes in along the table from about 3.8 cm out), the grab on this cloth looks like the moving finger
 hooking the far edge against the fixed one; landing on top of the cloth it slides over. Not shown directly: no run
 yet has the right arm both near the edge and on the table.
+
+## Parts two joints apart overlap inside the motor limits; gamepad controls by claw buttons (2026-11-23)
+
+Model only (so101_nexus collision shapes, base solid, MuJoCo 3.11.0), no arm moved. For each arm, 4000 poses
+drawn evenly between its recorded limits on all six joints (numpy `default_rng(0)`, arm 2 drawn first), and the
+nearest distance between parts two joints apart, which `collision.py` does not check. Negative = overlap.
+
+| pair | arm 2 nearest (mm) | arm 2 poses overlapping of 4000 | arm 1 nearest (mm) | arm 1 poses overlapping of 4000 | at the idle pose, arm 2 / arm 1 (mm) |
+|---|---|---|---|---|---|
+| base and upper arm | -12.3 | 52, 1.3% (95% Wilson 1.0 to 1.7) | -13.6 | 59, 1.5% (1.1 to 1.9) | -12.0 / -11.5 |
+| shoulder and forearm | -69.8 | 300, 7.5% (6.7 to 8.4) | -69.7 | 343, 8.6% (7.7 to 9.5) | -9.3 / -9.7 |
+| upper arm and wrist | -14.4 | 17, 0.4% (0.3 to 0.7) | -15.2 | 28, 0.7% (0.5 to 1.0) | 13.7 / 13.3 |
+| forearm and gripper | 15.1 | 0, 0% (0 to 0.1) | 12.7 | 0, 0% (0 to 0.1) | 32.9 / 33.1 |
+| wrist and moving jaw | -4.7 | 417, 10.4% (9.5 to 11.4) | -4.5 | 392, 9.8% (8.9 to 10.8) | 8.6 / 15.5 |
+
+So the motor limits alone let the forearm pass up to 7 cm into the shoulder housing and the wrist 1.5 cm into the
+upper arm. The folded idle pose already reads 9 to 12 mm of overlap on two pairs, where the real arm rests in
+contact: the model's shapes are fatter than the arm there by about that much. The wrist and moving jaw overlap only
+with the jaw past about 80 deg open at a roll of 45 to 120 deg (grid of 9 rolls by 8 openings, other joints at zero).
+
+The gamepad's pair check now holds the first four pairs to 5 mm, with a pair already inside a clearance allowed to
+move apart and not closer. Simulated servos from the saved idle poses of both arms, sticks held fully over for 3 s
+(150 steps), n = 1 run each, no seed:
+
+| start | stick | fingertips moved (cm, left / right) | steps refused |
+|---|---|---|---|
+| idle | up | 10.5 / 10.5 | 0 |
+| idle | toward the other arm | 7.8 / 8.2 | 0 |
+| idle | forward | 0 / 0 | 150, clearance within an arm |
+| idle | outward | 0 / 0 | 149, clearance within an arm |
+| idle | down or back | 0 / 0 | 150, out of reach |
+| idle | both claws opened | jaws only | 0 |
+| raised 10.5 cm | forward | 1.6 / 2.7 | 0 |
+| raised 10.5 cm | toward the other arm | 8.1 / 8.3 | 0 |
+| raised 10.5 cm | outward | 1.1 / 0.2 | 136, out of reach |
+| raised 10.5 cm | down | 8.2 / 8.2 | 33, out of reach |
+
+Forward and outward are slow or out of reach close to the folded pose: the jog keeps the fingers' direction, and
+near the base that leaves little room. One model pass over the 605 checked pairs takes about 1 ms on the Windows
+laptop, and a step makes at most 16, so the check alone can fill the 20 ms period. Not run on the arms.

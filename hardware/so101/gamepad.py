@@ -22,6 +22,7 @@ TRIGGER_PRESS = 550
 TRIGGER_RELEASE = 350
 TIP_SPEED = 0.035  # m/s
 MAX_JOINT_SPEED = 25  # deg/s
+JAW_SPEED = 60  # deg/s while a claw button is held
 MAX_LAG = 50  # encoder ticks; applies to arm joints, since a closed jaw may be gripping something
 JOINTS = tuple(replay.MOTOR_IDS)
 
@@ -53,10 +54,20 @@ class Gamepad:
         self.status = "Waiting for the controller"
         self.center = None
         self.center_candidate = None
-        self.ready = False
-        self.active = False
-        self.pressed = [False, False]
-        self.jaw = [None, None]
+        self.enabled = False
+        self.a_was_down = False
+        self.click_was_down = [False, False]
+        self.height = [False, False]
+        self.jaw_open = []
+        self.jaw_closed = []
+        for arm, mapping in zip(self.arms, self.maps):
+            low, high = arm.limits[replay.GRIPPER_ID]
+            if mapping.to_rad(replay.GRIPPER_ID, high) > mapping.to_rad(replay.GRIPPER_ID, low):
+                self.jaw_open.append(high)
+                self.jaw_closed.append(low)
+            else:
+                self.jaw_open.append(low)
+                self.jaw_closed.append(high)
 
     def input_loop(self):
         while not self.shutdown.is_set():
@@ -69,15 +80,15 @@ class Gamepad:
 
     def stop_locked(self, status):
         self.status = status
-        self.active = self.ready = False
-        self.jaw = [None, None]
+        self.enabled = False
+        self.height = [False, False]
         for arm in self.arms:
             arm.target = dict(arm.command)
 
     def stop(self):
         left, right = self.arms
         with left.lock, right.lock:
-            self.stop_locked("Stopped. Release RB before enabling motion again")
+            self.stop_locked("Stopped. Press A to drive again")
 
     def calibrate(self, axes, released, now):
         if not released or np.max(np.abs(axes)) > CENTER_RANGE:
@@ -91,7 +102,9 @@ class Gamepad:
     def pose(self, mapping, values):
         return np.array([mapping.to_rad(m, values[m]) for m in JOINTS])
 
-    def proposed(self, arm, mapping, index, xy, height):
+    def proposed(self, arm, mapping, xy, height, jaw_goal):
+        """The next commanded ticks for one arm, or None when the fingertip step is out of reach. `jaw_goal` is the
+        jaw limit a held claw button asks for, or None to leave the jaw where it is."""
         current = np.array([arm.command[m] for m in JOINTS])
         goal = current.copy()
         if np.any(xy):
@@ -102,13 +115,15 @@ class Gamepad:
             if not np.isfinite(wanted).all() or not np.isfinite(error) or error > 0.0002:
                 return None
             goal[:5] = [mapping.to_ticks(m, a) for m, a in zip(JOINTS, wanted)]
-        if self.jaw[index] is not None:
-            goal[-1] = self.jaw[index]
+        if jaw_goal is not None:
+            goal[-1] = jaw_goal
 
         limits = np.array([arm.limits[m] for m in JOINTS])
         # The saved idle pose can start slightly past a soft limit. Permit movement back into range.
         goal = np.clip(goal, np.minimum(limits[:, 0], current), np.maximum(limits[:, 1], current))
-        maximum = min(arm.speed, MAX_JOINT_SPEED) * replay.STEPS_PER_DEGREE * PERIOD
+        arm_step = min(arm.speed, MAX_JOINT_SPEED) * replay.STEPS_PER_DEGREE * PERIOD
+        maximum = np.full(len(JOINTS), arm_step)
+        maximum[-1] = JAW_SPEED * replay.STEPS_PER_DEGREE * PERIOD
         return dict(zip(JOINTS, current + np.clip(goal - current, -maximum, maximum)))
 
     def run(self):
@@ -147,60 +162,89 @@ class Gamepad:
                 self.center = self.center_candidate = None
                 self.stop_locked(message if state is None else "Controller input timed out")
                 return
-            rb = "rb" in state.buttons
+            buttons = state.buttons
             triggers = (state.left_trigger, state.right_trigger)
+            bumpers = ("lb" in buttons, "rb" in buttons)
+            clicks = ("left_stick" in buttons, "right_stick" in buttons)
+            a_down = "a" in buttons
+            a_pressed = a_down and not self.a_was_down
+            self.a_was_down = a_down
+            clicked = [False, False]
+            for i in range(2):
+                clicked[i] = clicks[i] and not self.click_was_down[i]
+                self.click_was_down[i] = clicks[i]
             axes = np.array([state.left_x, state.left_y, state.right_x, state.right_y])
-            released = not rb and max(triggers) < TRIGGER_RELEASE
+            claws_released = not any(bumpers) and max(triggers) < TRIGGER_RELEASE
             if self.center is None:
-                self.calibrate(axes, released, now)
-                self.stop_locked("Center both sticks and release RB and the triggers")
+                self.calibrate(axes, claws_released and not a_down, now)
+                if self.center is None:
+                    self.stop_locked("Center both sticks and release every button")
+                else:
+                    self.stop_locked("Press A to drive both arms")
                 return
             if not all(reads) or not all(arm.torque for arm in self.arms) or torque_changed:
                 self.stop_locked("Turn on torque for both arms and check the servo links")
                 return
-            if "b" in state.buttons:
-                self.stop_locked("Stopped. Release RB before enabling motion again")
+            if "b" in buttons:
+                self.stop_locked("Stopped. Press A to drive again")
                 return
             sticks = (stick(*axes[:2], self.center[:2]), stick(*axes[2:], self.center[2:]))
-            if not rb:
-                self.stop_locked("Hold RB to drive both arms")
-                self.ready = released and not any(np.any(xy) for xy in sticks)
-                self.pressed = [False, False]
+            sticks_centered = not np.any(sticks[0]) and not np.any(sticks[1])
+            if a_pressed:
+                if self.enabled:
+                    self.stop_locked("Holding. Press A to drive again")
+                    return
+                if not sticks_centered or not claws_released:
+                    self.stop_locked("Center both sticks and release the claw buttons, then press A")
+                    return
+                self.enabled = True
+            if not self.enabled:
+                self.stop_locked(self.status)
                 return
-            if not self.ready:
-                self.status = "Center both sticks and release RB before enabling motion"
-                return
-            if not self.active and (max(triggers) >= TRIGGER_RELEASE or any(np.any(xy) for xy in sticks)):
-                self.stop_locked("Enable with the sticks centered and triggers released")
-                return
-            self.active = True
-            for i, (arm, value) in enumerate(zip(self.arms, triggers)):
-                if value <= TRIGGER_RELEASE:
-                    self.pressed[i] = False
-                elif value >= TRIGGER_PRESS and not self.pressed[i]:
-                    self.pressed[i] = True
-                    lo, hi = arm.limits[replay.GRIPPER_ID]
-                    previous = self.jaw[i] if self.jaw[i] is not None else arm.command[replay.GRIPPER_ID]
-                    self.jaw[i] = hi if previous < (lo + hi) / 2 else lo
+            jaw_goals = [None, None]
+            for i in range(2):
+                if clicked[i]:
+                    self.height[i] = not self.height[i]
+                opening = bumpers[i]
+                closing = triggers[i] >= TRIGGER_PRESS
+                if opening and not closing:
+                    jaw_goals[i] = self.jaw_open[i]
+                if closing and not opening:
+                    jaw_goals[i] = self.jaw_closed[i]
+            modes = []
+            for i in range(2):
+                if self.height[i]:
+                    modes.append("up and down")
+                else:
+                    modes.append("over the table")
+            driving = f"Driving. Left stick: {modes[0]}. Right stick: {modes[1]}"
             if any(abs(arm.present[m] - arm.command[m]) > MAX_LAG for arm in self.arms for m in JOINTS[:-1]):
-                self.stop_locked("A follower is lagging. Release RB before retrying")
+                self.stop_locked("A follower is lagging. Press A to drive again")
                 return
 
-            goals = [self.proposed(arm, mapping, i, xy, "lb" in state.buttons)
-                     for i, (arm, mapping, xy) in enumerate(zip(self.arms, self.maps, sticks))]
+            goals = []
+            for i in range(2):
+                goals.append(self.proposed(self.arms[i], self.maps[i], sticks[i], self.height[i], jaw_goals[i]))
             if any(goal is None for goal in goals):
                 self.status = "Gripper target out of reach"
                 return
             if all(goal == arm.command for goal, arm in zip(goals, self.arms)):
-                self.status = "Driving both arms"
+                self.status = driving
                 return
-            samples = []
+            held = []
+            ahead = []
             for arm, mapping, goal in zip(self.arms, self.maps, goals):
                 measured = self.pose(mapping, arm.present)
                 commanded = self.pose(mapping, {m: round(v) for m, v in arm.command.items()})
                 proposed = self.pose(mapping, {m: round(v) for m, v in goal.items()})
-                samples.append(np.unique([measured, commanded, proposed, (measured + proposed) / 2], axis=0))
-            obstruction = self.guard.obstruction(*samples)
+                held.append(np.unique([measured, commanded], axis=0))
+                ahead.append(np.unique([proposed, (measured + proposed) / 2], axis=0))
+            floors = self.guard.floors(held[0], held[1])
+            everywhere_right = np.concatenate([held[1], ahead[1]])
+            # The held poses against each other set the floors, so only pairings with a pose ahead are tested.
+            obstruction = self.guard.obstruction(ahead[0], everywhere_right, floors)
+            if obstruction is None:
+                obstruction = self.guard.obstruction(held[0], ahead[1], floors)
             if obstruction is not None:
                 self.status = f"Movement blocked: clearance {obstruction}"
                 return
@@ -214,8 +258,8 @@ class Gamepad:
                 if goal != arm.command:
                     # A failed write can leave this physical goal uncertain. Preserve the prior software target.
                     if not arm.send_goals(goal):
-                        self.stop_locked(f"Could not command {arm.name}. Release RB before retrying")
+                        self.stop_locked(f"Could not command {arm.name}. Press A to drive again")
                         return
                     arm.command = dict(goal)
                     arm.target = dict(goal)
-            self.status = "Driving both arms"
+            self.status = driving

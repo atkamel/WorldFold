@@ -59,10 +59,24 @@ def test_pair_geometry_checks_both_arms_at_independent_progress():
     assert guard.obstruction([work_pose(.24, 0, -.02)], [right]) == "table"
 
 
+def test_pair_geometry_checks_neighbouring_parts_and_lets_a_close_arm_back_away():
+    guard = PairClearance(0.30)
+    folded = np.radians([0, -104, 90, -96, 0, 0])
+    deeper = np.radians([0, -104, 97, -96, 0, 0])
+    opened = np.radians([0, -104, 60, -96, 0, 0])
+    assert guard.obstruction([folded], [folded]) == "within an arm"
+    floors = guard.floors([folded], [folded])
+    assert guard.obstruction([folded], [folded], floors) is None
+    assert guard.obstruction([opened], [folded], floors) is None
+    assert guard.obstruction([deeper], [folded], floors) == "within an arm"
+
+
 def test_xinput_preserves_stick_signs_and_converts_triggers():
     state = xinput_state(_XInputGamepad(0x2300, 255, 0, -32768, 2000, 32767, -1200))
     assert state == ControllerState(buttons=("lb", "rb", "b"), left_trigger=1023,
                                     left_x=-32768, left_y=2000, right_x=32767, right_y=-1200)
+    clicks = xinput_state(_XInputGamepad(0x10C0, 0, 0, 0, 0, 0, 0))
+    assert set(clicks.buttons) == {"a", "left_stick", "right_stick"}
 
 
 @pytest.fixture
@@ -75,56 +89,125 @@ def mode(monkeypatch):
     return gamepad.Gamepad(left, right, .30)
 
 
-def test_two_arm_jog_grip_latch_and_deadman(mode):
-    neutral = ControllerState(left_x=600, right_y=5500)
-    rb = replace(neutral, buttons=("rb",))
-    now = 10.0
+class Driver:
+    """Feeds controller states to the mode on a 20 ms clock."""
 
-    def send(state, age=0):
-        nonlocal now
-        now += .02
-        mode.tick(state, now - age, now)
+    def __init__(self, mode):
+        self.mode = mode
+        self.now = 10.0
 
+    def send(self, state, age=0.0):
+        self.now += 0.02
+        self.mode.tick(state, self.now - age, self.now)
+
+    def enable(self):
+        for _ in range(30):
+            self.send(ControllerState())
+        self.send(ControllerState(buttons=("a",)))
+        self.send(ControllerState())
+
+    def tips(self):
+        points = []
+        for mapping, arm in zip(self.mode.maps, self.mode.arms):
+            points.append(self.mode.kinematics.tip(self.mode.pose(mapping, arm.command)[:5])[0])
+        return points
+
+    def jaws(self):
+        angles = []
+        for mapping, arm in zip(self.mode.maps, self.mode.arms):
+            angles.append(mapping.to_rad(6, arm.command[6]))
+        return angles
+
+    def write_counts(self):
+        return [len(arm.writes) for arm in self.mode.arms]
+
+
+def test_a_enables_each_stick_drives_its_own_arm_and_b_stops(mode):
+    driver = Driver(mode)
+    pushed = ControllerState(left_y=32767, right_x=32767)
     for _ in range(30):
-        send(neutral)
-    send(rb)
-    left, right = mode.arms
-    assert not left.writes and not right.writes
-    origin = [mode.kinematics.tip(mode.pose(m, arm.command)[:5])[0] for m, arm in zip(mode.maps, mode.arms)]
-    send(replace(rb, left_y=32767, right_x=32767))
-    assert len(left.writes) == len(right.writes) == 1
-    end = [mode.kinematics.tip(mode.pose(m, arm.command)[:5])[0] for m, arm in zip(mode.maps, mode.arms)]
+        driver.send(ControllerState())
+    driver.send(pushed)
+    assert driver.write_counts() == [0, 0]
+
+    driver.send(ControllerState())
+    driver.send(ControllerState(buttons=("a",)))
+    driver.send(ControllerState())
+    origin = driver.tips()
+    driver.send(pushed)
+    assert driver.write_counts() == [1, 1]
+    end = driver.tips()
     assert end[0][0] > origin[0][0]
     assert end[1][1] < origin[1][1]
-    assert [a.command[5] for a in mode.arms] == [a.writes[0][5] for a in mode.arms]
 
-    before_jaws = left.command[6], right.command[6]
-    send(replace(rb, buttons=("lb", "rb"), left_y=32767, right_y=32767, left_trigger=900, right_trigger=900))
-    elevated = [mode.kinematics.tip(mode.pose(m, arm.command)[:5])[0] for m, arm in zip(mode.maps, mode.arms)]
-    assert all(current[2] > previous[2] for current, previous in zip(elevated, end))
-    first_jaws = left.command[6], right.command[6]
-    send(rb)
-    assert all(abs(arm.command[6] - initial) > abs(first - initial)
-               for arm, initial, first in zip(mode.arms, before_jaws, first_jaws))
-    send(neutral)
-    counts = len(left.writes), len(right.writes)
-    send(replace(neutral, left_y=32767, right_y=32767))
-    send(replace(rb, left_y=32767, right_y=32767))
-    assert (len(left.writes), len(right.writes)) == counts
-    send(neutral)
-    send(rb)
-    send(replace(rb, left_y=32767, right_y=32767), age=1)
-    assert (len(left.writes), len(right.writes)) == counts
+    driver.send(replace(pushed, buttons=("b",)))
+    driver.send(pushed)
+    assert driver.write_counts() == [1, 1]
+
+
+def test_a_does_not_enable_while_a_stick_is_pushed(mode):
+    driver = Driver(mode)
+    for _ in range(30):
+        driver.send(ControllerState())
+    driver.send(ControllerState(buttons=("a",), left_y=32767))
+    driver.send(ControllerState(left_y=32767))
+    assert driver.write_counts() == [0, 0]
+
+
+def test_stick_click_switches_only_that_arm_to_height(mode):
+    driver = Driver(mode)
+    driver.enable()
+    driver.send(ControllerState(buttons=("left_stick",)))
+    driver.send(ControllerState())
+    origin = driver.tips()
+    for _ in range(5):
+        driver.send(ControllerState(left_y=32767, right_y=32767))
+    end = driver.tips()
+    assert end[0][2] - origin[0][2] > 0.002
+    assert abs(end[0][0] - origin[0][0]) < 0.001
+    assert end[1][0] - origin[1][0] > 0.002
+    assert abs(end[1][2] - origin[1][2]) < 0.001
+
+
+def test_bumper_opens_and_trigger_closes_one_jaw_while_held(mode):
+    driver = Driver(mode)
+    driver.enable()
+    start = driver.jaws()
+    for _ in range(5):
+        driver.send(ControllerState(buttons=("lb",)))
+    opened = driver.jaws()
+    assert opened[0] > start[0]
+    assert opened[1] == start[1]
+
+    driver.send(ControllerState())
+    counts = driver.write_counts()
+    driver.send(ControllerState())
+    assert driver.write_counts() == counts
+
+    for _ in range(3):
+        driver.send(ControllerState(right_trigger=900))
+    closed = driver.jaws()
+    assert closed[1] < start[1]
+    assert closed[0] == opened[0]
+
+
+def test_stale_input_stops_and_needs_a_again(mode):
+    driver = Driver(mode)
+    driver.enable()
+    pushed = ControllerState(left_y=32767)
+    driver.send(pushed, age=1.0)
+    assert driver.write_counts() == [0, 0]
     assert "timed out" in mode.status
+    for _ in range(30):
+        driver.send(ControllerState())
+    driver.send(pushed)
+    assert driver.write_counts() == [0, 0]
 
 
 def test_clearance_refusal_sends_neither_goal(mode, monkeypatch):
-    neutral = ControllerState()
-    rb = replace(neutral, buttons=("rb",))
-    for now in (0, 0.4, 0.42):
-        mode.tick(neutral, now, now)
-    mode.tick(rb, .44, .44)
+    driver = Driver(mode)
+    driver.enable()
     monkeypatch.setattr(mode.guard, "obstruction", lambda *samples: "between arms")
-    mode.tick(replace(rb, left_y=32767, right_y=32767), .46, .46)
-    assert all(not arm.writes for arm in mode.arms)
+    driver.send(ControllerState(left_y=32767, right_y=32767))
+    assert driver.write_counts() == [0, 0]
     assert "between arms" in mode.status
