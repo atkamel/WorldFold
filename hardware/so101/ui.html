@@ -142,7 +142,7 @@
         <span>click a stick</span><span>switch that arm's forward and back to up and down</span>
         <span><kbd>LB</kbd> <kbd>RB</kbd></span><span>tilt the left, right wrist up</span>
         <span><kbd>LT</kbd> <kbd>RT</kbd></span><span>tilt the left, right wrist down</span>
-        <span>keyboard <kbd>Q</kbd> <kbd>E</kbd></span><span>open or close the left, right claw (click this page first)</span>
+        <span>keyboard <kbd>S</kbd> <kbd>K</kbd></span><span>open or close the left, right claw (click this page first)</span>
         <span>keyboard <kbd>A</kbd> <kbd>D</kbd></span><span>turn the left claw one way, the other, while held</span>
         <span>keyboard <kbd>J</kbd> <kbd>L</kbd></span><span>turn the right claw one way, the other, while held</span>
         <span><kbd>Y</kbd></span><span>while stopped: both arms go to their idle poses</span>
@@ -553,8 +553,8 @@ function toggleGripper() {
   const open = Math.min(hi, GRIP_OPEN), closed = Math.max(0, lo);
   setTargets(active, { 6: targetDeg(active, 6) > (open + closed) / 2 ? closed : open });
 }
-// In gamepad mode the keyboard works the claws: Q the left arm's, E the right arm's.
-const CLAW_KEYS = { KeyQ: 0, KeyE: 1 };
+// In gamepad mode the keyboard works the claws: S the left arm's, K the right arm's, each between its roll keys.
+const CLAW_KEYS = { KeyS: 0, KeyK: 1 };
 async function toggleClaw(arm) {
   const answer = await post("/gamepad/claw", { arm });
   if (!answer.ok) toast((await answer.json()).error);
