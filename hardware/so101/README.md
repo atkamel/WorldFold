@@ -631,6 +631,8 @@ The two followers must be configured side by side in `arms.json`, in left-to-rig
 | LB, RB | tilts the left, right wrist joint up while held |
 | LT, RT | tilts the left, right wrist joint down while held |
 | Q, E on the keyboard | while driving: the left, right claw opens a little (30 deg, `CLAW_OPEN`) or shuts (the panel's page must have the keyboard) |
+| A, D on the keyboard | while driving: turns the left claw about its wrist, one way and the other, while held (90 deg/s, `ROLL_SPEED`) |
+| J, L on the keyboard | the same for the right claw |
 | A | starts driving, with the sticks centred and the claw buttons released; A again holds both arms |
 | B | stops; A drives again |
 | Y | while stopped or holding: both arms glide to their saved idle poses; B stops the glide |
@@ -666,6 +668,11 @@ arm's pose with the joints inside their recorded limits, and the point is kept 1
 button is for the arm, the right button turns the view (with Shift it slides it) and the wheel zooms. A stick takes over from it, B drops it, and it is refused while
 driving is off. In gamepad mode only the gripper can be dragged; turning one joint by its part is for the panel
 without `--gamepad`.
+
+A held roll key is repeated by the page ten times a second (`POST /gamepad/roll`: the arm and a way of -1, 0 or
+1). A key the loop stops hearing about for 0.3 s (`ROLL_HOLD`) counts as let go, so a page that loses the keyboard
+cannot leave a claw turning. The turn stops at the joint's recorded limits and goes through the same check; the
+moving jaw against the wrist is not in that check.
 
 The glide to idle moves every joint of an arm straight to its idle value, the fastest at 30 deg/s
 (`HOME_SPEED`), through the same check as driving. The folded idle pose rests closer to itself than the clearances

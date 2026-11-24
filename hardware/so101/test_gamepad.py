@@ -627,3 +627,42 @@ def test_the_log_holds_how_far_the_sticks_were_pushed(mode):
     written = mode.log.getvalue()
     assert "right 1.00" in written
     assert "(1200, -800)" in written
+
+
+def test_a_roll_key_turns_that_claw_while_it_is_held_and_stops_when_it_goes_quiet(mode):
+    driver = Driver(mode)
+    right = mode.arms[1]
+    assert not mode.set_roll(right.name, 1)
+    driver.enable()
+    assert not mode.set_roll("no such arm", 1)
+    start = dict(right.command)
+
+    assert mode.set_roll(right.name, 1)
+    for _ in range(5):
+        driver.send(ControllerState())
+    turned = right.command[5] - start[5]
+    assert abs(turned) > 10
+    for m in (1, 2, 3, 4, 6):
+        assert right.command[m] == start[m]
+    assert driver.write_counts()[0] == 0
+
+    assert mode.set_roll(right.name, -1)
+    for _ in range(5):
+        driver.send(ControllerState())
+    assert abs(right.command[5] - start[5]) < abs(turned)
+
+    # A key the page stops reporting, as when its window loses the keyboard, is taken as let go.
+    assert mode.set_roll(right.name, 1)
+    for _ in range(40):
+        driver.send(ControllerState())
+    counts = driver.write_counts()
+    for _ in range(5):
+        driver.send(ControllerState())
+    assert driver.write_counts() == counts
+
+    assert mode.set_roll(right.name, 1)
+    driver.send(ControllerState())
+    assert mode.set_roll(right.name, 0)
+    counts = driver.write_counts()
+    driver.send(ControllerState())
+    assert driver.write_counts() == counts

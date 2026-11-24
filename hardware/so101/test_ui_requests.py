@@ -67,6 +67,12 @@ def panel(tmp_path, monkeypatch, request):
             self.dragged.append((name, "claw"))
             return True
 
+        def set_roll(self, name, way):
+            if not self.driving:
+                return False
+            self.dragged.append((name, "roll", way))
+            return True
+
         def sticks_state(self):
             return {"left": [0.0, 0.0], "right": [0.0, 0.0], "raw": {"left": [0, 0], "right": [0, 0]}}
 
@@ -216,3 +222,22 @@ def test_a_claw_key_reaches_the_gamepad_for_a_known_arm_while_driving(panel):
 def test_a_claw_key_is_not_taken_outside_gamepad_mode(panel):
     _, post, _ = panel
     assert post("/gamepad/claw", {"arm": "arm1"}) == 404
+
+
+@pytest.mark.parametrize("panel", [True], indirect=True)
+def test_a_roll_key_reaches_the_gamepad_only_as_a_way_to_turn(panel):
+    _, post, _ = panel
+    assert post("/gamepad/roll", {"arm": "arm1", "way": -1}) == 200
+    assert post.gamepad.dragged[-1] == ("arm1", "roll", -1)
+    sent = len(post.gamepad.dragged)
+    for bad in (2, 0.5, "left", None, True):
+        assert post("/gamepad/roll", {"arm": "arm1", "way": bad}) == 400
+    assert post("/gamepad/roll", {"arm": "nobody", "way": 1}) == 400
+    assert len(post.gamepad.dragged) == sent
+    post.gamepad.driving = False
+    assert post("/gamepad/roll", {"arm": "arm1", "way": 1}) == 409
+
+
+def test_a_roll_key_is_not_taken_outside_gamepad_mode(panel):
+    _, post, _ = panel
+    assert post("/gamepad/roll", {"arm": "arm1", "way": 1}) == 404

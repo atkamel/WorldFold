@@ -143,6 +143,8 @@
         <span><kbd>LB</kbd> <kbd>RB</kbd></span><span>tilt the left, right wrist up</span>
         <span><kbd>LT</kbd> <kbd>RT</kbd></span><span>tilt the left, right wrist down</span>
         <span>keyboard <kbd>Q</kbd> <kbd>E</kbd></span><span>open or close the left, right claw (click this page first)</span>
+        <span>keyboard <kbd>A</kbd> <kbd>D</kbd></span><span>turn the left claw one way, the other, while held</span>
+        <span>keyboard <kbd>J</kbd> <kbd>L</kbd></span><span>turn the right claw one way, the other, while held</span>
         <span><kbd>Y</kbd></span><span>while stopped: both arms go to their idle poses</span>
         <span>drag the orange ball</span><span>while driving: that gripper goes to where you drop it, as far as it can reach</span>
         <span>right-drag, wheel</span><span>turn the view, zoom</span>
@@ -557,6 +559,28 @@ async function toggleClaw(arm) {
   const answer = await post("/gamepad/claw", { arm });
   if (!answer.ok) toast((await answer.json()).error);
 }
+// A and D turn the left arm's claw about its wrist while held, J and L the right arm's. The page says a key is
+// held ten times a second; the controller loop takes a key it stops hearing about as let go.
+const ROLL_KEYS = { KeyA: [0, -1], KeyD: [0, 1], KeyJ: [1, -1], KeyL: [1, 1] };
+const rolling = {};             // key code -> the timer that keeps saying it is held
+function sendRoll(code) {
+  const [index, way] = ROLL_KEYS[code];
+  return post("/gamepad/roll", { arm: names[index], way });
+}
+async function startRoll(code) {
+  if (rolling[code] || !names[ROLL_KEYS[code][0]]) return;
+  rolling[code] = setInterval(() => sendRoll(code), 100);
+  const answer = await sendRoll(code);
+  if (!answer.ok) { toast((await answer.json()).error); endRoll(code); }
+}
+function endRoll(code) {
+  if (!rolling[code]) return;
+  clearInterval(rolling[code]);
+  delete rolling[code];
+  post("/gamepad/roll", { arm: names[ROLL_KEYS[code][0]], way: 0 });
+}
+addEventListener("keyup", e => endRoll(e.code));
+addEventListener("blur", () => { for (const code of Object.keys(rolling)) endRoll(code); });
 addEventListener("keydown", e => {
   if (e.key === "Escape") { stop(); return; }
   if (!state || e.metaKey || e.ctrlKey || e.altKey) return;   // leave browser shortcuts alone
@@ -564,6 +588,10 @@ addEventListener("keydown", e => {
     if (e.code in CLAW_KEYS && !e.repeat && names[CLAW_KEYS[e.code]]) {
       e.preventDefault();
       toggleClaw(names[CLAW_KEYS[e.code]]);
+    }
+    if (e.code in ROLL_KEYS) {
+      e.preventDefault();
+      if (!e.repeat) startRoll(e.code);
     }
     return;
   }
