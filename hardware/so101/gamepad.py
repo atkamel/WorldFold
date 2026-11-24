@@ -19,7 +19,7 @@ STALE_AFTER = 0.30
 CALIBRATE_FOR = 0.35
 CENTER_RANGE = 8500
 CENTER_MOTION = 3000
-DEAD_ZONE = 5000
+DEAD_ZONE = 9000  # raw stick units from the centre that count as rest; a released stick settles thousands off
 TRIGGER_PRESS = 550
 TRIGGER_RELEASE = 350
 REACH_SPEED = 0.20  # m/s the fingertip moves out, in, up or down with a stick fully over
@@ -79,6 +79,7 @@ class Gamepad:
         self.missed_reads = 0
         self.failed_writes = 0
         self.most_lag = 0
+        self.most_stick = [0.0, 0.0]  # how far each stick was pushed since the last counts, 0 to 1
         self.idle = []
         idle_poses = []
         for arm, mapping in zip(self.arms, self.maps):
@@ -414,8 +415,13 @@ class Gamepad:
         if self.logged_at is None:
             self.logged_at = now
         if now - self.logged_at >= LOG_EVERY:
+            raw = self.shown_sticks["raw"]
             self.log.write(f"{now:.2f} loop {self.loop_ms:.0f} ms, missed reads {self.missed_reads}, "
-                           f"failed writes {self.failed_writes}, most lag {self.most_lag} steps\n")
+                           f"failed writes {self.failed_writes}, most lag {self.most_lag} steps, "
+                           f"sticks pushed up to left {self.most_stick[0]:.2f} right {self.most_stick[1]:.2f}, "
+                           f"raw now left ({raw['left'][0]}, {raw['left'][1]}) "
+                           f"right ({raw['right'][0]}, {raw['right'][1]})\n")
+            self.most_stick = [0.0, 0.0]
             self.logged_at = now
             self.missed_reads = 0
             self.failed_writes = 0
@@ -542,6 +548,10 @@ class Gamepad:
             used = [np.zeros(2), np.zeros(2)]
             if self.center is not None:
                 used = [stick(*axes[:2], self.center[:2]), stick(*axes[2:], self.center[2:])]
+            for i in range(2):
+                pushed = float(np.linalg.norm(used[i]))
+                if pushed > self.most_stick[i]:
+                    self.most_stick[i] = pushed
             self.shown_sticks = {
                 "left": [round(float(used[0][0]), 2), round(float(used[0][1]), 2)],
                 "right": [round(float(used[1][0]), 2), round(float(used[1][1]), 2)],

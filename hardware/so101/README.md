@@ -646,7 +646,9 @@ A missed encoder read skips that one step and driving stays on; only reads misse
 shows both sticks' readings: the value the loop acts on (-1 to 1, after the centre and the dead zone) and the raw
 value under it. Each `--gamepad` session writes
 `runs/gamepad_<date_time>.log`: a line whenever the status changes, and every 2 s the loop time, the reads and
-writes missed, and the most a joint trailed its command. Read it before changing a setting.
+writes missed, the most a joint trailed its command, how far each stick was pushed (0 to 1) and the sticks' raw
+values at that moment. A stick within 9000 raw units of its centre counts as at rest (`DEAD_ZONE`, 27% of its
+travel): a released stick does not come back to the same place, and a stick read as pushed moves its arm. Read it before changing a setting.
 
 The two arms move at the same time and each on its own: an arm whose step is refused, out of reach, or more than
 about 9 deg behind its command holds while the other goes on (`MAX_LAG`; 0.15 s of its top speed where that is

@@ -3160,3 +3160,15 @@ with no step refused (11.6 / 14.3 cm at the old speeds, after a raise); up 21.5 
 15.6 ms at worst with the solver given 20 steps a move (8 before). The speeds themselves have not been run on the
 arms: on the rig a joint trailed its command by up to 59 steps at the old 50 deg/s cap, so at 120 deg/s about 140
 steps is to be expected, under the new limit of 205.
+
+## Gamepad on the rig: an arm moving with no stick held (2026-11-23)
+
+Session log `runs/gamepad_20261123_223141.log` (user: the right arm keeps drifting with nothing pressed). The
+loop takes 3 ms when it has nothing to send and 7 to 24 ms when it sends: over the 60 s of driving (28 two-second
+counts) it never took under 7 ms, so it was sending moves the whole time, and the status carried no note (no
+dragged point, nothing refused, nothing out of reach). For 16 s of that the most lag stayed at 16 to 34 steps,
+which is a slow steady move. The log did not hold the stick values, so the stick is the cause by elimination, not
+by reading: a stick resting further than 5000 raw units (15% of its travel) from the centre found at start is
+read as pushed. Most lag at the doubled speeds: 191 steps at the highest (0 missed reads, 0 failed writes).
+
+The dead zone is now 9000 raw units, and the log holds each stick's largest push and raw values every 2 s.

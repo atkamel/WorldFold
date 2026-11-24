@@ -598,3 +598,25 @@ def test_the_stick_readings_are_reported(mode):
     assert abs(shown["left"][1]) < 0.01
     assert shown["right"][1] < -0.9
     assert shown["raw"]["left"][0] == 32767
+
+
+def test_a_stick_resting_a_little_off_centre_moves_nothing(mode):
+    driver = Driver(mode)
+    driver.enable()
+    for _ in range(10):
+        driver.send(ControllerState(left_x=-6000, left_y=5000, right_x=6000, right_y=-5500))
+    assert driver.write_counts() == [0, 0]
+    assert mode.sticks_state()["right"] == [0.0, 0.0]
+
+
+def test_the_log_holds_how_far_the_sticks_were_pushed(mode):
+    mode.log = io.StringIO()
+    driver = Driver(mode)
+    driver.enable()
+    mode.record(driver.now)
+    driver.send(ControllerState(right_x=32767))
+    driver.send(ControllerState(right_x=1200, right_y=-800))
+    mode.record(driver.now + 5.0)
+    written = mode.log.getvalue()
+    assert "right 1.00" in written
+    assert "(1200, -800)" in written
