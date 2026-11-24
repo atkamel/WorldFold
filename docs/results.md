@@ -3151,3 +3151,12 @@ clearance, never closer" refused. With the elbow folded to its limit and the sho
 pair reads -32 mm at 40 deg and -50 mm at 100 deg. The check now holds those pairs to 5 mm closer than at the
 idle pose: from idle, 100 steps forward and 100 sideways each way are sent with none refused, and the folded
 elbow with the shoulder at 20 deg is still refused (`test_gamepad.py`). Not yet run on the arms.
+
+## Gamepad at twice the speed, in the model (2026-11-23)
+
+Simulated servos from the saved idle poses, sticks held fully over for 3 s, with the joint cap at the simulated
+panel's 50 deg/s (the real panel starts at 120 in gamepad mode), n = 1 run each, no seed: forward 32.4 / 32.7 cm
+with no step refused (11.6 / 14.3 cm at the old speeds, after a raise); up 21.5 / 21.7 cm; a whole simulated step
+15.6 ms at worst with the solver given 20 steps a move (8 before). The speeds themselves have not been run on the
+arms: on the rig a joint trailed its command by up to 59 steps at the old 50 deg/s cap, so at 120 deg/s about 140
+steps is to be expected, under the new limit of 205.

@@ -140,8 +140,9 @@
         <span>stick sideways</span><span>turn that arm's base</span>
         <span>stick forward, back</span><span>reach out and in</span>
         <span>click a stick</span><span>switch that arm's forward and back to up and down</span>
-        <span><kbd>LB</kbd> <kbd>RB</kbd></span><span>open the left, right claw</span>
-        <span><kbd>LT</kbd> <kbd>RT</kbd></span><span>close the left, right claw</span>
+        <span><kbd>LB</kbd> <kbd>RB</kbd></span><span>tilt the left, right wrist up</span>
+        <span><kbd>LT</kbd> <kbd>RT</kbd></span><span>tilt the left, right wrist down</span>
+        <span>keyboard <kbd>Q</kbd> <kbd>E</kbd></span><span>open or close the left, right claw (click this page first)</span>
         <span><kbd>Y</kbd></span><span>while stopped: both arms go to their idle poses</span>
         <span>drag the orange ball</span><span>while driving: that gripper goes to where you drop it, as far as it can reach</span>
         <span>right-drag, wheel</span><span>turn the view, zoom</span>
@@ -550,9 +551,22 @@ function toggleGripper() {
   const open = Math.min(hi, GRIP_OPEN), closed = Math.max(0, lo);
   setTargets(active, { 6: targetDeg(active, 6) > (open + closed) / 2 ? closed : open });
 }
+// In gamepad mode the keyboard works the claws: Q the left arm's, E the right arm's.
+const CLAW_KEYS = { KeyQ: 0, KeyE: 1 };
+async function toggleClaw(arm) {
+  const answer = await post("/gamepad/claw", { arm });
+  if (!answer.ok) toast((await answer.json()).error);
+}
 addEventListener("keydown", e => {
   if (e.key === "Escape") { stop(); return; }
   if (!state || e.metaKey || e.ctrlKey || e.altKey) return;   // leave browser shortcuts alone
+  if (state.gamepad !== null) {
+    if (e.code in CLAW_KEYS && !e.repeat && names[CLAW_KEYS[e.code]]) {
+      e.preventDefault();
+      toggleClaw(names[CLAW_KEYS[e.code]]);
+    }
+    return;
+  }
   if (e.repeat && !held.has(e.code)) return;                   // a key still down from before Stop
   if (MOVE_KEYS.includes(e.code)) {
     e.preventDefault();

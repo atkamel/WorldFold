@@ -522,6 +522,19 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
             if gamepad is not None and self.path in ("/goal", "/pose", "/idle", "/mirror", "/leader", "/fold/start"):
                 self.reply({"error": "The controller has exclusive control in gamepad mode"}, status=409)
                 return
+            if self.path == "/gamepad/claw":
+                # A claw key pressed on the page: that arm's claw goes to its other end.
+                if gamepad is None:
+                    self.reply({"error": "not in gamepad mode"}, status=404)
+                    return
+                if arm is None:
+                    self.reply({"error": "send an arm"}, status=400)
+                    return
+                if not gamepad.toggle_claw(arm.name):
+                    self.reply({"error": "Press A on the controller to drive, then use the claw keys"}, status=409)
+                    return
+                self.reply({"ok": True})
+                return
             if self.path == "/gamepad/target":
                 # A fingertip point dragged in the 3D view: the arm's base frame, metres.
                 if gamepad is None:
@@ -628,6 +641,7 @@ def main():
     gamepad = None
     if args.gamepad:
         from gamepad import Gamepad
+        from gamepad import MAX_JOINT_SPEED as gamepad_top_speed
 
         leaders = set(arms.CONFIG.get("leaders", {}).values())
         followers = [name for name in arms.CONFIG["arms"] if name not in leaders]
@@ -645,6 +659,9 @@ def main():
         if spacing is None:
             parser.error("--gamepad requires spacing_cm in arms.json")
         gamepad = Gamepad(*arms_by_name.values(), float(spacing) / 100)
+        # The panel's speed slider caps the controller too: start it at the controller's own top speed.
+        for arm in arms_by_name.values():
+            arm.speed = gamepad_top_speed
         log_folder = HERE / "runs"
         log_folder.mkdir(exist_ok=True)
         log_file = log_folder / f"gamepad_{time.strftime('%Y%m%d_%H%M%S')}.log"

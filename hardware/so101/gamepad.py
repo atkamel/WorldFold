@@ -22,14 +22,17 @@ CENTER_MOTION = 3000
 DEAD_ZONE = 5000
 TRIGGER_PRESS = 550
 TRIGGER_RELEASE = 350
-REACH_SPEED = 0.10  # m/s the fingertip moves out, in, up or down with a stick fully over
-PAN_SPEED = 45  # deg/s the base turns with a stick fully over
-MAX_JOINT_SPEED = 60  # deg/s
-JAW_SPEED = 60  # deg/s while a claw button is held
+REACH_SPEED = 0.20  # m/s the fingertip moves out, in, up or down with a stick fully over
+PAN_SPEED = 90  # deg/s the base turns with a stick fully over
+WRIST_SPEED = 60  # deg/s the wrist tilts while a bumper or trigger is held
+MAX_JOINT_SPEED = 120  # deg/s
+JAW_SPEED = 90  # deg/s of a claw on its way open or closed
+LAG_TIME = 0.15  # s of its own top speed an arm joint may trail its command before that arm waits
 HOME_SPEED = 30  # deg/s of the fastest joint on the glide to the idle poses
 MAX_STEP_TIME = 0.06  # s of motion one step may cover when the loop runs late
 ARRIVED = 0.002  # m from a dragged point at which the fingertip counts as there
 TIP_FLOOR = 0.01  # m above the model's table: the lowest a dragged point may sit
+SOLVE_ITERS = 20  # solver steps for one step of the fingertip
 SNAP_ITERS = 60  # solver steps spent finding the nearest reachable place for a dragged point
 MAX_LAG = 100  # encoder ticks an arm joint may trail its command before that arm waits; the jaw may be gripping
 MAX_FAILS = 15  # servo reads or writes missed in a row before driving is switched off (0.3 s)
@@ -68,6 +71,7 @@ class Gamepad:
         self.homing = False
         self.y_was_down = False
         self.tips = [None, None]  # per arm: a fingertip point dragged in the panel, base frame, m
+        self.claws = [None, None]  # per arm: the jaw limit a claw key sent it to, until it is there
         self.fails = 0  # servo reads or writes missed in a row
         self.log = None  # a text file the panel opens: what the loop did, for reading after a run
         self.logged_status = None
@@ -98,6 +102,7 @@ class Gamepad:
             self.pan_left = 1.0
         else:
             self.pan_left = -1.0
+        self.wrist_up = self.find_wrist_up()
         self.jaw_open = []
         self.jaw_closed = []
         for arm, mapping in zip(self.arms, self.maps):
@@ -124,6 +129,7 @@ class Gamepad:
         self.homing = False
         self.height = [False, False]
         self.tips = [None, None]
+        self.claws = [None, None]
         for arm in self.arms:
             arm.target = dict(arm.command)
 
@@ -179,6 +185,28 @@ class Gamepad:
                 return False
             self.tips[index] = nearest
             return True
+
+    def toggle_claw(self, name):
+        """Send the claw of the arm called `name` to its other end: open if it is nearer closed, closed if it is
+        nearer open. False when driving is off or the arm is not one of the two."""
+        left, right = self.arms
+        with left.lock, right.lock:
+            if not self.enabled:
+                return False
+            for i in range(2):
+                if self.arms[i].name != name:
+                    continue
+                heading = self.claws[i]
+                if heading is None:
+                    heading = self.arms[i].command[replay.GRIPPER_ID]
+                middle = (self.jaw_open[i] + self.jaw_closed[i]) / 2
+                nearer_open = abs(heading - self.jaw_open[i]) < abs(heading - middle)
+                if nearer_open:
+                    self.claws[i] = self.jaw_closed[i]
+                else:
+                    self.claws[i] = self.jaw_open[i]
+                return True
+            return False
 
     def sticks_state(self):
         """The stick readings for the panel: what the loop acts on (-1 to 1, after the centre and the dead zone)
@@ -239,24 +267,49 @@ class Gamepad:
             return np.zeros(3), True
         return apart * min(1.0, REACH_SPEED * dt / distance), False
 
-    def proposed(self, arm, mapping, step, turn, jaw_goal, dt):
+    def find_wrist_up(self):
+        """+1 or -1: the way the wrist joint turns to lift the fingers when they point level and forward. The
+        same way is "up" in every pose, so a held button keeps turning the wrist one way."""
+        pose = np.radians([0.0, 40.0, -30.0, 0.0, 0.0])
+        level = None
+        flattest = None
+        for degrees in range(-95, 96):
+            pose[3] = np.radians(degrees)
+            direction = self.kinematics.tip(pose)[1]
+            if direction[0] <= 0:
+                continue
+            if flattest is None or abs(direction[2]) < flattest:
+                flattest = abs(direction[2])
+                level = pose[3]
+        pose[3] = level
+        before = self.kinematics.tip(pose)[1][2]
+        pose[3] = level + 0.01
+        after = self.kinematics.tip(pose)[1][2]
+        if after > before:
+            return 1.0
+        return -1.0
+
+    def proposed(self, arm, mapping, step, turn, tilt, jaw_goal, dt):
         """(the next commanded ticks for one arm, whether the fingertip step could be solved). The fingertip moves
-        by `step` with the fingers keeping their lean, and the base turns by `turn`. `jaw_goal` is the jaw limit a
-        held claw button asks for, or None to leave the jaw."""
+        by `step` with the fingers keeping their lean, the base turns by `turn` and the wrist joint by `tilt`.
+        `jaw_goal` is the jaw limit a claw key sent the jaw to, or None to leave it."""
         current = np.array([arm.command[m] for m in JOINTS], dtype=float)
         goal = current.copy()
         reachable = True
-        if np.any(step) or turn != 0:
+        if np.any(step) or turn != 0 or tilt != 0:
             angles = self.pose(mapping, arm.command)
             wanted = angles[:5].copy()
             if np.any(step):
                 tip = self.kinematics.tip(wanted)[0]
-                solved, error, _ = self.kinematics.solve(tip + step, wanted, iters=8, keep_direction=True)
-                if np.isfinite(solved).all() and np.isfinite(error) and error <= 0.0002:
+                solved, error, _ = self.kinematics.solve(tip + step, wanted, iters=SOLVE_ITERS, keep_direction=True)
+                # A step the solver gets all but a twentieth of is taken; one it cannot follow is out of reach.
+                close_enough = max(0.0002, 0.05 * float(np.linalg.norm(step)))
+                if np.isfinite(solved).all() and np.isfinite(error) and error <= close_enough:
                     wanted = solved
                 else:
                     reachable = False
             wanted[0] = wanted[0] + turn
+            wanted[3] = wanted[3] + tilt
             for i in range(5):
                 goal[i] = mapping.to_ticks(JOINTS[i], wanted[i])
         if jaw_goal is not None:
@@ -368,13 +421,19 @@ class Gamepad:
             self.failed_writes = 0
             self.most_lag = 0
 
+    def lag_limit(self, arm):
+        """The encoder steps an arm joint may trail its command: more at a higher speed, never under MAX_LAG."""
+        top = min(arm.speed, MAX_JOINT_SPEED) * replay.STEPS_PER_DEGREE
+        return max(MAX_LAG, LAG_TIME * top)
+
     def lagging(self, arm):
         behind = False
+        limit = self.lag_limit(arm)
         for m in JOINTS[:-1]:
             lag = abs(arm.present[m] - arm.command[m])
             if lag > self.most_lag:
                 self.most_lag = round(lag)
-            if lag > MAX_LAG:
+            if lag > limit:
                 behind = True
         return behind
 
@@ -488,7 +547,7 @@ class Gamepad:
                 "right": [round(float(used[1][0]), 2), round(float(used[1][1]), 2)],
                 "raw": {"left": [int(axes[0]), int(axes[1])], "right": [int(axes[2]), int(axes[3])]},
             }
-            claws_released = not any(bumpers) and max(triggers) < TRIGGER_RELEASE
+            claws_released = not any(bumpers) and max(triggers) < TRIGGER_RELEASE  # the wrist buttons at rest
             if self.center is None:
                 self.calibrate(axes, claws_released and not a_down, now)
                 if self.center is None:
@@ -515,7 +574,7 @@ class Gamepad:
                     self.stop_locked("Holding. Press A to drive again")
                     return
                 if not sticks_centered or not claws_released:
-                    self.stop_locked("Center both sticks and release the claw buttons, then press A")
+                    self.stop_locked("Center both sticks and release the bumpers and triggers, then press A")
                     return
                 self.enabled = True
             if not self.enabled:
@@ -523,7 +582,7 @@ class Gamepad:
                     if sticks_centered and claws_released:
                         self.homing = True
                     else:
-                        self.stop_locked("Center both sticks and release the claw buttons, then press Y")
+                        self.stop_locked("Center both sticks and release the bumpers and triggers, then press Y")
                         return
                 if self.homing:
                     self.home_step(dt, now, captured, started)
@@ -531,15 +590,23 @@ class Gamepad:
                 self.stop_locked(self.status)
                 return
             jaw_goals = [None, None]
+            tilts = [0.0, 0.0]
             for i in range(2):
                 if clicked[i]:
                     self.height[i] = not self.height[i]
-                opening = bumpers[i]
-                closing = triggers[i] >= TRIGGER_PRESS
-                if opening and not closing:
-                    jaw_goals[i] = self.jaw_open[i]
-                if closing and not opening:
-                    jaw_goals[i] = self.jaw_closed[i]
+                # A bumper tilts that wrist up and a trigger tilts it down, while held.
+                up = bumpers[i]
+                down = triggers[i] >= TRIGGER_PRESS
+                if up != down:
+                    way = self.wrist_up
+                    if down:
+                        way = -way
+                    tilts[i] = way * np.radians(WRIST_SPEED) * dt
+                if self.claws[i] is not None:
+                    if abs(self.arms[i].command[replay.GRIPPER_ID] - self.claws[i]) < 0.5:
+                        self.claws[i] = None
+                    else:
+                        jaw_goals[i] = self.claws[i]
             modes = []
             for i in range(2):
                 if self.height[i]:
@@ -568,7 +635,7 @@ class Gamepad:
                         self.tips[i] = None
                     else:
                         notes.append(f"{names[i]} arm: going to the dragged point.")
-                goal, reachable = self.proposed(arm, self.maps[i], step, turn, jaw_goals[i], dt)
+                goal, reachable = self.proposed(arm, self.maps[i], step, turn, tilts[i], jaw_goals[i], dt)
                 if not reachable:
                     notes.append(f"{names[i]} arm: out of reach.")
                 goals.append(goal)

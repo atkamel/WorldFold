@@ -180,26 +180,76 @@ def test_stick_click_switches_only_that_arm_to_height(mode):
     assert abs(end[1][2] - origin[1][2]) < 0.001
 
 
-def test_bumper_opens_and_trigger_closes_one_jaw_while_held(mode):
+def finger_directions(mode):
+    found = []
+    for mapping, arm in zip(mode.maps, mode.arms):
+        found.append(mode.kinematics.tip(mode.pose(mapping, arm.command)[:5])[1])
+    return found
+
+
+def test_a_bumper_tilts_that_wrist_up_and_a_trigger_tilts_it_down_while_held(mode):
     driver = Driver(mode)
     driver.enable()
-    start = driver.jaws()
+    start = finger_directions(mode)
+    wrists = [arm.command[4] for arm in mode.arms]
+    wrist_angle = mode.pose(mode.maps[0], mode.arms[0].command)[3]
     for _ in range(5):
         driver.send(ControllerState(buttons=("lb",)))
-    opened = driver.jaws()
-    assert opened[0] > start[0]
-    assert opened[1] == start[1]
+    up = finger_directions(mode)
+    up_turn = mode.pose(mode.maps[0], mode.arms[0].command)[3] - wrist_angle
+    assert up[0][2] > start[0][2] + 0.01
+    assert mode.arms[0].command[4] != wrists[0]
+    assert mode.arms[1].command[4] == wrists[1]
+    for m in (1, 2, 3, 5, 6):
+        assert mode.arms[0].command[m] == mode.arms[0].present[m]
 
     driver.send(ControllerState())
     counts = driver.write_counts()
     driver.send(ControllerState())
     assert driver.write_counts() == counts
 
-    for _ in range(3):
+    before = mode.pose(mode.maps[1], mode.arms[1].command)[3]
+    for _ in range(5):
         driver.send(ControllerState(right_trigger=900))
-    closed = driver.jaws()
-    assert closed[1] < start[1]
-    assert closed[0] == opened[0]
+    right_turned = mode.pose(mode.maps[1], mode.arms[1].command)[3] - before
+    assert abs(right_turned) > 0.05
+    assert (right_turned > 0) != (up_turn > 0)
+    assert finger_directions(mode)[0][2] == up[0][2]
+
+
+def test_a_claw_toggles_open_and_closed_from_the_panel_while_driving(mode):
+    driver = Driver(mode)
+    right = mode.arms[1]
+    assert not mode.toggle_claw(right.name)
+    driver.enable()
+    assert not mode.toggle_claw("no such arm")
+    start = driver.jaws()
+
+    assert mode.toggle_claw(right.name)
+    for _ in range(150):
+        driver.send(ControllerState())
+    opened = driver.jaws()
+    assert opened[1] > start[1] + 0.5
+    assert opened[0] == start[0]
+    counts = driver.write_counts()
+    driver.send(ControllerState())
+    assert driver.write_counts() == counts
+
+    assert mode.toggle_claw(right.name)
+    for _ in range(150):
+        driver.send(ControllerState())
+    assert driver.jaws()[1] < start[1]
+
+
+def test_a_faster_arm_may_trail_its_command_further_before_it_waits(mode):
+    gamepad = sys.modules["gamepad"]
+    arm = mode.arms[0]
+    arm.speed = 50
+    slow = mode.lag_limit(arm)
+    arm.speed = 180
+    fast = mode.lag_limit(arm)
+    assert slow >= gamepad.MAX_LAG
+    assert fast > slow
 
 
 def test_stale_input_stops_and_needs_a_again(mode):

@@ -628,16 +628,17 @@ The two followers must be configured side by side in `arms.json`, in left-to-rig
 |---|---|
 | left stick, right stick | sideways turns that arm's base; forward and back reach the fingertip out and in the way the arm faces |
 | click a stick | switches that arm's forward and back to up and down (stick forward is up); sideways still turns the base |
-| LB, RB | opens the left, right claw while held |
-| LT, RT | closes the left, right claw while held |
+| LB, RB | tilts the left, right wrist joint up while held |
+| LT, RT | tilts the left, right wrist joint down while held |
+| Q, E on the keyboard | while driving: the left, right claw goes to its other end, open or closed (the panel's page must have the keyboard) |
 | A | starts driving, with the sticks centred and the claw buttons released; A again holds both arms |
 | B | stops; A drives again |
 | Y | while stopped or holding: both arms glide to their saved idle poses; B stops the glide |
 | drag the orange ball in the 3D view | while driving: that arm's fingertips go to where the ball is dropped (Shift-drag: up and down) |
 
 Both arms must have torque enabled in the panel. Let the sticks rest at center while the panel calibrates them,
-then press A. B, the panel's Stop button, a lost controller, or a stalled servo holds both arms until A is pressed
-again, and both sticks go back to over the table. If raw USB has not sent its first input report, move a stick
+then press A, with the sticks centred and the bumpers and triggers released. B, the panel's Stop button or a lost
+controller holds both arms until A is pressed again, and both sticks go back to over the table. If raw USB has not sent its first input report, move a stick
 briefly and then let both sticks rest. From the folded idle pose, raise an arm before reaching out with it.
 
 A missed encoder read skips that one step and driving stays on; only reads missed for 15 steps in a row (0.3 s,
@@ -648,10 +649,12 @@ value under it. Each `--gamepad` session writes
 writes missed, and the most a joint trailed its command. Read it before changing a setting.
 
 The two arms move at the same time and each on its own: an arm whose step is refused, out of reach, or more than
-about 9 deg behind its command (`MAX_LAG`) holds while the other goes on, and the panel's status says which and why, with the
-loop's time per step. With a stick fully over the fingertip moves 10 cm/s and the base turns 45 deg/s
-(`REACH_SPEED`, `PAN_SPEED` in `gamepad.py`); no joint goes over 60 deg/s or the panel's speed, whichever is
-lower, the claw included. A step covers the time since the last one, so a slow loop does not slow the arms.
+about 9 deg behind its command holds while the other goes on (`MAX_LAG`; 0.15 s of its top speed where that is
+more, `LAG_TIME`), and the panel's status says which and why, with the loop's time per step. With a stick fully
+over the fingertip moves 20 cm/s and the base turns 90 deg/s; the wrist tilts 60 deg/s and a claw moves 90 deg/s
+(`REACH_SPEED`, `PAN_SPEED`, `WRIST_SPEED`, `JAW_SPEED` in `gamepad.py`). No joint goes over 120 deg/s
+(`MAX_JOINT_SPEED`) or the panel's speed slider, which starts at 120 in gamepad mode: pull it down to slow
+everything. A step covers the time since the last one, so a slow loop does not slow the arms.
 
 A dragged point goes to the controller loop (`POST /gamepad/target`: the arm and a point in its base frame, three
 numbers within a metre), which walks the fingertips to it at the sticks' speed through the same check. A point

@@ -61,6 +61,12 @@ def panel(tmp_path, monkeypatch, request):
         def tips_state(self):
             return {"arm1": None, "arm2": None}
 
+        def toggle_claw(self, name):
+            if not self.driving:
+                return False
+            self.dragged.append((name, "claw"))
+            return True
+
         def sticks_state(self):
             return {"left": [0.0, 0.0], "right": [0.0, 0.0], "raw": {"left": [0, 0], "right": [0, 0]}}
 
@@ -195,3 +201,18 @@ def test_a_dragged_point_reaches_the_gamepad_only_as_three_plausible_numbers(pan
 def test_a_dragged_point_is_not_taken_outside_gamepad_mode(panel):
     _, post, _ = panel
     assert post("/gamepad/target", {"arm": "arm1", "tip": [0.25, 0.0, 0.1]}) == 404
+
+
+@pytest.mark.parametrize("panel", [True], indirect=True)
+def test_a_claw_key_reaches_the_gamepad_for_a_known_arm_while_driving(panel):
+    _, post, _ = panel
+    assert post("/gamepad/claw", {"arm": "arm1"}) == 200
+    assert post.gamepad.dragged[-1] == ("arm1", "claw")
+    assert post("/gamepad/claw", {"arm": "nobody"}) == 400
+    post.gamepad.driving = False
+    assert post("/gamepad/claw", {"arm": "arm1"}) == 409
+
+
+def test_a_claw_key_is_not_taken_outside_gamepad_mode(panel):
+    _, post, _ = panel
+    assert post("/gamepad/claw", {"arm": "arm1"}) == 404
