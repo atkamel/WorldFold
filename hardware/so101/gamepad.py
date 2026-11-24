@@ -28,6 +28,7 @@ MAX_JOINT_SPEED = 60  # deg/s
 JAW_SPEED = 60  # deg/s while a claw button is held
 HOME_SPEED = 30  # deg/s of the fastest joint on the glide to the idle poses
 MAX_STEP_TIME = 0.06  # s of motion one step may cover when the loop runs late
+ARRIVED = 0.002  # m from a dragged point at which the fingertip counts as there
 MAX_LAG = 50  # encoder ticks; applies to arm joints, since a closed jaw may be gripping something
 JOINTS = tuple(replay.MOTOR_IDS)
 
@@ -62,6 +63,7 @@ class Gamepad:
         self.loop_ms = 0.0
         self.homing = False
         self.y_was_down = False
+        self.tips = [None, None]  # per arm: a fingertip point dragged in the panel, base frame, m
         self.idle = []
         idle_poses = []
         for arm, mapping in zip(self.arms, self.maps):
@@ -108,6 +110,7 @@ class Gamepad:
         self.enabled = False
         self.homing = False
         self.height = [False, False]
+        self.tips = [None, None]
         for arm in self.arms:
             arm.target = dict(arm.command)
 
@@ -115,6 +118,29 @@ class Gamepad:
         left, right = self.arms
         with left.lock, right.lock:
             self.stop_locked("Stopped. Press A to drive again")
+
+    def set_tip(self, name, point):
+        """Take a fingertip point dragged in the panel for the arm called `name` (its base frame, metres). False
+        when driving is off or the arm is not one of the two."""
+        left, right = self.arms
+        with left.lock, right.lock:
+            if not self.enabled:
+                return False
+            for i in range(2):
+                if self.arms[i].name == name:
+                    self.tips[i] = np.array(point, dtype=float)
+                    return True
+            return False
+
+    def tips_state(self):
+        """{arm name: the dragged point it is going to, or None}, for the panel's marker."""
+        shown = {}
+        for i in range(2):
+            if self.tips[i] is None:
+                shown[self.arms[i].name] = None
+            else:
+                shown[self.arms[i].name] = [float(v) for v in self.tips[i]]
+        return shown
 
     def calibrate(self, axes, released, now):
         if not released or np.max(np.abs(axes)) > CENTER_RANGE:
@@ -136,32 +162,48 @@ class Gamepad:
         outward = self.kinematics.tip(stretched)[0][:2] - self.pan_axis
         return outward / np.linalg.norm(outward)
 
-    def proposed(self, arm, mapping, xy, height, jaw_goal, dt):
-        """(the next commanded ticks for one arm, whether the reach step could be solved). Stick x turns the base.
-        Stick y moves the fingertip out and in along the arm, or up and down in height mode, with the fingers
-        keeping their lean. `jaw_goal` is the jaw limit a held claw button asks for, or None to leave the jaw."""
+    def stick_step(self, arm, mapping, xy, height, dt):
+        """(fingertip step (3,) m, base turn rad) a stick asks for in one step. Stick x turns the base. Stick y
+        moves the fingertip out and in the way the arm faces, or up and down in height mode."""
+        step = np.zeros(3)
+        distance = xy[1] * REACH_SPEED * dt
+        if height:
+            step[2] = distance
+        else:
+            pan = mapping.to_rad(JOINTS[0], arm.command[JOINTS[0]])
+            step[:2] = self.facing(pan) * distance
+        # On the gamepad positive x is right.
+        turn = -self.pan_left * xy[0] * np.radians(PAN_SPEED) * dt
+        return step, turn
+
+    def tip_step(self, arm, mapping, point, dt):
+        """(fingertip step (3,) m toward the dragged `point`, whether the fingertip is there)."""
+        angles = self.pose(mapping, arm.command)
+        tip = self.kinematics.tip(angles[:5])[0]
+        apart = point - tip
+        distance = np.linalg.norm(apart)
+        if distance < ARRIVED:
+            return np.zeros(3), True
+        return apart * min(1.0, REACH_SPEED * dt / distance), False
+
+    def proposed(self, arm, mapping, step, turn, jaw_goal, dt):
+        """(the next commanded ticks for one arm, whether the fingertip step could be solved). The fingertip moves
+        by `step` with the fingers keeping their lean, and the base turns by `turn`. `jaw_goal` is the jaw limit a
+        held claw button asks for, or None to leave the jaw."""
         current = np.array([arm.command[m] for m in JOINTS], dtype=float)
         goal = current.copy()
         reachable = True
-        if np.any(xy):
+        if np.any(step) or turn != 0:
             angles = self.pose(mapping, arm.command)
             wanted = angles[:5].copy()
-            if xy[1] != 0:
+            if np.any(step):
                 tip = self.kinematics.tip(wanted)[0]
-                step = np.zeros(3)
-                distance = xy[1] * REACH_SPEED * dt
-                if height:
-                    step[2] = distance
-                else:
-                    step[:2] = self.facing(wanted[0]) * distance
                 solved, error, _ = self.kinematics.solve(tip + step, wanted, iters=8, keep_direction=True)
                 if np.isfinite(solved).all() and np.isfinite(error) and error <= 0.0002:
                     wanted = solved
                 else:
                     reachable = False
-            if xy[0] != 0:
-                # On the gamepad positive x is right.
-                wanted[0] = wanted[0] - self.pan_left * xy[0] * np.radians(PAN_SPEED) * dt
+            wanted[0] = wanted[0] + turn
             for i in range(5):
                 goal[i] = mapping.to_ticks(JOINTS[i], wanted[i])
         if jaw_goal is not None:
@@ -414,7 +456,19 @@ class Gamepad:
                     goals.append(dict(arm.command))
                     notes.append(f"{names[i]} arm is catching up.")
                     continue
-                goal, reachable = self.proposed(arm, self.maps[i], sticks[i], self.height[i], jaw_goals[i], dt)
+                step = np.zeros(3)
+                turn = 0.0
+                if np.any(sticks[i]):
+                    # A stick takes over from a point dragged in the panel.
+                    self.tips[i] = None
+                    step, turn = self.stick_step(arm, self.maps[i], sticks[i], self.height[i], dt)
+                elif self.tips[i] is not None:
+                    step, arrived = self.tip_step(arm, self.maps[i], self.tips[i], dt)
+                    if arrived:
+                        self.tips[i] = None
+                    else:
+                        notes.append(f"{names[i]} arm: going to the dragged point.")
+                goal, reachable = self.proposed(arm, self.maps[i], step, turn, jaw_goals[i], dt)
                 if not reachable:
                     notes.append(f"{names[i]} arm: out of reach.")
                 goals.append(goal)

@@ -383,3 +383,43 @@ def test_a_glide_step_is_not_sent_once_the_controller_input_is_stale(mode, monke
     driver.send(ControllerState(buttons=("y",)))
     assert driver.write_counts() == [0, 0]
     assert not mode.homing
+
+
+def test_a_dragged_point_brings_that_arm_s_fingertip_to_it_and_leaves_the_other_arm(mode):
+    driver = Driver(mode)
+    driver.enable()
+    right = mode.arms[1]
+    point = driver.tips()[1] + np.array([0.03, 0.0, 0.02])
+    assert mode.set_tip(right.name, list(point))
+    assert mode.tips_state()[right.name] is not None
+    for _ in range(100):
+        driver.send(ControllerState())
+    assert np.linalg.norm(driver.tips()[1] - point) < 0.003
+    assert driver.write_counts()[0] == 0
+    assert mode.tips_state()[right.name] is None
+
+
+def test_a_dragged_point_is_refused_while_driving_is_off(mode):
+    driver = calibrated(mode)
+    right = mode.arms[1]
+    point = driver.tips()[1] + np.array([0.03, 0.0, 0.0])
+    assert not mode.set_tip(right.name, list(point))
+    assert not mode.set_tip("no such arm", list(point))
+    for _ in range(5):
+        driver.send(ControllerState())
+    assert driver.write_counts() == [0, 0]
+
+
+def test_a_stick_takes_over_from_a_dragged_point_and_b_drops_it(mode):
+    driver = Driver(mode)
+    driver.enable()
+    right = mode.arms[1]
+    point = driver.tips()[1] + np.array([0.08, 0.0, 0.0])
+    assert mode.set_tip(right.name, list(point))
+    driver.send(ControllerState())
+    driver.send(ControllerState(right_x=32767))
+    assert mode.tips_state()[right.name] is None
+
+    assert mode.set_tip(right.name, list(point))
+    driver.send(ControllerState(buttons=("b",)))
+    assert mode.tips_state()[right.name] is None

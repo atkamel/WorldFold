@@ -633,6 +633,7 @@ The two followers must be configured side by side in `arms.json`, in left-to-rig
 | A | starts driving, with the sticks centred and the claw buttons released; A again holds both arms |
 | B | stops; A drives again |
 | Y | while stopped or holding: both arms glide to their saved idle poses; B stops the glide |
+| drag the orange ball in the 3D view | while driving: that arm's fingertips go to where the ball is dropped (Shift-drag: up and down) |
 
 Both arms must have torque enabled in the panel. Let the sticks rest at center while the panel calibrates them,
 then press A. B, the panel's Stop button, a lost controller, or a stalled servo holds both arms until A is pressed
@@ -644,6 +645,12 @@ about 4 deg behind its command holds while the other goes on, and the panel's st
 loop's time per step. With a stick fully over the fingertip moves 10 cm/s and the base turns 45 deg/s
 (`REACH_SPEED`, `PAN_SPEED` in `gamepad.py`); no joint goes over 60 deg/s or the panel's speed, whichever is
 lower, the claw included. A step covers the time since the last one, so a slow loop does not slow the arms.
+
+A dragged point goes to the controller loop (`POST /gamepad/target`: the arm and a point in its base frame, three
+numbers within a metre), which walks the fingertips to it at the sticks' speed through the same check. A blue ball
+marks the point until the gripper is there. A stick takes over from it, B drops it, and it is refused while
+driving is off. In gamepad mode only the gripper can be dragged; turning one joint by its part is for the panel
+without `--gamepad`.
 
 The glide to idle moves every joint of an arm straight to its idle value, the fastest at 30 deg/s
 (`HOME_SPEED`), through the same check as driving. The folded idle pose rests closer to itself than the clearances

@@ -46,9 +46,20 @@ def panel(tmp_path, monkeypatch, request):
     fold_stops = []
     class Gamepad:
         status = "Ready"
+        driving = True
+        dragged = []
 
         def stop(self):
             self.status = "Stopped"
+
+        def set_tip(self, name, point):
+            if not self.driving:
+                return False
+            self.dragged.append((name, point))
+            return True
+
+        def tips_state(self):
+            return {"arm1": None, "arm2": None}
 
     gamepad = Gamepad() if getattr(request, "param", False) else None
     handler = ui.make_handler(arms_by_name, NoCamera(), NoRecording(), stop_fold=lambda: fold_stops.append(1),
@@ -79,6 +90,7 @@ def panel(tmp_path, monkeypatch, request):
             return err.code, b""
 
     post.get = get
+    post.gamepad = gamepad
     post.fold_stops = fold_stops
     yield arms_by_name, post, port
     server.shutdown()
@@ -161,3 +173,22 @@ def test_the_panel_serves_the_arm_description_and_only_its_mesh_files(panel):
     assert post.get("/assets/base_so101_v2.part")[0] == 404
     assert post.get("/assets/..%2Fso101_new_calib.urdf")[0] == 404
     assert post.get("/assets/../so101_new_calib.urdf")[0] == 404
+
+
+@pytest.mark.parametrize("panel", [True], indirect=True)
+def test_a_dragged_point_reaches_the_gamepad_only_as_three_plausible_numbers(panel):
+    _, post, _ = panel
+    assert post("/gamepad/target", {"arm": "arm1", "tip": [0.25, -0.05, 0.1]}) == 200
+    assert post.gamepad.dragged[-1] == ("arm1", [0.25, -0.05, 0.1])
+    sent = len(post.gamepad.dragged)
+    for bad in ([0.25, 0.0], [0.25, 0.0, "up"], [0.25, 0.0, 5.0], [0.25, 0.0, True], "there", None):
+        assert post("/gamepad/target", {"arm": "arm1", "tip": bad}) == 400
+    assert post("/gamepad/target", {"arm": "nobody", "tip": [0.25, 0.0, 0.1]}) == 400
+    assert len(post.gamepad.dragged) == sent
+    post.gamepad.driving = False
+    assert post("/gamepad/target", {"arm": "arm1", "tip": [0.25, 0.0, 0.1]}) == 409
+
+
+def test_a_dragged_point_is_not_taken_outside_gamepad_mode(panel):
+    _, post, _ = panel
+    assert post("/gamepad/target", {"arm": "arm1", "tip": [0.25, 0.0, 0.1]}) == 404

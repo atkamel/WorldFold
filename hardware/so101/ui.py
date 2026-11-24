@@ -27,6 +27,7 @@ import argparse
 import importlib.util
 import io
 import json
+import math
 import os
 import secrets
 import socket
@@ -459,6 +460,7 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                                for a in arms_by_name.values() if a.follows},
                     "speed": first.speed,
                     "gamepad": gamepad.status if gamepad is not None else None,
+                    "gamepad_tips": gamepad.tips_state() if gamepad is not None else None,
                 })
             elif path == "/phone":
                 self.reply(PHONE_PAGE_FILE.read_bytes(), "text/html")
@@ -518,6 +520,27 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
             arm = arms_by_name.get(body.get("arm"))
             if gamepad is not None and self.path in ("/goal", "/pose", "/idle", "/mirror", "/leader", "/fold/start"):
                 self.reply({"error": "The controller has exclusive control in gamepad mode"}, status=409)
+                return
+            if self.path == "/gamepad/target":
+                # A fingertip point dragged in the 3D view: the arm's base frame, metres.
+                if gamepad is None:
+                    self.reply({"error": "not in gamepad mode"}, status=404)
+                    return
+                point = body.get("tip")
+                plausible = arm is not None and isinstance(point, list) and len(point) == 3
+                if plausible:
+                    for value in point:
+                        if isinstance(value, bool) or not isinstance(value, (int, float)):
+                            plausible = False
+                        elif not math.isfinite(value) or abs(value) > 1.0:
+                            plausible = False
+                if not plausible:
+                    self.reply({"error": "send an arm and a point of three numbers within a metre"}, status=400)
+                    return
+                if not gamepad.set_tip(arm.name, point):
+                    self.reply({"error": "Press A on the controller to drive, then drag"}, status=409)
+                    return
+                self.reply({"ok": True})
                 return
             if self.path.startswith("/fold/"):
                 if fold is None:

@@ -5,52 +5,89 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SO-101 Control</title>
 <style>
+  /* Blue is the target everywhere: the see-through arm, the dragged point, the selected control. */
   :root {
-    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66;
-    --line: #e2e0da; --accent: #d9632b; --accent-soft: #fbe9df; --ok: #2f8f5b; --stop: #b8442a;
+    --bg: #eef0f3; --panel: #fbfcfd; --raised: #ffffff; --ink: #161a20; --muted: #5d6673;
+    --line: #d9dde3; --accent: #2563c9; --accent-soft: #e3ecfb; --ok: #1f8a55; --stop: #c8372d;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9a9892;
-            --line: #33322f; --accent: #ef7a42; --accent-soft: #3a2519; --ok: #4cb37b; --stop: #e0674a; }
+    :root { --bg: #0e1116; --panel: #151920; --raised: #1b2029; --ink: #e6e9ee; --muted: #8b94a3;
+            --line: #272d38; --accent: #6aa5ff; --accent-soft: #1a2740; --ok: #3fb97a; --stop: #ef5d4f; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
-         font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
-         display: grid; grid-template-columns: 1fr 380px; height: 100vh; }
+         font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+         display: grid; grid-template-columns: 1fr 372px; height: 100vh; overflow: hidden; }
   #view { position: relative; min-height: 320px; touch-action: none; }
   #view canvas { display: block; }
   .overlay { position: absolute; left: 16px; right: 16px; font-size: 12px; color: var(--muted); pointer-events: none; }
-  #status { top: 12px; }
-  #help { bottom: 12px; }
+  #status { top: 12px; font-variant-numeric: tabular-nums; }
+  #help { bottom: 12px; max-width: 72ch; }
   #toast { top: 36px; color: var(--stop); font-weight: 600; opacity: 0; transition: opacity .2s; }
   #toast.show { opacity: 1; }
-  aside { background: var(--panel); border-left: 1px solid var(--line); padding: 16px;
-          overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
-  h1 { font-size: 16px; margin: 0; }
-  #cloud { width: 100%; height: 240px; border: 1px solid var(--line); border-radius: 8px; }
+
+  /* The side panel scrolls with the wheel or a swipe; its scroll bar is not drawn. */
+  aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto;
+          scrollbar-width: none; display: flex; flex-direction: column; }
+  aside::-webkit-scrollbar { display: none; }
+  #top { position: sticky; top: 0; z-index: 1; background: var(--panel); padding: 14px 16px 12px;
+         border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+  h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+
+  details { border-bottom: 1px solid var(--line); }
+  summary { padding: 11px 16px; font-weight: 600; cursor: pointer; list-style: none; display: flex;
+            align-items: center; justify-content: space-between; user-select: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid var(--muted);
+                   border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); transition: transform .15s; }
+  details[open] > summary::after { transform: rotate(45deg); }
+  summary:hover { background: var(--accent-soft); }
+  .body { padding: 2px 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .loose { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
+  body.pad .manual { display: none; }
+
+  .buttons { display: flex; gap: 6px; }
+  button { flex: 1; min-height: 32px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--raised); color: var(--ink); font: inherit; font-weight: 500; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.on { background: var(--ok); color: #fff; border-color: var(--ok); }
+  button.stop { background: var(--stop); color: #fff; border-color: var(--stop); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.playing { border-color: var(--accent); background: var(--accent-soft); }
+  #tabs button.active { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
   #record.on { background: var(--stop); color: #fff; border-color: var(--stop); font-weight: 600; }
+
+  .hint { color: var(--muted); font-size: 12px; margin: 0; }
+  .banner { background: var(--accent-soft); border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+  /* What the controller loop is doing right now: the line to read while driving. */
+  .readout { margin: 0; padding: 8px 10px; border-left: 3px solid var(--accent); background: var(--accent-soft);
+             border-radius: 0 6px 6px 0; font-size: 12px; min-height: 34px; }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; font-size: 12px; color: var(--muted);
+          align-items: center; }
+  .keys > span:nth-child(odd) { white-space: nowrap; color: var(--ink); }
+  kbd { font: inherit; font-size: 11px; font-weight: 600; border: 1px solid var(--line); border-radius: 4px;
+        padding: 0 5px; background: var(--raised); }
+  ol { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+
+  #cloud { width: 100%; height: 220px; border: 1px solid var(--line); border-radius: 6px; }
   #camera a { color: inherit; }
-  #fold img { width: 100%; border: 1px solid var(--line); border-radius: 8px; }
+  #fold img { width: 100%; border: 1px solid var(--line); border-radius: 6px; }
   .fold-options { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 12px; color: var(--muted); }
   .fold-options label { display: flex; flex-direction: column; gap: 2px; }
   .fold-options label.tick { flex-direction: row; align-items: center; gap: 6px; }
   .fold-options select, .fold-options input[type=number] {
     font: inherit; padding: 5px 6px; border-radius: 6px; border: 1px solid var(--line);
-    background: var(--bg); color: var(--ink); }
+    background: var(--raised); color: var(--ink); }
   #fold-prompt p { margin: 0 0 8px; }
-  #fold-output { margin: 0; max-height: 220px; overflow: auto; padding: 8px; border-radius: 8px;
-                 border: 1px solid var(--line); background: var(--bg);
+  #fold-output { margin: 0; max-height: 220px; overflow: auto; scrollbar-width: none; padding: 8px;
+                 border-radius: 6px; border: 1px solid var(--line); background: var(--bg);
                  font: 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .buttons { display: flex; gap: 8px; }
-  button { flex: 1; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
-           background: var(--bg); color: var(--ink); font: inherit; cursor: pointer; }
-  button.on { background: var(--ok); color: #fff; border-color: var(--ok); }
-  button.stop { background: var(--stop); color: #fff; border-color: var(--stop); font-weight: 600; }
-  #tabs button.active { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
-  .hint { color: var(--muted); font-size: 12px; margin: 0; }
-  .banner { background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+  #fold-output::-webkit-scrollbar { display: none; }
+
   .joint { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px;
-           border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
+           border-radius: 6px; border: 1px solid transparent; cursor: pointer; }
   .joint.selected { border-color: var(--accent); background: var(--accent-soft); }
   .joint .name { font-weight: 600; }
   .joint .nums { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; text-align: right; }
@@ -58,20 +95,16 @@
   .joint input[type=range]:disabled { opacity: .5; }
   .ends { grid-column: 1 / -1; display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
   .flip { grid-column: 1 / -1; font-size: 11px; color: var(--muted); }
+  #speed-row { padding: 0; cursor: default; }
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .grid button, #mine button { font-size: 12px; padding: 7px 6px; }
-  button:disabled { opacity: .45; cursor: not-allowed; }
-  button.playing { border-color: var(--accent); background: var(--accent-soft); }
+  .grid button, #mine button { font-size: 12px; min-height: 28px; padding: 4px 6px; }
+  .label { font-weight: 600; font-size: 12px; margin-top: 4px; }
   #mine { display: flex; flex-direction: column; gap: 6px; }
   #mine .row { display: flex; gap: 6px; }
   #mine .del { flex: 0 0 34px; color: var(--muted); }
-  section { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-  .keys { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; font-size: 12px; color: var(--muted); align-items: center; }
-  .keys > span:nth-child(odd) { white-space: nowrap; }
-  ol { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
-  kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  @media (prefers-reduced-motion: reduce) { summary::after, #toast { transition: none; } }
   @media (max-width: 760px) {
-    body { grid-template-columns: 1fr; grid-template-rows: 50vh auto; height: auto; }
+    body { grid-template-columns: 1fr; grid-template-rows: 50vh auto; height: auto; overflow: auto; }
     aside { border-left: 0; border-top: 1px solid var(--line); }
   }
 </style>
@@ -80,106 +113,134 @@
 <div id="view">
   <div class="overlay" id="status">connecting…</div>
   <div class="overlay" id="toast"></div>
-  <div class="overlay" id="help">Keys move the gripper as seen from this view · drag the orange ball to move it
-    (Shift-drag: up/down) · drag another part to turn its joint · drag empty space to orbit ·
-    solid = real arm, ghost = where you're sending it</div>
+  <div class="overlay" id="help"></div>
 </div>
 <aside>
-  <h1>SO-101 follower</h1>
-  <div class="buttons" id="tabs" hidden></div>
-  <div class="buttons">
-    <button id="torque">Torque: off</button>
-    <button id="idle">Go to idle</button>
-    <button id="stop" class="stop">Stop <kbd>Esc</kbd></button>
-  </div>
-  <section id="gamepad" hidden>
-    <strong>Two-arm gamepad</strong>
-    <p class="hint">Each stick drives its own arm: sideways turns the base, forward and back reach out and in.
-      Click a stick to switch that arm's forward and back to up and down.
-      LB and RB open the claws, LT and RT close them. Press A to drive and B to stop.
-      While stopped, Y sends both arms to their idle poses.</p>
-    <p class="hint" id="gamepad-status" role="status"></p>
-  </section>
-  <section id="camera">
-    <strong>iPhone LiDAR</strong>
-    <iframe id="cloud" src="/cloud" title="iPhone LiDAR point cloud"></iframe>
-    <p class="hint"><span id="camera-status" role="status">Camera: connecting…</span> ·
-      <a href="/cloud" target="_blank" rel="noopener">open large</a></p>
-    <button id="record">Start recording</button>
-    <p class="hint" id="record-status" role="status">Not recording</p>
-  </section>
-  <section id="fold">
-    <strong>Cloth fold</strong>
-    <img id="camera-picture" alt="Live camera picture" hidden>
-    <p class="hint" id="camera-picture-hint">No camera picture yet.</p>
-    <div class="fold-options">
-      <label>Cloth colour
-        <select id="fold-colour"><option value="blue">blue</option><option value="dark">dark</option></select></label>
-      <label>Speed <input type="number" id="fold-speed" min="0.1" max="1" step="0.1" value="0.3"></label>
-      <label>Torque cap % <input type="number" id="fold-torque" min="10" max="100" step="5" value="50"></label>
-      <label class="tick"><input type="checkbox" id="fold-grasp"> Grasp check</label>
-    </div>
+  <div id="top">
+    <h1>SO-101 arms</h1>
+    <div class="buttons" id="tabs" hidden></div>
     <div class="buttons">
-      <button id="fold-calibrate">Calibrate</button>
-      <button id="fold-look">Look</button>
-      <button id="fold-run">Fold</button>
-      <button id="fold-stop" class="stop" disabled>Stop</button>
+      <button id="torque">Torque: off</button>
+      <button id="idle">Go to idle</button>
+      <button id="stop" class="stop">Stop <kbd>Esc</kbd></button>
     </div>
-    <p class="hint" id="fold-status" role="status">Idle.</p>
-    <div class="banner" id="fold-prompt" hidden>
-      <p id="fold-prompt-text"></p>
-      <div class="buttons">
-        <button id="fold-continue" class="on">Continue</button>
-        <button id="fold-cancel">Cancel</button>
+  </div>
+  <details id="gamepad" open hidden>
+    <summary>Gamepad</summary>
+    <div class="body">
+      <p class="readout" id="gamepad-status" role="status"></p>
+      <div class="keys">
+        <span><kbd>A</kbd></span><span>drive, with the sticks centred; again to hold</span>
+        <span><kbd>B</kbd></span><span>stop</span>
+        <span>stick sideways</span><span>turn that arm's base</span>
+        <span>stick forward, back</span><span>reach out and in</span>
+        <span>click a stick</span><span>switch that arm's forward and back to up and down</span>
+        <span><kbd>LB</kbd> <kbd>RB</kbd></span><span>open the left, right claw</span>
+        <span><kbd>LT</kbd> <kbd>RT</kbd></span><span>close the left, right claw</span>
+        <span><kbd>Y</kbd></span><span>while stopped: both arms go to their idle poses</span>
+        <span>drag the orange ball</span><span>while driving: that gripper goes to where you drop it</span>
       </div>
     </div>
-    <img id="fold-look-picture" alt="The last look: cloth outline in green, pinch points in red, place points in blue" hidden>
-    <pre id="fold-output" aria-live="polite" hidden></pre>
-  </section>
-  <button id="mirror" hidden>Mirror: off</button>
-  <button id="leader" hidden>Leader arm: off</button>
-  <p class="hint" id="mode-hint"></p>
-  <div class="joint" id="speed-row">
-    <span class="name">Speed</span><span class="nums" id="speed-value"></span>
-    <input type="range" id="speed" min="5" max="180" step="5">
-    <div class="ends"><span>slow</span><span>fast</span></div>
-  </div>
-  <div class="banner" id="uncalibrated" hidden>Twin not calibrated yet, so on-screen angles won't
-    match the real arm and the keys can't move the gripper. See "Twin calibration" below.</div>
-  <section>
-    <strong>Keyboard</strong>
-    <div class="keys">
-      <span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></span><span>move over the table, as seen on screen</span>
-      <span><kbd>R</kbd> <kbd>F</kbd></span><span>up / down</span>
-      <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>tilt the gripper; its fingertips stay put</span>
-      <span><kbd>←</kbd> <kbd>→</kbd></span><span>roll the gripper</span>
-      <span><kbd>Space</kbd></span><span>open / close</span>
-      <span>hold <kbd>Shift</kbd></span><span>slow, for fine moves</span>
-      <span data-two hidden><kbd>Tab</kbd></span><span data-two hidden>switch arm (or click it)</span>
-      <span data-mirror hidden><kbd>M</kbd></span><span data-mirror hidden>mirror: the other arm copies this one</span>
+  </details>
+  <div class="loose">
+    <div class="joint" id="speed-row">
+      <span class="name">Speed</span><span class="nums" id="speed-value"></span>
+      <input type="range" id="speed" min="5" max="180" step="5">
+      <div class="ends"><span>slow</span><span>fast</span></div>
     </div>
-  </section>
-  <section>
-    <strong>Poses</strong>
-    <div class="grid" id="poses"></div>
-    <strong>Moves</strong>
-    <div class="grid" id="moves"></div>
-    <strong>My poses</strong>
-    <div id="mine"><p class="hint">None yet. Pose the arm, then save it.</p></div>
-    <button id="save-pose">Save current pose…</button>
-  </section>
-  <div id="joints"></div>
-  <p class="hint">Sliders turn one joint at a time, for fine adjustments.</p>
-  <section>
-    <strong>Twin calibration</strong>
-    <ol>
-      <li>Torque off. Pose the arm pointing <b>straight up</b>, gripper <b>closed</b>.</li>
-      <li>Click the button below.</li>
-      <li>Move each joint by hand. If the screen moves the opposite way, tick its <b>flip</b>.
-        Forward = toward the orange arrow; pan right = clockwise seen from above.</li>
-    </ol>
-    <button id="reference">Set current pose as straight-up reference</button>
-  </section>
+    <div class="buttons manual">
+      <button id="mirror" hidden>Mirror: off</button>
+      <button id="leader" hidden>Leader arm: off</button>
+    </div>
+    <p class="hint manual" id="mode-hint"></p>
+    <div class="banner manual" id="uncalibrated" hidden>Twin not calibrated yet, so the keys and the gripper drag
+      can't move this arm. See "Twin calibration" below.</div>
+  </div>
+  <details id="camera" open>
+    <summary>iPhone LiDAR</summary>
+    <div class="body">
+      <iframe id="cloud" src="/cloud" title="iPhone LiDAR point cloud"></iframe>
+      <p class="hint"><span id="camera-status" role="status">Camera: connecting…</span>,
+        <a href="/cloud" target="_blank" rel="noopener">open large</a></p>
+      <button id="record">Start recording</button>
+      <p class="hint" id="record-status" role="status">Not recording</p>
+    </div>
+  </details>
+  <details id="fold">
+    <summary>Cloth fold</summary>
+    <div class="body">
+      <img id="camera-picture" alt="Live camera picture" hidden>
+      <p class="hint" id="camera-picture-hint">No camera picture yet.</p>
+      <div class="fold-options">
+        <label>Cloth colour
+          <select id="fold-colour"><option value="blue">blue</option><option value="dark">dark</option></select></label>
+        <label>Speed <input type="number" id="fold-speed" min="0.1" max="1" step="0.1" value="0.3"></label>
+        <label>Torque cap % <input type="number" id="fold-torque" min="10" max="100" step="5" value="50"></label>
+        <label class="tick"><input type="checkbox" id="fold-grasp"> Grasp check</label>
+      </div>
+      <div class="buttons">
+        <button id="fold-calibrate">Calibrate</button>
+        <button id="fold-look">Look</button>
+        <button id="fold-run">Fold</button>
+        <button id="fold-stop" class="stop" disabled>Stop</button>
+      </div>
+      <p class="hint" id="fold-status" role="status">Idle.</p>
+      <div class="banner" id="fold-prompt" hidden>
+        <p id="fold-prompt-text"></p>
+        <div class="buttons">
+          <button id="fold-continue" class="on">Continue</button>
+          <button id="fold-cancel">Cancel</button>
+        </div>
+      </div>
+      <img id="fold-look-picture" alt="The last look: cloth outline in green, pinch points in red, place points in blue" hidden>
+      <pre id="fold-output" aria-live="polite" hidden></pre>
+    </div>
+  </details>
+  <details class="manual" open>
+    <summary>Joints</summary>
+    <div class="body">
+      <div id="joints"></div>
+      <p class="hint">Sliders turn one joint at a time, for fine adjustments.</p>
+    </div>
+  </details>
+  <details class="manual">
+    <summary>Poses</summary>
+    <div class="body">
+      <div class="grid" id="poses"></div>
+      <span class="label">Moves</span>
+      <div class="grid" id="moves"></div>
+      <span class="label">My poses</span>
+      <div id="mine"><p class="hint">None yet. Pose the arm, then save it.</p></div>
+      <button id="save-pose">Save current pose…</button>
+    </div>
+  </details>
+  <details class="manual">
+    <summary>Keyboard</summary>
+    <div class="body">
+      <div class="keys">
+        <span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></span><span>move over the table, as seen on screen</span>
+        <span><kbd>R</kbd> <kbd>F</kbd></span><span>up / down</span>
+        <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>tilt the gripper; its fingertips stay put</span>
+        <span><kbd>←</kbd> <kbd>→</kbd></span><span>roll the gripper</span>
+        <span><kbd>Space</kbd></span><span>open / close</span>
+        <span>hold <kbd>Shift</kbd></span><span>slow, for fine moves</span>
+        <span data-two hidden><kbd>Tab</kbd></span><span data-two hidden>switch arm (or click it)</span>
+        <span data-mirror hidden><kbd>M</kbd></span><span data-mirror hidden>mirror: the other arm copies this one</span>
+      </div>
+    </div>
+  </details>
+  <details class="manual">
+    <summary>Twin calibration</summary>
+    <div class="body">
+      <ol>
+        <li>Torque off. Pose the arm pointing <b>straight up</b>, gripper <b>closed</b>.</li>
+        <li>Click the button below.</li>
+        <li>Move each joint by hand. If the screen moves the opposite way, tick its <b>flip</b>.
+          Forward = toward the orange arrow; pan right = clockwise seen from above.</li>
+      </ol>
+      <button id="reference">Set current pose as straight-up reference</button>
+    </div>
+  </details>
 </aside>
 
 <script type="importmap">
@@ -324,7 +385,8 @@ function buildArm(name, ghost) {
   return { base, g, meshes, tip };
 }
 
-let models = null;              // arm -> { real, ghost }
+let models = null;              // arm -> { real, ghost, marker }
+const TARGET = 0x4a90d9;        // the see-through arm and the dragged point
 const ring = new THREE.Mesh(new THREE.RingGeometry(7.5, 8.5, 48),
   new THREE.MeshBasicMaterial({ color: JAW, side: THREE.DoubleSide }));
 ring.rotation.x = -Math.PI / 2; ring.position.y = 0.05;
@@ -340,6 +402,12 @@ function buildModels() {
       m.base.position.set(0, 0, side * half);
       if (facing) m.base.rotation.y = side * Math.PI / 2;
     }
+    // Where a point dragged in gamepad mode was dropped, until the gripper is there.
+    const marker = new THREE.Mesh(new THREE.SphereGeometry(1.3, 20, 14),
+      new THREE.MeshBasicMaterial({ color: TARGET, transparent: true, opacity: 0.7 }));
+    marker.visible = false;
+    models[name].real.base.add(marker);
+    models[name].marker = marker;
   });
   ring.visible = names.length > 1;
   // Default view: from behind and above the arms, so W on the keyboard is their forward.
@@ -538,6 +606,21 @@ canvas.addEventListener("pointerdown", e => {
   const part = pick(e);
   if (!part) return;                     // empty space: let OrbitControls orbit
   setActive(part.arm);
+  if (state.gamepad !== null) {
+    // The controller loop moves the arms: a drag of the gripper only tells it where the fingertips should go.
+    if (!isGripper(part.joint)) return;
+    if (!state.arms[part.arm].torque) { toast("Torque is off. Turn it on to drive the arm."); return; }
+    controls.enabled = false;
+    canvas.setPointerCapture(e.pointerId);
+    const at = models[part.arm].real.tip.getWorldPosition(new THREE.Vector3());
+    const normal = e.shiftKey ? camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize() : UP;
+    drag = { arm: part.arm, joint: "tip", pad: true, vertical: e.shiftKey,
+             plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, at) };
+    drag.start = tipHit(drag);
+    drag.p0 = models[part.arm].real.base.worldToLocal(at.clone());
+    highlight();
+    return;
+  }
   if (!isGripper(part.joint)) select(part.joint);
   if (!canDrive(part.arm, isGripper(part.joint))) return;   // turning one joint works uncalibrated
   controls.enabled = false;
@@ -571,6 +654,7 @@ canvas.addEventListener("pointermove", e => {
     if (!hit) return;
     const shift = hit.sub(drag.start);
     if (drag.vertical) shift.setX(0).setZ(0);
+    if (drag.pad) { sendDraggedPoint(drag.arm, drag.p0.clone().add(shift)); return; }
     moveGripper(drag.gripper, drag.p0.clone().add(shift), drag.gripper.pitch);
     return;
   }
@@ -594,6 +678,24 @@ function endDrag() {
 }
 canvas.addEventListener("pointerup", endDrag);
 canvas.addEventListener("pointercancel", endDrag);
+
+// ---------- a dragged point in gamepad mode ----------
+// The latest point of each arm goes out at most every 50 ms. p is in the arm's frame in cm (x forward, y up,
+// z right); the controller loop takes metres with y to the left and z up.
+let draggedPoints = {}, draggedTimer = null;
+function sendDraggedPoint(arm, p) {
+  draggedPoints[arm] = [p.x / 100, -p.z / 100, p.y / 100];
+  if (draggedTimer) return;
+  draggedTimer = setTimeout(async () => {
+    draggedTimer = null;
+    const sending = draggedPoints;
+    draggedPoints = {};
+    for (const [name, tip] of Object.entries(sending)) {
+      const answer = await post("/gamepad/target", { arm: name, tip });
+      if (!answer.ok) toast((await answer.json()).error);
+    }
+  }, 50);
+}
 
 // ---------- sending targets ----------
 // Goals are batched and sent at most every 30 ms, one request per arm; the latest value always goes out.
@@ -833,12 +935,16 @@ function render() {
   // A leader arm stays limp so a hand can move it.
   btn.disabled = isLeader && !on;
   const gamepad = state.gamepad !== null;
+  document.body.classList.toggle("pad", gamepad);
+  document.getElementById("help").textContent = gamepad
+    ? "Drag the orange ball to send that gripper there (Shift-drag: up and down). Drag empty space to orbit. Solid is the arm, blue is where it is going."
+    : "Keys move the gripper as seen from this view. Drag the orange ball to move it (Shift-drag: up and down), drag another part to turn its joint, drag empty space to orbit. Solid is the arm, blue is where you are sending it.";
   document.getElementById("idle").disabled = gamepad || btn.disabled;
   document.getElementById("gamepad").hidden = !gamepad;
   document.getElementById("fold").hidden = gamepad;
   if (gamepad) document.getElementById("gamepad-status").textContent = state.gamepad;
   for (const b of tabs.children) {
-    b.textContent = `${b.dataset.arm} · ${state.arms[b.dataset.arm].torque ? "on" : "off"}`;
+    b.textContent = `${b.dataset.arm}: torque ${state.arms[b.dataset.arm].torque ? "on" : "off"}`;
     b.classList.toggle("active", b.dataset.arm === active);
   }
   const mirrorBtn = document.getElementById("mirror"), mirroring = mirrorLeader();
@@ -868,6 +974,9 @@ function render() {
     const far = IDS.some(id => Math.abs(targetPos(arm, id) - s.present[id]) > 20);
     ghost.base.visible = s.torque && (far || drag?.arm === arm || keyDrive?.arm === arm);
     real.tip.visible = s.torque;
+    const dropped = state.gamepad_tips?.[arm];
+    models[arm].marker.visible = !!dropped;
+    if (dropped) models[arm].marker.position.set(dropped[0] * 100, dropped[2] * 100, -dropped[1] * 100);
   }
   for (const b of calibratedOnly) {
     b.disabled = gamepad || !calibrated(active) || isLeader;
