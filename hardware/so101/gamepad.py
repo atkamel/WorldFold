@@ -1,5 +1,6 @@
 """An exclusive panel mode that drives both followers from one controller."""
 
+import json
 import threading
 import time
 
@@ -8,6 +9,7 @@ import numpy as np
 from hardware.controller.controller import ControllerError
 from hardware.controller.inputs import controller_samples
 
+import arms
 import kinematics
 import replay
 from pair_clearance import PairClearance
@@ -24,6 +26,7 @@ REACH_SPEED = 0.10  # m/s the fingertip moves out, in, up or down with a stick f
 PAN_SPEED = 45  # deg/s the base turns with a stick fully over
 MAX_JOINT_SPEED = 60  # deg/s
 JAW_SPEED = 60  # deg/s while a claw button is held
+HOME_SPEED = 30  # deg/s of the fastest joint on the glide to the idle poses
 MAX_STEP_TIME = 0.06  # s of motion one step may cover when the loop runs late
 MAX_LAG = 50  # encoder ticks; applies to arm joints, since a closed jaw may be gripping something
 JOINTS = tuple(replay.MOTOR_IDS)
@@ -57,6 +60,19 @@ class Gamepad:
         self.height = [False, False]
         self.last_tick = None
         self.loop_ms = 0.0
+        self.homing = False
+        self.y_was_down = False
+        self.idle = []
+        idle_poses = []
+        for arm, mapping in zip(self.arms, self.maps):
+            saved = json.loads((arms.folder(arm.name) / "idle_pose.json").read_text())
+            ticks = {}
+            for m in JOINTS:
+                ticks[m] = saved[str(m)]
+            self.idle.append(ticks)
+            idle_poses.append(self.pose(mapping, ticks))
+        # The folded arm rests closer to itself than the clearances allow. The glide to idle may come that close.
+        self.idle_floors = self.guard.floors([idle_poses[0]], [idle_poses[1]])
         # The base turns about a vertical line through the first joint.
         self.pan_axis = self.kinematics.links[0][0][:2].copy()
         if self.facing(0.01)[1] > self.facing(0.0)[1]:
@@ -86,6 +102,7 @@ class Gamepad:
     def stop_locked(self, status):
         self.status = status
         self.enabled = False
+        self.homing = False
         self.height = [False, False]
         for arm in self.arms:
             arm.target = dict(arm.command)
@@ -174,6 +191,94 @@ class Gamepad:
             return self.guard.obstruction(held[0], ahead[1], floors)
         return None
 
+    def choose(self, goals, to_idle):
+        """((left moves, right moves), what blocked the first choice) for the proposed ticks `goals`. Both arms
+        together first; if that is refused, whichever arm can move alone still moves. (None, what) when neither
+        may move. `to_idle` lets each pair come as close as it is at the idle poses."""
+        moving = [goals[0] != self.arms[0].command, goals[1] != self.arms[1].command]
+        held = []
+        ahead = []
+        for arm, mapping, goal in zip(self.arms, self.maps, goals):
+            measured = self.pose(mapping, arm.present)
+            commanded = self.pose(mapping, {m: round(v) for m, v in arm.command.items()})
+            proposed = self.pose(mapping, {m: round(v) for m, v in goal.items()})
+            held.append(np.unique([measured, commanded], axis=0))
+            ahead.append(np.unique([proposed, (measured + proposed) / 2], axis=0))
+        floors = self.guard.floors(held[0], held[1])
+        if to_idle and floors is not None and self.idle_floors is not None:
+            for i in range(len(floors)):
+                floors[i] = min(floors[i], self.idle_floors[i])
+        options = []
+        if moving[0] and moving[1]:
+            options.append((True, True))
+        if moving[0]:
+            options.append((True, False))
+        if moving[1]:
+            options.append((False, True))
+        blocked = None
+        for option in options:
+            obstruction = self.clear(option, held, ahead, floors)
+            if obstruction is None:
+                return option, blocked
+            if blocked is None:
+                blocked = obstruction
+        return None, blocked
+
+    def send(self, goals, chosen):
+        """Send the chosen arms their goals. False (and stopped) when a write fails."""
+        for i in range(2):
+            arm = self.arms[i]
+            goal = goals[i]
+            if chosen[i] and goal != arm.command:
+                # A failed write can leave this physical goal uncertain. Preserve the prior software target.
+                if not arm.send_goals(goal):
+                    self.stop_locked(f"Could not command {arm.name}. Press A to drive again")
+                    return False
+                arm.command = dict(goal)
+                arm.target = dict(goal)
+        return True
+
+    def lagging(self, arm):
+        for m in JOINTS[:-1]:
+            if abs(arm.present[m] - arm.command[m]) > MAX_LAG:
+                return True
+        return False
+
+    def home_step(self, dt):
+        """One step of both arms straight toward their idle poses, every joint of an arm arriving together."""
+        goals = []
+        for i in range(2):
+            arm = self.arms[i]
+            if self.lagging(arm):
+                goals.append(dict(arm.command))
+                continue
+            current = np.array([arm.command[m] for m in JOINTS], dtype=float)
+            wanted = np.array([self.idle[i][m] for m in JOINTS], dtype=float)
+            change = wanted - current
+            step = min(arm.speed, HOME_SPEED) * replay.STEPS_PER_DEGREE * dt
+            largest = np.max(np.abs(change))
+            if largest > step:
+                goals.append(dict(zip(JOINTS, current + change * step / largest)))
+            else:
+                goals.append(dict(zip(JOINTS, wanted)))
+        at_idle = True
+        for i in range(2):
+            for m in JOINTS:
+                if abs(self.arms[i].command[m] - self.idle[i][m]) > 0.5:
+                    at_idle = False
+        if at_idle:
+            self.stop_locked("Both arms are at their idle poses. Press A to drive")
+            return
+        if goals[0] == self.arms[0].command and goals[1] == self.arms[1].command:
+            self.status = "Going to the idle poses: an arm is catching up. B stops"
+            return
+        chosen, blocked = self.choose(goals, True)
+        if chosen is None:
+            self.stop_locked(f"Stopped on the way to idle: clearance {blocked}. Move the arm clear, then press Y")
+            return
+        if self.send(goals, chosen):
+            self.status = "Going to the idle poses. B stops"
+
     def run(self):
         threading.Thread(target=self.input_loop, daemon=True).start()
         while not self.shutdown.is_set():
@@ -222,6 +327,9 @@ class Gamepad:
             a_down = "a" in buttons
             a_pressed = a_down and not self.a_was_down
             self.a_was_down = a_down
+            y_down = "y" in buttons
+            y_pressed = y_down and not self.y_was_down
+            self.y_was_down = y_down
             clicked = [False, False]
             for i in range(2):
                 clicked[i] = clicks[i] and not self.click_was_down[i]
@@ -244,6 +352,7 @@ class Gamepad:
             sticks = (stick(*axes[:2], self.center[:2]), stick(*axes[2:], self.center[2:]))
             sticks_centered = not np.any(sticks[0]) and not np.any(sticks[1])
             if a_pressed:
+                self.homing = False
                 if self.enabled:
                     self.stop_locked("Holding. Press A to drive again")
                     return
@@ -252,6 +361,11 @@ class Gamepad:
                     return
                 self.enabled = True
             if not self.enabled:
+                if y_pressed:
+                    self.homing = True
+                if self.homing:
+                    self.home_step(dt)
+                    return
                 self.stop_locked(self.status)
                 return
             jaw_goals = [None, None]
@@ -276,11 +390,7 @@ class Gamepad:
             goals = []
             for i in range(2):
                 arm = self.arms[i]
-                lagging = False
-                for m in JOINTS[:-1]:
-                    if abs(arm.present[m] - arm.command[m]) > MAX_LAG:
-                        lagging = True
-                if lagging:
+                if self.lagging(arm):
                     goals.append(dict(arm.command))
                     notes.append(f"{names[i]} arm is catching up.")
                     continue
@@ -292,32 +402,7 @@ class Gamepad:
             if not any(moving):
                 self.status = " ".join([driving] + notes)
                 return
-            held = []
-            ahead = []
-            for arm, mapping, goal in zip(self.arms, self.maps, goals):
-                measured = self.pose(mapping, arm.present)
-                commanded = self.pose(mapping, {m: round(v) for m, v in arm.command.items()})
-                proposed = self.pose(mapping, {m: round(v) for m, v in goal.items()})
-                held.append(np.unique([measured, commanded], axis=0))
-                ahead.append(np.unique([proposed, (measured + proposed) / 2], axis=0))
-            floors = self.guard.floors(held[0], held[1])
-            # Both arms together first. If that is refused, whichever arm can move alone still moves.
-            options = []
-            if moving[0] and moving[1]:
-                options.append((True, True))
-            if moving[0]:
-                options.append((True, False))
-            if moving[1]:
-                options.append((False, True))
-            chosen = None
-            blocked = None
-            for option in options:
-                obstruction = self.clear(option, held, ahead, floors)
-                if obstruction is None:
-                    chosen = option
-                    break
-                if blocked is None:
-                    blocked = obstruction
+            chosen, blocked = self.choose(goals, False)
             if chosen is None:
                 self.status = f"Movement blocked: clearance {blocked}"
                 return
@@ -330,14 +415,6 @@ class Gamepad:
                 return
             if self.shutdown.is_set():
                 return
-            for i in range(2):
-                arm = self.arms[i]
-                goal = goals[i]
-                if chosen[i] and goal != arm.command:
-                    # A failed write can leave this physical goal uncertain. Preserve the prior software target.
-                    if not arm.send_goals(goal):
-                        self.stop_locked(f"Could not command {arm.name}. Press A to drive again")
-                        return
-                    arm.command = dict(goal)
-                    arm.target = dict(goal)
+            if not self.send(goals, chosen):
+                return
             self.status = " ".join([driving] + notes + [f"Loop {self.loop_ms:.0f} ms"])

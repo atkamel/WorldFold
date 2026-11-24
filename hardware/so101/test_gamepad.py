@@ -77,8 +77,8 @@ def test_xinput_preserves_stick_signs_and_converts_triggers():
     state = xinput_state(_XInputGamepad(0x2300, 255, 0, -32768, 2000, 32767, -1200))
     assert state == ControllerState(buttons=("lb", "rb", "b"), left_trigger=1023,
                                     left_x=-32768, left_y=2000, right_x=32767, right_y=-1200)
-    clicks = xinput_state(_XInputGamepad(0x10C0, 0, 0, 0, 0, 0, 0))
-    assert set(clicks.buttons) == {"a", "left_stick", "right_stick"}
+    clicks = xinput_state(_XInputGamepad(0x90C0, 0, 0, 0, 0, 0, 0))
+    assert set(clicks.buttons) == {"a", "y", "left_stick", "right_stick"}
 
 
 @pytest.fixture
@@ -299,3 +299,56 @@ def test_sideways_on_a_stick_turns_the_base_and_keeps_the_reach(mode):
     assert after[1] < before[1] - 0.005
     assert abs(np.linalg.norm(after[:2] - axis) - np.linalg.norm(before[:2] - axis)) < 0.001
     assert abs(after[2] - before[2]) < 0.001
+
+
+def calibrated(mode):
+    driver = Driver(mode)
+    for _ in range(30):
+        driver.send(ControllerState())
+    return driver
+
+
+def test_y_while_paused_glides_both_arms_to_their_idle_poses(mode):
+    driver = calibrated(mode)
+    driver.send(ControllerState(buttons=("y",)))
+    for _ in range(600):
+        driver.send(ControllerState())
+    for arm, idle in zip(mode.arms, mode.idle):
+        for m in idle:
+            assert abs(arm.command[m] - idle[m]) < 1
+    assert not mode.homing
+    counts = driver.write_counts()
+    driver.send(ControllerState())
+    assert driver.write_counts() == counts
+
+
+def test_y_while_driving_does_nothing(mode):
+    driver = Driver(mode)
+    driver.enable()
+    driver.send(ControllerState(buttons=("y",)))
+    driver.send(ControllerState())
+    assert driver.write_counts() == [0, 0]
+    assert mode.enabled
+
+
+def test_b_stops_the_glide_to_idle(mode):
+    driver = calibrated(mode)
+    driver.send(ControllerState(buttons=("y",)))
+    for _ in range(5):
+        driver.send(ControllerState())
+    assert driver.write_counts()[0] > 0
+    driver.send(ControllerState(buttons=("b",)))
+    counts = driver.write_counts()
+    for _ in range(5):
+        driver.send(ControllerState())
+    assert driver.write_counts() == counts
+
+
+def test_a_glide_to_idle_that_is_blocked_stops_and_says_why(mode, monkeypatch):
+    driver = calibrated(mode)
+    monkeypatch.setattr(mode.guard, "obstruction", lambda *samples: "table")
+    driver.send(ControllerState(buttons=("y",)))
+    driver.send(ControllerState())
+    assert driver.write_counts() == [0, 0]
+    assert not mode.homing
+    assert "table" in mode.status

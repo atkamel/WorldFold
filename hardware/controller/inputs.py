@@ -19,7 +19,7 @@ class _XInputState(ctypes.Structure):
 
 
 def xinput_state(pad):
-    bits = ((0x0100, "lb"), (0x0200, "rb"), (0x2000, "b"), (0x1000, "a"),
+    bits = ((0x0100, "lb"), (0x0200, "rb"), (0x2000, "b"), (0x1000, "a"), (0x8000, "y"),
             (0x0040, "left_stick"), (0x0080, "right_stick"))
     buttons = tuple(name for bit, name in bits if pad.buttons & bit)
     return ControllerState(buttons=buttons, left_trigger=round(pad.lt * 1023 / 255),
