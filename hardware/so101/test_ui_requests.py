@@ -76,9 +76,17 @@ def panel(tmp_path, monkeypatch, request):
         def sticks_state(self):
             return {"left": [0.0, 0.0], "right": [0.0, 0.0], "raw": {"left": [0, 0], "right": [0, 0]}}
 
+    class Fold:
+        started = []
+
+        def start(self, mode, options):
+            self.started.append(mode)
+            return None
+
     gamepad = Gamepad() if getattr(request, "param", False) else None
-    handler = ui.make_handler(arms_by_name, NoCamera(), NoRecording(), stop_fold=lambda: fold_stops.append(1),
-                              gamepad=gamepad)
+    fold = Fold()
+    handler = ui.make_handler(arms_by_name, NoCamera(), NoRecording(), fold=fold,
+                              stop_fold=lambda: fold_stops.append(1), gamepad=gamepad)
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_address[1]
@@ -107,6 +115,7 @@ def panel(tmp_path, monkeypatch, request):
     post.get = get
     post.gamepad = gamepad
     post.fold_stops = fold_stops
+    post.fold = fold
     yield arms_by_name, post, port
     server.shutdown()
     server.server_close()
@@ -158,12 +167,19 @@ def test_gamepad_panel_reserves_motion_and_routes_stop(panel):
     arms_by_name, post, port = panel
     arm = arms_by_name["arm1"]
     before = dict(arm.target)
-    for path in ("/goal", "/pose", "/idle", "/mirror", "/leader", "/fold/start"):
+    for path in ("/goal", "/pose", "/idle", "/mirror", "/leader"):
         assert post(path, {"arm": "arm1", "pose": {"1": 3000}}) == 409
     assert arm.target == before
     assert post("/hold", {}) == 200
     with urllib.request.urlopen(f"http://127.0.0.1:{port}/state", timeout=5) as response:
         assert json.load(response)["gamepad"] == "Stopped"
+
+
+@pytest.mark.parametrize("panel", [True], indirect=True)
+def test_a_cloth_fold_can_be_started_in_gamepad_mode(panel):
+    _, post, _ = panel
+    assert post("/fold/start", {"mode": "fold", "options": {}}) == 200
+    assert post.fold.started == ["fold"]
 
 
 def test_the_state_carries_each_arm_s_map_from_encoder_steps_to_model_angles(panel):

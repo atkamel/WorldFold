@@ -36,8 +36,11 @@ class SimulatedArm:
         self.stuck = False
         self.missed_reads = 0
         self.failed_writes = 0
+        self.lent = False
+        self.reads = 0
 
     def read_present(self):
+        self.reads += 1
         if self.missed_reads > 0:
             self.missed_reads -= 1
             return False
@@ -132,6 +135,33 @@ class Driver:
 
     def write_counts(self):
         return [len(arm.writes) for arm in self.mode.arms]
+
+
+def test_arms_lent_to_a_cloth_fold_are_left_alone_and_a_drives_them_again_afterwards(mode):
+    driver = Driver(mode)
+    driver.enable()
+    pushed = ControllerState(left_y=32767)
+    for arm in mode.arms:
+        arm.lent = True
+    writes = driver.write_counts()
+    reads = [arm.reads for arm in mode.arms]
+    for _ in range(5):
+        driver.send(pushed)
+    assert driver.write_counts() == writes
+    assert [arm.reads for arm in mode.arms] == reads
+    assert not mode.enabled
+    lent_status = mode.status
+    for arm in mode.arms:
+        arm.lent = False
+    for _ in range(5):
+        driver.send(pushed)
+    assert driver.write_counts() == writes
+    assert mode.status != lent_status
+    driver.send(ControllerState())
+    driver.send(ControllerState(buttons=("a",)))
+    for _ in range(5):
+        driver.send(pushed)
+    assert driver.write_counts()[0] > writes[0]
 
 
 def test_a_enables_each_stick_drives_its_own_arm_and_b_stops(mode):

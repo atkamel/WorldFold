@@ -2,8 +2,8 @@
   "layout": "side_by_side",
   "spacing_cm": 30,
   "arms": {
-    "arm2": {"mac": "/dev/tty.usbmodem5B8E1131611", "windows": "COM5"},
     "arm1": {"mac": "/dev/tty.usbmodem5B790153891", "windows": "COM3"},
+    "arm2": {"mac": "/dev/tty.usbmodem5B8E1131611", "windows": "COM5"},
     "leader": {"mac": "/dev/tty.usbmodem5AE70494271", "windows": null}
   },
   "leaders": {

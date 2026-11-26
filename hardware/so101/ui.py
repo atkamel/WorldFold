@@ -519,7 +519,7 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                 return
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])) or "{}")
             arm = arms_by_name.get(body.get("arm"))
-            if gamepad is not None and self.path in ("/goal", "/pose", "/idle", "/mirror", "/leader", "/fold/start"):
+            if gamepad is not None and self.path in ("/goal", "/pose", "/idle", "/mirror", "/leader"):
                 self.reply({"error": "The controller has exclusive control in gamepad mode"}, status=409)
                 return
             if self.path == "/gamepad/hold":
@@ -654,12 +654,11 @@ def main():
     args = parser.parse_args()
     names = args.arms or list(arms.ARMS)
     gamepad = None
+    followers = arms.followers(arms.CONFIG)
     if args.gamepad:
         from gamepad import Gamepad
         from gamepad import MAX_JOINT_SPEED as gamepad_top_speed
 
-        leaders = set(arms.CONFIG.get("leaders", {}).values())
-        followers = [name for name in arms.CONFIG["arms"] if name not in leaders]
         if arms.CONFIG.get("layout") != "side_by_side" or len(followers) != 2:
             parser.error("--gamepad requires two side-by-side followers in arms.json, listed left then right")
         if args.arms and set(args.arms) != set(followers):
@@ -691,7 +690,7 @@ def main():
     # On its own thread: looking for the phone can block, and the arms must not wait for it.
     threading.Thread(target=camera.connect_loop, daemon=True).start()
     recording = teleop_record.TeleopRecording(arms_by_name, camera)
-    fold = fold_job.FoldJob(arms_by_name, camera)
+    fold = fold_job.FoldJob(arms_by_name, camera, followers)
     server = ThreadingHTTPServer(("127.0.0.1", HTTP_PORT), make_handler(arms_by_name, camera, recording, fold=fold,
                                                                            stop_fold=fold.stop, gamepad=gamepad))
 
