@@ -319,6 +319,11 @@ arms instead, one map per arm, so the cloth plays no part in it and the bases ma
   refuses a picture of another size.
 - The cloth is searched for in front of both bases' front edges and within 60 cm of a base. The corners are named
   by the picture as before: the near edge is the one at `--near`, and the left arm takes the left corners.
+- The outline must be the cloth: each of its four edges within 15% of the cloth's side through at least one arm's
+  map, and each arm's own edge (the one its pinch and place lie on) through that arm's own map. A map fitted with
+  `--outer 0` holds on that arm's inner strip only and can be far off at the other arm's corners.
+- A phone looking straight down hides the fingertip under the gripper on the near touches, so those clicks are
+  guesses. A slanted view from behind the arms shows it.
 - The map pairs each pixel with the point the arm was sent to, so a joint zero that is a little off is folded in.
   The fingertip rests 5 mm up in the arm model and a cloth corner lies on the table, which the camera's slant
   turns into a few mm along the table.

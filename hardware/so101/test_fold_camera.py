@@ -71,6 +71,40 @@ def test_look_refuses_an_outline_with_an_arm_on_it(cal):
         fold_camera.look(np.full((*SHAPE, 3), 200, np.uint8), cal)
 
 
+def arm_cal(cal, stretch=0.0):
+    """`cal` with a map per arm, as arm_calibration.py fits them. `stretch` bends the right arm's map more the
+    further a point lies to that arm's left: true along its own centre line, wrong at the cloth's left corners."""
+    to_left = np.array([[0.0, 1.0, 0.0], [-1.0, 0.0, -SPACING / 2], [0.0, 0.0, 1.0]])     # table to (forward, left)
+    to_right = np.array([[0.0, 1.0, 0.0], [-1.0, 0.0, SPACING / 2], [0.0, 0.0, 1.0]])
+    bend = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, stretch, 1.0]])
+    with_arms = dict(cal)
+    with_arms["arms"] = {"left": {"H": (to_left @ camera()).tolist()},
+                         "right": {"H": (bend @ to_right @ camera()).tolist()}}
+    return with_arms
+
+
+def test_an_arm_s_map_that_is_off_at_the_other_arm_s_corners_still_finds_the_cloth(cal):
+    by_arm, _ = fold_camera.look_arms(render(cloth(), BASES), arm_cal(cal, stretch=1.0))
+    assert np.linalg.norm(by_arm["right"]["far_right"] - (NEAR_EDGE + SIDE, 0.0)) < 0.004
+    far_left_seen_by_the_right_arm = by_arm["right"]["far_left"]
+    assert np.linalg.norm(far_left_seen_by_the_right_arm - (NEAR_EDGE + SIDE, SIDE)) > 0.05   # the map is off there
+
+
+def test_an_arm_on_the_outline_is_refused_through_the_arms_maps(cal):
+    with pytest.raises(ValueError, match="far edge"):
+        fold_camera.look_arms(render(cloth(), [((0.19, 0.36), 0.06)]), arm_cal(cal))
+    with pytest.raises(ValueError, match="far edge"):   # one map being off elsewhere does not let it through
+        fold_camera.look_arms(render(cloth(), [((0.19, 0.36), 0.06)]), arm_cal(cal, stretch=1.0))
+
+
+def test_an_arm_s_own_edge_must_be_the_cloth_s_side_through_its_own_map():
+    good = np.array([0.30, 0.30, 0.30, 0.30])
+    fold_camera.check_edges({"left": good, "right": good}, 0.30)
+    off_on_the_right = np.array([0.30, 0.36, 0.30, 0.30])
+    with pytest.raises(ValueError, match="own map"):
+        fold_camera.check_edges({"left": good, "right": off_on_the_right}, 0.30)
+
+
 def test_fold_points_are_in_each_arms_frame():
     corners = dict(zip(("near_left", "near_right", "far_right", "far_left"), cloth()))
     points = fold_camera.fold_points(corners, SPACING)
