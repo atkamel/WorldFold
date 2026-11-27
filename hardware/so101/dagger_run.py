@@ -1,6 +1,6 @@
 """The camera fold with a learned policy at the joints, corrected by the scripted fold while it runs (DAgger).
 
-    .venv-hw/bin/python hardware/so101/dagger_run.py [--trust-deg 2] [--policy WEIGHTS.npz] [--no-train] \
+    .venv-hw/bin/python hardware/so101/dagger_run.py [--trust-deg DEG] [--policy WEIGHTS.npz] [--no-train] \
         --left arm2 --right arm1 --speed 0.7 --torque-limit 50 [anything else `fold_camera.py fold` takes]
 
 This runs `fold_camera.py fold` itself, as it is: the look, the plan, look.png, its questions, then replay.py with
@@ -22,6 +22,16 @@ So the arms never leave a band of --trust-deg around the scripted fold, and --tr
 with the network only watching. The scripted fold drives every row, and nothing is learned from the run, when the
 plan is one the network was not trained for (--grasp-check, another --closed, --no-gripper).
 
+Without --trust-deg the network has to earn the fold. The scripted fold drives (a band of 0) until, on the fold
+before, the network's rows were within TRUST_DEG of the plan's on at least EARNED of the rows; then the band is
+TRUST_DEG. A fold where it falls under that share hands the next fold back to the scripted fold. So the first fold
+with a new store is always the scripted fold.
+
+The phone's pictures and depth are saved through the fold, as a panel fold saves them (rig_record.py): this script
+opens the phone, takes the picture for the look from it (handed to fold_camera.py with --image, as the panel does),
+and records into the run folder beside steps.jsonl, then asks whether the cloth folded. With --image, --log or
+--dry-run given, the fold runs as fold_camera.py runs it and no pictures are saved.
+
 Every row is kept: what the network read, what it proposed, the plan's row, and which was sent. They are saved
 to rows_<time>.npz in --store (default runs/dagger) and the network is trained on with all the rows saved there
 (dagger_train.py: a few seconds), giving round_<n>.npz, which the next run starts from. Training needs the planned
@@ -35,7 +45,9 @@ import argparse
 import inspect
 import json
 import math
+import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -51,6 +63,7 @@ HERE = Path(__file__).parent
 START = HERE / "policies" / "camera_fold_v0.npz"
 BASE = HERE.parents[1] / "outputs" / "hardware" / "dagger" / "base.npz"
 TRUST_DEG = 2.0
+EARNED = 0.90           # share of the last fold's rows the network must have had inside TRUST_DEG to drive the next
 LOWER = 0.003           # m: how far under the plan's fingertip the network's row may put the fingertip
 MOTOR_IDS = replay.MOTOR_IDS
 
@@ -65,6 +78,17 @@ def next_round(store):
     """The path of the round after every round_<n>.npz in `store`."""
     numbers = [int(p.stem.split("_")[1]) for p in Path(store).glob("round_*.npz") if p.stem.split("_")[1].isdigit()]
     return Path(store) / f"round_{max(numbers, default=0) + 1:03d}.npz"
+
+
+def earned(store):
+    """The share of the newest saved fold's rows on which the network's row was within TRUST_DEG of the plan's
+    (whoever drove); None with no fold saved."""
+    files = sorted(Path(store).glob("rows_*.npz"))
+    if not files:
+        return None
+    rows = np.load(files[-1])
+    away = np.degrees(np.abs(rows["policy"] - rows["teacher"])).max(axis=1)
+    return float(np.mean(np.nan_to_num(away, nan=np.inf) <= TRUST_DEG))
 
 
 def capped(wanted, before, cap):
@@ -119,7 +143,7 @@ class Driver:
             return goal, "not a number", float("inf"), held
         asked = dict(zip(MOTOR_IDS, replay.convert(follower, [list(map(float, wanted))])[0][0]))
         away = max(abs(asked[m] - teacher[m]) for m in teacher) / replay.STEPS_PER_DEGREE
-        why = "last row" if last else "strayed" if away > self.trust else None
+        why = "watching" if self.trust == 0 else "last row" if last else "strayed" if away > self.trust else None
         if why is None:
             goal, held = capped(asked, before, cap)
             pose = [follower.to_rad(m, goal[m]) for m in MOTOR_IDS]
@@ -264,28 +288,58 @@ def rehearse(policy, inputs, traj, trust):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
     ap.add_argument("--policy", help="weights to drive with (default: the newest round in --store, else the repo's)")
-    ap.add_argument("--trust-deg", type=float, default=TRUST_DEG,
+    ap.add_argument("--trust-deg", type=float,
                     help="most a joint of the network's row may be from the plan's row and still be sent; 0 plays "
-                         "the scripted fold with the network watching")
+                         f"the scripted fold with the network watching. Default: {TRUST_DEG:g} once the network "
+                         f"was that close on {100 * EARNED:.0f}%% of the last fold's rows, 0 until then")
+    ap.add_argument("--device", type=int, default=0, help="Record3D device index")
     ap.add_argument("--store", default=str(replay.RUNS_DIR / "dagger"), help="rows and rounds are kept here")
     ap.add_argument("--base", default=str(BASE), help="the planned folds the network is trained on with the rows")
     ap.add_argument("--no-train", action="store_true", help="save the rows and leave the network as it is")
     ap.add_argument("--steps", type=int, help="training steps after the fold (default: dagger_train.TUNE_STEPS)")
     args, fold_args = ap.parse_known_args(sys.argv[1:] if argv is None else argv)
-    if not 0.0 <= args.trust_deg <= 5.0:
-        ap.error("--trust-deg is 0 to 5")
     policy = dagger_net.Policy(args.policy or latest(args.store))
-    print(f"Network: {policy.path}; its rows are sent while within {args.trust_deg:g} deg of the scripted fold's.")
+    if args.trust_deg is None:
+        share = earned(args.store)
+        args.trust_deg = TRUST_DEG if share is not None and share >= EARNED else 0.0
+        print(f"Network: {policy.path}. " + (
+            "No fold saved yet: the scripted fold drives this one and the network watches." if share is None else
+            f"On the last fold its rows were within {TRUST_DEG:g} deg of the scripted fold's on {share:.0%} of rows"
+            + (f": it drives this one inside {TRUST_DEG:g} deg." if args.trust_deg else
+               f", under {EARNED:.0%}: the scripted fold drives this one and the network watches.")))
+    elif not 0.0 <= args.trust_deg <= 5.0:
+        ap.error("--trust-deg is 0 to 5")
+    else:
+        print(f"Network: {policy.path}; its rows are sent while within {args.trust_deg:g} deg of the scripted fold's.")
     driver = Driver(policy, args.trust_deg, fold_traj.fold, replay.play)
+    pictures = not any(flag in fold_args for flag in ("--image", "--log", "--dry-run"))
+    recorded, look = None, None
     fold_traj.fold, replay.play = driver.fold, driver.play
     try:
-        code = fold_camera.main(["fold", *fold_args])
+        if pictures:
+            import rgbd
+            import rig_record
+            from PIL import Image
+            phone = rgbd.Phone(args.device)
+            phone.start()
+            handle, look = tempfile.mkstemp(suffix=".png", prefix="dagger_look_")
+            os.close(handle)
+            Image.fromarray(phone.wait().rgb).save(look)
+            code, recorded = rig_record.record(lambda argv: fold_camera.main(["fold", *argv]),
+                                               ["--image", look, *fold_args], phone, replay.RUNS_DIR)
+        else:
+            code = fold_camera.main(["fold", "--device", str(args.device), *fold_args])
     finally:
         fold_traj.fold, replay.play = driver.plan, driver.scripted_play
+        if look is not None:
+            os.unlink(look)
         if driver.rows:
             saved = save_rows(args.store, driver.rows, policy, args.trust_deg)
             report(driver.rows, args.trust_deg)
             print(f"Rows saved: {saved}")
+            if recorded is not None:        # which rows and weights belong to this recorded run
+                (recorded / "dagger.json").write_text(json.dumps(
+                    {"rows": str(saved), "weights": str(policy.path), "trust_deg": args.trust_deg}))
     if not driver.rows:
         if "--no-gripper" in fold_args:
             print("The scripted fold drives every row and nothing is learned: the gripper is left out (--no-gripper).")

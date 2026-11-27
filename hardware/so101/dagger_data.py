@@ -3,6 +3,7 @@ planner (fold_traj.fold) run on cloths drawn over the places and saved settings 
 No arm and no camera are involved, so this runs anywhere the planner does.
 
     .venv/bin/python hardware/so101/dagger_data.py --episodes 900 --seed 0 --out outputs/hardware/dagger/base.npz
+    .venv/bin/python hardware/so101/dagger_data.py --join a.npz b.npz --out both.npz     # two sets as one
 
 A draw: a rectangular cloth in front of the two bases (X right, Y forward from the line of the base origins), its
 far edge FAR and its depth DEPTH from the bases, WIDTH wide, off centre by up to SHIFT, turned by up to TURN_DEG;
@@ -116,13 +117,32 @@ def load(path):
     return data
 
 
+def join(paths, out):
+    """One file from several of save()'s, their folds one after another. The seed kept is the first file's."""
+    parts = [dict(np.load(path)) for path in paths]
+    starts = [0]
+    for part in parts:
+        starts += (part["starts"][1:] + starts[-1]).tolist()
+    np.savez_compressed(out, seed=parts[0]["seed"], dt=parts[0]["dt"], closed=parts[0]["closed"],
+                        starts=np.array(starts),
+                        **{key: np.concatenate([part[key] for part in parts])
+                           for key in ("inputs", "targets", "source", "refused_reason")})
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--episodes", type=int, required=True, help="cloths drawn; the ones the planner refuses are skipped")
-    ap.add_argument("--seed", type=int, required=True)
+    ap.add_argument("--episodes", type=int, help="cloths drawn; the ones the planner refuses are skipped")
+    ap.add_argument("--seed", type=int)
     ap.add_argument("--out", required=True)
     ap.add_argument("--workers", type=int, default=WORKERS)
+    ap.add_argument("--join", nargs="+", metavar="FILE", help="put these files' folds into --out and plan nothing")
     args = ap.parse_args()
+    if args.join:
+        join(args.join, args.out)
+        print(f"{len(load(args.out)['folds'])} folds: {args.out}")
+        return
+    if args.episodes is None or args.seed is None:
+        ap.error("--episodes and --seed, or --join")
     started = time.time()
     planned, refused = generate(args.episodes, args.seed, args.workers)
     save(args.out, planned, refused, args.seed)

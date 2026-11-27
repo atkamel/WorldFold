@@ -9,6 +9,8 @@ import importlib
 import json
 import math
 import sys
+import tempfile
+import types
 from pathlib import Path
 
 import numpy as np
@@ -79,10 +81,12 @@ def rig(env, tmp_path, monkeypatch):  # noqa: F811
     return env
 
 
-def run(rig, policy=None, *more, monkeypatch=None):
+def run(rig, policy=None, *more, monkeypatch=None, trust="2"):
+    """dagger_run on the saved picture, inside 2 deg unless `more` names a band or `trust` is None."""
     if policy is not None:
         monkeypatch.setattr(rig.dagger_run.dagger_net, "Policy", lambda path: policy)
-    return rig.dagger_run.main(["--store", str(rig.store), *more, *rig.fold_args])
+    band = [] if trust is None or "--trust-deg" in more else ["--trust-deg", trust]
+    return rig.dagger_run.main(["--store", str(rig.store), *band, *more, *rig.fold_args])
 
 
 def played(rig, since):
@@ -276,6 +280,71 @@ def test_the_scripted_folds_functions_are_put_back(rig, monkeypatch):
     fold, play = fold_traj.fold, rig.replay.play
     assert run(rig, OnPlan(rig.traj), "--dry-run", monkeypatch=monkeypatch) == 0
     assert fold_traj.fold is fold and rig.replay.play is play
+
+
+# --- starting off with the scripted fold, and the pictures ---
+
+def test_the_first_fold_is_the_scripted_fold_and_the_network_drives_once_it_has_earned_it(rig, monkeypatch, capsys):
+    assert fold_camera.main(["fold", *rig.fold_args]) == 0
+    scripted = played(rig, {})
+    counts = {dev: len(port.writes) for dev, port in rig.ports.items()}
+    assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch, trust=None) == 0
+    assert "No fold saved yet: the scripted fold drives this one" in capsys.readouterr().out
+    assert played(rig, counts) == scripted                           # nothing saved yet: the scripted fold, exactly
+    first = np.load(sorted(rig.store.glob("rows_*.npz"))[0])
+    assert not first["drove"].any()
+    assert rig.dagger_run.earned(rig.store) == 1.0                   # the network was on the plan throughout
+    (rig.store / "rows_00000000_000000.npz").unlink(missing_ok=True)
+    next(rig.store.glob("rows_*.npz")).rename(rig.store / "rows_20000101_000000.npz")
+    assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch, trust=None) == 0
+    assert "it drives this one inside 2 deg" in capsys.readouterr().out
+    newest = np.load(sorted(rig.store.glob("rows_*.npz"))[-1])
+    assert newest["drove"].sum() == len(newest["drove"]) - 2         # every row but each arm's last
+
+
+def test_a_network_that_was_off_the_plan_on_the_last_fold_hands_the_next_one_back(rig, monkeypatch, capsys):
+    off = OnPlan(rig.traj, lambda k, side, row: row + (0.1 if k % 5 == 0 else 0.0))    # 5.7 deg off on a fifth of rows
+    assert run(rig, off, "--no-train", monkeypatch=monkeypatch) == 0                    # a fold inside 2 deg
+    assert rig.dagger_run.earned(rig.store) == pytest.approx(0.8, abs=0.01)
+    capsys.readouterr()
+    next(rig.store.glob("rows_*.npz")).rename(rig.store / "rows_20000101_000000.npz")
+    assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch, trust=None) == 0
+    assert "under 90%: the scripted fold drives this one" in capsys.readouterr().out
+    assert not np.load(sorted(rig.store.glob("rows_*.npz"))[-1])["drove"].any()
+
+
+def test_a_fold_with_the_phone_saves_its_pictures_beside_the_log(rig, monkeypatch):
+    import rgbd
+    import rig_record
+    picture = np.asarray(Image.open(rig.fold_args[1]).convert("RGB"))
+
+    class Phone:
+        def __init__(self, device=0):
+            self.device, self.started = device, False
+
+        def start(self):
+            self.started = True
+
+        def latest(self):
+            return types.SimpleNamespace(rgb=picture, depth=np.full(picture.shape[:2], 0.5, np.float32),
+                                         K=(500.0, 500.0, 320.0, 240.0))
+
+        def wait(self, timeout=5.0):
+            assert self.started
+            return self.latest()
+
+    monkeypatch.setattr(rgbd, "Phone", Phone)
+    monkeypatch.setattr(rig_record, "FRAME_SECONDS", 0.01)
+    live = [a for a in rig.fold_args if a not in ("--image", rig.fold_args[1])]        # no --image: the phone is used
+    monkeypatch.setattr(rig.dagger_run.dagger_net, "Policy", lambda path: OnPlan(rig.traj))
+    assert rig.dagger_run.main(["--store", str(rig.store), "--trust-deg", "2", "--no-train", *live]) == 0
+    folder = next(p for p in (rig.tmp / "runs").iterdir() if (p / "steps.jsonl").exists())
+    frames = step_lines(folder / "frames.jsonl")
+    assert len(frames) >= 2 and len(list((folder / "frames").iterdir())) >= 2
+    note = json.loads((folder / "dagger.json").read_text())
+    assert Path(note["rows"]).exists() and note["trust_deg"] == 2.0
+    assert any(line["phase"] == "dagger" for line in step_lines(folder / "steps.jsonl"))
+    assert not list(Path(tempfile.gettempdir()).glob("dagger_look_*.png"))
 
 
 # --- the network and a round of training ---
