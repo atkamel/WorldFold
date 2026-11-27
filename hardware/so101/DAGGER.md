@@ -69,6 +69,12 @@ measured from. Rows saved by folds before the offset changed are put aside in a 
 
 `--forget-nudges` starts again from no offsets. `--no-nudge` leaves the controller alone.
 
+`--smooth 0.5` sends the arms half of the way to each row instead of the whole way, which rounds the corners
+where the fold changes phase and where the pinch offset gives way to the carry offset. The arms then trail the
+rows by about one row and catch up in the holds; the step sent stays under the rate cap and the fold still ends
+on its last row. The rows saved for training are the plan's and the network's as before. The network reads the
+last command sent, which trails with it. 0.1 to 1; 1, the default, sends the rows as they are.
+
 Check the Xbox button first, with no arms. This prints it as it is read.
 
 ```

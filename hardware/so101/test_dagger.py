@@ -186,6 +186,37 @@ def test_an_arm_the_rate_cap_held_short_of_the_last_row_is_stepped_onto_it(rig, 
         assert steps.max() <= rig.replay.MAX_DEG_S * rig.traj["dt"] * rig.replay.STEPS_PER_DEGREE / sends + 1
 
 
+def roughest(writes, sends):
+    """The most any motor's row-to-row step changes from one row to the next (ticks), over `writes`."""
+    rows = np.array([[g[m] for m in range(1, 7)] for g in writes[sends - 1::sends]], float)
+    return np.abs(np.diff(rows, n=2, axis=0)).max()
+
+
+def test_smoothing_rounds_the_corners_keeps_the_rate_cap_and_still_ends_on_the_last_row(rig, monkeypatch):
+    sends = math.ceil(rig.traj["dt"] / rig.replay.TICK_SECONDS - 1e-9)
+    cap = rig.replay.MAX_DEG_S * rig.traj["dt"] * rig.replay.STEPS_PER_DEGREE / sends
+    assert run(rig, OnPlan(rig.traj), "--trust-deg", "0", "--no-train", monkeypatch=monkeypatch) == 0
+    counts = {dev: len(port.writes) for dev, port in rig.ports.items()}
+    plain = {dev: roughest(played(rig, {})[dev], sends) for dev in rig.ports}
+    for f in rig.store.glob("rows_*.npz"):
+        f.unlink()
+    assert run(rig, OnPlan(rig.traj), "--trust-deg", "0", "--no-train", "--smooth", "0.5",
+               monkeypatch=monkeypatch) == 0
+    rows = len(rig.traj["arms"]["left"]["target"])
+    for dev, side in (("devL", "left"), ("devR", "right")):
+        fold = rig.ports[dev].writes[counts[dev]:][-(rows + 1) * sends:]
+        assert roughest(fold[:rows * sends], sends) < 0.7 * plain[dev]
+        steps = np.abs(np.diff([[g[m] for m in range(1, 7)] for g in fold], axis=0))
+        assert steps.max() <= cap + 1
+        last = dict(zip(range(1, 7), np.round(plan_ticks(rig, side)[-1]).astype(int)))
+        assert rig.ports[dev].writes[-1] == last
+
+
+def test_smoothing_outside_a_tenth_to_one_is_refused(rig, monkeypatch):
+    with pytest.raises(SystemExit):
+        run(rig, OnPlan(rig.traj), "--no-train", "--smooth", "0", monkeypatch=monkeypatch)
+
+
 def test_a_pose_too_close_to_itself_is_the_plans(rig, monkeypatch):
     import collision
     real, live = collision.closest, {"on": False}

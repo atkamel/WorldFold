@@ -110,11 +110,19 @@ def capped(wanted, before, cap):
     return goal, held
 
 
+def eased(wanted, before, share):
+    """`wanted` ({motor: ticks}) with every motor only `share` of the way there from `before`."""
+    goal = {}
+    for m in wanted:
+        goal[m] = before[m] + share * (wanted[m] - before[m])
+    return goal
+
+
 class Driver:
     """Stands in for fold_traj.fold (`fold`) and replay.play (`play`) during one fold."""
 
-    def __init__(self, policy, trust_deg, plan, play, nudges=None, button=False):
-        self.policy, self.trust = policy, trust_deg
+    def __init__(self, policy, trust_deg, plan, play, nudges=None, button=False, smooth=1.0):
+        self.policy, self.trust, self.smooth = policy, trust_deg, smooth
         self.plan, self.scripted_play = plan, play
         self.nudges, self.wants_button, self.check = nudges, button, 0
         self.teleop = self.button = None
@@ -256,8 +264,10 @@ class Driver:
             who, away = {}, {}
             for name, f in followers.items():
                 teacher = {m: rows[name][k][m] for m in motors}
-                command[name], who[name], away[name], held = self.choose(
-                    f, collision, teacher, wanted[name], before[name], cap, k == final)
+                # the cap is on the step sent, which is `smooth` of the step chosen
+                chosen, who[name], away[name], held = self.choose(
+                    f, collision, teacher, wanted[name], before[name], cap / self.smooth, k == final)
+                command[name] = eased(chosen, before[name], self.smooth)
                 engaged += held
                 mirror = dagger_net.MIRROR_JOINTS if name == "right" else 1.0
                 self.rows.append({"obs": dagger_net.observation(self.inputs, name, measured[name], sent[name],
@@ -362,12 +372,17 @@ def main(argv=None):
                          f"was that close on {100 * EARNED:.0f}%% of the last fold's rows, 0 until then")
     ap.add_argument("--device", type=int, default=0, help="Record3D device index")
     ap.add_argument("--no-nudge", action="store_true", help="do not read the controller's intervention button")
+    ap.add_argument("--smooth", type=float, default=1.0,
+                    help="share of the way to each row the arms are sent, 0.1 to 1: under 1 rounds the fold's "
+                         "corners and the arms trail the rows, by one row at 0.5. Default 1, the rows as they are")
     ap.add_argument("--forget-nudges", action="store_true", help="put the stored offsets aside and start from none")
     ap.add_argument("--store", default=str(replay.RUNS_DIR / "dagger"), help="rows and rounds are kept here")
     ap.add_argument("--base", default=str(BASE), help="the planned folds the network is trained on with the rows")
     ap.add_argument("--no-train", action="store_true", help="save the rows and leave the network as it is")
     ap.add_argument("--steps", type=int, help="training steps after the fold (default: dagger_train.TUNE_STEPS)")
     args, fold_args = ap.parse_known_args(sys.argv[1:] if argv is None else argv)
+    if not 0.1 <= args.smooth <= 1.0:
+        ap.error("--smooth is 0.1 to 1")
     policy = dagger_net.Policy(args.policy or latest(args.store))
     if args.trust_deg is None:
         share = earned(args.store)
@@ -386,7 +401,7 @@ def main(argv=None):
         stored.replace(stored.with_name(f"nudges_until_{time.strftime('%Y%m%d_%H%M%S')}.json"))
     nudges = dagger_nudge.Nudges(stored)
     print(f"Stored offsets: {nudges.describe()}.")
-    driver = Driver(policy, args.trust_deg, fold_traj.fold, replay.play, nudges, not args.no_nudge)
+    driver = Driver(policy, args.trust_deg, fold_traj.fold, replay.play, nudges, not args.no_nudge, args.smooth)
     pictures = not any(flag in fold_args for flag in ("--image", "--log", "--dry-run"))
     recorded, look = None, None
     fold_traj.fold, replay.play = driver.fold, driver.play
