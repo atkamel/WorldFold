@@ -17,16 +17,33 @@ import test_ui_lend  # noqa: E402
 
 
 class NoCamera:
+    frame = None
+
     def latest(self):
-        return None
+        return self.frame
+
+    def count(self):
+        if self.frame is None:
+            return 0
+        return 3
 
     def status(self):
         return "no phone"
 
 
 class NoRecording:
+    def __init__(self):
+        self.calls = []
+
     def status(self):
         return {"recording": False}
+
+    def start(self, correction=False):
+        self.calls.append(("start", correction))
+
+    def label(self, word):
+        self.calls.append(("label", word))
+        return word != "bad"
 
 
 @pytest.fixture
@@ -77,9 +94,17 @@ def panel(tmp_path, monkeypatch, request):
             self.started.append(mode)
             return None
 
+        def stop(self):
+            self.started.append("stop")
+
+        def status(self):
+            return {"state": "stopped"}
+
     gamepad = Gamepad() if getattr(request, "param", False) else None
     fold = Fold()
-    handler = ui.make_handler(arms_by_name, NoCamera(), NoRecording(), fold=fold,
+    camera = NoCamera()
+    recording = NoRecording()
+    handler = ui.make_handler(arms_by_name, camera, recording, fold=fold,
                               stop_fold=lambda: fold_stops.append(1), gamepad=gamepad)
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -110,10 +135,49 @@ def panel(tmp_path, monkeypatch, request):
     post.gamepad = gamepad
     post.fold_stops = fold_stops
     post.fold = fold
+    post.camera = camera
+    post.recording = recording
     yield arms_by_name, post, port
     server.shutdown()
     server.server_close()
     sys.modules.pop("ui", None)
+
+
+def test_an_episode_label_reaches_the_recording_and_a_refusal_is_reported(panel):
+    _, post, _ = panel
+    assert post("/record/label", {"label": "good"}) == 200
+    assert post.recording.calls == [("label", "good")]
+    assert post("/record/label", {"label": "bad"}) == 409      # the stand-in refuses this one
+    assert post("/record/label", {"label": "perfect"}) == 400
+    assert len(post.recording.calls) == 2
+
+
+def test_taking_over_stops_the_policy_and_starts_a_correction_recording(panel):
+    _, post, _ = panel
+    assert post("/policy/takeover", {}) == 200
+    assert post.fold.started == ["stop"]
+    assert post.recording.calls == [("start", True)]
+
+
+def test_the_panel_hands_its_camera_frame_to_a_script_that_asks(panel):
+    import numpy as np
+
+    import panel_phone
+    import rgbd
+
+    _, post, port = panel
+    phone = panel_phone.PanelPhone(f"http://127.0.0.1:{port}/frame.npz")
+    assert phone.latest() is None
+    rgb = np.arange(4 * 6 * 3, dtype=np.uint8).reshape(4, 6, 3)
+    depth = np.full((2, 3), 0.5, dtype=np.float32)
+    post.camera.frame = rgbd.Frame(0.0, rgb, depth, (100.0, 101.0, 3.0, 2.0))
+    frame = phone.latest()
+    assert phone.count == 3
+    assert np.array_equal(frame.rgb, rgb)
+    assert np.array_equal(frame.depth, depth)
+    assert list(frame.K) == [100.0, 101.0, 3.0, 2.0]
+    with pytest.raises(SystemExit):     # the count has not moved on: no new picture
+        phone.wait(timeout=0.3)
 
 
 def test_mirror_and_leader_are_refused_while_an_arm_is_lent(panel):

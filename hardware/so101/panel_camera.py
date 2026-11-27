@@ -56,3 +56,9 @@ class Camera:
         if self.phone is None:
             return None
         return self.phone.latest()
+
+    def count(self):
+        """Frames the phone has sent so far: a script reading the panel's picture tells a new one by it."""
+        if self.phone is None:
+            return 0
+        return self.phone.count

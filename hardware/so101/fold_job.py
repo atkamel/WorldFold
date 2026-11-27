@@ -1,5 +1,7 @@
 """One cloth-fold job for the control panel (ui.py): run fold_camera.py as a child process, keep its printed output,
-answer its two "Enter to ..." pauses, and stop it.
+answer its two "Enter to ..." pauses, and stop it. Two more modes run other scripts the same way: "learn" is
+dagger_run.py (the camera fold with DAgger's network in the loop) and "policy" is camera_run.py (a camera policy
+trained on recorded episodes, which reads its pictures from the panel and records its own run).
 
 The panel keeps the phone, so the script gets the camera's latest frame as a file (--image) that is deleted when
 the job ends. For a fold the panel's arms are lent to the script (their serial ports closed) and taken back when
@@ -30,9 +32,15 @@ SCRIPT = HERE / "fold_camera.py"
 CAMERA_FILE = HERE / "camera.json"
 LOOK_FILE = HERE / "look.png"
 RUNS_DIR = HERE / "runs"    # ignored by git
-MODES = ["calibrate", "look", "fold"]
+MODES = ["calibrate", "look", "fold", "learn", "policy"]
+# The script of each mode that is not fold_camera.py's own. "learn" is the camera fold with DAgger's network in the
+# loop, "policy" a camera policy trained on recorded episodes.
+OTHER_SCRIPTS = {"learn": HERE / "dagger_run.py", "policy": HERE / "camera_run.py"}
+ARM_MODES = ["fold", "learn", "policy"]     # these move the arms, so the panel lends them
+RECORDED_MODES = ["fold", "learn"]          # camera_run.py records its own run
+MAX_TRUST_DEG = 5.0                         # dagger_run.py's --trust-deg goes from 0 to this
 MAX_LINES = 200
-PROMPT_MARK = "Enter to"    # both of the fold's pauses print this and then wait for Enter
+PROMPT_MARKS = ["Enter to", "press Enter"]  # every pause of the scripts prints one of these and waits for Enter
 BUSY_STATES = ["running", "waiting"]
 FRAME_SECONDS = 0.2         # a recorded fold saves the camera's picture this often
 
@@ -50,9 +58,7 @@ class FoldJob:
         self.arms_by_name = arms_by_name
         self.camera = camera
         self.followers = list(followers)
-        self.command = command
-        if self.command is None:
-            self.command = [sys.executable, "-u", str(SCRIPT)]
+        self.command = command      # tests give a stand-in script, run for every mode
         self.runs_dir = runs_dir
         self.lock = threading.Lock()
         self.state = "idle"
@@ -72,12 +78,37 @@ class FoldJob:
             return {"state": self.state, "mode": self.mode, "lines": list(self.lines), "prompt": prompt,
                     "exit_code": self.exit_code, "colour": saved_colour()}
 
+    def command_for(self, mode):
+        """The program and script that run `mode`."""
+        if self.command is not None:
+            return list(self.command)
+        script = OTHER_SCRIPTS.get(mode, SCRIPT)
+        return [sys.executable, "-u", str(script)]
+
+    def policy_arguments(self, options):
+        """camera_run.py's arguments: it takes its pictures from the panel (`frames`, the panel's /frame.npz)."""
+        # whole paths: the script runs from this folder, not from where the panel was started
+        args = ["--policy", str(Path(str(options["policy"])).resolve()),
+                "--dataset", str(Path(str(options["dataset"])).resolve()),
+                "--left", self.followers[0], "--right", self.followers[1]]
+        if "torque" in options:
+            args = args + ["--torque-limit", str(int(options["torque"]))]
+        if options.get("frames"):
+            args = args + ["--frames", str(options["frames"])]
+        return args
+
     def arguments(self, mode, image, options, steps_file=None):
         """The script's arguments for `mode`. ValueError for an option that is not a number."""
-        args = [mode, "--image", image]
+        if mode == "policy":
+            return self.policy_arguments(options)
+        if mode == "learn":
+            # dagger_run.py takes its own flag and hands the rest to `fold_camera.py fold`
+            args = ["--trust-deg", str(float(options.get("trust", 0))), "--image", image]
+        else:
+            args = [mode, "--image", image]
         if mode == "calibrate" and options.get("colour"):
             args = args + ["--cloth-colour", str(options["colour"])]
-        if mode == "fold":
+        if mode in ("fold", "learn"):
             args = args + ["--left", self.followers[0], "--right", self.followers[1]]
         if "speed" in options:
             args = args + ["--speed", str(float(options["speed"]))]
@@ -93,14 +124,21 @@ class FoldJob:
         """Start a job. Returns None, or the reason it was not started."""
         if mode not in MODES:
             return f"unknown mode {mode!r}"
-        if mode == "fold" and len(self.followers) != 2:
+        if mode in ARM_MODES and len(self.followers) != 2:
             return "a fold needs two follower arms in arms.json, listed left then right"
+        if mode == "policy":
+            for what in ("policy", "dataset"):
+                if not options.get(what) or not Path(str(options[what])).exists():
+                    return f"no {what} at {options.get(what)!r}: train one from recorded episodes first"
         try:
             self.arguments(mode, "", options)
+            trust = float(options.get("trust", 0))
         except (TypeError, ValueError):
-            return "speed and torque cap must be numbers"
+            return "speed, torque cap and trust must be numbers"
+        if mode == "learn" and not 0.0 <= trust <= MAX_TRUST_DEG:
+            return f"trust is 0 to {MAX_TRUST_DEG:g} degrees"
         lent = []
-        if mode == "fold":
+        if mode in ARM_MODES:
             for name in self.followers:
                 if name not in self.arms_by_name:
                     return f"the panel is not running the {name} arm"
@@ -124,7 +162,7 @@ class FoldJob:
                 os.close(handle)
                 Image.fromarray(frame.rgb).save(image)
                 steps_file = None
-                if mode == "fold":
+                if mode in RECORDED_MODES:
                     run = recorder.Recorder(self.runs_dir, meta={"source": "control panel", "mode": mode,
                                                                  "options": options, "left": self.followers[0],
                                                                  "right": self.followers[1]})
@@ -134,7 +172,7 @@ class FoldJob:
                     borrowed.append(arm)
                 environment = dict(os.environ)
                 environment["PYTHONIOENCODING"] = "utf-8"
-                self.process = subprocess.Popen(self.command + self.arguments(mode, image, options, steps_file),
+                self.process = subprocess.Popen(self.command_for(mode) + self.arguments(mode, image, options, steps_file),
                                                 cwd=str(HERE), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                                 stderr=subprocess.STDOUT, bufsize=0, env=environment)
             except OSError as err:
@@ -167,6 +205,13 @@ class FoldJob:
                 run.frame(time.time(), frame.rgb, frame.depth, frame.K)
             time.sleep(FRAME_SECONDS)
 
+    def at_a_prompt(self):
+        """Whether the output since the last line end holds one of the scripts' pauses."""
+        for mark in PROMPT_MARKS:
+            if mark.encode() in self.partial:
+                return True
+        return False
+
     def follow(self, process, image, lent, run):
         """Read the child's output a byte at a time until it ends, then clean up."""
         while True:
@@ -181,7 +226,7 @@ class FoldJob:
                         self.state = "running"
                 else:
                     self.partial = self.partial + byte
-                    if PROMPT_MARK.encode() in self.partial and self.state != "waiting":
+                    if self.at_a_prompt() and self.state != "waiting":
                         self.state = "waiting"
                         self.note("waiting", prompt=self.partial.decode("utf-8", "replace"))
         code = process.wait()
