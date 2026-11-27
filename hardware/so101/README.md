@@ -340,7 +340,8 @@ Stop, the last `look.png`, and the script's output as it prints.
 - Stop (and Esc) ends the script outright: the arms hold with torque on, and a torque cap set for the fold stays
   on the motors until the next fold or a power cycle.
 - Options: cloth colour (for Calibrate), speed, torque cap, grasp check (off by default: on a thin cloth it reads
-  a held corner as a miss and pinches again). Left is `arm2`, right is `arm1` (`fold_job.py`).
+  a held corner as a miss and pinches again). Left and right are the two followers in the order
+  `arms.json` lists them.
 - Every fold started here is recorded to `runs/<date_time>/` (see "Run logs"). Calibrate and Look are not.
 - A fold that fails to start gives the arms back. Mirror and Leader are refused while a fold has the arms.
 - The page only answers requests sent to `localhost` or `127.0.0.1` as JSON, so another web page open in the
@@ -714,5 +715,7 @@ half torque), the cloth, cables, and anything else on the table. The model's tab
 between the arms.
 
 Gamepad mode reserves the two followers and leaves the leader arm unopened. Start the panel without `--gamepad`
-to use keyboard, phone motion, mirror, leader, and cloth-fold controls. Physical validation assumes flat, aligned
+to use keyboard, phone motion, mirror, and leader controls. The Cloth fold section works in gamepad mode: a fold
+takes the arms from the controller, which reads and sends nothing until the fold ends, and then A drives again.
+Physical validation assumes flat, aligned
 bases and a clear table around the arms.

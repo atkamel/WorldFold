@@ -30,8 +30,6 @@ SCRIPT = HERE / "fold_camera.py"
 CAMERA_FILE = HERE / "camera.json"
 LOOK_FILE = HERE / "look.png"
 RUNS_DIR = HERE / "runs"    # ignored by git
-LEFT_ARM = "arm2"       # seen from behind the arms
-RIGHT_ARM = "arm1"
 MODES = ["calibrate", "look", "fold"]
 MAX_LINES = 200
 PROMPT_MARK = "Enter to"    # both of the fold's pauses print this and then wait for Enter
@@ -47,9 +45,11 @@ def saved_colour():
 
 
 class FoldJob:
-    def __init__(self, arms_by_name, camera, command=None, runs_dir=RUNS_DIR):
+    def __init__(self, arms_by_name, camera, followers, command=None, runs_dir=RUNS_DIR):
+        """`followers`: the follower arms' names, left then right as seen from behind the arms."""
         self.arms_by_name = arms_by_name
         self.camera = camera
+        self.followers = list(followers)
         self.command = command
         if self.command is None:
             self.command = [sys.executable, "-u", str(SCRIPT)]
@@ -78,7 +78,7 @@ class FoldJob:
         if mode == "calibrate" and options.get("colour"):
             args = args + ["--cloth-colour", str(options["colour"])]
         if mode == "fold":
-            args = args + ["--left", LEFT_ARM, "--right", RIGHT_ARM]
+            args = args + ["--left", self.followers[0], "--right", self.followers[1]]
         if "speed" in options:
             args = args + ["--speed", str(float(options["speed"]))]
         if "torque" in options:
@@ -93,13 +93,15 @@ class FoldJob:
         """Start a job. Returns None, or the reason it was not started."""
         if mode not in MODES:
             return f"unknown mode {mode!r}"
+        if mode == "fold" and len(self.followers) != 2:
+            return "a fold needs two follower arms in arms.json, listed left then right"
         try:
             self.arguments(mode, "", options)
         except (TypeError, ValueError):
             return "speed and torque cap must be numbers"
         lent = []
         if mode == "fold":
-            for name in (LEFT_ARM, RIGHT_ARM):
+            for name in self.followers:
                 if name not in self.arms_by_name:
                     return f"the panel is not running the {name} arm"
                 lent.append(self.arms_by_name[name])
@@ -124,8 +126,8 @@ class FoldJob:
                 steps_file = None
                 if mode == "fold":
                     run = recorder.Recorder(self.runs_dir, meta={"source": "control panel", "mode": mode,
-                                                                 "options": options, "left": LEFT_ARM,
-                                                                 "right": RIGHT_ARM})
+                                                                 "options": options, "left": self.followers[0],
+                                                                 "right": self.followers[1]})
                     steps_file = run.path / "steps.jsonl"
                 for arm in lent:
                     arm.lend()

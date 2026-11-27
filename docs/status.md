@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-23 · **Branch:** `feat/teleop` (SO-101 and two-arm gamepad side tracks) · **Phase:** Q, the
+**Updated:** 2026-11-26 · **Branch:** `feat/teleop` (SO-101 and two-arm gamepad side tracks) · **Phase:** Q, the
 quarter fold on Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -25,7 +25,9 @@ released, still), user 2026-10-22.
   the model inside the motor limits (results.md); a pair already too close may move apart, not closer. The first
   drive on the rig (user, 2026-11-23) moved, slowly, with one arm waiting for the other. Since then a stick's
   sideways turns the base and its forward and back reach along the arm, at 10 cm/s and 45 deg/s, and each arm is
-  judged on its own; that version has only run on fake servos. See `hardware/so101/README.md`.
+  judged on its own; that version has only run on fake servos. Since 2026-11-25 the panel's Cloth fold section
+  works in gamepad mode: a fold takes the arms from the controller and A drives again when it ends (fake servos
+  only). See `hardware/so101/README.md`.
 - **PowerA USB controller (user, 2026-11-19):** `python -m hardware.controller` streams decoded input from
   the Lavender Swirl EnWired on this Mac. Live USB input and stick reports checked. Button, trigger, Share, and
   Guide mappings checked with fixtures. See `hardware/controller/README.md`.
@@ -74,7 +76,8 @@ released, still), user 2026-10-22.
   through the iPhone (`fold_camera.py`), and watched throughout with RGB and LiDAR over Record3D USB (`fold_live.py`:
   arms masked out by height above the table, the cloth's near edge tracked, the place moved with it mid-carry, every
   frame and control step recorded). Grasp check on the jaw readings with a retry. Two-arm teleop with a leader arm
-  (`ui.py`). Both followers configured (`arm2` left, `arm1` right). Steps in `hardware/so101/README.md`. First run, in
+  (`ui.py`). Both followers configured (`arm2` left, `arm1` right: the order
+  in `arms.json`, put back on 2026-11-26 after a day listed the other way round). Steps in `hardware/so101/README.md`. First run, in
   order: `replay.py --read` and `--check` on both arms (the tick map is unverified), one arm with no cloth,
   `fold_camera.py calibrate`, `fold_live.py --dry-run` for the first real frames, then `fold_live.py --grasp-check`.
   The 30 cm cloth does not fit the reach at both ends (results.md).
@@ -200,6 +203,12 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
+
+- 2026-11-26 · **`origin/feat/rig-dagger` merged into `feat/teleop` (user):** DAgger on the camera fold (akamel, d137d14): `dagger_data.py`, `dagger_net.py`, `dagger_run.py`, `dagger_train.py`, `test_dagger.py`, `DAGGER.md` and the `camera_fold_v0` policy, 8 new files and no conflict; not run on the arms here; `test_dagger.py`, `test_ui_requests.py`, `test_gamepad.py`, `test_fold_job.py`, `test_arms.py` 91 passed, the rest not re-run · 880378f
+
+- 2026-11-26 · **`arms.json` lists `arm2` (left) before `arm1` again (user: the left stick drove the right arm and the right stick the left):** the order from 2026-11-25 crossed the sticks on the rig, so it is put back; sticks, bumpers and triggers, the keyboard's two hands and the fold's left and right all follow it; `test_arms.py`, `test_fold_job.py`, `test_gamepad.py`, `test_ui_requests.py`: 75 passed; not driven on the arms since · (this commit)
+
+- 2026-11-25 · **The scripted cloth fold can be run from gamepad mode, and the arms changed places (user):** the two followers were put down the other way round, so `arms.json` lists `arm1` (left) before `arm2`; the fold's left and right are the followers in that order (`arms.followers`), not the `arm2`, `arm1` written into `fold_job.py`; the Cloth fold section shows in `--gamepad` and `/fold/start` is taken there; while a fold has the arms the controller loop reads and sends nothing, and A drives again afterwards; not run on the arms, the page not opened in a browser, and the fold calibration (touches, pinch heights) is from the old placement; `test_arms.py`, `test_fold_job.py`, `test_ui_requests.py`, `test_gamepad.py`, `test_ui_lend.py` 77 passed; fast 263 passed, 5 skipped, 1 failed (#17); the rest of the hardware suite not re-run · (this commit)
 
 - 2026-11-23 · **A layout for two people, no stick clicks (user: everything works; the most intuitive setup for one person on the controller and one on the keyboard, without pressing the sticks; layout proposed and accepted):** the controller places the grippers: a stick's sideways turns the base and its forward and back reach, LB and RB raise that arm at 15 cm/s and LT and RT lower it by how far the trigger is pulled; the keyboard of the panel's page sets the angle and the claws, the same shape under each hand: W S and I K tilt the wrists, A D and J L turn the claws, E and U toggle them (S and K are tilt down), Space stops both arms as Esc does; a stick click does nothing and the up and down mode is gone; tilt and roll keys share one request (`POST /gamepad/hold`) and the same 0.3 s after which a key not heard of is let go; the fixes of fbae933 worked on the rig (user); this layout has not been run on the arms and its keys were not pressed in a browser; `test_gamepad.py`, `test_ui_requests.py`, `test_ui_lend.py` and the controller tests 62 passed, the rest not re-run · (this commit)
 - 2026-11-23 · **Lifts are no longer refused with a joint at its limit; every stretch of driving goes to its own CSV (user: some motor limits seem wrong, a lift needs the wrist in a certain place, sometimes the arm will not lift; log all movements to a CSV, a new file each run):** the solver worked inside the arm model's limits, not the recorded ones (elbow -97 against -116 deg, pan 110 against 120), and took a step only when it could make it exactly, so with the wrist or the folded elbow at a limit a lift was refused as out of reach (17 such lines in `gamepad_20261123_224936.log`); each arm now has a solver held to its recorded limits, and a step that gets 30% of the way in the asked direction is taken (`FOLLOW_SHARE`); in the model lifts that rose 2 cm of 4: 377 to 395 of 400 poses, and 236 to 300 of 300 with the elbow folded and the wrist at its end (results.md); every stretch of driving and every glide to idle writes `runs/gamepad_<date_time>_<n>.csv`, a row a step: status, buttons, sticks, commanded and measured steps, model angles, fingertip; not run on the arms; `test_gamepad.py`, `test_ui_requests.py`, `test_ui_lend.py` and the controller tests 61 passed, the rest not re-run · (this commit)

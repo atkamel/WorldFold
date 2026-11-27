@@ -63,8 +63,9 @@ def rig(tmp_path):
     calls = []
     arms = {"arm1": StandInArm("arm1", calls), "arm2": StandInArm("arm2", calls)}
     runs = tmp_path / "runs"
-    job = fold_job.FoldJob(arms, StandInCamera(), command=[sys.executable, "-u", str(script)], runs_dir=runs)
-    return types.SimpleNamespace(job=job, calls=calls, arms=arms, runs=runs)
+    command = [sys.executable, "-u", str(script)]
+    job = fold_job.FoldJob(arms, StandInCamera(), ["arm2", "arm1"], command=command, runs_dir=runs)
+    return types.SimpleNamespace(job=job, calls=calls, arms=arms, runs=runs, command=command)
 
 
 def wait_for(job, states, seconds=15):
@@ -150,6 +151,24 @@ def test_start_is_refused_without_a_frame_or_with_a_bad_request(rig):
 def test_a_fold_is_refused_when_an_arm_is_missing(rig):
     del rig.arms["arm1"]
     assert rig.job.start("fold", {}) is not None
+    assert rig.calls == []
+
+
+def test_the_first_follower_is_the_fold_s_left_arm(rig):
+    job = fold_job.FoldJob(rig.arms, StandInCamera(), ["arm1", "arm2"], command=rig.command, runs_dir=rig.runs)
+    assert job.start("fold", {}) is None
+    status = wait_for(job, ["waiting"])
+    assert rig.calls == ["lend arm1", "lend arm2"]
+    assert "--left arm1 --right arm2" in status["lines"][1]
+    job.stop()
+    wait_for(job, ["stopped"])
+
+
+def test_a_fold_is_refused_without_exactly_two_followers(rig):
+    job = fold_job.FoldJob(rig.arms, StandInCamera(), ["arm1"], command=rig.command, runs_dir=rig.runs)
+    assert job.start("fold", {}) is not None
+    assert job.start("look", {}) is None
+    wait_for(job, ["done"])
     assert rig.calls == []
 
 

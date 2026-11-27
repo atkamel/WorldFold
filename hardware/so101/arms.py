@@ -49,6 +49,16 @@ def ports_for(config_arms, platform):
 ARMS = ports_for(CONFIG["arms"], PLATFORM)
 
 
+def followers(config):
+    """The arms that lead no other arm, in the order listed: left then right when side by side."""
+    leaders = set(config.get("leaders", {}).values())
+    names = []
+    for name in config["arms"]:
+        if name not in leaders:
+            names.append(name)
+    return names
+
+
 def port(name):
     return ARMS[name]
 

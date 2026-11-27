@@ -168,17 +168,7 @@
     <div class="banner manual" id="uncalibrated" hidden>Twin not calibrated yet, so the keys and the gripper drag
       can't move this arm. See "Twin calibration" below.</div>
   </div>
-  <details id="camera" open>
-    <summary>iPhone LiDAR</summary>
-    <div class="body">
-      <iframe id="cloud" src="/cloud" title="iPhone LiDAR point cloud"></iframe>
-      <p class="hint"><span id="camera-status" role="status">Camera: connecting…</span>,
-        <a href="/cloud" target="_blank" rel="noopener">open large</a></p>
-      <button id="record">Start recording</button>
-      <p class="hint" id="record-status" role="status">Not recording</p>
-    </div>
-  </details>
-  <details id="fold">
+  <details id="fold" open>
     <summary>Cloth fold</summary>
     <div class="body">
       <img id="camera-picture" alt="Live camera picture" hidden>
@@ -206,6 +196,16 @@
       </div>
       <img id="fold-look-picture" alt="The last look: cloth outline in green, pinch points in red, place points in blue" hidden>
       <pre id="fold-output" aria-live="polite" hidden></pre>
+    </div>
+  </details>
+  <details id="camera" open>
+    <summary>iPhone LiDAR</summary>
+    <div class="body">
+      <iframe id="cloud" src="/cloud" title="iPhone LiDAR point cloud"></iframe>
+      <p class="hint"><span id="camera-status" role="status">Camera: connecting…</span>,
+        <a href="/cloud" target="_blank" rel="noopener">open large</a></p>
+      <button id="record">Start recording</button>
+      <p class="hint" id="record-status" role="status">Not recording</p>
     </div>
   </details>
   <details class="manual" open>
@@ -1000,7 +1000,6 @@ function render() {
     : "Keys move the gripper as seen from this view. With the left button, drag the orange ball to move it (Shift-drag: up and down) or another part to turn its joint. Right-drag turns the view, the wheel zooms. Solid is the arm, blue is where you are sending it.";
   document.getElementById("idle").disabled = gamepad || btn.disabled;
   document.getElementById("gamepad").hidden = !gamepad;
-  document.getElementById("fold").hidden = gamepad;
   if (gamepad) document.getElementById("gamepad-status").textContent = state.gamepad;
   if (gamepad && state.gamepad_sticks) {
     const s = state.gamepad_sticks, signed = v => (v < 0 ? "" : "+") + v.toFixed(2);

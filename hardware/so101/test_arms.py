@@ -24,6 +24,12 @@ def test_an_arm_with_no_port_on_this_platform_is_left_out():
     assert "leader" not in arms.ports_for(CONFIG_ARMS, "windows")
 
 
+def test_followers_are_the_arms_that_lead_nothing_in_the_order_listed():
+    config = {"arms": {"arm2": {}, "leader": {}, "arm1": {}}, "leaders": {"arm1": "leader"}}
+    assert arms.followers(config) == ["arm2", "arm1"]
+    assert arms.followers({"arms": {"arm1": {}, "arm2": {}}}) == ["arm1", "arm2"]
+
+
 def test_an_unknown_platform_is_refused():
     with pytest.raises(SystemExit):
         arms.ports_for(CONFIG_ARMS, "linux")

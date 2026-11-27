@@ -87,6 +87,7 @@ class Gamepad:
         self.last_tick = None
         self.loop_ms = 0.0
         self.homing = False
+        self.lent_out = False  # the arms were lent to a cloth fold on the last step
         self.y_was_down = False
         self.tips = [None, None]  # per arm: a fingertip point dragged in the panel, base frame, m
         self.claws = [None, None]  # per arm: the jaw limit a claw key sent it to, until it is there
@@ -630,6 +631,14 @@ class Gamepad:
         self.last_tick = now
         left, right = self.arms
         with left.lock, right.lock:
+            if left.lent or right.lent:
+                # A cloth fold has the serial ports: nothing is read or sent until the arms are back.
+                self.lent_out = True
+                self.stop_locked("A cloth fold has the arms")
+                return
+            if self.lent_out:
+                self.lent_out = False
+                self.status = "The arms are back. Press A to drive again"
             # Refresh both encoder snapshots before solving. Torque requests still use the panel's arm API.
             reads = [arm.read_present() for arm in self.arms]
             torque_changed = False
