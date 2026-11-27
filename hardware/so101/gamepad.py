@@ -46,7 +46,7 @@ MAX_FAILS = 15  # servo reads or writes missed in a row before driving is switch
 LOG_EVERY = 2.0  # s between the counts written to the log
 JOINTS = tuple(replay.MOTOR_IDS)
 # Per arm, left then right: the button for one way and the button for the other.
-ROLL_BUTTONS = (("dpad_left", "dpad_right"), ("x", "b"))
+ROLL_BUTTONS = (("dpad_right", "dpad_left"), ("b", "x"))
 TILT_BUTTONS = (("dpad_down", "dpad_up"), ("a", "y"))
 # View is the two squares left of the centre, Menu the three bars right of it.
 JAW_BUTTONS = ("view", "menu")
