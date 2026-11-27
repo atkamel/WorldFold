@@ -513,6 +513,24 @@ def test_replay_goes_to_the_idle_pose_first_and_ends_there(env):
         assert writes.index(idle) < writes.index(first_target(env, traj, side))
 
 
+def test_the_glide_back_to_the_idle_pose_is_quicker_than_the_glides_out(env):
+    r = env.replay
+    traj = make_traj()
+    idle = {m: 1500 + 10 * m for m in range(1, 7)}
+    write_idle(env, "L", idle)
+    write_idle(env, "R", idle)
+    assert r.main([write_traj(env, traj), "--left", "L", "--right", "R", "--speed", "1"]) == 0
+    writes = env.ports["devL"].writes
+    out = writes[writes.index(idle):writes.index(first_target(env, traj, "left")) + 1]
+    back = writes[-10:]
+    slow = r.RAMP_DEG_S * r.TICK_SECONDS * r.STEPS_PER_DEGREE
+    quick = r.RETURN_DEG_S * r.TICK_SECONDS * r.STEPS_PER_DEGREE
+    out_step = max(abs(b[m] - a[m]) for a, b in zip(out, out[1:]) for m in a)
+    back_step = max(abs(b[m] - a[m]) for a, b in zip(back, back[1:]) for m in a)
+    assert out_step <= slow + 1
+    assert slow + 1 < back_step <= quick + 1
+
+
 def test_an_idle_pose_outside_the_limits_is_clamped(env):
     traj = make_traj()
     idle = {m: 2047 for m in range(1, 7)}

@@ -48,6 +48,7 @@ STEPS_PER_DEGREE = 4096 / 360
 RAD_PER_STEP = 2 * math.pi / 4096
 TICK_SECONDS = 0.02  # ramp / check update period (50 Hz, as ui.py)
 RAMP_DEG_S = 20  # slowest allowed approach to the first target
+RETURN_DEG_S = 40  # the glide back to the idle pose: at 20 its slower joints crawl at 3 to 6 deg/s and stutter
 MAX_DEG_S = 60  # per-joint ceiling while playing
 CLAMP_REFUSE_DEG = 2
 GRASP_RAD = 0.2  # gripper target below this = the grasp
@@ -432,9 +433,10 @@ def idle_goals(follower, motors):
     return goals
 
 
-def ramp_together(followers, start, goal, log=None, phase=None):
-    """Ramp every arm from start[side] to goal[side] in step. An arm whose goal is None stays where it is.
-    Returns where each arm ends up. With `log` (a StepLog), the glide is logged under `phase`."""
+def ramp_together(followers, start, goal, log=None, phase=None, speed_deg_s=RAMP_DEG_S):
+    """Ramp every arm from start[side] to goal[side] in step, no joint faster than speed_deg_s. An arm whose goal
+    is None stays where it is. Returns where each arm ends up. With `log` (a StepLog), the glide is logged under
+    `phase`."""
     end = {}
     steps = {}
     for side in followers:
@@ -442,7 +444,7 @@ def ramp_together(followers, start, goal, log=None, phase=None):
             end[side] = start[side]
             continue
         end[side] = goal[side]
-        points = ramp_points(start[side], goal[side])
+        points = ramp_points(start[side], goal[side], speed_deg_s)
         if points:
             steps[side] = points
     longest = 0
@@ -778,7 +780,7 @@ def move(args, progress, traj, followers, ticks, motors, present, at, idle, firs
             print(f"  {name}: {got:7.1f} vs {want:7.1f}  (error {got - want:+.1f})")
 
     progress["step"] = "ramp back to the idle pose"
-    ramp_together(followers, last, idle, log, "glide back to the idle pose")
+    ramp_together(followers, last, idle, log, "glide back to the idle pose", RETURN_DEG_S)
     for side, f in followers.items():
         if idle[side] is not None:
             print(f"{side} ({f.name}) is back at its idle pose, torque on.")
