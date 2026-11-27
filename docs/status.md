@@ -1,6 +1,6 @@
 # Status
 
-**Updated:** 2026-11-25 · **Branch:** `feat/teleop` (SO-101 and two-arm gamepad side tracks) · **Phase:** Q, the
+**Updated:** 2026-11-26 · **Branch:** `feat/teleop` (SO-101 and two-arm gamepad side tracks) · **Phase:** Q, the
 quarter fold on Isaac (revised plan of 2026-10-22, steps 1 to 3)
 
 One-screen answer to "where are we". Update it at the end of every work pass (see `CLAUDE.md`) and add a line to the
@@ -76,8 +76,8 @@ released, still), user 2026-10-22.
   through the iPhone (`fold_camera.py`), and watched throughout with RGB and LiDAR over Record3D USB (`fold_live.py`:
   arms masked out by height above the table, the cloth's near edge tracked, the place moved with it mid-carry, every
   frame and control step recorded). Grasp check on the jaw readings with a retry. Two-arm teleop with a leader arm
-  (`ui.py`). Both followers configured (`arm1` left, `arm2` right since the
-  arms changed places on 2026-11-25; the fold calibration is from before that). Steps in `hardware/so101/README.md`. First run, in
+  (`ui.py`). Both followers configured (`arm2` left, `arm1` right: the order
+  in `arms.json`, put back on 2026-11-26 after a day listed the other way round). Steps in `hardware/so101/README.md`. First run, in
   order: `replay.py --read` and `--check` on both arms (the tick map is unverified), one arm with no cloth,
   `fold_camera.py calibrate`, `fold_live.py --dry-run` for the first real frames, then `fold_live.py --grasp-check`.
   The 30 cm cloth does not fit the reach at both ends (results.md).
@@ -203,6 +203,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
+
+- 2026-11-26 · **`arms.json` lists `arm2` (left) before `arm1` again (user: the left stick drove the right arm and the right stick the left):** the order from 2026-11-25 crossed the sticks on the rig, so it is put back; sticks, bumpers and triggers, the keyboard's two hands and the fold's left and right all follow it; `test_arms.py`, `test_fold_job.py`, `test_gamepad.py`, `test_ui_requests.py`: 75 passed; not driven on the arms since · (this commit)
 
 - 2026-11-25 · **The scripted cloth fold can be run from gamepad mode, and the arms changed places (user):** the two followers were put down the other way round, so `arms.json` lists `arm1` (left) before `arm2`; the fold's left and right are the followers in that order (`arms.followers`), not the `arm2`, `arm1` written into `fold_job.py`; the Cloth fold section shows in `--gamepad` and `/fold/start` is taken there; while a fold has the arms the controller loop reads and sends nothing, and A drives again afterwards; not run on the arms, the page not opened in a browser, and the fold calibration (touches, pinch heights) is from the old placement; `test_arms.py`, `test_fold_job.py`, `test_ui_requests.py`, `test_gamepad.py`, `test_ui_lend.py` 77 passed; fast 263 passed, 5 skipped, 1 failed (#17); the rest of the hardware suite not re-run · (this commit)
 
