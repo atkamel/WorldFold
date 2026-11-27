@@ -48,7 +48,7 @@ JOINTS = tuple(replay.MOTOR_IDS)
 # Per arm, left then right: the button for one way and the button for the other.
 ROLL_BUTTONS = (("dpad_left", "dpad_right"), ("x", "b"))
 TILT_BUTTONS = (("dpad_down", "dpad_up"), ("a", "y"))
-# The rear AGL and AGR buttons send nothing of their own: set them on the controller to copy these two.
+# View is the two squares left of the centre, Menu the three bars right of it.
 JAW_BUTTONS = ("view", "menu")
 
 

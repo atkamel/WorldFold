@@ -490,6 +490,24 @@ python -m imitation.train --policy vision --root outputs/rig/datasets --dataset 
   the fold ended, and no episode is marked as ended. The trainer fills what follows an ended episode with zeros,
   which for these targets would teach "go to the zero pose".
 
+### Collecting episodes and correcting a policy from the panel (checked on a stand-in rig only)
+
+The panel (`ui.py`, with or without `--gamepad`) covers the loop of recording episodes, playing a trained network and
+correcting it. Building a dataset and training stay commands (step 3 above).
+
+- **Episodes.** Start recording, drive the fold, Stop recording. The take then shows Good, Bad and Discard. Good
+  and Bad write the `label.json` that `rig_dataset.py` reads; Discard deletes the take's folder. The count under it
+  covers every teleop recording in `runs/`. Start each take from the idle poses.
+- **Fold and learn** (Cloth fold section) runs `dagger_run.py` as Fold runs the scripted fold: the arms are lent,
+  the pauses become Continue, the run is recorded. "Network trust deg" is its `--trust-deg`: 0 lets the scripted
+  fold drive with the network watching. This trains DAgger's own network (see `DAGGER.md`), which never sees the
+  picture and cannot learn from teleop episodes.
+- **Trained policy** runs `camera_run.py` with the weights and the dataset version named there. The panel keeps the
+  phone, so the script reads the pictures from the panel (`--frames`, the panel's `/frame.npz`, `panel_phone.py`).
+  Take over stops the script, the arms come back holding where they are, and a recording marked as a correction
+  (`"correction": true` in its `meta.json`) starts: drive the rest of the fold, stop the recording and label it.
+  Never run on the arms, and there is no trained network yet.
+
 ### Playing a camera policy on the arms (`camera_run.py`, checked on a stand-in rig only)
 
 ```bash
@@ -634,10 +652,10 @@ Everything that moves the arms is on the controller; driving is started and stop
 | the arm down, faster the further the trigger is pulled | LT | RT |
 | tilt the wrist joint up, down, while held (60 deg/s, `WRIST_SPEED`) | D-pad up, down | Y, A |
 | turn the claw about the wrist, while held (90 deg/s, `ROLL_SPEED`) | D-pad left, right | X, B |
-| open the claw a little (30 deg, `CLAW_OPEN`) or shut it | AGL | AGR |
+| open the claw a little (30 deg, `CLAW_OPEN`) or shut it, one press each way | View (two squares) | Menu (three bars) |
 
-The rear AGL and AGR buttons send nothing of their own: each copies another button, set on the controller itself.
-Set AGL to copy View and AGR to copy Menu (`JAW_BUTTONS` in `gamepad.py`); View and Menu work the claws too.
+The claw buttons are `JAW_BUTTONS` in `gamepad.py`. The rear AGL and AGR buttons send nothing of their own: each
+copies whichever button it is set to on the controller itself.
 
 | on the panel | what it does |
 |---|---|

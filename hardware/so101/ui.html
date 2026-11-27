@@ -81,7 +81,7 @@
   .fold-options { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 12px; color: var(--muted); }
   .fold-options label { display: flex; flex-direction: column; gap: 2px; }
   .fold-options label.tick { flex-direction: row; align-items: center; gap: 6px; }
-  .fold-options select, .fold-options input[type=number] {
+  .fold-options select, .fold-options input[type=number], .fold-options input[type=text] {
     font: inherit; padding: 5px 6px; border-radius: 6px; border: 1px solid var(--line);
     background: var(--raised); color: var(--ink); }
   #fold-prompt p { margin: 0 0 8px; }
@@ -147,7 +147,7 @@
         <span><kbd>LT</kbd> <kbd>RT</kbd></span><span>left, right arm down, faster the further it is pulled</span>
         <span>D-pad <kbd>↑</kbd> <kbd>↓</kbd> &nbsp; <kbd>Y</kbd> <kbd>A</kbd></span><span>tilt the left, right wrist up and down</span>
         <span>D-pad <kbd>←</kbd> <kbd>→</kbd> &nbsp; <kbd>X</kbd> <kbd>B</kbd></span><span>turn the left, right claw</span>
-        <span><kbd>AGL</kbd> <kbd>AGR</kbd></span><span>open or shut the left, right claw, once AGL is set on the controller to copy View and AGR to copy Menu</span>
+        <span><kbd>View</kbd> <kbd>Menu</kbd></span><span>open or shut the left, right claw (the two squares, the three bars)</span>
         <span>drag the orange ball</span><span>while driving: that gripper goes to where you drop it, as far as it can reach</span>
         <span>right-drag, wheel</span><span>turn the view, zoom</span>
       </div>
@@ -178,11 +178,14 @@
         <label>Speed <input type="number" id="fold-speed" min="0.1" max="1" step="0.1" value="0.3"></label>
         <label>Torque cap % <input type="number" id="fold-torque" min="10" max="100" step="5" value="50"></label>
         <label class="tick"><input type="checkbox" id="fold-grasp"> Grasp check</label>
+        <label title="Fold and learn: how far, in degrees, the network's row may be from the scripted fold's and still be sent. 0: the scripted fold drives and the network only watches.">Network trust deg
+          <input type="number" id="fold-trust" min="0" max="5" step="0.5" value="0"></label>
       </div>
       <div class="buttons">
         <button id="fold-calibrate">Calibrate</button>
         <button id="fold-look">Look</button>
         <button id="fold-run">Fold</button>
+        <button id="fold-learn" title="The scripted fold with DAgger's network in the loop (dagger_run.py); the network is trained after the fold">Fold and learn</button>
         <button id="fold-stop" class="stop" disabled>Stop</button>
       </div>
       <p class="hint" id="fold-status" role="status">Idle.</p>
@@ -197,6 +200,23 @@
       <pre id="fold-output" aria-live="polite" hidden></pre>
     </div>
   </details>
+  <details id="policy">
+    <summary>Trained policy</summary>
+    <div class="body">
+      <p class="hint">Plays a network trained on your recorded episodes (camera_run.py). Take over stops it, gives
+        you the arms where they are and records what you drive as a correction. Not yet run on the arms. Its
+        prompts and output show under Cloth fold.</p>
+      <div class="fold-options">
+        <label>Weights <input type="text" id="policy-weights" value="outputs/rig/runs/vision_v0/final.pt"></label>
+        <label>Dataset <input type="text" id="policy-dataset" value="outputs/rig/datasets/rig_v0"></label>
+      </div>
+      <div class="buttons">
+        <button id="policy-run">Run policy</button>
+        <button id="policy-takeover" class="stop" disabled>Take over</button>
+      </div>
+      <p class="hint" id="policy-status" role="status"></p>
+    </div>
+  </details>
   <details id="camera" open>
     <summary>iPhone LiDAR</summary>
     <div class="body">
@@ -205,6 +225,15 @@
         <a href="/cloud" target="_blank" rel="noopener">open large</a></p>
       <button id="record">Start recording</button>
       <p class="hint" id="record-status" role="status">Not recording</p>
+      <div id="episode" hidden>
+        <p class="hint" id="episode-name"></p>
+        <div class="buttons">
+          <button id="episode-good">Good</button>
+          <button id="episode-bad">Bad</button>
+          <button id="episode-discard" title="Deletes this take's folder">Discard</button>
+        </div>
+      </div>
+      <p class="hint" id="episode-counts" role="status"></p>
     </div>
   </details>
   <details class="manual" open>
@@ -1062,6 +1091,12 @@ async function refreshRecording() {
       ? `Recording: ${status.steps} steps to ${status.folder}`
       : "Not recording";
     document.getElementById("camera-status").textContent = `Camera: ${status.camera}`;
+    const counts = status.counts;
+    document.getElementById("episode-counts").textContent =
+      `Episodes: ${counts.good} good, ${counts.bad} bad, ${counts.unlabelled} not labelled`;
+    document.getElementById("episode").hidden = recording || !status.last;
+    document.getElementById("episode-name").textContent =
+      `Last take ${status.last}: ${status.last_label ?? "not labelled yet"}`;
   } catch {
     document.getElementById("camera-status").textContent = "Camera: no answer from ui.py";
   }
@@ -1072,6 +1107,13 @@ recordButton.onclick = async () => {
               { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   refreshRecording();
 };
+for (const word of ["good", "bad", "discard"]) {
+  document.getElementById(`episode-${word}`).onclick = async () => {
+    await fetch("/record/label", { method: "POST", headers: { "Content-Type": "application/json" },
+                                   body: JSON.stringify({ label: word }) });
+    refreshRecording();
+  };
+}
 refreshRecording();
 setInterval(refreshRecording, 500);
 </script>
@@ -1081,7 +1123,11 @@ const foldButtons = {
   calibrate: document.getElementById("fold-calibrate"),
   look: document.getElementById("fold-look"),
   fold: document.getElementById("fold-run"),
+  learn: document.getElementById("fold-learn"),
 };
+const policyRun = document.getElementById("policy-run");
+const policyTakeover = document.getElementById("policy-takeover");
+const policyStatus = document.getElementById("policy-status");
 const foldStop = document.getElementById("fold-stop");
 const foldStatus = document.getElementById("fold-status");
 const foldPrompt = document.getElementById("fold-prompt");
@@ -1101,11 +1147,12 @@ function sendFold(path, body) {
 
 async function startFold(mode) {
   const options = { colour: document.getElementById("fold-colour").value };
-  if (mode === "fold") {
+  if (mode === "fold" || mode === "learn") {
     options.speed = Number(document.getElementById("fold-speed").value);
     options.torque = Number(document.getElementById("fold-torque").value);
     options.grasp_check = document.getElementById("fold-grasp").checked;
   }
+  if (mode === "learn") options.trust = Number(document.getElementById("fold-trust").value);
   const answer = await sendFold("/fold/start", { mode, options });
   foldMessage = answer.ok ? "" : `Not started: ${(await answer.json()).error}.`;
   refreshFold();
@@ -1124,6 +1171,8 @@ async function refreshFold() {
   if (!colourSet && status.colour) { document.getElementById("fold-colour").value = status.colour; colourSet = true; }
   for (const button of Object.values(foldButtons)) button.disabled = busy;
   foldStop.disabled = !busy;
+  policyRun.disabled = busy;
+  policyTakeover.disabled = !(busy && status.mode === "policy");
   const what = status.mode ? `${status.mode}: ` : "";
   foldStatus.textContent = foldMessage || (status.state === "idle" ? FOLD_WORDS.idle : what + FOLD_WORDS[status.state] + ".");
   foldPrompt.hidden = status.state !== "waiting";
@@ -1144,6 +1193,23 @@ lookPicture.onload = () => { lookPicture.hidden = false; };
 lookPicture.onerror = () => { lookPicture.hidden = true; };
 for (const [mode, button] of Object.entries(foldButtons)) button.onclick = () => startFold(mode);
 foldStop.onclick = () => sendFold("/fold/stop").then(refreshFold);
+policyRun.onclick = async () => {
+  const options = {
+    policy: document.getElementById("policy-weights").value,
+    dataset: document.getElementById("policy-dataset").value,
+    torque: Number(document.getElementById("fold-torque").value),
+  };
+  const answer = await sendFold("/fold/start", { mode: "policy", options });
+  policyStatus.textContent = answer.ok ? "Started: see Cloth fold above." : `Not started: ${(await answer.json()).error}.`;
+  refreshFold();
+};
+policyTakeover.onclick = async () => {
+  const answer = await sendFold("/policy/takeover");
+  policyStatus.textContent = answer.ok
+    ? "You have the arms and a correction is being recorded. Stop recording when done, then label it."
+    : `Not taken over: ${(await answer.json()).error}.`;
+  refreshFold();
+};
 document.getElementById("fold-continue").onclick = () => sendFold("/fold/continue").then(refreshFold);
 document.getElementById("fold-cancel").onclick = () => sendFold("/fold/stop").then(refreshFold);
 refreshFold();

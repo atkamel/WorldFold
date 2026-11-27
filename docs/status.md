@@ -18,8 +18,8 @@ released, still), user 2026-10-22.
 - **Two-arm gamepad teleop (user, 2026-11-19, controls changed 2026-11-23 and 2026-11-26):** `python
   hardware/so101/ui.py --gamepad`, every move on the controller. Each stick places its arm's gripper (sideways
   turns the base, forward and back reach), LB and RB raise and LT and RT lower; the D-pad tilts and turns the left
-  wrist, Y A and X B the right; the rear AGL and AGR buttons toggle the claws once they are set on the controller
-  to copy View and Menu. The panel's Drive / hold button starts driving, Go to idle sends both arms to their idle
+  wrist, Y A and X B the right; View (two squares) and Menu (three bars) toggle the left and right claw. The
+  panel's Drive / hold button starts driving, Go to idle sends both arms to their idle
   poses and Stop (Space, Esc) stops; dragging a gripper in the 3D view sends it to the dropped point. The
   2026-11-26 layout has only run on fake servos. The paired loop checks both arms and the table in one model before sending a step, and since 2026-11-23
   also parts two joints apart (forearm and shoulder housing, wrist and upper arm), which overlap by up to 7 cm in
@@ -204,6 +204,10 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
+
+- 2026-11-26 · **The panel covers collecting episodes, DAgger's fold and a trained policy with takeover (user: collect episodes, train, let it run, correct where it goes wrong):** a stopped recording is labelled Good or Bad from the page (the `label.json` `rig_dataset.py` reads) or discarded (its folder deleted), with a count of the teleop recordings in `runs/`; "Fold and learn" runs `dagger_run.py` through the fold job with its `--trust-deg`; "Trained policy" runs `camera_run.py`, which reads the phone's pictures from the panel (`--frames`, `/frame.npz`, `panel_phone.py`), and Take over stops it and starts a recording marked as a correction; DAgger's network and the camera policy are two networks, and teleop episodes train only the second; none of it run on the arms or opened in a browser, no camera policy is trained yet, and the fold calibration is still from before the arms were moved; `test_teleop_record.py`, `test_fold_job.py`, `test_ui_requests.py`, `test_ui_lend.py`, `test_panel_camera.py`, `test_camera_run.py`, `test_dagger.py` 74 passed; the rest of the hardware suite not re-run · (this commit)
+
+- 2026-11-26 · **The claw toggles are named as View and Menu (user: the two-squares button for the left jaw, the three-bars button for the right, as toggles):** the loop already toggled the claws on those two buttons; the page's table, the README and this file said AGL and AGR, and say View and Menu; no code path changed, no tests run; today's CSVs hold no View or Menu press, so the two are not yet seen from the real controller · (this commit)
 
 - 2026-11-26 · **Every move is on the controller, driving starts and stops on the panel (user: no keybinds; D-pad for the left wrist, X B and Y A for the right, AGL and AGR for the jaws, A's and Y's jobs and stop on the panel):** D-pad left and right turn the left claw and up and down tilt the left wrist, X and B turn the right claw and Y and A tilt the right wrist; View and Menu toggle the left and right claw, and AGL and AGR do once set on the controller to copy them (neither reader has an input of their own for them); the panel has a Drive / hold button, Go to idle sends both arms home, and the panel's Stop is the only stop (B turns a claw); the page's wrist and claw keys and their `/gamepad/hold` and `/gamepad/claw` requests are gone; the Windows reader takes X, the D-pad, View and Menu; `test_gamepad.py`, `test_ui_requests.py`, `test_arms.py`, `test_fold_job.py` and `hardware/controller`: 79 passed; fast suite 263 passed, 5 skipped, 1 failed (#17); not driven on the arms, the page not opened in a browser, the Windows button bits not read from the real controller · (this commit)
 
