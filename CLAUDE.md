@@ -20,6 +20,9 @@ Read before doing any work in this repo. Applies to every agent and every sessio
    dataset version and Wilson interval). Spec changes go into `docs/imitation.md`.
 4. Run `pytest -m "not slow"` (and `-m slow` if you touched the sim/env) and record the
    result in the pass log line.
+   Failing on Windows before any change (2026-11-27): `test_rlpd.py::test_learns_toy_placement`, three in
+   `test_replay.py` (two slow encoder reads, the grasp-check refusal), one in `test_dagger.py` (renames a rows
+   file it still has open).
 5. Commit code **and** the doc updates together, so the status never lags the code.
 
 A pass is not finished until status.md reflects it.
@@ -55,12 +58,28 @@ itself and never accepts a subagent's "it passes" on trust.
 - Read the run before changing a setting: `runs/<time>/plan.json` and `steps.jsonl` give where each arm was
   sent, the claw's lean, whether the table stopped the fingertip (it ends above the height it was sent to), and
   whether the jaw holds cloth (about 1.5 deg more open than its empty reading).
-- Only a fold started from the panel (`ui.py`, Fold) saves pictures. The phone looks from behind the arms and
-  cannot see the jaws: work the jaw out in the arm model, do not ask for a description.
+- A fold from the panel or from `dagger_run.py` saves pictures in `runs/<time>/frames/` (5 a second, times in
+  `frames.jsonl`): look at the frame at the pinch row before changing a setting. With `ui.py` stopped,
+  `rgbd.Phone()` gives a frame of the table as it is. The phone cannot see the jaws: do not ask for a description.
+- The jaw reading is not proof of a hold: on the blue waffle cloth a jaw carrying a corner read within 0.2 deg of
+  empty. The pictures show whether the corner lifted.
 - Check the cloth fits before tuning. A corner is grabbed only with the claw within about 10 deg of upright
   (inside about 34 cm of the base), landing under 2 cm inside the far edge, on the table. From the base's front
   edge (6.5 cm) that leaves about 27.5 cm of cloth depth.
+- The cloth has a window of 3 to 4 cm. Nearer than 7 cm in front of either base is not searched: a near corner
+  that reads the same number on every look (9.6 cm on 2026-11-27) is cut off and the place point is wrong. Far
+  corners past about 42 cm get the pinch pulled in and missed. A near right corner tucked in (Y near -24 in the
+  left frame, not -27) gives `release_short_mm` 0 on the right arm and a crooked fold.
+- The jaws catch only at the cloth's edge, fingertips touching it: a pinch landing inside flat cloth, or 2 mm
+  high, closes on nothing. A shorter reach sags less and ends higher, so moving the pinch in needs a lower
+  `--pinch-height`.
 - The arm model's table is not the real one and differs between the arms: `--pinch-height LEFT RIGHT`.
+- A moved phone: check each touch picture shows the fingertip before clicking (`--outer 0` when the arm's outer
+  side is out of view), and expect `--inset`, `--overshoot` and `--pinch-height` to need setting again.
+- `dagger_run.py`: every takeover that changes the offsets (`runs/dagger/nudges.json`) puts the earlier rows
+  aside, so a correction on every fold leaves the network one fold of rows. A takeover before the fingertips are
+  at the cloth stores a useless offset; one after the pinch is stored as the carry offset, and a carry offset
+  unlike the pinch offset is a jump after the grasp check. Put a steady error in the flags, not in nudges.
 - `fold_camera.py calibrate`, and the panel's Calibrate, put every saved setting they are not given back to its
   default.
 - Stop `ui.py` before running a script: it holds the phone and both serial ports. A moved phone or base means
