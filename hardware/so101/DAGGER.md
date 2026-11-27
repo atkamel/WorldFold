@@ -32,9 +32,68 @@ plan's pinch heights already sit at the table.
 The scripted fold drives every row, and nothing is learned from the run, with `--grasp-check`, `--no-gripper` or a
 `--closed` other than -0.17.
 
+## It starts off as the scripted fold
+
+Without `--trust-deg` the network has to earn the fold.
+
+- The first fold is the scripted fold, row for row. The network watches, and is trained afterwards.
+- It drives a fold, inside 2 degrees, only when on the fold before its rows were within 2 degrees of the plan's on
+  at least 90% of the rows. The run says which it is before anything moves.
+- A fold where it falls under 90% hands the next fold back to the scripted fold.
+
+`--trust-deg 0` keeps the scripted fold driving whatever the network has earned. `--trust-deg 2` lets the network
+drive now.
+
+## The intervention button
+
+Press the Xbox button on the controller and the fold waits on the row it is at. The arms are then driven by the
+gamepad teleop itself, the code of the panel's gamepad mode, with its controls and its checks. Press the Xbox
+button again and the fold goes on.
+
+While the fold waits the controls are the gamepad mode's own, whatever its layout is at the time. The README's
+gamepad section lists them. Two things differ from the panel
+
+- Drive is pressed for you. Let the sticks rest a moment with every button released and driving starts. The panel's
+  Drive button belongs to the panel's own gamepad, which has lent the arms to the fold
+- the terminal, or the panel's output when the fold was started with Fold and learn, prints the teleop's status
+  line whenever it changes, so a blocked move shows there
+
+What is kept is where each fingertip ended against the plan, up to 3 cm on any axis. A fingertip left further
+than that comes back to 3 cm when the fold goes on. The fingertip keeps that offset for the rest of the fold. An
+intervention before the corner is lifted also moves where it is placed. One during the carry moves the carry and
+the place alone.
+
+The offset is saved in `runs/dagger/nudges.json` and the next fold starts with it. So a correction holds from the
+next fold on without any training. The corrected rows are what the network is taught, and what its 2 degrees are
+measured from. Rows saved by folds before the offset changed are put aside in a `before_nudge_<time>` folder.
+
+`--forget-nudges` starts again from no offsets. `--no-nudge` leaves the controller alone.
+
+Check the Xbox button first, with no arms. This prints it as it is read.
+
+```
+python hardware/so101/dagger_nudge.py
+```
+
+On Windows the Xbox button also opens the Game Bar. Switch that off under Settings, Gaming, Xbox Game Bar. The
+button is read through a call of XInput that Microsoft does not list, and that reading has not been tried on the
+rig laptop. The check above shows whether it works.
+
+With offsets stored, the first fold is the scripted fold moved by those offsets.
+
+## Pictures
+
+The phone's pictures and depth are saved through the fold, 5 a second, as a panel fold saves them. The script
+opens the phone, takes the look's picture from it and records into the fold's run folder beside `steps.jsonl`. At
+the end it asks whether the cloth folded and writes `label.json`. `rig_dataset.py list` then shows the run.
+
+No pictures are saved with `--image`, `--log` or `--dry-run`. Those run as `fold_camera.py` runs them.
+
 ## On the rig, in order
 
-Stop `ui.py` first, as for any script. Use the arguments you give `fold_camera.py fold`.
+From the panel, Fold and learn runs this script with the arms lent and the run recorded, and its "Network trust
+deg" is `--trust-deg`. From the command line, stop `ui.py` first, as for any script, and use the arguments you
+give `fold_camera.py fold`.
 
 ```
 # once, no arms needed, about 15 minutes. The planned folds the network is trained on beside the rig's rows
@@ -43,12 +102,12 @@ python hardware/so101/dagger_data.py --episodes 900 --seed 0 --out outputs/hardw
 # nothing moves. Prints the share of rows the network would drive for the cloth in view
 python hardware/so101/dagger_run.py --dry-run --left arm2 --right arm1
 
-# the scripted fold drives, the network watches and is trained afterwards
-python hardware/so101/dagger_run.py --trust-deg 0 --left arm2 --right arm1 --speed 0.7 --torque-limit 50
-
-# the network drives inside 2 degrees of the scripted fold
-python hardware/so101/dagger_run.py --trust-deg 2 --left arm2 --right arm1 --speed 0.7 --torque-limit 50
+# a fold. The first one is the scripted fold with the network watching. Later ones are the network's once earned
+python hardware/so101/dagger_run.py --left arm2 --right arm1 --speed 0.7 --torque-limit 50
 ```
+
+The first command is only needed for the training after each fold. Until that file exists the folds still run and
+their rows and pictures are kept, and the network stays as it is. It can run in a second terminal while you fold.
 
 After each fold it prints, per arm, how many rows the network drove, why the plan drove the others, and how far
 the two were apart. Then it trains for a few seconds and names the weights the next run starts from.
@@ -69,21 +128,26 @@ who drove each arm. To go back to the weights in the repo, move the `round_*` fi
 
 Measured in the arm model only (results.md on `feat/cloth-world-model`, 2026-11-26).
 
-- The weights in the repo were trained on 648 planned folds. On 72 placements kept out of training the network's
-  row is within 2 degrees of the plan's on 85% of rows. The plan drives the rest.
-- Without the scripted fold beside it the network drifts off the fold within a few rows. It is not yet a policy
-  that can run alone.
-- On a simulated arm that lags and sags, folding one placement again and again took the share from 88% to 97% in
-  three folds. Moving the cloth every fold moved the share on placements not yet folded from 88% to 90% in twelve
-  folds. Rows from the arms sharpen the placements you fold. More planned folds (`dagger_data.py --episodes`) are
-  what widens it.
+- The weights in the repo were trained on 648 planned folds, then corrected over six rounds in the arm model. On
+  72 placements kept out of training the network's row is within 2 degrees of the plan's on 93% of rows. The plan
+  drives the rest. Training them took two and a half minutes on a laptop.
+- Without the scripted fold beside it the network still drifts off the fold. It is not yet a policy that can run
+  alone.
+- With the earlier weights (85% on the same test), on a simulated arm that lags and sags, folding one placement
+  again and again took the share from 88% to 97% in three folds. Moving the cloth every fold moved the share on
+  placements not yet folded from 88% to 90% in twelve folds. Rows from the arms sharpen the placements you fold.
+- Training after a fold is 600 steps, a few seconds.
 
 ## Limits
 
-- The network learns to reproduce the scripted fold. It will not fold better than the script does.
+- The network learns to reproduce the scripted fold with your offsets. An offset is one shift for the whole pinch
+  and one for the whole carry, in the arm's own frame, wherever the cloth lies.
+- The planned folds the network is also trained on have no offsets, so after a nudge it can lag the corrected rows
+  and leave more of the fold to them.
 - It reads the cloth's place from the scripted fold's look, the joints from the encoders and the time into the
   fold. It does not see the picture.
-- A fold from the command line saves no pictures, so these runs do not yet add to a camera dataset.
+- In a recorded run the row logged as sent is the network's where it drove. The scripted fold's row for every
+  moment is in the `rows_<time>.npz` named by the run's `dagger.json`.
 - The planned folds have the bases 27 to 33 cm apart and the cloth's far edge 29 to 41 cm ahead. A cloth far
   outside that is left to the plan more often.
 - When the two arms' plans come out with different row counts, `replay.py` refuses the fold before anything moves,

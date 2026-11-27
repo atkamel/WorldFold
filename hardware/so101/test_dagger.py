@@ -9,6 +9,10 @@ import importlib
 import json
 import math
 import sys
+import tempfile
+import threading
+import time
+import types
 from pathlib import Path
 
 import numpy as np
@@ -79,10 +83,12 @@ def rig(env, tmp_path, monkeypatch):  # noqa: F811
     return env
 
 
-def run(rig, policy=None, *more, monkeypatch=None):
+def run(rig, policy=None, *more, monkeypatch=None, trust="2"):
+    """dagger_run on the saved picture, inside 2 deg unless `more` names a band or `trust` is None."""
     if policy is not None:
         monkeypatch.setattr(rig.dagger_run.dagger_net, "Policy", lambda path: policy)
-    return rig.dagger_run.main(["--store", str(rig.store), *more, *rig.fold_args])
+    band = [] if trust is None or "--trust-deg" in more else ["--trust-deg", trust]
+    return rig.dagger_run.main(["--store", str(rig.store), *band, *more, *rig.fold_args])
 
 
 def played(rig, since):
@@ -276,6 +282,261 @@ def test_the_scripted_folds_functions_are_put_back(rig, monkeypatch):
     fold, play = fold_traj.fold, rig.replay.play
     assert run(rig, OnPlan(rig.traj), "--dry-run", monkeypatch=monkeypatch) == 0
     assert fold_traj.fold is fold and rig.replay.play is play
+
+
+# --- starting off with the scripted fold, and the pictures ---
+
+def test_the_first_fold_is_the_scripted_fold_and_the_network_drives_once_it_has_earned_it(rig, monkeypatch, capsys):
+    assert fold_camera.main(["fold", *rig.fold_args]) == 0
+    scripted = played(rig, {})
+    counts = {dev: len(port.writes) for dev, port in rig.ports.items()}
+    assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch, trust=None) == 0
+    assert "No fold saved yet: the scripted fold drives this one" in capsys.readouterr().out
+    assert played(rig, counts) == scripted                           # nothing saved yet: the scripted fold, exactly
+    first = np.load(sorted(rig.store.glob("rows_*.npz"))[0])
+    assert not first["drove"].any()
+    assert rig.dagger_run.earned(rig.store) == 1.0                   # the network was on the plan throughout
+    (rig.store / "rows_00000000_000000.npz").unlink(missing_ok=True)
+    next(rig.store.glob("rows_*.npz")).rename(rig.store / "rows_20000101_000000.npz")
+    assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch, trust=None) == 0
+    assert "it drives this one inside 2 deg" in capsys.readouterr().out
+    newest = np.load(sorted(rig.store.glob("rows_*.npz"))[-1])
+    assert newest["drove"].sum() == len(newest["drove"]) - 2         # every row but each arm's last
+
+
+def test_a_network_that_was_off_the_plan_on_the_last_fold_hands_the_next_one_back(rig, monkeypatch, capsys):
+    off = OnPlan(rig.traj, lambda k, side, row: row + (0.1 if k % 5 == 0 else 0.0))    # 5.7 deg off on a fifth of rows
+    assert run(rig, off, "--no-train", monkeypatch=monkeypatch) == 0                    # a fold inside 2 deg
+    assert rig.dagger_run.earned(rig.store) == pytest.approx(0.8, abs=0.01)
+    capsys.readouterr()
+    next(rig.store.glob("rows_*.npz")).rename(rig.store / "rows_20000101_000000.npz")
+    assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch, trust=None) == 0
+    assert "under 90%: the scripted fold drives this one" in capsys.readouterr().out
+    assert not np.load(sorted(rig.store.glob("rows_*.npz"))[-1])["drove"].any()
+
+
+def test_a_fold_with_the_phone_saves_its_pictures_beside_the_log(rig, monkeypatch):
+    import rgbd
+    import rig_record
+    picture = np.asarray(Image.open(rig.fold_args[1]).convert("RGB"))
+
+    class Phone:
+        def __init__(self, device=0):
+            self.device, self.started = device, False
+
+        def start(self):
+            self.started = True
+
+        def latest(self):
+            return types.SimpleNamespace(rgb=picture, depth=np.full(picture.shape[:2], 0.5, np.float32),
+                                         K=(500.0, 500.0, 320.0, 240.0))
+
+        def wait(self, timeout=5.0):
+            assert self.started
+            return self.latest()
+
+    monkeypatch.setattr(rgbd, "Phone", Phone)
+    monkeypatch.setattr(rig_record, "FRAME_SECONDS", 0.01)
+    live = [a for a in rig.fold_args if a not in ("--image", rig.fold_args[1])]        # no --image: the phone is used
+    monkeypatch.setattr(rig.dagger_run.dagger_net, "Policy", lambda path: OnPlan(rig.traj))
+    assert rig.dagger_run.main(["--store", str(rig.store), "--trust-deg", "2", "--no-train", *live]) == 0
+    folder = next(p for p in (rig.tmp / "runs").iterdir() if (p / "steps.jsonl").exists())
+    frames = step_lines(folder / "frames.jsonl")
+    assert len(frames) >= 2 and len(list((folder / "frames").iterdir())) >= 2
+    note = json.loads((folder / "dagger.json").read_text())
+    assert Path(note["rows"]).exists() and note["trust_deg"] == 2.0
+    assert any(line["phase"] == "dagger" for line in step_lines(folder / "steps.jsonl"))
+    assert not list(Path(tempfile.gettempdir()).glob("dagger_look_*.png"))
+
+
+# --- the intervention button ---
+
+class Hands:
+    """Stand-ins for the Xbox button and the gamepad teleop: the fold is told to wait at the button read numbered
+    `at` (one read a row until then) for `ticks` steps of the teleop, in each of which the fingertip of each arm in
+    `moves` ({side: (x, y, z) m in all}) goes a `ticks`-th of its way."""
+
+    def __init__(self, followers, at=None, ticks=0, moves=None):
+        from kinematics import Arm
+        self.followers, self.at, self.ticks, self.moves = followers, at, ticks, moves or {}
+        self.reads, self.arm, self.waiting = 0, Arm(), False
+
+    def read(self):
+        self.reads += 1
+        return self.at is not None and self.at < self.reads <= self.at + self.ticks + 1
+
+    def take(self, command):
+        self.commands = {side: dict(c) for side, c in command.items()}
+        self.start = {side: np.array([self.followers[side].to_rad(m, c[m]) for m in range(1, 7)])
+                      for side, c in command.items()}
+        self.done = 0
+
+    def tick(self):
+        self.done += 1
+        for side, move in self.moves.items():
+            f, q = self.followers[side], self.start[side]
+            tip = self.arm.tip(q[:5])[0] + np.array(move) * self.done / self.ticks
+            solved = self.arm.solve(tip, q[:5])[0]
+            self.commands[side] = {m: f.to_ticks(m, a) for m, a in zip(range(1, 7), [*solved, q[5]])}
+        return "Driving."
+
+    def command(self, side):
+        return dict(self.commands[side])
+
+    def close(self):
+        pass
+
+
+def nudged(rig, monkeypatch, *more, **hands):
+    import dagger_nudge
+    made = {}
+
+    def controls(followers):
+        made["hands"] = Hands(followers, **hands)
+        return made["hands"], made["hands"]
+
+    monkeypatch.setattr(dagger_nudge, "controls", controls)
+    return run(rig, OnPlan(rig.traj), "--trust-deg", "0", "--no-train", *more, monkeypatch=monkeypatch)
+
+
+def tips_sent(rig, side, run_folder):
+    """(row numbers, the fingertip of each row sent to `side`, the fingertip of the plan's row) from a run's log."""
+    from kinematics import Arm
+    arm, plan = Arm(), np.array(rig.traj["arms"][side]["target"])
+    lines = [line for line in step_lines(run_folder / "steps.jsonl") if line["phase"] == "fold"]
+    rows = np.array([line["row"] for line in lines])
+    sent = np.array([arm.tip(line["target"][side][:5])[0] for line in lines])
+    return rows, sent, np.array([arm.tip(plan[k][:5])[0] for k in rows])
+
+
+def newest_run(rig):
+    return sorted(p for p in (rig.tmp / "runs").iterdir() if (p / "steps.jsonl").exists())[-1]
+
+
+def test_where_the_teleop_leaves_a_fingertip_moves_the_rest_of_the_fold_and_is_kept(rig, monkeypatch, capsys):
+    rig.store.mkdir()
+    (rig.store / "rows_19990101_000000.npz").write_bytes(b"an earlier fold")
+    T = len(rig.traj["arms"]["left"]["target"])
+    assert nudged(rig, monkeypatch, at=20, ticks=30, moves={"left": (0.01, 0.0, -0.002)}) == 0
+    out = capsys.readouterr().out
+    assert "Waiting on row 20" in out and "Driving." in out and "Going on" in out
+    kept = json.loads((rig.store / "nudges.json").read_text())
+    assert np.allclose(kept["left"]["pinch"], [0.01, 0.0, -0.002], atol=2e-4)
+    assert kept["left"]["carry"] == kept["left"]["pinch"]            # a corrected pinch carries to the place
+    assert kept["right"] == {"pinch": [0.0, 0.0, 0.0], "carry": [0.0, 0.0, 0.0]}
+    rows, sent, plan = tips_sent(rig, "left", newest_run(rig))
+    assert list(rows) == list(range(T))                              # no row lost or played twice by the wait
+    after = (rows > 22) & (rows < T - 1)
+    assert np.allclose(sent[after] - plan[after], [0.01, 0.0, -0.002], atol=1.5e-3)
+    assert np.allclose(sent[rows < 20], plan[rows < 20], atol=1e-4)  # before it: the plan
+    rows, sent, plan = tips_sent(rig, "right", newest_run(rig))
+    assert np.allclose(sent, plan, atol=1e-4)                        # the arm left alone: the plan throughout
+    for dev, side in (("devL", "left"), ("devR", "right")):         # and both end on the plan's last row
+        assert rig.ports[dev].writes[-1] == dict(zip(range(1, 7), np.round(plan_ticks(rig, side)[-1]).astype(int)))
+    saved = saved_rows(rig)                                          # the earlier fold's rows were put aside
+    assert len(list(rig.store.glob("before_nudge_*/rows_19990101_000000.npz"))) == 1
+    from kinematics import Arm
+    arm, left = Arm(), saved["side"] == "left"
+    taught = np.array([arm.tip(q[:5])[0] for q in saved["teacher"][left]])
+    planned = np.array([arm.tip(q[:5])[0] for q in np.array(rig.traj["arms"]["left"]["target"])])
+    assert np.allclose((taught - planned)[:-1], [0.01, 0.0, -0.002], atol=1.5e-3)    # every row, the early ones too
+    assert np.allclose(taught[-1], planned[-1], atol=1e-4)                           # but the last
+
+
+def test_the_next_fold_starts_with_the_stored_offsets_and_they_can_be_forgotten(rig, monkeypatch, capsys):
+    rig.store.mkdir()
+    (rig.store / "nudges.json").write_text(json.dumps({"right": {"pinch": [0.0, -0.008, 0.0],
+                                                                 "carry": [0.0, -0.008, 0.004]}}))
+    T, check = len(rig.traj["arms"]["left"]["target"]), rig.traj["marks"]["check"]
+    assert nudged(rig, monkeypatch) == 0
+    assert "right pinch (+0.0, -0.8, +0.0) cm" in capsys.readouterr().out
+    rows, sent, plan = tips_sent(rig, "right", newest_run(rig))
+    early, late = (rows > 3) & (rows <= check), (rows > check + 3) & (rows < T - 1)
+    assert np.allclose(sent[early] - plan[early], [0.0, -0.008, 0.0], atol=1.5e-3)
+    assert np.allclose(sent[late] - plan[late], [0.0, -0.008, 0.004], atol=1.5e-3)
+    rows, sent, plan = tips_sent(rig, "left", newest_run(rig))
+    assert np.allclose(sent, plan, atol=1e-4)
+    assert not list(rig.store.glob("before_nudge_*"))                # nothing changed in this fold
+    assert nudged(rig, monkeypatch, "--forget-nudges") == 0
+    assert "Stored offsets: none" in capsys.readouterr().out
+    rows, sent, plan = tips_sent(rig, "right", newest_run(rig))
+    assert np.allclose(sent, plan, atol=1e-4)
+    assert len(list(rig.store.glob("nudges_until_*.json"))) == 1
+
+
+def test_a_fingertip_left_far_off_is_kept_at_the_limit_and_one_too_close_to_the_arm_is_not_kept(rig, monkeypatch,
+                                                                                               capsys):
+    import collision
+    import dagger_nudge
+    assert nudged(rig, monkeypatch, at=20, ticks=30, moves={"left": (0.0, 0.048, 0.0)}) == 0    # 4.8 cm to the left
+    kept = json.loads((rig.store / "nudges.json").read_text())
+    assert kept["left"]["pinch"][1] == pytest.approx(dagger_nudge.MAX_NUDGE)
+    rows, sent, plan = tips_sent(rig, "left", newest_run(rig))
+    assert np.abs(sent[rows > 30][:, 1] - plan[rows > 30][:, 1]).max() <= dagger_nudge.MAX_NUDGE + 1.5e-3
+    real = collision.closest
+    monkeypatch.setattr(collision, "closest", lambda rows: (0.001, 0, ("gripper", "base")) if len(rows) == 1
+                        else real(rows))
+    (rig.store / "nudges.json").unlink()
+    capsys.readouterr()
+    assert nudged(rig, monkeypatch, at=20, ticks=30, moves={"left": (0.01, 0.0, 0.0)}) == 0
+    assert "left arm's fingertip is not kept" in capsys.readouterr().out
+    assert not (rig.store / "nudges.json").exists()
+
+
+def test_the_xbox_button_turns_waiting_over_on_each_press_and_a_lost_controller_lets_the_fold_go_on():
+    import dagger_nudge
+    now = [None]
+    button = dagger_nudge.Button(lambda: now[0], period=0.001)
+    button.close()                                                   # its thread: the test does the looking
+    time.sleep(0.02)
+    waited = []
+    for down in (False, True, True, False, None, True, True, False):   # two presses, held; a gap between them
+        now[0] = down
+        button.look()
+        waited.append(button.read())
+    assert waited == [False, True, True, True, True, False, False, False]
+    button.waiting, button.seen = True, time.monotonic() - dagger_nudge.LOST - 0.1
+    assert button.read() is False                                    # the controller gone: the fold goes on
+
+
+def test_the_gamepad_teleop_drives_the_folds_own_arms_through_its_own_loop(env, monkeypatch):  # noqa: F811
+    """The real gamepad.Gamepad on two fake-bus followers of the repo's own arms: after its stick rest, a left
+    stick pushed forward moves the left arm and leaves the right where the fold had it."""
+    import dagger_nudge
+    from hardware.controller.gip import ControllerState
+    monkeypatch.undo()                                               # the repo's arms.json, limits and idle poses
+    monkeypatch.setitem(sys.modules, "scservo_sdk", sys.modules["scservo_sdk"])
+    sys.modules.pop("gamepad", None)
+    followers = {"left": env.replay.Follower("arm2"), "right": env.replay.Follower("arm1")}
+    for f in followers.values():
+        f.connect()
+    teleop = dagger_nudge.Teleop(followers)
+    teleop.close()                                                   # its controller thread: the test feeds samples
+    time.sleep(0.05)
+    teleop.pad.shutdown.clear()
+    from kinematics import Arm
+    arm = Arm()
+    pose = [*arm.solve(np.array([0.28, 0.0, 0.08]), np.radians([0, 40, -30, 80, 0]))[0], 0.4]
+    command = {side: {m: f.to_ticks(m, a) for m, a in zip(range(1, 7), pose)} for side, f in followers.items()}
+    for side, f in followers.items():
+        f.port.pos = {m: round(t) for m, t in command[side].items()}
+    teleop.take(command)
+
+    def feed(state, ticks):
+        status = None
+        for _ in range(ticks):
+            teleop.pad.sample = (state, time.monotonic(), "")
+            status = teleop.tick()
+            time.sleep(0.02)
+        return status
+
+    assert feed(ControllerState(), 25).startswith("Driving")         # the sticks rest, then Drive is pressed for you
+    status = feed(ControllerState(left_y=30000), 15)
+    assert status.startswith("Driving")
+    moved = arm.tip([followers["left"].to_rad(m, teleop.command("left")[m]) for m in range(1, 6)])[0]
+    assert moved[0] > 0.28 + 0.01                                    # the left fingertip went forward
+    assert teleop.command("right") == command["right"]
+    assert followers["left"].port.writes and not followers["right"].port.writes
 
 
 # --- the network and a round of training ---

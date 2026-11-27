@@ -15,6 +15,11 @@ used as it was there: the joints the encoders gave, the row that had been sent, 
 fold's row for that moment, whichever of the two drove the arm. Every batch
 holds BATCH planned samples and, when there are rows from the arms, RIG_BATCH of those, so a few hundred real rows
 weigh as much as a fifth of the planned ones.
+
+A training from nothing ends with MODEL_ROUNDS rounds of the same correction in the arm model, where it costs
+nothing: the network plays every planned fold, each row built on the one it sent before and the plan's row taking
+over outside MODEL_TRUST, and the rows it met there, with the plan's rows as labels, are trained on beside the
+planned ones. Without those rounds it drove 85% of held-out rows inside 2 deg, with them 93% (results.md).
 """
 
 import argparse
@@ -39,6 +44,10 @@ RATE = 2e-3             # from nothing
 TUNE_RATE = 2e-4        # carrying on from weights
 EPOCHS = 115
 TUNE_STEPS = 600
+MODEL_ROUNDS = 6        # rounds of DAgger in the arm model after a training from nothing
+MODEL_STEPS = 4000      # training steps a round
+MODEL_RATE = 5e-4
+MODEL_TRUST = 5.0       # deg: the band the network plays in during those rounds (dagger_run's widest --trust-deg)
 HELD_OUT = 0.1          # share of the planned folds kept out of a training from nothing
 STD_FLOOR = 0.01        # an input that hardly varies is not blown up by its tiny spread
 TRUST_DEG = 2.0         # the band the held-out share of rows driven is reported for (dagger_run.TRUST_DEG)
@@ -91,6 +100,26 @@ def rig_rows(folder):
         obs.append(saved["obs"].astype(np.float32))
         label.append(saved["teacher"].astype(np.float32))
     return np.concatenate(obs), np.concatenate(label)
+
+
+def visited(policy, folds, trust, rng):
+    """(observations, the plan's rows) the network meets playing `folds` in the arm model inside a band of `trust`
+    deg: every joint reaches the row it is sent and reads up to OFFSET_DEG off it."""
+    obs, label = [], []
+    for inputs, targets in folds:
+        named = {"left": inputs[0], "right": inputs[1]}
+        for s, side in enumerate(("left", "right")):
+            mirror = MIRROR_JOINTS if side == "right" else 1.0
+            plan = targets[:, s].astype(np.float64)
+            sent = plan[0]
+            for k in range(len(plan)):
+                read = sent + np.radians(rng.uniform(-OFFSET_DEG, OFFSET_DEG, 6))
+                row = dagger_net.observation(named, side, read, sent, k * DT)
+                wanted = dagger_net.to_arm(side, policy.act(row[None])[0])
+                obs.append(row)
+                label.append(plan[k] * mirror)
+                sent = wanted if np.degrees(np.abs(wanted - plan[k])).max() <= trust else plan[k]
+    return np.array(obs, np.float32), np.array(label, np.float32)
 
 
 def free_run(policy, folds, trust=None):
@@ -147,7 +176,7 @@ def fit(layers, norm, parts, rig, steps, rate, rng, every=0):
     return layers
 
 
-def train(base, out, start=None, rows=None, steps=None, seed=0, quiet=False):
+def train(base, out, start=None, rows=None, steps=None, seed=0, quiet=False, model_rounds=None):
     """Write weights to `out` (and their JSON): from nothing on the planned folds of `base`, or carrying on from
     `start` with the rows from the arms in `rows` as well. Returns the summary written into the JSON."""
     started = time.time()
@@ -177,9 +206,20 @@ def train(base, out, start=None, rows=None, steps=None, seed=0, quiet=False):
             "obs_mean": np.asarray(norm[0], float).tolist(), "obs_std": np.asarray(norm[1], float).tolist(),
             "act_mean": np.asarray(norm[2], float).tolist(),
             "noise": {"lag_rows": LAG_ROWS, "offset_deg": OFFSET_DEG, "sent_deg": SENT_DEG}, "history": history}
+    rounds = MODEL_ROUNDS if start is None and model_rounds is None else (model_rounds or 0)
+    met = rig
+    for n in range(rounds):                 # DAgger in the arm model: see the module's docstring
+        dagger_net.save(out, layers, meta)
+        new = visited(dagger_net.Policy(out), folds[:-kept] if start is None else folds, MODEL_TRUST, rng)
+        met = (np.concatenate([met[0], new[0]]), np.concatenate([met[1], new[1]]))
+        layers = fit(layers, norm, parts, met, MODEL_STEPS, MODEL_RATE, rng)
+        if not quiet:
+            print(f"  arm-model round {n + 1} of {rounds}: {len(met[0])} rows met, {time.time() - started:.0f} s",
+                  flush=True)
     dagger_net.save(out, layers, meta)
     after = dagger_net.Policy(out)
     summary = {"base": str(base), "seed": seed, "planned_folds": len(folds), "steps": steps,
+               "arm_model_rounds": rounds,
                "started_from": None if start is None else str(start), "rows_from_arms": int(len(rig[0])),
                "seconds": round(time.time() - started),
                "on_planned_rows": errors(after, on_plan(parts), parts[4]),
@@ -209,9 +249,11 @@ def main():
     ap.add_argument("--start", help="weights to carry on from; without it the network starts from nothing")
     ap.add_argument("--rows", help="folder of rows_*.npz from dagger_run.py")
     ap.add_argument("--steps", type=int)
+    ap.add_argument("--model-rounds", type=int, help=f"rounds of DAgger in the arm model afterwards (default: "
+                    f"{MODEL_ROUNDS} from nothing, none when carrying on)")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
-    train(args.base, args.out, args.start, args.rows, args.steps, args.seed)
+    train(args.base, args.out, args.start, args.rows, args.steps, args.seed, model_rounds=args.model_rounds)
 
 
 if __name__ == "__main__":

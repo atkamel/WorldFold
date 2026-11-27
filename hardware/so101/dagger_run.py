@@ -1,6 +1,6 @@
 """The camera fold with a learned policy at the joints, corrected by the scripted fold while it runs (DAgger).
 
-    .venv-hw/bin/python hardware/so101/dagger_run.py [--trust-deg 2] [--policy WEIGHTS.npz] [--no-train] \
+    .venv-hw/bin/python hardware/so101/dagger_run.py [--trust-deg DEG] [--policy WEIGHTS.npz] [--no-train] \
         --left arm2 --right arm1 --speed 0.7 --torque-limit 50 [anything else `fold_camera.py fold` takes]
 
 This runs `fold_camera.py fold` itself, as it is: the look, the plan, look.png, its questions, then replay.py with
@@ -22,10 +22,26 @@ So the arms never leave a band of --trust-deg around the scripted fold, and --tr
 with the network only watching. The scripted fold drives every row, and nothing is learned from the run, when the
 plan is one the network was not trained for (--grasp-check, another --closed, --no-gripper).
 
+Without --trust-deg the network has to earn the fold. The scripted fold drives (a band of 0) until, on the fold
+before, the network's rows were within TRUST_DEG of the plan's on at least EARNED of the rows; then the band is
+TRUST_DEG. A fold where it falls under that share hands the next fold back to the scripted fold. So the first fold
+with a new store is always the scripted fold.
+
+The phone's pictures and depth are saved through the fold, as a panel fold saves them (rig_record.py): this script
+opens the phone, takes the picture for the look from it (handed to fold_camera.py with --image, as the panel does),
+and records into the run folder beside steps.jsonl, then asks whether the cloth folded. With --image, --log or
+--dry-run given, the fold runs as fold_camera.py runs it and no pictures are saved.
+
 Every row is kept: what the network read, what it proposed, the plan's row, and which was sent. They are saved
 to rows_<time>.npz in --store (default runs/dagger) and the network is trained on with all the rows saved there
 (dagger_train.py: a few seconds), giving round_<n>.npz, which the next run starts from. Training needs the planned
 folds of dagger_data.py at --base; without that file the rows are saved and the command to make it is printed.
+
+The intervention button (dagger_nudge.py): press the Xbox button on the controller and the fold waits, with the
+arms driven by the gamepad teleop (gamepad.py, its controls and its checks); press it again and the fold goes on
+with each fingertip as far off the plan as it was left, an offset that is kept for the folds after it. The
+corrected rows take the plan's place everywhere above: they are what the band is measured from and what the
+network is taught. --no-nudge leaves the controller alone; --forget-nudges starts again from no offsets.
 
 With --dry-run nothing moves (replay.py's own dry run); the network is then played against the plan in the arm
 model, each joint taken to be on the row before, and the share of rows it would have driven is printed.
@@ -35,13 +51,16 @@ import argparse
 import inspect
 import json
 import math
+import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 import numpy as np
 
 import dagger_net
+import dagger_nudge
 import fold_camera
 import fold_traj
 import replay
@@ -51,6 +70,7 @@ HERE = Path(__file__).parent
 START = HERE / "policies" / "camera_fold_v0.npz"
 BASE = HERE.parents[1] / "outputs" / "hardware" / "dagger" / "base.npz"
 TRUST_DEG = 2.0
+EARNED = 0.90           # share of the last fold's rows the network must have had inside TRUST_DEG to drive the next
 LOWER = 0.003           # m: how far under the plan's fingertip the network's row may put the fingertip
 MOTOR_IDS = replay.MOTOR_IDS
 
@@ -65,6 +85,17 @@ def next_round(store):
     """The path of the round after every round_<n>.npz in `store`."""
     numbers = [int(p.stem.split("_")[1]) for p in Path(store).glob("round_*.npz") if p.stem.split("_")[1].isdigit()]
     return Path(store) / f"round_{max(numbers, default=0) + 1:03d}.npz"
+
+
+def earned(store):
+    """The share of the newest saved fold's rows on which the network's row was within TRUST_DEG of the plan's
+    (whoever drove); None with no fold saved."""
+    files = sorted(Path(store).glob("rows_*.npz"))
+    if not files:
+        return None
+    rows = np.load(files[-1])
+    away = np.degrees(np.abs(rows["policy"] - rows["teacher"])).max(axis=1)
+    return float(np.mean(np.nan_to_num(away, nan=np.inf) <= TRUST_DEG))
 
 
 def capped(wanted, before, cap):
@@ -82,9 +113,11 @@ def capped(wanted, before, cap):
 class Driver:
     """Stands in for fold_traj.fold (`fold`) and replay.play (`play`) during one fold."""
 
-    def __init__(self, policy, trust_deg, plan, play):
+    def __init__(self, policy, trust_deg, plan, play, nudges=None, button=False):
         self.policy, self.trust = policy, trust_deg
         self.plan, self.scripted_play = plan, play
+        self.nudges, self.wants_button, self.check = nudges, button, 0
+        self.teleop = self.button = None
         self.inputs = None
         self.why_scripted = "the planner was never asked for a fold"
         self.rows = []          # one per arm per row played: see save_rows
@@ -94,6 +127,7 @@ class Driver:
         """fold_traj.fold, keeping what it was given when the network can act on it."""
         traj = self.plan(*args, **kwargs)
         self.inputs = None
+        self.check = traj["marks"]["check"]
         try:
             given = inspect.signature(self.plan).bind(*args, **kwargs)
             given.apply_defaults()
@@ -119,7 +153,7 @@ class Driver:
             return goal, "not a number", float("inf"), held
         asked = dict(zip(MOTOR_IDS, replay.convert(follower, [list(map(float, wanted))])[0][0]))
         away = max(abs(asked[m] - teacher[m]) for m in teacher) / replay.STEPS_PER_DEGREE
-        why = "last row" if last else "strayed" if away > self.trust else None
+        why = "watching" if self.trust == 0 else "last row" if last else "strayed" if away > self.trust else None
         if why is None:
             goal, held = capped(asked, before, cap)
             pose = [follower.to_rad(m, goal[m]) for m in MOTOR_IDS]
@@ -136,6 +170,44 @@ class Driver:
                 why = "too close to itself"
         goal, held = capped(teacher, before, cap)
         return goal, why, away, held
+
+    def intervene(self, k, followers, command, motors, log):
+        """While the Xbox button has the fold waiting: hold row k and let gamepad.py's loop drive the arms, 50
+        times a second. Then keep where each fingertip was left as its offset. `command` ({side: {motor: ticks}})
+        ends on what was sent last. Returns the seconds spent, 0 when the fold was not told to wait."""
+        if not self.button.read():
+            return 0.0
+        started, n, shown = time.monotonic(), 0, None
+        self.teleop.take(command)
+        print(f"\nWaiting on row {k}: the controller has the arms, as in gamepad mode. The Xbox button again "
+              "goes on with the fold.")
+        while self.button.read():
+            try:
+                status = self.teleop.tick()
+            except (ValueError, np.linalg.LinAlgError) as err:
+                print(f"  The gamepad control stopped ({err}): the fold goes on.")
+                self.button.waiting = False
+                break
+            if status != shown:
+                print(f"  {status}")
+                shown = status
+            n += 1
+            replay.sleep_until(started + n * replay.TICK_SECONDS)
+        for name in followers:
+            command[name] = {m: self.teleop.command(name)[m] for m in motors}
+            outcome = self.nudges.take(name, k, command[name])
+            if outcome == "kept":           # the rows still to come, with the offsets as they are now
+                self.nudges.rebuild(name, k)
+            elif outcome != "not moved":
+                print(f"  The {name} arm's fingertip is {outcome}.")
+        if self.nudges.changed:
+            self.nudges.save()
+        print(f"Going on. Offsets now: {self.nudges.describe()}.")
+        if hasattr(log, "write"):
+            log.write({"phase": "nudge", "row": k, "seconds": round(time.monotonic() - started, 2),
+                       "offsets": {side: {phase: offset.tolist() for phase, offset in phases.items()}
+                                   for side, phases in self.nudges.offsets.items()}})
+        return time.monotonic() - started
 
     def play(self, followers, ticks, dt, speed, motors, progress, steps=None, log=None):
         """replay.play with the network proposing each row. Same arguments, same return (times the rate cap
@@ -157,8 +229,21 @@ class Driver:
         final = len(next(iter(ticks.values()))) - 1
         command = {name: {m: ticks[name][order[0]][m - 1] for m in motors} for name in followers}
         engaged = 0
+        if self.nudges is not None:         # the plan's rows with the stored offsets: the rows to follow from here
+            self.nudges.begin(followers, ticks, self.check, collision)
+            rows = self.nudges.rows
+            if self.wants_button and self.button is None:
+                try:
+                    self.teleop, self.button = dagger_nudge.controls(followers)
+                    print("The Xbox button on the controller makes the fold wait and hands the arms to the gamepad.")
+                except ValueError as err:
+                    print(f"No intervention button in this fold: {err}.")
+        else:
+            rows = {name: [dict(zip(MOTOR_IDS, row)) for row in ticks[name]] for name in followers}
         t0 = time.monotonic()
         for i, k in enumerate(order):
+            if self.button is not None:
+                t0 += self.intervene(k, followers, command, motors, log)
             row_start = t0 + i * tick
             replay.sleep_until(row_start)
             progress["step"] = k
@@ -170,7 +255,7 @@ class Driver:
             wanted = self.policy.targets(self.inputs, measured, sent, k * dt)
             who, away = {}, {}
             for name, f in followers.items():
-                teacher = {m: ticks[name][k][m - 1] for m in motors}
+                teacher = {m: rows[name][k][m] for m in motors}
                 command[name], who[name], away[name], held = self.choose(
                     f, collision, teacher, wanted[name], before[name], cap, k == final)
                 engaged += held
@@ -191,6 +276,13 @@ class Driver:
                 for name, f in followers.items():
                     f.send_goals({m: before[name][m] + (command[name][m] - before[name][m]) * j / sends
                                   for m in motors})
+        if self.nudges is not None and self.nudges.changed:     # every row of this fold is taught the rows as
+            for name in followers:                              # they stand now, the ones before the nudge too
+                self.nudges.rebuild(name, 0)
+            for r in self.rows:
+                if r["side"] in followers:
+                    f, mirror = followers[r["side"]], dagger_net.MIRROR_JOINTS if r["side"] == "right" else 1.0
+                    r["teacher"] = np.array([f.to_rad(m, rows[r["side"]][r["row"]][m]) for m in MOTOR_IDS]) * mirror
         if order[-1] == final:              # a row the rate cap held short of the plan's last: step onto it
             last = {name: {m: ticks[name][final][m - 1] for m in motors} for name in followers}
             short = max(abs(last[name][m] - command[name][m]) for name in followers for m in motors)
@@ -264,28 +356,78 @@ def rehearse(policy, inputs, traj, trust):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
     ap.add_argument("--policy", help="weights to drive with (default: the newest round in --store, else the repo's)")
-    ap.add_argument("--trust-deg", type=float, default=TRUST_DEG,
+    ap.add_argument("--trust-deg", type=float,
                     help="most a joint of the network's row may be from the plan's row and still be sent; 0 plays "
-                         "the scripted fold with the network watching")
+                         f"the scripted fold with the network watching. Default: {TRUST_DEG:g} once the network "
+                         f"was that close on {100 * EARNED:.0f}%% of the last fold's rows, 0 until then")
+    ap.add_argument("--device", type=int, default=0, help="Record3D device index")
+    ap.add_argument("--no-nudge", action="store_true", help="do not read the controller's intervention button")
+    ap.add_argument("--forget-nudges", action="store_true", help="put the stored offsets aside and start from none")
     ap.add_argument("--store", default=str(replay.RUNS_DIR / "dagger"), help="rows and rounds are kept here")
     ap.add_argument("--base", default=str(BASE), help="the planned folds the network is trained on with the rows")
     ap.add_argument("--no-train", action="store_true", help="save the rows and leave the network as it is")
     ap.add_argument("--steps", type=int, help="training steps after the fold (default: dagger_train.TUNE_STEPS)")
     args, fold_args = ap.parse_known_args(sys.argv[1:] if argv is None else argv)
-    if not 0.0 <= args.trust_deg <= 5.0:
-        ap.error("--trust-deg is 0 to 5")
     policy = dagger_net.Policy(args.policy or latest(args.store))
-    print(f"Network: {policy.path}; its rows are sent while within {args.trust_deg:g} deg of the scripted fold's.")
-    driver = Driver(policy, args.trust_deg, fold_traj.fold, replay.play)
+    if args.trust_deg is None:
+        share = earned(args.store)
+        args.trust_deg = TRUST_DEG if share is not None and share >= EARNED else 0.0
+        print(f"Network: {policy.path}. " + (
+            "No fold saved yet: the scripted fold drives this one and the network watches." if share is None else
+            f"On the last fold its rows were within {TRUST_DEG:g} deg of the scripted fold's on {share:.0%} of rows"
+            + (f": it drives this one inside {TRUST_DEG:g} deg." if args.trust_deg else
+               f", under {EARNED:.0%}: the scripted fold drives this one and the network watches.")))
+    elif not 0.0 <= args.trust_deg <= 5.0:
+        ap.error("--trust-deg is 0 to 5")
+    else:
+        print(f"Network: {policy.path}; its rows are sent while within {args.trust_deg:g} deg of the scripted fold's.")
+    stored = Path(args.store) / "nudges.json"
+    if args.forget_nudges and stored.exists():
+        stored.replace(stored.with_name(f"nudges_until_{time.strftime('%Y%m%d_%H%M%S')}.json"))
+    nudges = dagger_nudge.Nudges(stored)
+    print(f"Stored offsets: {nudges.describe()}.")
+    driver = Driver(policy, args.trust_deg, fold_traj.fold, replay.play, nudges, not args.no_nudge)
+    pictures = not any(flag in fold_args for flag in ("--image", "--log", "--dry-run"))
+    recorded, look = None, None
     fold_traj.fold, replay.play = driver.fold, driver.play
     try:
-        code = fold_camera.main(["fold", *fold_args])
+        if pictures:
+            import rgbd
+            import rig_record
+            from PIL import Image
+            phone = rgbd.Phone(args.device)
+            phone.start()
+            handle, look = tempfile.mkstemp(suffix=".png", prefix="dagger_look_")
+            os.close(handle)
+            Image.fromarray(phone.wait().rgb).save(look)
+            code, recorded = rig_record.record(lambda argv: fold_camera.main(["fold", *argv]),
+                                               ["--image", look, *fold_args], phone, replay.RUNS_DIR, input)
+        else:
+            code = fold_camera.main(["fold", "--device", str(args.device), *fold_args])
     finally:
         fold_traj.fold, replay.play = driver.plan, driver.scripted_play
+        for part in (driver.button, driver.teleop):
+            if part is not None:
+                part.close()
+        if look is not None:
+            os.unlink(look)
+        if driver.rows and nudges.changed:  # rows of earlier folds were taught other rows: kept, not trained on
+            aside = Path(args.store) / f"before_nudge_{time.strftime('%Y%m%d_%H%M%S')}"
+            aside.mkdir(parents=True)
+            for old in Path(args.store).glob("rows_*.npz"):
+                old.replace(aside / old.name)
+            print(f"The offsets changed in this fold ({nudges.describe()}): the rows of the folds before it are "
+                  f"put aside in {aside.name}.")
+        if nudges.kept_plan:
+            print(f"{nudges.kept_plan} rows could not take their offset (out of reach, a joint limit, or too "
+                  "close to the arm itself) and were the plan's.")
         if driver.rows:
             saved = save_rows(args.store, driver.rows, policy, args.trust_deg)
             report(driver.rows, args.trust_deg)
             print(f"Rows saved: {saved}")
+            if recorded is not None:        # which rows and weights belong to this recorded run
+                (recorded / "dagger.json").write_text(json.dumps(
+                    {"rows": str(saved), "weights": str(policy.path), "trust_deg": args.trust_deg}))
     if not driver.rows:
         if "--no-gripper" in fold_args:
             print("The scripted fold drives every row and nothing is learned: the gripper is left out (--no-gripper).")

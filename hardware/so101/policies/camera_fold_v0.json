@@ -77,50 +77,51 @@
    "seed": 0,
    "planned_folds": 720,
    "steps": 30015,
+   "arm_model_rounds": 6,
    "started_from": null,
    "rows_from_arms": 0,
-   "seconds": 495,
+   "seconds": 151,
    "on_planned_rows": {
     "rms_deg": {
-     "shoulder_pan": 0.162,
-     "shoulder_lift": 0.359,
-     "elbow_flex": 0.374,
-     "wrist_flex": 0.336,
-     "wrist_roll": 0.014,
-     "gripper": 0.398
+     "shoulder_pan": 0.147,
+     "shoulder_lift": 0.327,
+     "elbow_flex": 0.3,
+     "wrist_flex": 0.275,
+     "wrist_roll": 0.013,
+     "gripper": 0.348
     },
     "max_deg": {
-     "shoulder_pan": 1.497,
-     "shoulder_lift": 2.289,
-     "elbow_flex": 3.883,
-     "wrist_flex": 2.499,
-     "wrist_roll": 0.179,
-     "gripper": 3.215
+     "shoulder_pan": 1.266,
+     "shoulder_lift": 2.403,
+     "elbow_flex": 3.936,
+     "wrist_flex": 2.305,
+     "wrist_roll": 0.103,
+     "gripper": 3.055
     }
    },
    "on_rows_from_arms": null,
    "held_out_folds": 72,
    "held_out_free_run": {
     "rms_deg": {
-     "shoulder_pan": 6.312,
-     "shoulder_lift": 13.228,
-     "elbow_flex": 21.213,
-     "wrist_flex": 10.869,
+     "shoulder_pan": 4.729,
+     "shoulder_lift": 10.36,
+     "elbow_flex": 16.35,
+     "wrist_flex": 8.464,
      "wrist_roll": 0.016,
-     "gripper": 15.675
+     "gripper": 13.436
     },
     "max_deg": {
-     "shoulder_pan": 74.11,
-     "shoulder_lift": 66.92,
-     "elbow_flex": 106.204,
-     "wrist_flex": 34.458,
-     "wrist_roll": 0.106,
-     "gripper": 87.511
+     "shoulder_pan": 58.926,
+     "shoulder_lift": 63.877,
+     "elbow_flex": 102.711,
+     "wrist_flex": 32.261,
+     "wrist_roll": 0.111,
+     "gripper": 70.599
     }
    },
    "held_out_share_driven": {
     "trust_deg": 2.0,
-    "share": 0.8524
+    "share": 0.9302
    }
   }
  ],
