@@ -26,6 +26,7 @@ from pathlib import Path
 from PIL import Image
 
 import recorder
+import run_label
 
 HERE = Path(__file__).parent
 SCRIPT = HERE / "fold_camera.py"
@@ -69,14 +70,35 @@ class FoldJob:
         self.process = None
         self.stop_asked = False
         self.run = None             # the recorder.Recorder of the fold in progress
+        self.last_run = None        # the folder of the recorded fold that ended last, until it is discarded
+        self.counts = run_label.count(self.runs_dir, run_label.is_panel_fold)
 
     def status(self):
         with self.lock:
             prompt = ""
             if self.state == "waiting":
                 prompt = self.partial.decode("utf-8", "replace")
+            last_run = None
+            last_label = None
+            if self.last_run is not None:
+                last_run = self.last_run.name
+                last_label = run_label.label_of(self.last_run)
             return {"state": self.state, "mode": self.mode, "lines": list(self.lines), "prompt": prompt,
-                    "exit_code": self.exit_code, "colour": saved_colour()}
+                    "exit_code": self.exit_code, "colour": saved_colour(), "last_run": last_run,
+                    "last_label": last_label, "counts": dict(self.counts)}
+
+    def label(self, word):
+        """Say how the recorded fold that ended last went: "good" or "bad" (what rig_dataset.py reads), or
+        "discard", which deletes its folder. False when there is none, a job is running, or the word is unknown."""
+        with self.lock:
+            if self.state in BUSY_STATES or self.last_run is None:
+                return False
+            if not run_label.set_label(self.last_run, word):
+                return False
+            if word == "discard":
+                self.last_run = None
+            self.counts = run_label.count(self.runs_dir, run_label.is_panel_fold)
+            return True
 
     def command_for(self, mode):
         """The program and script that run `mode`."""
@@ -266,6 +288,8 @@ class FoldJob:
         if run is not None:
             self.add_line(f"Recorded to {run.path}")
             self.close_recording(run, code)
+            self.last_run = run.path
+            self.counts = run_label.count(self.runs_dir, run_label.is_panel_fold)
         self.run = None
 
     def close_recording(self, run, code):

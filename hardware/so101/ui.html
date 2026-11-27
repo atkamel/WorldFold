@@ -196,6 +196,15 @@
           <button id="fold-cancel">Cancel</button>
         </div>
       </div>
+      <div id="fold-episode" hidden>
+        <p class="hint" id="fold-episode-name"></p>
+        <div class="buttons">
+          <button id="fold-good">Good</button>
+          <button id="fold-bad">Bad</button>
+          <button id="fold-discard" title="Deletes this fold's recording">Discard</button>
+        </div>
+      </div>
+      <p class="hint" id="fold-counts" role="status"></p>
       <img id="fold-look-picture" alt="The last look: cloth outline in green, pinch points in red, place points in blue" hidden>
       <pre id="fold-output" aria-live="polite" hidden></pre>
     </div>
@@ -1173,6 +1182,11 @@ async function refreshFold() {
   foldStop.disabled = !busy;
   policyRun.disabled = busy;
   policyTakeover.disabled = !(busy && status.mode === "policy");
+  document.getElementById("fold-episode").hidden = busy || !status.last_run;
+  document.getElementById("fold-episode-name").textContent =
+    `Last recorded fold ${status.last_run}: ${status.last_label ?? "not labelled yet"}`;
+  document.getElementById("fold-counts").textContent =
+    `Scripted folds: ${status.counts.good} good, ${status.counts.bad} bad, ${status.counts.unlabelled} not labelled`;
   const what = status.mode ? `${status.mode}: ` : "";
   foldStatus.textContent = foldMessage || (status.state === "idle" ? FOLD_WORDS.idle : what + FOLD_WORDS[status.state] + ".");
   foldPrompt.hidden = status.state !== "waiting";
@@ -1193,6 +1207,9 @@ lookPicture.onload = () => { lookPicture.hidden = false; };
 lookPicture.onerror = () => { lookPicture.hidden = true; };
 for (const [mode, button] of Object.entries(foldButtons)) button.onclick = () => startFold(mode);
 foldStop.onclick = () => sendFold("/fold/stop").then(refreshFold);
+for (const word of ["good", "bad", "discard"]) {
+  document.getElementById(`fold-${word}`).onclick = () => sendFold("/fold/label", { label: word }).then(refreshFold);
+}
 policyRun.onclick = async () => {
   const options = {
     policy: document.getElementById("policy-weights").value,

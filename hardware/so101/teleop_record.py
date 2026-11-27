@@ -5,51 +5,20 @@ frame, one camera frame (color and LiDAR depth). Joints are raw encoder steps (4
 in motor id order 1 to 6; each arm's twin.json turns them into angles.
 """
 
-import json
-import shutil
 import threading
 import time
 from pathlib import Path
 
 import recorder
+import run_label
 
 RECORD_HZ = 10
 RUNS_DIR = Path(__file__).parent / "runs"  # same folder as fold_live.py's runs; ignored by git
-LABEL = "label.json"        # rig_dataset.LABEL
-
-
-def label_of(folder):
-    """"good", "bad" or None for a run folder with no label."""
-    file = folder / LABEL
-    if not file.exists():
-        return None
-    if json.loads(file.read_text())["success"]:
-        return "good"
-    return "bad"
 
 
 def count_episodes(runs_dir):
     """How many teleop recordings under `runs_dir` are labelled good, bad, or not at all."""
-    counts = {"good": 0, "bad": 0, "unlabelled": 0}
-    runs_dir = Path(runs_dir)
-    if not runs_dir.exists():
-        return counts
-    for folder in runs_dir.iterdir():
-        meta_file = folder / "meta.json"
-        if not meta_file.exists():
-            continue
-        try:
-            meta = json.loads(meta_file.read_text())
-            label = label_of(folder)
-        except (OSError, ValueError, KeyError):
-            continue    # a folder being written or damaged is not an episode
-        if meta.get("task") != "teleop":
-            continue
-        if label is None:
-            counts["unlabelled"] += 1
-        else:
-            counts[label] += 1
-    return counts
+    return run_label.count(runs_dir, run_label.is_teleop)
 
 
 def record_tick(run, seconds, row, arms_by_name, phone):
@@ -134,14 +103,10 @@ class TeleopRecording:
         with self.lock:
             if self.run is not None or self.last is None:
                 return False
-            if word == "discard":
-                shutil.rmtree(self.last)
-                self.last = None
-            elif word == "good" or word == "bad":
-                label = {"success": word == "good", "note": None}
-                (self.last / LABEL).write_text(json.dumps(label))
-            else:
+            if not run_label.set_label(self.last, word):
                 return False
+            if word == "discard":
+                self.last = None
             self.counts = count_episodes(self.runs_dir)
             return True
 
@@ -151,7 +116,7 @@ class TeleopRecording:
             last_label = None
             if self.last is not None:
                 last = self.last.name
-                last_label = label_of(self.last)
+                last_label = run_label.label_of(self.last)
             status = {"recording": False, "steps": 0, "folder": None, "last": last, "last_label": last_label,
                       "counts": dict(self.counts)}
             if self.run is not None:

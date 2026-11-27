@@ -97,6 +97,10 @@ def panel(tmp_path, monkeypatch, request):
         def stop(self):
             self.started.append("stop")
 
+        def label(self, word):
+            self.started.append("label " + word)
+            return word != "bad"
+
         def status(self):
             return {"state": "stopped"}
 
@@ -150,6 +154,14 @@ def test_an_episode_label_reaches_the_recording_and_a_refusal_is_reported(panel)
     assert post("/record/label", {"label": "bad"}) == 409      # the stand-in refuses this one
     assert post("/record/label", {"label": "perfect"}) == 400
     assert len(post.recording.calls) == 2
+
+
+def test_a_fold_s_label_reaches_the_fold_job_and_a_refusal_is_reported(panel):
+    _, post, _ = panel
+    assert post("/fold/label", {"label": "good"}) == 200
+    assert post("/fold/label", {"label": "bad"}) == 409         # the stand-in refuses this one
+    assert post("/fold/label", {"label": "perfect"}) == 400
+    assert post.fold.started == ["label good", "label bad"]
 
 
 def test_taking_over_stops_the_policy_and_starts_a_correction_recording(panel):

@@ -576,6 +576,14 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                     if refusal is not None:
                         self.reply({"error": refusal}, status=409)
                         return
+                elif self.path == "/fold/label":
+                    word = body.get("label")
+                    if word not in ("good", "bad", "discard"):
+                        self.reply({"error": "label is good, bad or discard"}, status=400)
+                        return
+                    if not fold.label(word):
+                        self.reply({"error": "no finished fold to label"}, status=409)
+                        return
                 elif self.path == "/fold/continue":
                     fold.go_on()
                 elif self.path == "/fold/stop":

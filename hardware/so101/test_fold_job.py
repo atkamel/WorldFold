@@ -209,6 +209,48 @@ def test_the_policy_s_press_enter_pause_is_a_prompt_too(rig, tmp_path):
     assert "on" in wait_for(job, ["done"])["lines"]
 
 
+def finished_fold(rig):
+    """Play the stand-in fold to its end. Returns the run folder."""
+    assert rig.job.start("fold", {}) is None
+    wait_for(rig.job, ["waiting"])
+    rig.job.go_on()
+    time.sleep(0.2)
+    wait_for(rig.job, ["waiting"])
+    rig.job.go_on()
+    wait_for(rig.job, ["done"])
+    return rig.runs / rig.job.status()["last_run"]
+
+
+def test_a_finished_fold_is_labelled_good_or_bad_and_counted(rig):
+    import json
+
+    assert rig.job.label("good") is False           # no fold yet
+    folder = finished_fold(rig)
+    assert rig.job.status()["counts"] == {"good": 0, "bad": 0, "unlabelled": 1}
+    assert rig.job.label("good") is True
+    assert json.loads((folder / "label.json").read_text())["success"] is True
+    status = rig.job.status()
+    assert status["last_label"] == "good"
+    assert status["counts"] == {"good": 1, "bad": 0, "unlabelled": 0}
+    assert rig.job.label("perfect") is False
+
+
+def test_discarding_a_fold_deletes_its_folder_and_a_running_fold_is_not_labelled(rig):
+    folder = finished_fold(rig)
+    assert rig.job.start("fold", {}) is None
+    wait_for(rig.job, ["waiting"])
+    assert rig.job.label("discard") is False        # the first fold's label waits for the one under way
+    assert folder.exists()
+    rig.job.stop()
+    wait_for(rig.job, ["stopped"])
+    second = rig.runs / rig.job.status()["last_run"]
+    assert second != folder
+    assert rig.job.label("discard") is True
+    assert not second.exists()
+    assert folder.exists()
+    assert rig.job.status()["last_run"] is None
+
+
 def test_a_fold_is_refused_without_exactly_two_followers(rig):
     job = fold_job.FoldJob(rig.arms, StandInCamera(), ["arm1"], command=rig.command, runs_dir=rig.runs)
     assert job.start("fold", {}) is not None

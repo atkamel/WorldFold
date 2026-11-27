@@ -498,6 +498,10 @@ correcting it. Building a dataset and training stay commands (step 3 above).
 - **Episodes.** Start recording, drive the fold, Stop recording. The take then shows Good, Bad and Discard. Good
   and Bad write the `label.json` that `rig_dataset.py` reads; Discard deletes the take's folder. The count under it
   covers every teleop recording in `runs/`. Start each take from the idle poses.
+- **Scripted folds as demonstrations.** A fold from the Fold button is recorded as it always was; when it ends the
+  Cloth fold section shows the same Good, Bad and Discard for it, and a count of the scripted folds in `runs/`.
+  Move the cloth a little between folds, or every demonstration is the same motion. Keep scripted folds and teleop
+  recordings in separate dataset versions: their rows last different times, which `build` refuses.
 - **Fold and learn** (Cloth fold section) runs `dagger_run.py` as Fold runs the scripted fold: the arms are lent,
   the pauses become Continue, the run is recorded. "Network trust deg" is its `--trust-deg`: 0 lets the scripted
   fold drive with the network watching. This trains DAgger's own network (see `DAGGER.md`), which never sees the
