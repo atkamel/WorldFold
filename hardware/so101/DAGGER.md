@@ -50,16 +50,13 @@ Press the Xbox button on the controller and the fold waits on the row it is at. 
 gamepad teleop itself, the code of the panel's gamepad mode, with its controls and its checks. Press the Xbox
 button again and the fold goes on.
 
-While the fold waits, as in gamepad mode
+While the fold waits the controls are the gamepad mode's own, whatever its layout is at the time. The README's
+gamepad section lists them. Two things differ from the panel
 
-- let the sticks rest a moment, then press A to drive
-- each stick places its arm's gripper. Sideways turns the base, forward and back reach
-- LB and RB raise, LT and RT lower
-- B holds, A drives again
-
-The terminal prints the teleop's status line whenever it changes, so `Press A to drive both arms` or a blocked move
-shows there. The keys of the panel's page, for the wrist and the claws, are not available. The panel is not running
-during a fold from the command line.
+- Drive is pressed for you. Let the sticks rest a moment with every button released and driving starts. The panel's
+  Drive button belongs to the panel's own gamepad, which has lent the arms to the fold
+- the terminal, or the panel's output when the fold was started with Fold and learn, prints the teleop's status
+  line whenever it changes, so a blocked move shows there
 
 What is kept is where each fingertip ended against the plan, up to 3 cm on any axis. A fingertip left further
 than that comes back to 3 cm when the fold goes on. The fingertip keeps that offset for the rest of the fold. An
@@ -94,7 +91,9 @@ No pictures are saved with `--image`, `--log` or `--dry-run`. Those run as `fold
 
 ## On the rig, in order
 
-Stop `ui.py` first, as for any script. Use the arguments you give `fold_camera.py fold`.
+From the panel, Fold and learn runs this script with the arms lent and the run recorded, and its "Network trust
+deg" is `--trust-deg`. From the command line, stop `ui.py` first, as for any script, and use the arguments you
+give `fold_camera.py fold`.
 
 ```
 # once, no arms needed, about 15 minutes. The planned folds the network is trained on beside the rig's rows

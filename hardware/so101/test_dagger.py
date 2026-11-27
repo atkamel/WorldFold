@@ -500,8 +500,8 @@ def test_the_xbox_button_turns_waiting_over_on_each_press_and_a_lost_controller_
 
 
 def test_the_gamepad_teleop_drives_the_folds_own_arms_through_its_own_loop(env, monkeypatch):  # noqa: F811
-    """The real gamepad.Gamepad on two fake-bus followers of the repo's own arms: after its stick rest and an A
-    press, a left stick pushed forward moves the left arm and leaves the right where the fold had it."""
+    """The real gamepad.Gamepad on two fake-bus followers of the repo's own arms: after its stick rest, a left
+    stick pushed forward moves the left arm and leaves the right where the fold had it."""
     import dagger_nudge
     from hardware.controller.gip import ControllerState
     monkeypatch.undo()                                               # the repo's arms.json, limits and idle poses
@@ -530,8 +530,7 @@ def test_the_gamepad_teleop_drives_the_folds_own_arms_through_its_own_loop(env, 
             time.sleep(0.02)
         return status
 
-    assert "Press A" in feed(ControllerState(), 25)                  # the sticks rest, then it asks for A
-    feed(ControllerState(buttons=("a",)), 2)
+    assert feed(ControllerState(), 25).startswith("Driving")         # the sticks rest, then Drive is pressed for you
     status = feed(ControllerState(left_y=30000), 15)
     assert status.startswith("Driving")
     moved = arm.tip([followers["left"].to_rad(m, teleop.command("left")[m]) for m in range(1, 6)])[0]

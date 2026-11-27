@@ -4,11 +4,11 @@ the Xbox button again and the fold goes on with each fingertip as far off the pl
 kept (nudges.json in the store), so the next fold starts with it, and the corrected rows are what the network is
 taught.
 
-While the fold waits the controls are gamepad.py's own, and so are its checks (both arms against each other, the
-table and themselves, a lagging arm, a lost controller): the sticks rest a moment, A starts driving, each stick
-places its arm's gripper, LB and RB raise, LT and RT lower, B holds. This file only lends gamepad.Gamepad the two
-arms the fold holds and reads the Xbox button. The keys of the panel's page (wrist tilt, claw) are not there: the
-panel is not running during a fold from the command line.
+While the fold waits the controls are gamepad.py's own, whatever its layout is, and so are its checks (both arms
+against each other, the table and themselves, a lagging arm, a lost controller). This file only lends
+gamepad.Gamepad the two arms the fold holds, reads the Xbox button, and presses gamepad.py's Drive for you: the
+panel's Drive button belongs to the panel's own gamepad, which has lent the arms to the fold. Driving starts once
+the sticks have rested a moment with every button released, as gamepad.py asks.
 
     python hardware/so101/dagger_nudge.py      # no arms: prints the Xbox button as it is read, to check it first
 
@@ -104,7 +104,10 @@ class Teleop:
         self.pad.enabled, self.pad.last_tick = False, None
 
     def tick(self):
-        """One step of gamepad.py's loop. Returns its status line."""
+        """One step of gamepad.py's loop, with its Drive pressed whenever it is not driving. Returns its status
+        line."""
+        if not self.pad.enabled:
+            self.pad.press_drive()
         state, captured, message = self.pad.sample
         self.pad.tick(state, captured, time.monotonic(), message)
         return self.pad.status
