@@ -326,7 +326,7 @@ def main(argv=None):
             os.close(handle)
             Image.fromarray(phone.wait().rgb).save(look)
             code, recorded = rig_record.record(lambda argv: fold_camera.main(["fold", *argv]),
-                                               ["--image", look, *fold_args], phone, replay.RUNS_DIR)
+                                               ["--image", look, *fold_args], phone, replay.RUNS_DIR, input)
         else:
             code = fold_camera.main(["fold", "--device", str(args.device), *fold_args])
     finally:
