@@ -97,12 +97,16 @@ def test_an_arm_on_the_outline_is_refused_through_the_arms_maps(cal):
         fold_camera.look_arms(render(cloth(), [((0.19, 0.36), 0.06)]), arm_cal(cal, stretch=1.0))
 
 
-def test_an_arm_s_own_edge_must_be_the_cloth_s_side_through_its_own_map():
-    good = np.array([0.30, 0.30, 0.30, 0.30])
-    fold_camera.check_edges({"left": good, "right": good}, 0.30)
-    off_on_the_right = np.array([0.30, 0.36, 0.30, 0.30])
-    with pytest.raises(ValueError, match="own map"):
-        fold_camera.check_edges({"left": good, "right": off_on_the_right}, 0.30)
+def test_every_edge_is_measured_through_the_map_of_the_arm_on_its_side(cal):
+    _, px = fold_camera.look_arms(render(cloth(), BASES), arm_cal(cal))
+    corners = [px[name] for name in ("near_left", "near_right", "far_right", "far_left")]
+    true_maps = fold_camera.arm_maps(arm_cal(cal))
+    for length in fold_camera.edge_lengths(corners, true_maps).values():
+        assert abs(length - SIDE) < 0.006
+    bent_maps = fold_camera.arm_maps(arm_cal(cal, stretch=1.0))
+    bent = fold_camera.edge_lengths(corners, bent_maps)
+    assert abs(bent["left"] - SIDE) < 0.006            # the left arm's map is true, and only it measures this edge
+    assert abs(bent["right"] - SIDE) < 0.006           # the right arm's map is true along its own side
 
 
 def test_fold_points_are_in_each_arms_frame():

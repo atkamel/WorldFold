@@ -43,7 +43,7 @@ HERE = Path(__file__).parent
 CAMERA = HERE / "camera.json"
 INSET = 0.01          # m: the pinch lands this far in from the corner along the cloth's diagonal, unless the
                       # calibration holds its own ("inset", from calibrate --inset)
-SIDE_TOL = 0.15       # a detected side this far off the cloth's side (fraction) is not the cloth
+SIDE_TOL = 0.25       # a detected side this far off the cloth's side (fraction) is not the cloth
 REACH_TOL = 0.006     # m: a pinch the arm model misses by more than this is out of reach
 OVERSHOOT = (0.0, 0.0)    # m (forward, outward): how far past the point they are sent to the fingertips land, unless
                          # the calibration holds its own ("overshoot"); outward is away from the other arm
@@ -175,43 +175,39 @@ def look_arms(rgb, cal, keep=None):
     mask = ndimage.binary_fill_holes(labels == np.argmax(np.bincount(labels.ravel())[1:]) + 1)
     px = fold_score.square_corners(mask, cal["near"])
     names = ["near_left", "near_right", "far_right", "far_left"]
+    maps = arm_maps(cal)
+    lengths = edge_lengths(px, maps)
+    for edge in lengths:
+        if abs(lengths[edge] / cal["side"] - 1.0) > SIDE_TOL:
+            raise ValueError(f"the shape's {edge} edge is {lengths[edge] * 100:.1f} cm, not a "
+                             f"{cal['side'] * 100:.0f} cm cloth: an arm or a shadow may be touching its outline")
     by_arm = {}
-    lengths = {}
-    for side, H in arm_maps(cal).items():
-        frame = fold_score.apply(H, px)
-        lengths[side] = np.linalg.norm(frame - np.roll(frame, -1, axis=0), axis=1)
-        by_arm[side] = dict(zip(names, frame))
-    check_edges(lengths, cal["side"])
+    for side, H in maps.items():
+        by_arm[side] = dict(zip(names, fold_score.apply(H, px)))
     return by_arm, dict(zip(names, px))
 
 
-EDGES = ["near", "right", "far", "left"]    # the order of the lengths between the corners near-left, near-right, ...
-OWN_EDGE = {"left": 3, "right": 1}          # the edge on each arm's own side: both its pinch and its place lie on it
+def edge_lengths(px, maps):
+    """{"near", "right", "far", "left": m} of the outline with corners `px` (near-left, near-right, far-right,
+    far-left), each stretch measured through the map of the arm on its side.
 
+    An arm's map holds where that arm touched the table, from its own side to about the middle, and can be far off
+    at the other arm's corners. So a side edge goes through its own arm's map, and the near and far edges are
+    measured in two halves that meet at the edge's middle: the left half through the left arm's map, the right
+    half through the right arm's."""
+    px = np.asarray(px, float)
+    near_left, near_right, far_right, far_left = px
 
-def check_edges(lengths, cloth_side):
-    """ValueError unless the outline is the cloth. `lengths`: {arm: the four edges (m) through that arm's map}.
+    def through(side, a, b):
+        ends = fold_score.apply(maps[side], np.array([a, b]))
+        return float(np.linalg.norm(ends[1] - ends[0]))
 
-    An arm's map holds where that arm touched the table, which need not reach the other arm's corners. So an edge
-    passes when it is the cloth's side through either map, and each arm's own edge must pass through its own map,
-    the one its pinch and place points are read through."""
-    for i in range(4):
-        fits = False
-        for side in lengths:
-            if abs(lengths[side][i] / cloth_side - 1.0) <= SIDE_TOL:
-                fits = True
-        if not fits:
-            seen = []
-            for side in lengths:
-                seen.append(f"{lengths[side][i] * 100:.1f} cm in the {side} arm's map")
-            raise ValueError(f"the shape's {EDGES[i]} edge is {' and '.join(seen)}, not a {cloth_side * 100:.0f} cm "
-                             "cloth: an arm or a shadow may be touching its outline")
-    for side in lengths:
-        own = lengths[side][OWN_EDGE[side]]
-        if abs(own / cloth_side - 1.0) > SIDE_TOL:
-            raise ValueError(f"the cloth's {side} edge is {own * 100:.1f} cm in the {side} arm's own map, not "
-                             f"{cloth_side * 100:.0f} cm: that map does not hold there. Move the cloth nearer the "
-                             "arms, or fit the map again")
+    near_middle = (near_left + near_right) / 2
+    far_middle = (far_left + far_right) / 2
+    return {"near": through("left", near_left, near_middle) + through("right", near_middle, near_right),
+            "right": through("right", near_right, far_right),
+            "far": through("left", far_left, far_middle) + through("right", far_middle, far_right),
+            "left": through("left", far_left, near_left)}
 
 
 def fold_points_arms(by_arm, inset=INSET):

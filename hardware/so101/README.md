@@ -319,9 +319,14 @@ arms instead, one map per arm, so the cloth plays no part in it and the bases ma
   refuses a picture of another size.
 - The cloth is searched for in front of both bases' front edges and within 60 cm of a base. The corners are named
   by the picture as before: the near edge is the one at `--near`, and the left arm takes the left corners.
-- The outline must be the cloth: each of its four edges within 15% of the cloth's side through at least one arm's
-  map, and each arm's own edge (the one its pinch and place lie on) through that arm's own map. A map fitted with
-  `--outer 0` holds on that arm's inner strip only and can be far off at the other arm's corners.
+- The outline must be the cloth: each of its four edges within 25% of the cloth's side (`SIDE_TOL`). A side edge
+  is measured through its own arm's map, and the near and far edges in two halves, the left half through the left
+  arm's map and the right half through the right arm's. A map fitted with `--outer 0` holds on that arm's inner
+  strip only and can be far off at the other arm's corners. The tolerance was 15% until 2026-11-26: the maps
+  fitted that day read about 18% short just in front of the bases.
+- Settings found on the rig on 2026-11-26 for a 27 cm cloth, saved by one `calibrate` (the panel's Calibrate
+  button puts every one of them back to its default): `--cloth 0.27 --pinch-tilt 25 --pinch-height 0.009 0.01
+  --overshoot 0.024 0 0.03 0.03`. They hold for that day's phone and base positions.
 - A phone looking straight down hides the fingertip under the gripper on the near touches, so those clicks are
   guesses. A slanted view from behind the arms shows it.
 - The map pairs each pixel with the point the arm was sent to, so a joint zero that is a little off is folded in.
