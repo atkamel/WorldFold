@@ -1,0 +1,337 @@
+"""dagger_run on the fake servo bus, through fold_camera.py's own fold on a synthetic picture: what reaches the arms
+with the network trusted and not, which rows the scripted fold takes back, what is saved, and one round of training
+on the saved rows. Plus the numpy network's gradients.
+
+    /Users/akamel/Code/WorldFold/.venv/bin/python -m pytest hardware/so101/test_dagger.py
+"""
+
+import importlib
+import json
+import math
+import sys
+from pathlib import Path
+
+import numpy as np
+import pytest
+from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+pytest.importorskip("mujoco")
+pytest.importorskip("so101_nexus")
+
+import dagger_data  # noqa: E402
+import dagger_net  # noqa: E402
+import dagger_train  # noqa: E402
+import fold_camera  # noqa: E402
+import fold_traj  # noqa: E402
+from test_fold_camera import BASES, NEAR_EDGE, SIDE, cloth, render  # noqa: E402
+from test_replay import env, step_lines  # noqa: E402,F401  (env: the fake servo bus)
+
+PLANS = {}          # the planner's answers, kept across tests: a fold takes seconds to plan
+REAL_FOLD = fold_traj.fold
+
+
+def remembered_fold(points, closed=-0.17, empty_reading=False, pinch_z=fold_traj.PINCH_Z):
+    key = json.dumps([np.round(np.array([points[s] for s in ("left", "right")]), 6).tolist(), closed, empty_reading,
+                      pinch_z if not isinstance(pinch_z, dict) else sorted(pinch_z.items())])
+    if key not in PLANS:
+        PLANS[key] = REAL_FOLD(points, closed, empty_reading, pinch_z)
+    return json.loads(json.dumps(PLANS[key]))
+
+
+class OnPlan:
+    """A stand-in network: the plan's own row for the time asked. `change(k, side, row)` may alter it."""
+
+    def __init__(self, traj, change=None):
+        self.plan = {side: np.array(traj["arms"][side]["target"]) for side in ("left", "right")}
+        self.meta, self.path, self.change, self.asked = {"closed": -0.17}, Path("stand-in.npz"), change, 0
+
+    def targets(self, inputs, measured, sent, t):
+        k = int(round(t / dagger_net.DT))
+        self.asked += 1
+        out = {}
+        for side in measured:
+            out[side] = self.plan[side][k].copy()
+            if self.change:
+                out[side] = self.change(k, side, out[side])
+        return out
+
+
+@pytest.fixture
+def rig(env, tmp_path, monkeypatch):  # noqa: F811
+    """The fake bus, a calibrated camera, a picture of a moved cloth, and dagger_run on that bus's replay."""
+    monkeypatch.setattr(fold_traj, "fold", remembered_fold)
+    monkeypatch.setattr(fold_camera, "CAMERA", tmp_path / "camera.json")
+    monkeypatch.setattr(fold_camera, "HERE", tmp_path)
+    monkeypatch.setattr(env.replay, "sleep_until", lambda t: None)
+    sys.modules.pop("dagger_run", None)
+    env.dagger_run = importlib.import_module("dagger_run")
+    ruler, moved = tmp_path / "ruler.png", tmp_path / "moved.png"
+    Image.fromarray(render(cloth())).save(ruler)
+    Image.fromarray(render(cloth(shift=(0.01, -0.01), turn_deg=4.0), BASES)).save(moved)
+    assert fold_camera.main(["calibrate", "--image", str(ruler), "--out", str(tmp_path / "a.png")]) == 0
+    cal = json.loads(fold_camera.CAMERA.read_text())
+    env.traj = fold_camera.plan(np.asarray(Image.open(moved).convert("RGB")), cal, 0.30, -0.17)[0]
+    env.store = tmp_path / "store"
+    env.fold_args = ["--image", str(moved), "--out", str(tmp_path / "look.png"), "--left", "L", "--right", "R",
+                     "--speed", "1"]
+    return env
+
+
+def run(rig, policy=None, *more, monkeypatch=None):
+    if policy is not None:
+        monkeypatch.setattr(rig.dagger_run.dagger_net, "Policy", lambda path: policy)
+    return rig.dagger_run.main(["--store", str(rig.store), *more, *rig.fold_args])
+
+
+def played(rig, since):
+    """{device: the goals written to it since `since` ({device: count}) that belong to the fold's rows}."""
+    rows = len(rig.traj["arms"]["left"]["target"])
+    sends = math.ceil(rig.traj["dt"] / rig.replay.TICK_SECONDS - 1e-9)
+    return {dev: port.writes[since.get(dev, 0):][-rows * sends:] for dev, port in rig.ports.items()}
+
+
+def saved_rows(rig):
+    files = sorted(rig.store.glob("rows_*.npz"))
+    assert len(files) == 1
+    return np.load(files[0])
+
+
+def plan_ticks(rig, side):
+    return np.array(rig.replay.convert(rig.replay.Follower("L"), rig.traj["arms"][side]["target"])[0])
+
+
+# --- what reaches the arms ---
+
+def test_with_no_trust_the_arms_get_what_the_scripted_fold_sends(rig, monkeypatch):
+    assert fold_camera.main(["fold", *rig.fold_args]) == 0
+    scripted = played(rig, {})
+    counts = {dev: len(port.writes) for dev, port in rig.ports.items()}
+    wild = OnPlan(rig.traj, lambda k, side, row: row + 0.5)            # a network that is 29 deg off everywhere
+    assert run(rig, wild, "--trust-deg", "0", "--no-train", monkeypatch=monkeypatch) == 0
+    assert played(rig, counts) == scripted
+    rows = saved_rows(rig)
+    assert not rows["drove"].any() and wild.asked == len(rig.traj["arms"]["left"]["target"])
+
+
+def test_a_network_on_the_plan_drives_every_row_but_the_last(rig, monkeypatch, capsys):
+    assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch) == 0
+    rows = saved_rows(rig)
+    T = len(rig.traj["arms"]["left"]["target"])
+    assert len(rows["drove"]) == 2 * T and rows["obs"].shape == (2 * T, len(dagger_net.OBS))
+    assert rows["drove"][rows["row"] < T - 1].all() and not rows["drove"][rows["row"] == T - 1].any()
+    assert f"drove {T - 1} of {T} rows" in capsys.readouterr().out
+    follower = rig.replay.Follower("L")
+    for side, mirror in (("left", 1.0), ("right", dagger_net.MIRROR_JOINTS)):
+        mine = rows["side"] == side                                  # each row's reading, time and answer line up
+        plan = np.array([[follower.to_rad(m, t) for m, t in zip(range(1, 7), np.round(row))]
+                         for row in plan_ticks(rig, side)]) * mirror
+        assert np.array_equal(rows["row"][mine], np.arange(T))
+        assert np.allclose(rows["teacher"][mine], plan, atol=2e-3)                      # the plan's row k
+        assert np.allclose(rows["obs"][mine][1:, 10:16], plan[:-1], atol=2e-3)          # read: the row before
+        assert np.allclose(rows["obs"][mine][1:, 16:22], plan[:-1], atol=2e-3)          # sent last: the same
+        assert np.allclose(rows["obs"][mine][0, 16:22], plan[0], atol=2e-3)             # row 0: where it was glided
+        assert np.allclose(rows["obs"][mine][:, 22], np.arange(T) * rig.traj["dt"])     # at time k * dt
+        assert set(rows["obs"][mine][:, 23]) == {1.0 if side == "left" else -1.0}
+    assert not np.allclose(rows["teacher"][rows["side"] == "left"], rows["teacher"][rows["side"] == "right"],
+                           atol=0.02)                                # the two arms' plans do differ here
+    for dev, side in (("devL", "left"), ("devR", "right")):         # and the arm ends on the plan's last row
+        assert rig.ports[dev].writes[-1] == dict(zip(range(1, 7), np.round(plan_ticks(rig, side)[-1]).astype(int)))
+    log = step_lines(next((rig.tmp / "runs").glob("*/steps.jsonl")))
+    who = [line for line in log if line["phase"] == "dagger"]
+    assert len(who) == T and who[0]["who"] == {"left": "policy", "right": "policy"}
+    assert sum(line["phase"] == "fold" for line in log) == T
+
+
+def test_a_row_that_strays_is_the_plans_and_the_arm_stays_in_the_band(rig, monkeypatch):
+    def change(k, side, row):
+        if side == "left" and 40 <= k < 60:
+            row[2] += math.radians(9.0)                              # the elbow, far outside the band
+        elif side == "right":
+            row[0] += math.radians(1.9 * (-1) ** k)                  # the pan, jumping 3.8 deg a row inside it: over
+        return row                                                   # the rate cap, so the cap is at work too
+
+    assert run(rig, OnPlan(rig.traj, change), "--trust-deg", "2", "--no-train", monkeypatch=monkeypatch) == 0
+    rows = saved_rows(rig)
+    left, right = rows["side"] == "left", rows["side"] == "right"
+    strayed = left & (rows["row"] >= 40) & (rows["row"] < 60)
+    assert not rows["drove"][strayed].any() and set(rows["why"][strayed]) == {"strayed"}
+    assert rows["drove"][right & (rows["row"] < rows["row"].max())].all()
+    sends = math.ceil(rig.traj["dt"] / rig.replay.TICK_SECONDS - 1e-9)
+    for dev, side in (("devL", "left"), ("devR", "right")):
+        sent = np.array([[goal[m] for m in range(1, 7)] for goal in played(rig, {})[dev][sends - 1::sends]])
+        off = np.abs(sent - plan_ticks(rig, side)) / rig.replay.STEPS_PER_DEGREE
+        assert off.max() <= 2.0 + 0.1                                # never outside the band around the plan
+        last = dict(zip(range(1, 7), np.round(plan_ticks(rig, side)[-1]).astype(int)))
+        assert rig.ports[dev].writes[-1] == last                     # and it ends on the plan's last row
+    assert off.max() > 1.0                                           # and the right arm did follow the network
+
+
+def test_an_arm_the_rate_cap_held_short_of_the_last_row_is_stepped_onto_it(rig, monkeypatch):
+    far = OnPlan(rig.traj, lambda k, side, row: row + np.array([math.radians(4.5), 0, 0, 0, 0, 0]))
+    assert run(rig, far, "--trust-deg", "5", "--no-train", monkeypatch=monkeypatch) == 0
+    assert saved_rows(rig)["drove"].sum() > 300                      # 4.5 deg off, inside 5: the network drove
+    sends = math.ceil(rig.traj["dt"] / rig.replay.TICK_SECONDS - 1e-9)
+    for dev, side in (("devL", "left"), ("devR", "right")):         # 4.5 deg is more than one row's 3 deg
+        last = dict(zip(range(1, 7), np.round(plan_ticks(rig, side)[-1]).astype(int)))
+        assert rig.ports[dev].writes[-1] == last
+        steps = np.abs(np.diff([[g[m] for m in range(1, 7)] for g in rig.ports[dev].writes[-3 * sends:]], axis=0))
+        assert steps.max() <= rig.replay.MAX_DEG_S * rig.traj["dt"] * rig.replay.STEPS_PER_DEGREE / sends + 1
+
+
+def test_a_pose_too_close_to_itself_is_the_plans(rig, monkeypatch):
+    import collision
+    real, live = collision.closest, {"on": False}
+
+    def closest(rows):
+        if live["on"] and len(rows) == 1:
+            return 0.001, 0, ("gripper", "base")
+        return real(rows)
+
+    def change(k, side, row):
+        live["on"] = True                                            # the network is only asked once the fold plays
+        return row
+
+    monkeypatch.setattr(collision, "closest", closest)
+    assert run(rig, OnPlan(rig.traj, change), "--no-train", monkeypatch=monkeypatch) == 0
+    rows = saved_rows(rig)
+    assert not rows["drove"].any() and "too close to itself" in set(rows["why"])
+
+
+def test_a_network_that_gives_no_number_is_never_sent(rig, monkeypatch):
+    nan = OnPlan(rig.traj, lambda k, side, row: row * np.nan)
+    assert run(rig, nan, "--no-train", monkeypatch=monkeypatch) == 0
+    assert set(saved_rows(rig)["why"]) == {"not a number"}
+    sends = math.ceil(rig.traj["dt"] / rig.replay.TICK_SECONDS - 1e-9)
+    for dev, side in (("devL", "left"), ("devR", "right")):         # what was sent is the plan, row for row
+        sent = np.array([[goal[m] for m in range(1, 7)] for goal in played(rig, {})[dev][sends - 1::sends]])
+        assert np.array_equal(sent, np.round(plan_ticks(rig, side)))
+
+
+def test_a_row_that_puts_the_fingertip_under_the_plans_is_the_plans(rig, monkeypatch):
+    from kinematics import Arm
+    arm, pinch = Arm(), rig.traj["marks"]["pinch"]
+    plan = np.array(rig.traj["arms"]["left"]["target"])
+    drop = {}
+    for sign in (1.0, -1.0):                                         # which way the shoulder lowers the fingertip
+        bent = plan[pinch].copy()
+        bent[1] += sign * math.radians(1.5)
+        drop[sign] = arm.tip(plan[pinch][:5])[0][2] - arm.tip(bent[:5])[0][2]
+    down = max(drop, key=drop.get)
+    assert drop[down] > 0.004                                        # 1.5 deg, inside the band, is 4 mm or more
+
+    def change(k, side, row):
+        if side == "left" and k == pinch:
+            row[1] += down * math.radians(1.5)
+        return row
+
+    assert run(rig, OnPlan(rig.traj, change), "--no-train", monkeypatch=monkeypatch) == 0
+    rows = saved_rows(rig)
+    at = (rows["side"] == "left") & (rows["row"] == pinch)
+    assert list(rows["why"][at]) == ["fingertip under the plan's"] and not rows["drove"][at].any()
+
+
+def test_ctrl_c_in_the_fold_keeps_the_rows_played_and_puts_the_functions_back(rig, monkeypatch, capsys):
+    fold, play = fold_traj.fold, rig.replay.play
+    policy = OnPlan(rig.traj)
+
+    def change(k, side, row):
+        if k == 30:
+            raise KeyboardInterrupt
+        return row
+
+    policy.change = change
+    assert run(rig, policy, "--no-train", monkeypatch=monkeypatch) == 1
+    assert "Stopped (Ctrl-C)" in capsys.readouterr().out
+    rows = saved_rows(rig)
+    assert rows["row"].max() == 29 and len(rows["row"]) == 60
+    assert fold_traj.fold is fold and rig.replay.play is play
+
+
+def test_the_next_round_never_takes_a_number_in_use(rig, tmp_path):
+    store = tmp_path / "rounds"
+    store.mkdir()
+    for name in ("round_002.npz", "round_002.json", "round_003.npz", "round_003.json", "round_009.npz"):
+        (store / name).write_text("")
+    assert rig.dagger_run.next_round(store).name == "round_010.npz"
+    assert rig.dagger_run.latest(store).name == "round_003.npz"      # round_009 has no JSON: not a finished round
+
+
+def test_a_plan_the_network_was_not_trained_for_is_left_to_the_scripted_fold(rig, monkeypatch, capsys):
+    policy = OnPlan(rig.traj)
+    assert run(rig, policy, "--closed", "-0.15", monkeypatch=monkeypatch) == 0
+    assert policy.asked == 0 and not list(rig.store.glob("rows_*.npz"))
+    assert "nothing was learned: the jaw shuts to -0.15" in capsys.readouterr().out
+    assert rig.ports["devL"].writes                                  # the fold itself was played
+
+
+def test_a_dry_run_opens_no_port_and_says_what_the_network_would_drive(rig, monkeypatch, capsys):
+    assert run(rig, OnPlan(rig.traj), "--dry-run", monkeypatch=monkeypatch) == 0
+    assert rig.ports == {} and not rig.store.exists()
+    assert "the network drove" in capsys.readouterr().out
+
+
+def test_the_scripted_folds_functions_are_put_back(rig, monkeypatch):
+    fold, play = fold_traj.fold, rig.replay.play
+    assert run(rig, OnPlan(rig.traj), "--dry-run", monkeypatch=monkeypatch) == 0
+    assert fold_traj.fold is fold and rig.replay.play is play
+
+
+# --- the network and a round of training ---
+
+def test_the_gradients_are_the_slopes_of_the_error():
+    rng = np.random.default_rng(0)
+    layers = [(w.astype(np.float64), b.astype(np.float64) + 0.1) for w, b in dagger_net.initial(rng, [5, 7, 4, 3])]
+    x, y = rng.normal(size=(6, 5)), rng.normal(size=(6, 3))
+    output, seen = dagger_net.forward(layers, x)
+    loss, grads = dagger_net.gradients(layers, seen, output, y)
+
+    def error(changed):
+        return float(np.mean((dagger_net.forward(changed, x)[0] - y) ** 2))
+
+    assert loss == pytest.approx(error(layers))
+    for i, j, index in ((0, 0, (2, 3)), (1, 0, (0, 1)), (2, 0, (3, 2)), (0, 1, (4,)), (2, 1, (1,))):
+        bumped = [[w.copy(), b.copy()] for w, b in layers]
+        bumped[i][j][index] += 1e-6
+        slope = (error([tuple(p) for p in bumped]) - loss) / 1e-6
+        assert grads[i][j][index] == pytest.approx(slope, rel=1e-3, abs=1e-7)
+
+
+def test_the_right_arm_is_the_left_arm_in_a_mirror():
+    inputs = dagger_net.fold_inputs({"left": ((0.3, -0.02), (0.1, -0.02)), "right": ((0.3, 0.02), (0.1, 0.02))},
+                                    {"left": -0.004, "right": -0.004})
+    q = np.array([0.2, 0.5, -0.4, 0.9, -0.3, 0.1])
+    left = dagger_net.observation(inputs, "left", q, q + 0.01, 1.0)
+    right = dagger_net.observation(inputs, "right", q * dagger_net.MIRROR_JOINTS,
+                                   (q + 0.01) * dagger_net.MIRROR_JOINTS, 1.0)
+    assert np.allclose(left[:-1], right[:-1]) and left[-1] == 1.0 and right[-1] == -1.0
+
+
+def test_a_fold_on_the_arms_then_a_round_of_training_brings_the_network_nearer(rig, monkeypatch, capsys):
+    monkeypatch.setattr(dagger_net, "HIDDEN", (48, 48))
+    planned = []
+    for i, (shift, turn) in enumerate((((0.01, -0.01), 4.0), ((0.0, 0.0), 0.0), ((-0.01, -0.02), -5.0))):
+        corners = dict(zip(("near_left", "near_right", "far_right", "far_left"), cloth(shift=shift, turn_deg=turn)))
+        points = fold_camera.fold_points(corners, 0.30)
+        planned.append((i, points, fold_traj.PINCH_Z, fold_traj.fold(points, -0.17, False, fold_traj.PINCH_Z)))
+    base, first = rig.tmp / "base.npz", rig.tmp / "first.npz"
+    dagger_data.save(base, [(i, p, {"left": z, "right": z}, traj) for i, p, z, traj in planned] * 4, [], 0)
+    dagger_train.train(base, first, steps=400, quiet=True)
+    args = ["--policy", str(first), "--base", str(base), "--steps", "300", "--trust-deg", "2"]
+    assert run(rig, None, *args) == 0
+    out = capsys.readouterr().out
+    assert "Trained on" in out and "round_001.npz" in out
+    rows = saved_rows(rig)
+    before = dagger_train.errors(dagger_net.Policy(first), rows["obs"], rows["teacher"])["rms_deg"]
+    after = dagger_train.errors(dagger_net.Policy(rig.store / "round_001.npz"), rows["obs"], rows["teacher"])["rms_deg"]
+    assert max(after.values()) < max(before.values())
+    assert rig.dagger_run.latest(rig.store) == rig.store / "round_001.npz"
+    history = dagger_net.Policy(rig.store / "round_001.npz").meta["history"]
+    assert len(history) == 2 and history[1]["rows_from_arms"] == len(rows["obs"])
+
+
+def test_without_the_planned_folds_the_rows_are_kept_and_the_command_is_given(rig, monkeypatch, capsys):
+    assert run(rig, OnPlan(rig.traj), "--base", str(rig.tmp / "none.npz"), monkeypatch=monkeypatch) == 0
+    assert "dagger_data.py --episodes" in capsys.readouterr().out
+    assert len(list(rig.store.glob("rows_*.npz"))) == 1 and not list(rig.store.glob("round_*.npz"))
