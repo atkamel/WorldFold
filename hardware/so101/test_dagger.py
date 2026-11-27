@@ -212,6 +212,28 @@ def test_smoothing_rounds_the_corners_keeps_the_rate_cap_and_still_ends_on_the_l
         assert rig.ports[dev].writes[-1] == last
 
 
+def test_a_smoothed_pose_too_close_to_itself_is_not_sent_and_the_plans_row_is(rig, monkeypatch):
+    import collision
+    assert fold_camera.main(["fold", *rig.fold_args]) == 0
+    scripted = played(rig, {})
+    counts = {dev: len(port.writes) for dev, port in rig.ports.items()}
+    real, live = collision.closest, {"on": False}
+
+    def closest(rows):
+        if live["on"] and len(rows) == 1:
+            return 0.001, 0, ("gripper", "base")
+        return real(rows)
+
+    def change(k, side, row):
+        live["on"] = True
+        return row
+
+    monkeypatch.setattr(collision, "closest", closest)
+    assert run(rig, OnPlan(rig.traj, change), "--trust-deg", "0", "--no-train", "--smooth", "0.5",
+               monkeypatch=monkeypatch) == 0
+    assert played(rig, counts) == scripted
+
+
 def test_smoothing_outside_a_tenth_to_one_is_refused(rig, monkeypatch):
     with pytest.raises(SystemExit):
         run(rig, OnPlan(rig.traj), "--no-train", "--smooth", "0", monkeypatch=monkeypatch)

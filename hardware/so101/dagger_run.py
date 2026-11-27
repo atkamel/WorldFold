@@ -157,13 +157,13 @@ class Driver:
         """(the row to send {motor: ticks}, who drives it: "policy" or why the plan does, deg the network's row is
         from the plan's, motors the rate cap held back)."""
         if not np.all(np.isfinite(wanted)):
-            goal, held = capped(teacher, before, cap)
+            goal, held = self.plans_step(follower, collision, teacher, before, cap)
             return goal, "not a number", float("inf"), held
         asked = dict(zip(MOTOR_IDS, replay.convert(follower, [list(map(float, wanted))])[0][0]))
         away = max(abs(asked[m] - teacher[m]) for m in teacher) / replay.STEPS_PER_DEGREE
         why = "watching" if self.trust == 0 else "last row" if last else "strayed" if away > self.trust else None
         if why is None:
-            goal, held = capped(asked, before, cap)
+            goal, held = self.step(asked, before, cap)
             pose = [follower.to_rad(m, goal[m]) for m in MOTOR_IDS]
             planned = [follower.to_rad(m, teacher[m]) for m in MOTOR_IDS]
             if self.arm.tip(pose[:5])[0][2] < self.arm.tip(planned[:5])[0][2] - LOWER:
@@ -176,8 +176,27 @@ class Driver:
                 if distance >= collision.CLEARANCE:
                     return goal, "policy", away, held
                 why = "too close to itself"
-        goal, held = capped(teacher, before, cap)
+        goal, held = self.plans_step(follower, collision, teacher, before, cap)
         return goal, why, away, held
+
+    def step(self, row, before, cap):
+        """(the pose sent for `row`: `smooth` of the way to it from `before`, no motor moved more than `cap`; motors
+        the rate cap held back)."""
+        goal, held = capped(row, before, cap / self.smooth)
+        return eased(goal, before, self.smooth), held
+
+    def plans_step(self, follower, collision, teacher, before, cap):
+        """`step` for the plan's row. A smoothed pose lies off the rows the plan was checked on: one too close to
+        the arm itself is not sent, the plan's own row is."""
+        goal, held = self.step(teacher, before, cap)
+        if self.smooth < 1.0:
+            try:
+                distance = collision.closest([[follower.to_rad(m, goal[m]) for m in MOTOR_IDS]])[0]
+            except ValueError:
+                distance = -1.0
+            if distance < collision.CLEARANCE:
+                return capped(teacher, before, cap)
+        return goal, held
 
     def intervene(self, k, followers, command, motors, log):
         """While the Xbox button has the fold waiting: hold row k and let gamepad.py's loop drive the arms, 50
@@ -264,10 +283,8 @@ class Driver:
             who, away = {}, {}
             for name, f in followers.items():
                 teacher = {m: rows[name][k][m] for m in motors}
-                # the cap is on the step sent, which is `smooth` of the step chosen
-                chosen, who[name], away[name], held = self.choose(
-                    f, collision, teacher, wanted[name], before[name], cap / self.smooth, k == final)
-                command[name] = eased(chosen, before[name], self.smooth)
+                command[name], who[name], away[name], held = self.choose(
+                    f, collision, teacher, wanted[name], before[name], cap, k == final)
                 engaged += held
                 mirror = dagger_net.MIRROR_JOINTS if name == "right" else 1.0
                 self.rows.append({"obs": dagger_net.observation(self.inputs, name, measured[name], sent[name],
