@@ -96,9 +96,9 @@ def rig_rows(folder):
     `folder`, oldest first; two empty arrays when there are none."""
     obs, label = [np.zeros((0, len(OBS)), np.float32)], [np.zeros((0, 6), np.float32)]
     for path in sorted(Path(folder).glob("rows_*.npz")) if folder else []:
-        saved = np.load(path)
-        obs.append(saved["obs"].astype(np.float32))
-        label.append(saved["teacher"].astype(np.float32))
+        with np.load(path) as saved:
+            obs.append(saved["obs"].astype(np.float32))
+            label.append(saved["teacher"].astype(np.float32))
     return np.concatenate(obs), np.concatenate(label)
 
 

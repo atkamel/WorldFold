@@ -93,8 +93,8 @@ def earned(store):
     files = sorted(Path(store).glob("rows_*.npz"))
     if not files:
         return None
-    rows = np.load(files[-1])
-    away = np.degrees(np.abs(rows["policy"] - rows["teacher"])).max(axis=1)
+    with np.load(files[-1]) as rows:    # closed again at once: Windows will not move a file that is still open
+        away = np.degrees(np.abs(rows["policy"] - rows["teacher"])).max(axis=1)
     return float(np.mean(np.nan_to_num(away, nan=np.inf) <= TRUST_DEG))
 
 

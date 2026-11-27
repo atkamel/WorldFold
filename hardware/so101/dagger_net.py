@@ -127,8 +127,8 @@ class Policy:
         self.meta = json.loads(self.path.with_suffix(".json").read_text())
         if self.meta["obs"] != OBS or self.meta["act"] != ACT:
             raise ValueError(f"{path} was trained on another observation or action than dagger_net.py defines")
-        weights = np.load(self.path)
-        self.layers = [(weights[f"w{i}"], weights[f"b{i}"]) for i in range(self.meta["layers"])]
+        with np.load(self.path) as weights:
+            self.layers = [(weights[f"w{i}"], weights[f"b{i}"]) for i in range(self.meta["layers"])]
         if self.layers[0][0].shape[0] != len(OBS) or self.layers[-1][0].shape[1] != len(ACT):
             raise ValueError(f"{path} holds layers of another size than its JSON says")
         self.obs_mean, self.obs_std = (np.array(self.meta[k], np.float32) for k in ("obs_mean", "obs_std"))

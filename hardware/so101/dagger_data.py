@@ -111,7 +111,8 @@ def save(path, planned, refused, seed):
 
 def load(path):
     """The saved file as a dict of arrays, with "folds" [(inputs [2, 5], targets [T, 2, 6])]."""
-    data = dict(np.load(path))
+    with np.load(path) as saved:
+        data = dict(saved)
     starts = data["starts"]
     data["folds"] = [(data["inputs"][e], data["targets"][starts[e]:starts[e + 1]]) for e in range(len(starts) - 1)]
     return data
@@ -119,7 +120,10 @@ def load(path):
 
 def join(paths, out):
     """One file from several of save()'s, their folds one after another. The seed kept is the first file's."""
-    parts = [dict(np.load(path)) for path in paths]
+    parts = []
+    for path in paths:
+        with np.load(path) as saved:
+            parts.append(dict(saved))
     starts = [0]
     for part in parts:
         starts += (part["starts"][1:] + starts[-1]).tolist()

@@ -101,7 +101,13 @@ def played(rig, since):
 def saved_rows(rig):
     files = sorted(rig.store.glob("rows_*.npz"))
     assert len(files) == 1
-    return np.load(files[0])
+    return opened(files[0])
+
+
+def opened(path):
+    """A saved file's arrays, the file closed again: Windows will not rename or delete one that is open."""
+    with np.load(path) as saved:
+        return dict(saved)
 
 
 def plan_ticks(rig, side):
@@ -293,14 +299,14 @@ def test_the_first_fold_is_the_scripted_fold_and_the_network_drives_once_it_has_
     assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch, trust=None) == 0
     assert "No fold saved yet: the scripted fold drives this one" in capsys.readouterr().out
     assert played(rig, counts) == scripted                           # nothing saved yet: the scripted fold, exactly
-    first = np.load(sorted(rig.store.glob("rows_*.npz"))[0])
+    first = opened(sorted(rig.store.glob("rows_*.npz"))[0])
     assert not first["drove"].any()
     assert rig.dagger_run.earned(rig.store) == 1.0                   # the network was on the plan throughout
     (rig.store / "rows_00000000_000000.npz").unlink(missing_ok=True)
     next(rig.store.glob("rows_*.npz")).rename(rig.store / "rows_20000101_000000.npz")
     assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch, trust=None) == 0
     assert "it drives this one inside 2 deg" in capsys.readouterr().out
-    newest = np.load(sorted(rig.store.glob("rows_*.npz"))[-1])
+    newest = opened(sorted(rig.store.glob("rows_*.npz"))[-1])
     assert newest["drove"].sum() == len(newest["drove"]) - 2         # every row but each arm's last
 
 
@@ -312,7 +318,7 @@ def test_a_network_that_was_off_the_plan_on_the_last_fold_hands_the_next_one_bac
     next(rig.store.glob("rows_*.npz")).rename(rig.store / "rows_20000101_000000.npz")
     assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch, trust=None) == 0
     assert "under 90%: the scripted fold drives this one" in capsys.readouterr().out
-    assert not np.load(sorted(rig.store.glob("rows_*.npz"))[-1])["drove"].any()
+    assert not opened(sorted(rig.store.glob("rows_*.npz"))[-1])["drove"].any()
 
 
 def test_a_fold_with_the_phone_saves_its_pictures_beside_the_log(rig, monkeypatch):
@@ -441,6 +447,27 @@ def test_where_the_teleop_leaves_a_fingertip_moves_the_rest_of_the_fold_and_is_k
     planned = np.array([arm.tip(q[:5])[0] for q in np.array(rig.traj["arms"]["left"]["target"])])
     assert np.allclose((taught - planned)[:-1], [0.01, 0.0, -0.002], atol=1.5e-3)    # every row, the early ones too
     assert np.allclose(taught[-1], planned[-1], atol=1e-4)                           # but the last
+
+
+def test_no_saved_file_is_left_open_when_an_intervention_puts_the_earlier_rows_aside(rig, monkeypatch):
+    """On Windows a rows file still open cannot be moved. Without --trust-deg the newest one is read before the
+    fold, and an intervention in that fold then moves it aside."""
+    import dagger_nudge
+    assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch) == 0     # a fold, so rows are saved
+    earlier = next(rig.store.glob("rows_*.npz"))
+    earlier = earlier.rename(rig.store / "rows_20000101_000000.npz")
+    files, load = [], np.load
+
+    def watched(*args, **kwargs):
+        files.append(load(*args, **kwargs))
+        return files[-1]
+
+    monkeypatch.setattr(np, "load", watched)
+    monkeypatch.setattr(dagger_nudge, "controls", lambda followers: (
+        [hands := Hands(followers, at=20, ticks=20, moves={"left": (0.005, 0.0, 0.0)}), hands][0], hands))
+    assert run(rig, OnPlan(rig.traj), "--no-train", monkeypatch=monkeypatch, trust=None) == 0
+    assert files and all(f.fid is None for f in files if hasattr(f, "fid"))            # every one closed again
+    assert not earlier.exists() and len(list(rig.store.glob("before_nudge_*/rows_20000101_000000.npz"))) == 1
 
 
 def test_the_next_fold_starts_with_the_stored_offsets_and_they_can_be_forgotten(rig, monkeypatch, capsys):
