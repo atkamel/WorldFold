@@ -1,30 +1,33 @@
 """The intervention button of dagger_run.py: press the Xbox button on the controller and the fold waits where it
-is; move a fingertip with the sticks; press it again and the fold goes on with the fingertip that much off the plan.
-The offset is kept (nudges.json in the store), so the next fold starts with it, and the corrected rows are what the
-network is taught.
+is, with the arms handed to the gamepad teleop (gamepad.py) exactly as the panel's gamepad mode drives them. Press
+the Xbox button again and the fold goes on with each fingertip as far off the plan as you left it. That offset is
+kept (nudges.json in the store), so the next fold starts with it, and the corrected rows are what the network is
+taught.
 
-    Xbox button     the fold waits on its current row; pressed again, it goes on
-    left stick      the left arm's fingertip: forward and back, left and right      (right stick: the right arm)
-    LB / LT         the left arm's fingertip up / down                              (RB / RT: the right arm)
+While the fold waits the controls are gamepad.py's own, and so are its checks (both arms against each other, the
+table and themselves, a lagging arm, a lost controller): the sticks rest a moment, A starts driving, each stick
+places its arm's gripper, LB and RB raise, LT and RT lower, B holds. This file only lends gamepad.Gamepad the two
+arms the fold holds and reads the Xbox button. The keys of the panel's page (wrist tilt, claw) are not there: the
+panel is not running during a fold from the command line.
 
-    python hardware/so101/dagger_nudge.py      # no arms: prints what the controller is read as, to check it first
+    python hardware/so101/dagger_nudge.py      # no arms: prints the Xbox button as it is read, to check it first
 
-The sticks and bumpers do nothing while the fold is not waiting. A controller that stops answering for LOST
-seconds while the fold waits lets the fold go on with the offsets as they are.
+On Windows the Xbox button is read through XInput's unlisted call (number 100 of xinput1_4.dll); the listed one,
+which hardware/controller reads, leaves that button out. Windows also opens the Game Bar on that button unless
+"Open Xbox Game Bar using this button on a controller" is switched off in Settings, Gaming. A controller that
+stops answering for LOST seconds while the fold waits lets the fold go on.
 
-On Windows the Xbox button is read through XInput's unlisted call (number 100 of xinput1_4.dll); the listed one
-leaves that button out. Windows also opens the Game Bar on that button unless "Open Xbox Game Bar using this button
-on a controller" is switched off in Settings, Gaming.
-
-An offset is (x forward, y left, z up) m in the arm's own base frame, like fold_camera.py's --overshoot and
---pinch-height, and no axis goes past MAX_NUDGE. Each arm has two: "pinch", from the first row until the corner is
-2 cm into the lift (the plan's "check" mark), and "carry", from there to the end. A nudge made before the lift
-moves both, so a corrected pinch carries to the place; a nudge made after it moves the carry alone.
+What is kept of an intervention is where each fingertip ended against the plan's row the fold waited on: an offset
+(x forward, y left, z up) m in the arm's own base frame, like fold_camera.py's --overshoot and --pinch-height, no
+axis past MAX_NUDGE. A fingertip left further than that comes back to MAX_NUDGE when the fold goes on. Each arm has
+two offsets: "pinch", from the first row until the corner is 2 cm into the lift (the plan's "check" mark), and
+"carry", from there to the end. An intervention before the lift moves both, so a corrected pinch carries to the
+place; one after it moves the carry alone.
 
 A corrected row is the plan's row with the fingertip moved by the offset (the planner's own solver, started from
 the plan's row, the jaw as planned). A row the solver cannot reach, that leaves a joint's limits by more than
-replay.py allows, or that comes nearer the arm itself than replay.py allows, stays the plan's row. A nudge that would
-make the row the fold is waiting on fail one of those is not taken. The last row is always the plan's.
+replay.py allows, or that comes nearer the arm itself than replay.py allows, stays the plan's row; an offset that
+fails on the row the fold waited on is not kept. The last row is always the plan's.
 """
 
 import ctypes
@@ -36,22 +39,88 @@ from pathlib import Path
 
 import numpy as np
 
+import arms
 import replay
 from kinematics import Arm
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))        # hardware.controller
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))        # hardware.controller, for gamepad.py
 
 MAX_NUDGE = 0.03        # m either way, each axis: fold_camera.MAX_OVERSHOOT
-SPEED = 0.02            # m/s of the fingertip with a stick pushed all the way
-LIFT = 0.01             # m/s up with a bumper held, down with a trigger pulled all the way
-DEAD_ZONE = 9000        # raw stick units from its rest that count as rest (gamepad.DEAD_ZONE)
-TRIGGER_START = 0.1     # share of its travel under which a trigger is at rest
-STALE = 0.3             # s after which a controller sample is no longer acted on
+TOUCHED = 0.0005        # m: a fingertip left nearer than this to where it was has not been moved
 LOST = 2.0              # s without the controller after which a waiting fold goes on
 REACH = 1e-3            # m the solver may miss a corrected fingertip by
 SOLVE_STEPS = 40
 PHASES = ("pinch", "carry")
 MOTOR_IDS = replay.MOTOR_IDS
+
+
+class Lent:
+    """What gamepad.Gamepad asks of an arm (ui.Arm), on a replay.Follower the fold already holds."""
+
+    def __init__(self, follower):
+        self.follower, self.name, self.limits = follower, follower.name, follower.limits
+        self.lock, self.lent, self.torque, self.pending_torque = threading.Lock(), False, True, None
+        self.speed = replay.MAX_DEG_S       # deg/s: the fold's own rate cap
+        self.present = self.command = self.target = None
+
+    def read_present(self):
+        try:
+            self.present = self.follower.read_present()
+        except OSError:
+            return False
+        return True
+
+    def send_goals(self, goals):
+        try:
+            self.follower.send_goals(goals)
+        except OSError:
+            return False
+        return True
+
+    def apply_torque(self, on):
+        pass
+
+
+class Teleop:
+    """gamepad.Gamepad driving the fold's two arms while the fold waits."""
+
+    def __init__(self, followers):
+        import gamepad
+        if set(followers) != {"left", "right"}:
+            raise ValueError("it drives two arms and the fold has one")
+        spacing = arms.CONFIG.get("spacing_cm")
+        if spacing is None:
+            raise ValueError("arms.json has no spacing_cm")
+        self.hands = {side: Lent(followers[side]) for side in ("left", "right")}
+        for hand in self.hands.values():    # Gamepad reads limits and poses at once: give it somewhere to start
+            hand.present = hand.command = hand.target = {m: sum(hand.limits[m]) / 2 for m in MOTOR_IDS}
+        self.pad = gamepad.Gamepad(self.hands["left"], self.hands["right"], float(spacing) / 100)
+        threading.Thread(target=self.pad.input_loop, daemon=True).start()
+
+    def take(self, command):
+        """Start from what the fold sent last ({side: {motor: ticks}}), not driving until A is pressed."""
+        for side, hand in self.hands.items():
+            hand.command, hand.target, hand.present = dict(command[side]), dict(command[side]), dict(command[side])
+        self.pad.enabled, self.pad.last_tick = False, None
+
+    def tick(self):
+        """One step of gamepad.py's loop. Returns its status line."""
+        state, captured, message = self.pad.sample
+        self.pad.tick(state, captured, time.monotonic(), message)
+        return self.pad.status
+
+    def command(self, side):
+        return dict(self.hands[side].command)
+
+    def xbox_button(self):
+        """Whether the Xbox button is down, from gamepad.py's own reading; None with no fresh reading."""
+        state, captured, _ = self.pad.sample
+        if state is None or time.monotonic() - captured > 0.3:
+            return None
+        return bool(state.guide)
+
+    def close(self):
+        self.pad.shutdown.set()
 
 
 class _XInputPad(ctypes.Structure):
@@ -60,80 +129,59 @@ class _XInputPad(ctypes.Structure):
                 ("ry", ctypes.c_int16), ("reserved", ctypes.c_uint32)]
 
 
-def windows_samples(stopped, period=0.02):
-    """(xbox button, lb, rb, left trigger 0-1, right trigger 0-1, the four stick axes) from XInput's call number
-    100, which reports the Xbox button (bit 0x0400); None while no controller answers."""
+def windows_xbox_button():
+    """A function giving whether the Xbox button is down (bit 0x0400 of XInput's call number 100), None while no
+    controller answers."""
     read = ctypes.WinDLL("xinput1_4.dll")[100]
     read.argtypes, read.restype = (ctypes.c_uint32, ctypes.POINTER(_XInputPad)), ctypes.c_uint32
     pad = _XInputPad()
-    while not stopped.is_set():
-        if read(0, ctypes.byref(pad)) == 0:
-            yield (bool(pad.buttons & 0x0400), bool(pad.buttons & 0x0100), bool(pad.buttons & 0x0200),
-                   pad.lt / 255, pad.rt / 255, (pad.lx, pad.ly, pad.rx, pad.ry))
-        else:
-            yield None
-        stopped.wait(period)
+    return lambda: bool(pad.buttons & 0x0400) if read(0, ctypes.byref(pad)) == 0 else None
 
 
-def usb_samples(stopped):
-    """The same from hardware/controller's reader (macOS: raw USB)."""
-    from hardware.controller.inputs import controller_samples
-    for state in controller_samples(stopped):
-        yield None if state is None else (
-            bool(state.guide), "lb" in state.buttons, "rb" in state.buttons, state.left_trigger / 1023,
-            state.right_trigger / 1023, (state.left_x, state.left_y, state.right_x, state.right_y))
+class Button:
+    """The Xbox button, watched on its own thread: each press turns `waiting` over. `down` is a function giving
+    whether it is down now, or None with no controller."""
 
+    def __init__(self, down, period=0.02):
+        self.down, self.period, self.stopped = down, period, threading.Event()
+        self.waiting, self.was_down, self.seen = False, False, time.monotonic()
+        threading.Thread(target=self.watch, daemon=True).start()
 
-class Pad:
-    """The controller, read on its own thread. Each press of the Xbox button turns `waiting` over."""
+    def look(self):
+        """Read the button once."""
+        now = self.down()
+        if now is not None:
+            if now and not self.was_down:
+                self.waiting = not self.waiting
+            self.was_down, self.seen = now, time.monotonic()
 
-    def __init__(self, samples=None):
-        self.sample, self.centre, self.stopped = (None, 0.0), None, threading.Event()
-        self.waiting, self.was_down = False, False
-        self.samples = samples or (windows_samples if sys.platform == "win32" else usb_samples)
-        threading.Thread(target=self.listen, daemon=True).start()
+    def watch(self):
+        while not self.stopped.is_set():
+            try:
+                self.look()
+            except Exception as err:        # no driver for the controller: the fold runs without the button
+                print(f"The Xbox button cannot be read ({err}).")
+                return
+            self.stopped.wait(self.period)
 
-    def listen(self):
-        try:
-            for sample in self.samples(self.stopped):
-                if sample is not None:
-                    if sample[0] and not self.was_down:
-                        self.waiting = not self.waiting
-                    self.was_down = sample[0]
-                    self.sample = (sample, time.monotonic())
-        except Exception as err:        # no controller, no driver: the fold runs without the button
-            self.sample = (None, 0.0)
-            print(f"No controller for the intervention button ({err}).")
+    def read(self):
+        """Whether the fold is to wait."""
+        if self.waiting and time.monotonic() - self.seen > LOST:
+            self.waiting = False
+            print("The controller stopped answering: the fold goes on.")
+        return self.waiting
 
     def close(self):
         self.stopped.set()
 
-    def stick(self, x, y, centre):
-        point = (np.array([x, y], float) - centre) / 32768
-        length, rest = float(np.linalg.norm(point)), DEAD_ZONE / 32768
-        if length <= rest:
-            return np.zeros(2)
-        return point * min(1.0, (length - rest) / (1.0 - rest)) / length
 
-    def read(self):
-        """(whether the fold is to wait, {side: the fingertip's rate (x, y, z), each -1 to 1} or None when the
-        controller has not answered for STALE seconds)."""
-        sample, seen = self.sample
-        if sample is None or time.monotonic() - seen > STALE:
-            if self.waiting and time.monotonic() - seen > LOST:
-                self.waiting = False
-                print("The controller stopped answering: the fold goes on.")
-            return self.waiting, None
-        _, lb, rb, lt, rt, axes = sample
-        axes = np.array(axes, float)
-        if self.centre is None:
-            self.centre = axes          # where the sticks rest
-        rates = {}
-        for side, (x, y), up, pulled in (("left", self.stick(*axes[:2], self.centre[:2]), lb, lt),
-                                        ("right", self.stick(*axes[2:], self.centre[2:]), rb, rt)):
-            down = max(0.0, (pulled - TRIGGER_START) / (1.0 - TRIGGER_START))
-            rates[side] = np.array([y, -x, (1.0 if up else 0.0) - down])    # stick up is forward, stick right is -y
-        return self.waiting, rates
+def controls(followers):
+    """(Teleop, Button) for a fold's arms. ValueError says why there is no intervention button."""
+    try:
+        teleop = Teleop(followers)
+    except (OSError, KeyError, ImportError) as err:
+        raise ValueError(str(err)) from err
+    return teleop, Button(windows_xbox_button() if sys.platform == "win32" else teleop.xbox_button)
 
 
 class Nudges:
@@ -197,32 +245,45 @@ class Nudges:
                 self.kept_plan += 1
             self.rows[side][k] = row if row is not None else dict(zip(MOTOR_IDS, self.plan[side][k]))
 
-    def step(self, side, k, move):
-        """Move `side`'s offset for row k's part of the fold by `move` (m), if row k can be had with it. Returns
-        that row ({motor: ticks}) or None when the nudge is not taken."""
+    def take(self, side, k, command):
+        """After an intervention on row k that left `side` at `command` ({motor: ticks}): keep the fingertip's
+        offset from the plan's row. Returns "kept", "not moved", or why it is not kept."""
+        follower = self.followers[side]
+        at = np.array([follower.to_rad(m, command[m]) for m in MOTOR_IDS[:5]])
+        plan = np.array([follower.to_rad(m, t) for m, t in zip(MOTOR_IDS[:5], self.plan[side][k])])
         phase = self.phase(k)
-        wanted = np.clip(self.offsets[side][phase] + move, -MAX_NUDGE, MAX_NUDGE)
+        wanted = np.clip(self.arm.tip(at)[0] - self.arm.tip(plan)[0], -MAX_NUDGE, MAX_NUDGE)
         taken = wanted - self.offsets[side][phase]
-        row = self.corrected(side, k, wanted) if np.any(taken) else None
-        if row is None:
-            return None
+        if np.linalg.norm(taken) < TOUCHED:
+            return "not moved"
+        if self.corrected(side, k, wanted) is None:
+            return "not kept: the plan's row cannot be had with the fingertip there"
         self.offsets[side][phase] = wanted
         if phase == "pinch":            # a corrected pinch carries to the place
             self.offsets[side]["carry"] = np.clip(self.offsets[side]["carry"] + taken, -MAX_NUDGE, MAX_NUDGE)
         self.changed = True
-        return row
+        return "kept"
 
 
 def main():
-    """Print what the controller is read as, for 30 s: check the Xbox button and the sticks before a fold."""
-    pad = Pad()
-    print("Press the Xbox button, push the sticks, hold the bumpers and triggers. Ctrl-C ends.")
+    """Print the Xbox button as it is read, for 30 s: check it before a fold. No arm is touched."""
+    if sys.platform == "win32":
+        down = windows_xbox_button()
+    else:
+        from hardware.controller.inputs import controller_samples
+        seen, stopped = [None], threading.Event()
+
+        def listen():
+            for state in controller_samples(stopped):
+                seen[0] = None if state is None else bool(state.guide)
+        threading.Thread(target=listen, daemon=True).start()
+        down = lambda: seen[0]    # noqa: E731
+    button = Button(down)
+    print("Press the Xbox button a few times: 'waiting' should turn over on each press. Ctrl-C ends.")
     for _ in range(150):
-        waiting, rates = pad.read()
-        print(f"waiting {waiting}  " + ("no controller" if rates is None else "  ".join(
-            f"{side} forward {r[0]:+.2f} left {r[1]:+.2f} up {r[2]:+.2f}" for side, r in rates.items())))
+        print(f"button {'no controller' if down() is None else 'down' if down() else 'up'}   waiting {button.read()}")
         time.sleep(0.2)
-    pad.close()
+    button.close()
 
 
 if __name__ == "__main__":

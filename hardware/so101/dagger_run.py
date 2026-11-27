@@ -37,11 +37,11 @@ to rows_<time>.npz in --store (default runs/dagger) and the network is trained o
 (dagger_train.py: a few seconds), giving round_<n>.npz, which the next run starts from. Training needs the planned
 folds of dagger_data.py at --base; without that file the rows are saved and the command to make it is printed.
 
-The intervention button (dagger_nudge.py): press the Xbox button on the controller and the fold waits; the sticks
-move a fingertip, the bumpers and triggers raise and lower it; press again and the fold goes on with that offset,
-which is kept for the folds after it. The corrected rows take the plan's place everywhere above: they are what
-the band is measured from and what the network is taught. --no-nudge leaves the controller alone; --forget-nudges
-starts again from no offsets.
+The intervention button (dagger_nudge.py): press the Xbox button on the controller and the fold waits, with the
+arms driven by the gamepad teleop (gamepad.py, its controls and its checks); press it again and the fold goes on
+with each fingertip as far off the plan as it was left, an offset that is kept for the folds after it. The
+corrected rows take the plan's place everywhere above: they are what the band is measured from and what the
+network is taught. --no-nudge leaves the controller alone; --forget-nudges starts again from no offsets.
 
 With --dry-run nothing moves (replay.py's own dry run); the network is then played against the plan in the arm
 model, each joint taken to be on the row before, and the share of rows it would have driven is printed.
@@ -113,10 +113,11 @@ def capped(wanted, before, cap):
 class Driver:
     """Stands in for fold_traj.fold (`fold`) and replay.play (`play`) during one fold."""
 
-    def __init__(self, policy, trust_deg, plan, play, nudges=None, pad=None):
+    def __init__(self, policy, trust_deg, plan, play, nudges=None, button=False):
         self.policy, self.trust = policy, trust_deg
         self.plan, self.scripted_play = plan, play
-        self.nudges, self.pad, self.check = nudges, pad, 0
+        self.nudges, self.wants_button, self.check = nudges, button, 0
+        self.teleop = self.button = None
         self.inputs = None
         self.why_scripted = "the planner was never asked for a fold"
         self.rows = []          # one per arm per row played: see save_rows
@@ -171,32 +172,35 @@ class Driver:
         return goal, why, away, held
 
     def intervene(self, k, followers, command, motors, log):
-        """While the fold is told to wait (dagger_nudge.Pad): hold row k and move each arm's fingertip as the
-        controller asks, 50 times a second, each move inside replay.py's rate cap. `command` ({side: {motor:
-        ticks}}) is left on what was sent last. Returns the seconds spent, 0 when the fold was not told to wait."""
-        waiting, rates = self.pad.read()
-        if not waiting:
+        """While the Xbox button has the fold waiting: hold row k and let gamepad.py's loop drive the arms, 50
+        times a second. Then keep where each fingertip was left as its offset. `command` ({side: {motor: ticks}})
+        ends on what was sent last. Returns the seconds spent, 0 when the fold was not told to wait."""
+        if not self.button.read():
             return 0.0
-        started, cap, n = time.monotonic(), replay.MAX_DEG_S * replay.TICK_SECONDS * replay.STEPS_PER_DEGREE, 0
-        goal, touched = {name: dict(command[name]) for name in followers}, set()
-        print(f"\nWaiting on row {k} for the controller. Sticks move a fingertip, bumpers and triggers raise and "
-              "lower it; the Xbox button again goes on.")
-        while waiting:
-            for name, f in followers.items():
-                if rates is not None and np.any(rates[name]):
-                    step = rates[name] * [dagger_nudge.SPEED, dagger_nudge.SPEED, dagger_nudge.LIFT]
-                    row = self.nudges.step(name, k, step * replay.TICK_SECONDS)
-                    if row is not None:
-                        goal[name] = {m: row[m] for m in motors}
-                        touched.add(name)
-                command[name] = capped(goal[name], command[name], cap)[0]
-                f.send_goals(command[name])
+        started, n, shown = time.monotonic(), 0, None
+        self.teleop.take(command)
+        print(f"\nWaiting on row {k}: the controller has the arms, as in gamepad mode. The Xbox button again "
+              "goes on with the fold.")
+        while self.button.read():
+            try:
+                status = self.teleop.tick()
+            except (ValueError, np.linalg.LinAlgError) as err:
+                print(f"  The gamepad control stopped ({err}): the fold goes on.")
+                self.button.waiting = False
+                break
+            if status != shown:
+                print(f"  {status}")
+                shown = status
             n += 1
             replay.sleep_until(started + n * replay.TICK_SECONDS)
-            waiting, rates = self.pad.read()
-        for name in touched:                # the rows still to come, with the offsets as they are now
-            self.nudges.rebuild(name, k)
-        if touched:
+        for name in followers:
+            command[name] = {m: self.teleop.command(name)[m] for m in motors}
+            outcome = self.nudges.take(name, k, command[name])
+            if outcome == "kept":           # the rows still to come, with the offsets as they are now
+                self.nudges.rebuild(name, k)
+            elif outcome != "not moved":
+                print(f"  The {name} arm's fingertip is {outcome}.")
+        if self.nudges.changed:
             self.nudges.save()
         print(f"Going on. Offsets now: {self.nudges.describe()}.")
         if hasattr(log, "write"):
@@ -228,11 +232,17 @@ class Driver:
         if self.nudges is not None:         # the plan's rows with the stored offsets: the rows to follow from here
             self.nudges.begin(followers, ticks, self.check, collision)
             rows = self.nudges.rows
+            if self.wants_button and self.button is None:
+                try:
+                    self.teleop, self.button = dagger_nudge.controls(followers)
+                    print("The Xbox button on the controller makes the fold wait and hands the arms to the gamepad.")
+                except ValueError as err:
+                    print(f"No intervention button in this fold: {err}.")
         else:
             rows = {name: [dict(zip(MOTOR_IDS, row)) for row in ticks[name]] for name in followers}
         t0 = time.monotonic()
         for i, k in enumerate(order):
-            if self.pad is not None and self.nudges is not None:
+            if self.button is not None:
                 t0 += self.intervene(k, followers, command, motors, log)
             row_start = t0 + i * tick
             replay.sleep_until(row_start)
@@ -375,10 +385,8 @@ def main(argv=None):
     if args.forget_nudges and stored.exists():
         stored.replace(stored.with_name(f"nudges_until_{time.strftime('%Y%m%d_%H%M%S')}.json"))
     nudges = dagger_nudge.Nudges(stored)
-    pad = None if args.no_nudge or "--dry-run" in fold_args else dagger_nudge.Pad()
-    print(f"Stored offsets: {nudges.describe()}." + ("" if pad is None else
-          " The Xbox button on the controller makes the fold wait for a nudge."))
-    driver = Driver(policy, args.trust_deg, fold_traj.fold, replay.play, nudges, pad)
+    print(f"Stored offsets: {nudges.describe()}.")
+    driver = Driver(policy, args.trust_deg, fold_traj.fold, replay.play, nudges, not args.no_nudge)
     pictures = not any(flag in fold_args for flag in ("--image", "--log", "--dry-run"))
     recorded, look = None, None
     fold_traj.fold, replay.play = driver.fold, driver.play
@@ -398,8 +406,9 @@ def main(argv=None):
             code = fold_camera.main(["fold", "--device", str(args.device), *fold_args])
     finally:
         fold_traj.fold, replay.play = driver.plan, driver.scripted_play
-        if pad is not None:
-            pad.close()
+        for part in (driver.button, driver.teleop):
+            if part is not None:
+                part.close()
         if look is not None:
             os.unlink(look)
         if driver.rows and nudges.changed:  # rows of earlier folds were taught other rows: kept, not trained on

@@ -46,17 +46,25 @@ drive now.
 
 ## The intervention button
 
-Press the Xbox button on the controller and the fold waits on the row it is at. Press it again and the fold goes on.
-While it waits
+Press the Xbox button on the controller and the fold waits on the row it is at. The arms are then driven by the
+gamepad teleop itself, the code of the panel's gamepad mode, with its controls and its checks. Press the Xbox
+button again and the fold goes on.
 
-- the left stick moves the left arm's fingertip forward, back, left and right, and the right stick the right arm's
-- LB raises the left fingertip and LT lowers it. RB and RT do the same for the right arm
+While the fold waits, as in gamepad mode
 
-The fingertip moves at 2 cm a second at most, 1 cm a second up and down, and no further than 3 cm from the plan on
-any axis. A move that the arm cannot reach, or that brings it too close to itself, is not taken.
+- let the sticks rest a moment, then press A to drive
+- each stick places its arm's gripper. Sideways turns the base, forward and back reach
+- LB and RB raise, LT and RT lower
+- B holds, A drives again
 
-When the fold goes on, the fingertip keeps that offset for the rest of the fold. A nudge made before the corner is
-lifted also moves where it is placed. A nudge made during the carry moves the carry and the place alone.
+The terminal prints the teleop's status line whenever it changes, so `Press A to drive both arms` or a blocked move
+shows there. The keys of the panel's page, for the wrist and the claws, are not available. The panel is not running
+during a fold from the command line.
+
+What is kept is where each fingertip ended against the plan, up to 3 cm on any axis. A fingertip left further
+than that comes back to 3 cm when the fold goes on. The fingertip keeps that offset for the rest of the fold. An
+intervention before the corner is lifted also moves where it is placed. One during the carry moves the carry and
+the place alone.
 
 The offset is saved in `runs/dagger/nudges.json` and the next fold starts with it. So a correction holds from the
 next fold on without any training. The corrected rows are what the network is taught, and what its 2 degrees are
@@ -64,7 +72,7 @@ measured from. Rows saved by folds before the offset changed are put aside in a 
 
 `--forget-nudges` starts again from no offsets. `--no-nudge` leaves the controller alone.
 
-Check the controller first, with no arms. This prints what each control is read as.
+Check the Xbox button first, with no arms. This prints it as it is read.
 
 ```
 python hardware/so101/dagger_nudge.py
