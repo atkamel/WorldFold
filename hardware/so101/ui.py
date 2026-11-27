@@ -522,32 +522,15 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
             if gamepad is not None and self.path in ("/goal", "/pose", "/idle", "/mirror", "/leader"):
                 self.reply({"error": "The controller has exclusive control in gamepad mode"}, status=409)
                 return
-            if self.path == "/gamepad/hold":
-                # A roll or tilt key held or let go on the page.
+            if self.path in ("/gamepad/drive", "/gamepad/home"):
+                # The panel's Drive and idle buttons: the controller loop acts on them at its next step.
                 if gamepad is None:
                     self.reply({"error": "not in gamepad mode"}, status=404)
                     return
-                way = body.get("way")
-                what = body.get("what")
-                if arm is None or what not in ("roll", "tilt") or isinstance(way, bool) or way not in (-1, 0, 1):
-                    self.reply({"error": "send an arm, roll or tilt, and a way of -1, 0 or 1"}, status=400)
-                    return
-                if not gamepad.set_hold(arm.name, what, int(way)) and way != 0:
-                    self.reply({"error": "Press A on the controller to drive, then use the keys"}, status=409)
-                    return
-                self.reply({"ok": True})
-                return
-            if self.path == "/gamepad/claw":
-                # A claw key pressed on the page: that arm's claw goes to its other end.
-                if gamepad is None:
-                    self.reply({"error": "not in gamepad mode"}, status=404)
-                    return
-                if arm is None:
-                    self.reply({"error": "send an arm"}, status=400)
-                    return
-                if not gamepad.toggle_claw(arm.name):
-                    self.reply({"error": "Press A on the controller to drive, then use the claw keys"}, status=409)
-                    return
+                if self.path == "/gamepad/drive":
+                    gamepad.press_drive()
+                else:
+                    gamepad.press_home()
                 self.reply({"ok": True})
                 return
             if self.path == "/gamepad/target":
@@ -567,7 +550,7 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                     self.reply({"error": "send an arm and a point of three numbers within a metre"}, status=400)
                     return
                 if not gamepad.set_tip(arm.name, point):
-                    self.reply({"error": "Press A on the controller to drive, then drag"}, status=409)
+                    self.reply({"error": "Press Drive to drive, then drag"}, status=409)
                     return
                 self.reply({"ok": True})
                 return

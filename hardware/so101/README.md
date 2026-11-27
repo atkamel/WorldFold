@@ -625,31 +625,32 @@ and close any other process reading the raw USB controller before launching the 
 The two followers must be configured side by side in `arms.json`, in left-to-right order, with the measured
 `spacing_cm` between the bases. The left stick drives `arm2` on this rig and the right stick drives `arm1`.
 
-Two people drive it: one on the controller places the two grippers, one on the keyboard of the panel's page sets
-their angle and works the claws. Each uses the left hand for the left arm and the right hand for the right.
+Everything that moves the arms is on the controller; driving is started and stopped on the panel.
 
-| on the controller | what it does |
-|---|---|
-| left stick, right stick | sideways turns that arm's base; forward and back reach the fingertip out and in the way the arm faces |
-| LB, RB | the left, right arm up while held (15 cm/s, `LIFT_SPEED`) |
-| LT, RT | the left, right arm down, faster the further the trigger is pulled |
-| A | starts driving, with the sticks centred and the bumpers and triggers released; A again holds both arms |
-| B | stops; A drives again |
-| Y | while stopped or holding: both arms glide to their saved idle poses; B stops the glide |
-
-| on the keyboard, while driving | left arm | right arm |
+| on the controller | left arm | right arm |
 |---|---|---|
-| tilt the wrist joint up, down, while held (60 deg/s, `WRIST_SPEED`) | W, S | I, K |
-| turn the claw about the wrist, while held (90 deg/s, `ROLL_SPEED`) | A, D | J, L |
-| open the claw a little (30 deg, `CLAW_OPEN`) or shut it | E | U |
-| stop both arms | Space or Esc | |
+| sideways turns the arm's base; forward and back reach the fingertip out and in the way the arm faces | left stick | right stick |
+| the arm up while held (15 cm/s, `LIFT_SPEED`) | LB | RB |
+| the arm down, faster the further the trigger is pulled | LT | RT |
+| tilt the wrist joint up, down, while held (60 deg/s, `WRIST_SPEED`) | D-pad up, down | Y, A |
+| turn the claw about the wrist, while held (90 deg/s, `ROLL_SPEED`) | D-pad left, right | X, B |
+| open the claw a little (30 deg, `CLAW_OPEN`) or shut it | AGL | AGR |
 
-The panel's page must have the keyboard: click it once. Clicking a stick does nothing. In the 3D view, dragging an
+The rear AGL and AGR buttons send nothing of their own: each copies another button, set on the controller itself.
+Set AGL to copy View and AGR to copy Menu (`JAW_BUTTONS` in `gamepad.py`); View and Menu work the claws too.
+
+| on the panel | what it does |
+|---|---|
+| Drive / hold | starts driving, with the sticks centred and every button and trigger released; again holds both arms |
+| Go to idle | while stopped or holding: both arms glide to their saved idle poses; Stop ends the glide |
+| Stop, Space or Esc | stops both arms; Drive / hold drives again |
+
+Clicking a stick does nothing. In the 3D view, dragging an
 arm's orange ball while driving sends its fingertips to where the ball is dropped (Shift-drag: up and down).
 
 Both arms must have torque enabled in the panel. Let the sticks rest at center while the panel calibrates them,
-then press A, with the sticks centred and the bumpers and triggers released. B, the panel's Stop button or a lost
-controller holds both arms until A is pressed again,  If raw USB has not sent its first input report, move a stick
+then press Drive / hold, with the sticks centred and every button and trigger released. The panel's Stop button
+or a lost controller holds both arms until Drive / hold is pressed again. If raw USB has not sent its first input report, move a stick
 briefly and then let both sticks rest. From the folded idle pose, raise an arm before reaching out with it.
 
 A missed encoder read skips that one step and driving stays on; only reads missed for 15 steps in a row (0.3 s,
@@ -683,14 +684,13 @@ numbers within a metre), which walks the fingertips to it at the sticks' speed t
 dragged past where the arm can go is moved to the nearest place it can: the solver is run toward it from the
 arm's pose with the joints inside their recorded limits, and the point is kept 1 cm above the model's table
 (`TIP_FLOOR`). A blue ball marks the point, moved or not, until the gripper is there. In the 3D view the left
-button is for the arm, the right button turns the view (with Shift it slides it) and the wheel zooms. A stick takes over from it, B drops it, and it is refused while
+button is for the arm, the right button turns the view (with Shift it slides it) and the wheel zooms. A stick takes over from it, Stop drops it, and it is refused while
 driving is off. In gamepad mode only the gripper can be dragged; turning one joint by its part is for the panel
 without `--gamepad`.
 
-A held tilt or roll key is repeated by the page ten times a second (`POST /gamepad/hold`: the arm, `roll` or
-`tilt`, and a way of -1, 0 or 1). A key the loop stops hearing about for 0.3 s (`KEY_HOLD`) counts as let go, so a
-page that loses the keyboard cannot leave a wrist or a claw turning. The turn stops at the joint's recorded limits
-and goes through the same check; the moving jaw against the wrist is not in that check.
+A wrist or claw turn lasts as long as its button is down. It stops at the joint's recorded limits and goes through
+the same check; the moving jaw against the wrist is not in that check. The panel's Drive / hold and Go to idle
+buttons reach the loop as `POST /gamepad/drive` and `POST /gamepad/home`, and count for the next step only.
 
 The glide to idle moves every joint of an arm straight to its idle value, the fastest at 30 deg/s
 (`HOME_SPEED`), through the same check as driving. The folded idle pose rests closer to itself than the clearances

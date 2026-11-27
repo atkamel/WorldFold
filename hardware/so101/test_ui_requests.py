@@ -61,17 +61,11 @@ def panel(tmp_path, monkeypatch, request):
         def tips_state(self):
             return {"arm1": None, "arm2": None}
 
-        def toggle_claw(self, name):
-            if not self.driving:
-                return False
-            self.dragged.append((name, "claw"))
-            return True
+        def press_drive(self):
+            self.dragged.append("drive")
 
-        def set_hold(self, name, what, way):
-            if not self.driving:
-                return False
-            self.dragged.append((name, what, way))
-            return True
+        def press_home(self):
+            self.dragged.append("home")
 
         def sticks_state(self):
             return {"left": [0.0, 0.0], "right": [0.0, 0.0], "raw": {"left": [0, 0], "right": [0, 0]}}
@@ -226,37 +220,14 @@ def test_a_dragged_point_is_not_taken_outside_gamepad_mode(panel):
 
 
 @pytest.mark.parametrize("panel", [True], indirect=True)
-def test_a_claw_key_reaches_the_gamepad_for_a_known_arm_while_driving(panel):
+def test_the_drive_and_idle_buttons_reach_the_gamepad(panel):
     _, post, _ = panel
-    assert post("/gamepad/claw", {"arm": "arm1"}) == 200
-    assert post.gamepad.dragged[-1] == ("arm1", "claw")
-    assert post("/gamepad/claw", {"arm": "nobody"}) == 400
-    post.gamepad.driving = False
-    assert post("/gamepad/claw", {"arm": "arm1"}) == 409
+    assert post("/gamepad/drive", {}) == 200
+    assert post("/gamepad/home", {}) == 200
+    assert post.gamepad.dragged[-2:] == ["drive", "home"]
 
 
-def test_a_claw_key_is_not_taken_outside_gamepad_mode(panel):
+def test_the_drive_and_idle_buttons_are_not_taken_outside_gamepad_mode(panel):
     _, post, _ = panel
-    assert post("/gamepad/claw", {"arm": "arm1"}) == 404
-
-
-@pytest.mark.parametrize("panel", [True], indirect=True)
-def test_a_held_key_reaches_the_gamepad_only_as_a_known_move_and_a_way(panel):
-    _, post, _ = panel
-    assert post("/gamepad/hold", {"arm": "arm1", "what": "roll", "way": -1}) == 200
-    assert post.gamepad.dragged[-1] == ("arm1", "roll", -1)
-    assert post("/gamepad/hold", {"arm": "arm1", "what": "tilt", "way": 1}) == 200
-    assert post.gamepad.dragged[-1] == ("arm1", "tilt", 1)
-    sent = len(post.gamepad.dragged)
-    for bad in (2, 0.5, "left", None, True):
-        assert post("/gamepad/hold", {"arm": "arm1", "what": "roll", "way": bad}) == 400
-    assert post("/gamepad/hold", {"arm": "arm1", "what": "spin", "way": 1}) == 400
-    assert post("/gamepad/hold", {"arm": "nobody", "what": "roll", "way": 1}) == 400
-    assert len(post.gamepad.dragged) == sent
-    post.gamepad.driving = False
-    assert post("/gamepad/hold", {"arm": "arm1", "what": "roll", "way": 1}) == 409
-
-
-def test_a_held_key_is_not_taken_outside_gamepad_mode(panel):
-    _, post, _ = panel
-    assert post("/gamepad/hold", {"arm": "arm1", "what": "roll", "way": 1}) == 404
+    assert post("/gamepad/drive", {}) == 404
+    assert post("/gamepad/home", {}) == 404

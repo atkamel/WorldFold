@@ -15,18 +15,19 @@ the revised plan in [reviews/2026-10-22-quarter-fold-reevaluation.md](reviews/20
 with at least one recorded clean demo. Bar: mean ≤ 2.0 cm and edge ≤ 3.0 cm on gated episodes (flat on the table,
 released, still), user 2026-10-22.
 
-- **Two-arm gamepad teleop (user, 2026-11-19, controls changed 2026-11-23):** `python hardware/so101/ui.py
-  --gamepad`, driven by two people. On the controller each stick places its arm's gripper (sideways turns the
-  base, forward and back reach), LB and RB raise and LT and RT lower, A starts driving, B stops and Y while
-  stopped sends both arms to their idle poses. On the keyboard of the panel's page W S and I K tilt the wrists,
-  A D and J L turn the claws, E and U toggle them and Space stops; dragging a gripper in the 3D view sends it
-  to the dropped point. The paired loop checks both arms and the table in one model before sending a step, and since 2026-11-23
+- **Two-arm gamepad teleop (user, 2026-11-19, controls changed 2026-11-23 and 2026-11-26):** `python
+  hardware/so101/ui.py --gamepad`, every move on the controller. Each stick places its arm's gripper (sideways
+  turns the base, forward and back reach), LB and RB raise and LT and RT lower; the D-pad tilts and turns the left
+  wrist, Y A and X B the right; the rear AGL and AGR buttons toggle the claws once they are set on the controller
+  to copy View and Menu. The panel's Drive / hold button starts driving, Go to idle sends both arms to their idle
+  poses and Stop (Space, Esc) stops; dragging a gripper in the 3D view sends it to the dropped point. The
+  2026-11-26 layout has only run on fake servos. The paired loop checks both arms and the table in one model before sending a step, and since 2026-11-23
   also parts two joints apart (forearm and shoulder housing, wrist and upper arm), which overlap by up to 7 cm in
   the model inside the motor limits (results.md); a pair already too close may move apart, not closer. The first
   drive on the rig (user, 2026-11-23) moved, slowly, with one arm waiting for the other. Since then a stick's
   sideways turns the base and its forward and back reach along the arm, at 10 cm/s and 45 deg/s, and each arm is
   judged on its own; that version has only run on fake servos. Since 2026-11-25 the panel's Cloth fold section
-  works in gamepad mode: a fold takes the arms from the controller and A drives again when it ends (fake servos
+  works in gamepad mode: a fold takes the arms from the controller and Drive drives again when it ends (fake servos
   only). See `hardware/so101/README.md`.
 - **PowerA USB controller (user, 2026-11-19):** `python -m hardware.controller` streams decoded input from
   the Lavender Swirl EnWired on this Mac. Live USB input and stick reports checked. Button, trigger, Share, and
@@ -203,6 +204,8 @@ Ordered by what they block. Each is a roadmap milestone.
 ## Pass log
 
 Newest first. One line per work pass: date · what changed · commit. Older lines are in git history.
+
+- 2026-11-26 · **Every move is on the controller, driving starts and stops on the panel (user: no keybinds; D-pad for the left wrist, X B and Y A for the right, AGL and AGR for the jaws, A's and Y's jobs and stop on the panel):** D-pad left and right turn the left claw and up and down tilt the left wrist, X and B turn the right claw and Y and A tilt the right wrist; View and Menu toggle the left and right claw, and AGL and AGR do once set on the controller to copy them (neither reader has an input of their own for them); the panel has a Drive / hold button, Go to idle sends both arms home, and the panel's Stop is the only stop (B turns a claw); the page's wrist and claw keys and their `/gamepad/hold` and `/gamepad/claw` requests are gone; the Windows reader takes X, the D-pad, View and Menu; `test_gamepad.py`, `test_ui_requests.py`, `test_arms.py`, `test_fold_job.py` and `hardware/controller`: 79 passed; fast suite 263 passed, 5 skipped, 1 failed (#17); not driven on the arms, the page not opened in a browser, the Windows button bits not read from the real controller · (this commit)
 
 - 2026-11-26 · **`origin/feat/rig-dagger` merged into `feat/teleop` (user):** DAgger on the camera fold (akamel, d137d14): `dagger_data.py`, `dagger_net.py`, `dagger_run.py`, `dagger_train.py`, `test_dagger.py`, `DAGGER.md` and the `camera_fold_v0` policy, 8 new files and no conflict; not run on the arms here; `test_dagger.py`, `test_ui_requests.py`, `test_gamepad.py`, `test_fold_job.py`, `test_arms.py` 91 passed, the rest not re-run · 880378f
 
