@@ -26,11 +26,10 @@ TRIGGER_RELEASE = 350
 REACH_SPEED = 0.20  # m/s the fingertip moves out, in, up or down with a stick fully over
 PAN_SPEED = 90  # deg/s the base turns with a stick fully over
 LIFT_SPEED = 0.15  # m/s up with a bumper held, and down with a trigger pulled all the way
-WRIST_SPEED = 60  # deg/s the wrist tilts while a tilt key is held
+WRIST_SPEED = 60  # deg/s the wrist tilts while a tilt button is held
 MAX_JOINT_SPEED = 120  # deg/s
 JAW_SPEED = 90  # deg/s of a claw on its way open or closed
-ROLL_SPEED = 90  # deg/s a claw turns about the wrist while a roll key is held
-KEY_HOLD = 0.3  # s a roll or tilt key counts as held after the page last said so
+ROLL_SPEED = 90  # deg/s a claw turns about the wrist while a roll button is held
 CLAW_OPEN = 30  # deg the claw opens to (the jaw's model angle; shut is about -10, its limit about 120)
 LAG_TIME = 0.15  # s of its own top speed an arm joint may trail its command before that arm waits
 HOME_SPEED = 30  # deg/s of the fastest joint on the glide to the idle poses
@@ -46,6 +45,11 @@ MAX_LAG = 100  # encoder ticks an arm joint may trail its command before that ar
 MAX_FAILS = 15  # servo reads or writes missed in a row before driving is switched off (0.3 s)
 LOG_EVERY = 2.0  # s between the counts written to the log
 JOINTS = tuple(replay.MOTOR_IDS)
+# Per arm, left then right: the button for one way and the button for the other.
+ROLL_BUTTONS = (("dpad_right", "dpad_left"), ("b", "x"))
+TILT_BUTTONS = (("dpad_down", "dpad_up"), ("a", "y"))
+# View is the two squares left of the centre, Menu the three bars right of it.
+JAW_BUTTONS = ("view", "menu")
 
 
 def stick(x, y, center):
@@ -83,19 +87,15 @@ class Gamepad:
         self.center = None
         self.center_candidate = None
         self.enabled = False
-        self.a_was_down = False
+        self.drive_asked = False  # the panel's Drive button was pressed since the last step
+        self.home_asked = False  # the panel's idle button was pressed since the last step
+        self.jaw_was_down = [False, False]
         self.last_tick = None
         self.loop_ms = 0.0
         self.homing = False
         self.lent_out = False  # the arms were lent to a cloth fold on the last step
-        self.y_was_down = False
         self.tips = [None, None]  # per arm: a fingertip point dragged in the panel, base frame, m
-        self.claws = [None, None]  # per arm: the jaw limit a claw key sent it to, until it is there
-        # Keys held on the panel's page. Per kind of move and arm: -1, 0 or 1, whether the page has just said
-        # so, and the loop time after which a key not heard of again counts as let go.
-        self.held = {"roll": [0, 0], "tilt": [0, 0]}
-        self.held_fresh = {"roll": [False, False], "tilt": [False, False]}
-        self.held_until = {"roll": [0.0, 0.0], "tilt": [0.0, 0.0]}
+        self.claws = [None, None]  # per arm: the jaw limit a jaw button sent it to, until it is there
         self.fails = 0  # servo reads or writes missed in a row
         self.log = None  # a text file the panel opens: what the loop did, for reading after a run
         self.logged_status = None
@@ -166,14 +166,13 @@ class Gamepad:
         self.homing = False
         self.tips = [None, None]
         self.claws = [None, None]
-        self.held = {"roll": [0, 0], "tilt": [0, 0]}
         for arm in self.arms:
             arm.target = dict(arm.command)
 
     def stop(self):
         left, right = self.arms
         with left.lock, right.lock:
-            self.stop_locked("Stopped. Press A to drive again")
+            self.stop_locked("Stopped. Press Drive on the panel to drive again")
 
     def reachable_point(self, index, point):
         """The place nearest `point` (the arm's base frame, m) that the fingertip can be brought to from where the
@@ -223,45 +222,25 @@ class Gamepad:
             self.tips[index] = nearest
             return True
 
-    def toggle_claw(self, name):
-        """Send the claw of the arm called `name` to its other end: open if it is nearer closed, closed if it is
-        nearer open. False when driving is off or the arm is not one of the two."""
-        left, right = self.arms
-        with left.lock, right.lock:
-            if not self.enabled:
-                return False
-            for i in range(2):
-                if self.arms[i].name != name:
-                    continue
-                heading = self.claws[i]
-                if heading is None:
-                    heading = self.arms[i].command[replay.GRIPPER_ID]
-                middle = (self.jaw_open[i] + self.jaw_closed[i]) / 2
-                nearer_open = abs(heading - self.jaw_open[i]) < abs(heading - middle)
-                if nearer_open:
-                    self.claws[i] = self.jaw_closed[i]
-                else:
-                    self.claws[i] = self.jaw_open[i]
-                return True
-            return False
+    def press_drive(self):
+        """The panel's Drive button: the next step starts driving, or holds the arms if they are being driven."""
+        self.drive_asked = True
 
-    def set_hold(self, name, what, way):
-        """A key held on the panel's page for the arm called `name`. `what` is "roll" (the claw turns about the
-        wrist) or "tilt" (the wrist joint, 1 is up); `way` is -1 or 1 while the key is held and 0 when it is let
-        go. The page repeats a held key; one it stops repeating is let go after KEY_HOLD. False when driving is
-        off, or the arm or the move is not known."""
-        if what not in self.held:
-            return False
-        left, right = self.arms
-        with left.lock, right.lock:
-            if not self.enabled:
-                return False
-            for i in range(2):
-                if self.arms[i].name == name:
-                    self.held[what][i] = way
-                    self.held_fresh[what][i] = way != 0
-                    return True
-            return False
+    def press_home(self):
+        """The panel's idle button: the next step starts both arms toward their idle poses, if driving is off."""
+        self.home_asked = True
+
+    def toggle_claw(self, i):
+        """Send the claw of arm `i` to its other end: open if it is nearer closed, closed if it is nearer open."""
+        heading = self.claws[i]
+        if heading is None:
+            heading = self.arms[i].command[replay.GRIPPER_ID]
+        middle = (self.jaw_open[i] + self.jaw_closed[i]) / 2
+        nearer_open = abs(heading - self.jaw_open[i]) < abs(heading - middle)
+        if nearer_open:
+            self.claws[i] = self.jaw_closed[i]
+        else:
+            self.claws[i] = self.jaw_open[i]
 
     def sticks_state(self):
         """The stick readings for the panel: what the loop acts on (-1 to 1, after the centre and the dead zone)
@@ -451,7 +430,7 @@ class Gamepad:
         off only when the link stays down."""
         self.fails += 1
         if self.fails >= MAX_FAILS:
-            self.stop_locked(f"The servo link dropped out ({what}). Check the cables, then press A")
+            self.stop_locked(f"The servo link dropped out ({what}). Check the cables, then press Drive on the panel")
         else:
             self.status = f"Waiting for the servos ({what})"
 
@@ -464,7 +443,7 @@ class Gamepad:
                 # A failed write can leave this physical goal uncertain. Preserve the prior software target.
                 if not arm.send_goals(goal):
                     self.failed_writes += 1
-                    self.stop_locked(f"Could not command {arm.name}. Press A to drive again")
+                    self.stop_locked(f"Could not command {arm.name}. Press Drive on the panel to drive again")
                     return False
                 arm.command = dict(goal)
                 arm.target = dict(goal)
@@ -588,14 +567,15 @@ class Gamepad:
                 if abs(self.arms[i].command[m] - self.idle[i][m]) > 0.5:
                     at_idle = False
         if at_idle:
-            self.stop_locked("Both arms are at their idle poses. Press A to drive")
+            self.stop_locked("Both arms are at their idle poses. Press Drive on the panel")
             return
         if goals[0] == self.arms[0].command and goals[1] == self.arms[1].command:
-            self.status = "Going to the idle poses: an arm is catching up. B stops"
+            self.status = "Going to the idle poses: an arm is catching up. Stop on the panel stops"
             return
         chosen, blocked = self.choose(goals, True)
         if chosen is None:
-            self.stop_locked(f"Stopped on the way to idle: clearance {blocked}. Move the arm clear, then press Y")
+            self.stop_locked(f"Stopped on the way to idle: clearance {blocked}. "
+                             "Move the arm clear, then press the idle button")
             return
         if self.too_late(now, captured, started):
             self.center = self.center_candidate = None
@@ -604,7 +584,7 @@ class Gamepad:
         if self.shutdown.is_set():
             return
         if self.send(goals, chosen):
-            self.status = "Going to the idle poses. B stops"
+            self.status = "Going to the idle poses. Stop on the panel stops"
 
     def run(self):
         threading.Thread(target=self.input_loop, daemon=True).start()
@@ -629,6 +609,11 @@ class Gamepad:
         if self.last_tick is not None:
             dt = min(max(now - self.last_tick, 0.0), MAX_STEP_TIME)
         self.last_tick = now
+        # A press on the panel counts for this step only: one made with no controller is not kept for later.
+        drive_pressed = self.drive_asked
+        home_pressed = self.home_asked
+        self.drive_asked = False
+        self.home_asked = False
         left, right = self.arms
         with left.lock, right.lock:
             if left.lent or right.lent:
@@ -638,7 +623,7 @@ class Gamepad:
                 return
             if self.lent_out:
                 self.lent_out = False
-                self.status = "The arms are back. Press A to drive again"
+                self.status = "The arms are back. Press Drive on the panel to drive again"
             # Refresh both encoder snapshots before solving. Torque requests still use the panel's arm API.
             reads = [arm.read_present() for arm in self.arms]
             torque_changed = False
@@ -660,12 +645,11 @@ class Gamepad:
             buttons = state.buttons
             triggers = (state.left_trigger, state.right_trigger)
             bumpers = ("lb" in buttons, "rb" in buttons)
-            a_down = "a" in buttons
-            a_pressed = a_down and not self.a_was_down
-            self.a_was_down = a_down
-            y_down = "y" in buttons
-            y_pressed = y_down and not self.y_was_down
-            self.y_was_down = y_down
+            jaw_pressed = [False, False]
+            for i in range(2):
+                jaw_down = JAW_BUTTONS[i] in buttons
+                jaw_pressed[i] = jaw_down and not self.jaw_was_down[i]
+                self.jaw_was_down[i] = jaw_down
             axes = np.array([state.left_x, state.left_y, state.right_x, state.right_y])
             self.shown_buttons = " ".join(buttons)
             self.shown_triggers = triggers
@@ -681,19 +665,16 @@ class Gamepad:
                 "right": [round(float(used[1][0]), 2), round(float(used[1][1]), 2)],
                 "raw": {"left": [int(axes[0]), int(axes[1])], "right": [int(axes[2]), int(axes[3])]},
             }
-            claws_released = not any(bumpers) and max(triggers) < TRIGGER_RELEASE  # the wrist buttons at rest
+            released = len(buttons) == 0 and max(triggers) < TRIGGER_RELEASE
             if self.center is None:
-                self.calibrate(axes, claws_released and not a_down, now)
+                self.calibrate(axes, released, now)
                 if self.center is None:
                     self.stop_locked("Center both sticks and release every button")
                 else:
-                    self.stop_locked("Press A to drive both arms")
-                return
-            if "b" in buttons:
-                self.stop_locked("Stopped. Press A to drive again")
+                    self.stop_locked("Press Drive on the panel to drive both arms")
                 return
             if not all(arm.torque for arm in self.arms) or torque_changed:
-                self.stop_locked("Turn on torque for both arms, then press A")
+                self.stop_locked("Turn on torque for both arms, then press Drive on the panel")
                 return
             if not all(reads):
                 # A missed read is routine on the serial link: skip this step and keep driving.
@@ -702,21 +683,21 @@ class Gamepad:
                 return
             sticks = (stick(*axes[:2], self.center[:2]), stick(*axes[2:], self.center[2:]))
             sticks_centered = not np.any(sticks[0]) and not np.any(sticks[1])
-            if a_pressed:
+            if drive_pressed:
                 self.homing = False
                 if self.enabled:
-                    self.stop_locked("Holding. Press A to drive again")
+                    self.stop_locked("Holding. Press Drive on the panel to drive again")
                     return
-                if not sticks_centered or not claws_released:
-                    self.stop_locked("Center both sticks and release the bumpers and triggers, then press A")
+                if not sticks_centered or not released:
+                    self.stop_locked("Center both sticks and release every button, then press Drive on the panel")
                     return
                 self.enabled = True
             if not self.enabled:
-                if y_pressed:
-                    if sticks_centered and claws_released:
+                if home_pressed:
+                    if sticks_centered and released:
                         self.homing = True
                     else:
-                        self.stop_locked("Center both sticks and release the bumpers and triggers, then press Y")
+                        self.stop_locked("Center both sticks and release every button, then press the idle button")
                         return
                 if self.homing:
                     self.home_step(dt, now, captured, started)
@@ -725,12 +706,8 @@ class Gamepad:
                 return
             jaw_goals = [None, None]
             for i in range(2):
-                for what in self.held:
-                    if self.held_fresh[what][i]:
-                        self.held_fresh[what][i] = False
-                        self.held_until[what][i] = now + KEY_HOLD
-                    if now > self.held_until[what][i]:
-                        self.held[what][i] = 0
+                if jaw_pressed[i]:
+                    self.toggle_claw(i)
                 if self.claws[i] is not None:
                     if abs(self.arms[i].command[replay.GRIPPER_ID] - self.claws[i]) < 0.5:
                         self.claws[i] = None
@@ -760,8 +737,18 @@ class Gamepad:
                         self.tips[i] = None
                     else:
                         notes.append(f"{names[i]} arm: going to the dragged point.")
-                roll = self.held["roll"][i] * np.radians(ROLL_SPEED) * dt
-                tilt = self.held["tilt"][i] * self.wrist_up * np.radians(WRIST_SPEED) * dt
+                roll_way = 0
+                if ROLL_BUTTONS[i][0] in buttons:
+                    roll_way -= 1
+                if ROLL_BUTTONS[i][1] in buttons:
+                    roll_way += 1
+                tilt_way = 0
+                if TILT_BUTTONS[i][0] in buttons:
+                    tilt_way -= 1
+                if TILT_BUTTONS[i][1] in buttons:
+                    tilt_way += 1
+                roll = roll_way * np.radians(ROLL_SPEED) * dt
+                tilt = tilt_way * self.wrist_up * np.radians(WRIST_SPEED) * dt
                 goal, reachable = self.proposed(arm, self.maps[i], step, turn, tilt, roll, jaw_goals[i], dt)
                 if not reachable:
                     notes.append(f"{names[i]} arm: out of reach.")

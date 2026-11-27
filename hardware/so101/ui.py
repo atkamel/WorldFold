@@ -48,6 +48,7 @@ sys.path.insert(0, str(HERE.parent.parent))
 
 import arms  # noqa: E402
 import fold_job  # noqa: E402
+import panel_phone  # noqa: E402
 import panel_camera  # noqa: E402
 import replay  # noqa: E402
 import teleop_record  # noqa: E402
@@ -56,6 +57,7 @@ from hardware.iphone_lidar.pointcloud import pack_frame, pack_no_points  # noqa:
 BAUDRATE = 1_000_000
 HTTP_PORT = 8101  # laptop only (127.0.0.1)
 PHONE_PORT = 8102  # HTTPS on the Wi-Fi: phones only give motion sensors to secure pages
+TAKEOVER_SECONDS = 5  # how long a stopped policy script gets to end and hand the arms back
 MOTOR_IDS = [1, 2, 3, 4, 5, 6]
 GRIPPER_ID = 6
 TICK_SECONDS = 0.02  # 50 Hz control loop
@@ -488,6 +490,13 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                 status = recording.status()
                 status["camera"] = camera.status()
                 self.reply(status)
+            elif path == "/frame.npz":
+                # The panel holds the phone: a script it runs (camera_run.py) reads the pictures here.
+                frame = camera.latest()
+                if frame is None:
+                    self.reply({"error": "no picture yet"}, status=404)
+                else:
+                    self.reply(panel_phone.pack(frame, camera.count()), "application/octet-stream")
             elif path == "/camera.jpg":
                 picture = camera_jpeg(camera)
                 if picture is None:
@@ -522,32 +531,15 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
             if gamepad is not None and self.path in ("/goal", "/pose", "/idle", "/mirror", "/leader"):
                 self.reply({"error": "The controller has exclusive control in gamepad mode"}, status=409)
                 return
-            if self.path == "/gamepad/hold":
-                # A roll or tilt key held or let go on the page.
+            if self.path in ("/gamepad/drive", "/gamepad/home"):
+                # The panel's Drive and idle buttons: the controller loop acts on them at its next step.
                 if gamepad is None:
                     self.reply({"error": "not in gamepad mode"}, status=404)
                     return
-                way = body.get("way")
-                what = body.get("what")
-                if arm is None or what not in ("roll", "tilt") or isinstance(way, bool) or way not in (-1, 0, 1):
-                    self.reply({"error": "send an arm, roll or tilt, and a way of -1, 0 or 1"}, status=400)
-                    return
-                if not gamepad.set_hold(arm.name, what, int(way)) and way != 0:
-                    self.reply({"error": "Press A on the controller to drive, then use the keys"}, status=409)
-                    return
-                self.reply({"ok": True})
-                return
-            if self.path == "/gamepad/claw":
-                # A claw key pressed on the page: that arm's claw goes to its other end.
-                if gamepad is None:
-                    self.reply({"error": "not in gamepad mode"}, status=404)
-                    return
-                if arm is None:
-                    self.reply({"error": "send an arm"}, status=400)
-                    return
-                if not gamepad.toggle_claw(arm.name):
-                    self.reply({"error": "Press A on the controller to drive, then use the claw keys"}, status=409)
-                    return
+                if self.path == "/gamepad/drive":
+                    gamepad.press_drive()
+                else:
+                    gamepad.press_home()
                 self.reply({"ok": True})
                 return
             if self.path == "/gamepad/target":
@@ -567,7 +559,7 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                     self.reply({"error": "send an arm and a point of three numbers within a metre"}, status=400)
                     return
                 if not gamepad.set_tip(arm.name, point):
-                    self.reply({"error": "Press A on the controller to drive, then drag"}, status=409)
+                    self.reply({"error": "Press Drive to drive, then drag"}, status=409)
                     return
                 self.reply({"ok": True})
                 return
@@ -576,14 +568,53 @@ def make_handler(arms_by_name, camera, recording, token=None, fold=None, stop_fo
                     self.reply({"error": "not available here"}, status=404)
                     return
                 if self.path == "/fold/start":
-                    refusal = fold.start(body.get("mode"), body.get("options", {}))
+                    options = body.get("options", {})
+                    if body.get("mode") == "policy":
+                        options = dict(options)
+                        options["frames"] = f"http://127.0.0.1:{HTTP_PORT}/frame.npz"
+                    refusal = fold.start(body.get("mode"), options)
                     if refusal is not None:
                         self.reply({"error": refusal}, status=409)
+                        return
+                elif self.path == "/fold/label":
+                    word = body.get("label")
+                    if word not in ("good", "bad", "discard"):
+                        self.reply({"error": "label is good, bad or discard"}, status=400)
+                        return
+                    if not fold.label(word):
+                        self.reply({"error": "no finished fold to label"}, status=409)
                         return
                 elif self.path == "/fold/continue":
                     fold.go_on()
                 elif self.path == "/fold/stop":
                     fold.stop()
+                self.reply({"ok": True})
+                return
+            if self.path == "/policy/takeover":
+                # A person takes over from a policy that went wrong: the policy's script is stopped, the arms come
+                # back to the panel holding where they are, and what is driven from here on is recorded as a
+                # correction.
+                if fold is None:
+                    self.reply({"error": "not available here"}, status=404)
+                    return
+                fold.stop()
+                deadline = time.monotonic() + TAKEOVER_SECONDS
+                while fold.status()["state"] in fold_job.BUSY_STATES and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                if fold.status()["state"] in fold_job.BUSY_STATES:
+                    self.reply({"error": "the policy's script did not stop"}, status=409)
+                    return
+                recording.start(correction=True)
+                self.reply({"ok": True})
+                return
+            if self.path == "/record/label":
+                word = body.get("label")
+                if word not in ("good", "bad", "discard"):
+                    self.reply({"error": "label is good, bad or discard"}, status=400)
+                    return
+                if not recording.label(word):
+                    self.reply({"error": "no finished recording to label"}, status=409)
+                    return
                 self.reply({"ok": True})
                 return
             if self.path in ARM_MOVES and arm is not None and arm.lent:

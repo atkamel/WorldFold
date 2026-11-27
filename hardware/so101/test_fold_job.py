@@ -164,6 +164,93 @@ def test_the_first_follower_is_the_fold_s_left_arm(rig):
     wait_for(job, ["stopped"])
 
 
+def test_fold_and_learn_borrows_the_arms_is_recorded_and_passes_the_trust_band(rig):
+    assert rig.job.start("learn", {"trust": 2, "speed": 0.3, "torque": 50}) is None
+    status = wait_for(rig.job, ["done"])
+    assert rig.calls == ["lend arm2", "lend arm1", "take back arm2", "take back arm1"]
+    assert status["lines"][0] == "mode --trust-deg"     # the stand-in calls its first argument the mode
+    args_line = status["lines"][1]
+    for flag in ("args 2.0 --image", "--left arm2 --right arm1", "--speed 0.3", "--torque-limit 50", "--log"):
+        assert flag in args_line
+    assert len(list(rig.runs.iterdir())) == 1
+    assert rig.job.start("learn", {"trust": 9}) is not None         # outside dagger_run.py's 0 to 5
+
+
+def test_a_policy_run_names_the_weights_the_dataset_and_where_the_pictures_come_from(rig, tmp_path):
+    weights = tmp_path / "final.pt"
+    weights.write_text("stand-in")
+    dataset = tmp_path / "rig_v0"
+    dataset.mkdir()
+    options = {"policy": str(weights), "dataset": str(dataset), "torque": 50, "frames": "http://127.0.0.1:1/frame.npz"}
+    assert rig.job.start("policy", options) is None
+    status = wait_for(rig.job, ["done"])
+    assert rig.calls == ["lend arm2", "lend arm1", "take back arm2", "take back arm1"]
+    args_line = status["lines"][1]
+    for flag in ("--dataset " + str(dataset), "--left arm2 --right arm1", "--torque-limit 50",
+                 "--frames http://127.0.0.1:1/frame.npz"):
+        assert flag in args_line
+    assert not rig.runs.exists()            # camera_run.py records its own run
+
+
+def test_a_policy_run_is_refused_without_the_weights_or_the_dataset(rig, tmp_path):
+    assert rig.job.start("policy", {"policy": str(tmp_path / "none.pt"), "dataset": str(tmp_path)}) is not None
+    assert rig.job.start("policy", {}) is not None
+    assert rig.calls == []
+
+
+def test_the_policy_s_press_enter_pause_is_a_prompt_too(rig, tmp_path):
+    script = tmp_path / "asks.py"
+    script.write_text('input("At the start. Check the arms are clear, then press Enter (Ctrl-C stops) ")\nprint("on")\n')
+    job = fold_job.FoldJob(rig.arms, StandInCamera(), ["arm2", "arm1"], command=[sys.executable, "-u", str(script)],
+                           runs_dir=rig.runs)
+    assert job.start("look", {}) is None
+    wait_for(job, ["waiting"])
+    job.go_on()
+    assert "on" in wait_for(job, ["done"])["lines"]
+
+
+def finished_fold(rig):
+    """Play the stand-in fold to its end. Returns the run folder."""
+    assert rig.job.start("fold", {}) is None
+    wait_for(rig.job, ["waiting"])
+    rig.job.go_on()
+    time.sleep(0.2)
+    wait_for(rig.job, ["waiting"])
+    rig.job.go_on()
+    wait_for(rig.job, ["done"])
+    return rig.runs / rig.job.status()["last_run"]
+
+
+def test_a_finished_fold_is_labelled_good_or_bad_and_counted(rig):
+    import json
+
+    assert rig.job.label("good") is False           # no fold yet
+    folder = finished_fold(rig)
+    assert rig.job.status()["counts"] == {"good": 0, "bad": 0, "unlabelled": 1}
+    assert rig.job.label("good") is True
+    assert json.loads((folder / "label.json").read_text())["success"] is True
+    status = rig.job.status()
+    assert status["last_label"] == "good"
+    assert status["counts"] == {"good": 1, "bad": 0, "unlabelled": 0}
+    assert rig.job.label("perfect") is False
+
+
+def test_discarding_a_fold_deletes_its_folder_and_a_running_fold_is_not_labelled(rig):
+    folder = finished_fold(rig)
+    assert rig.job.start("fold", {}) is None
+    wait_for(rig.job, ["waiting"])
+    assert rig.job.label("discard") is False        # the first fold's label waits for the one under way
+    assert folder.exists()
+    rig.job.stop()
+    wait_for(rig.job, ["stopped"])
+    second = rig.runs / rig.job.status()["last_run"]
+    assert second != folder
+    assert rig.job.label("discard") is True
+    assert not second.exists()
+    assert folder.exists()
+    assert rig.job.status()["last_run"] is None
+
+
 def test_a_fold_is_refused_without_exactly_two_followers(rig):
     job = fold_job.FoldJob(rig.arms, StandInCamera(), ["arm1"], command=rig.command, runs_dir=rig.runs)
     assert job.start("fold", {}) is not None

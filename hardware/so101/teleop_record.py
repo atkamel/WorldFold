@@ -10,9 +10,15 @@ import time
 from pathlib import Path
 
 import recorder
+import run_label
 
 RECORD_HZ = 10
 RUNS_DIR = Path(__file__).parent / "runs"  # same folder as fold_live.py's runs; ignored by git
+
+
+def count_episodes(runs_dir):
+    """How many teleop recordings under `runs_dir` are labelled good, bad, or not at all."""
+    return run_label.count(runs_dir, run_label.is_teleop)
 
 
 def record_tick(run, seconds, row, arms_by_name, phone):
@@ -43,8 +49,11 @@ class TeleopRecording:
         self.thread = None
         self.stop_requested = threading.Event()
         self.rows = 0
+        self.last = None        # the folder of the recording stopped last, until it is discarded
+        self.counts = count_episodes(self.runs_dir)
 
-    def start(self):
+    def start(self, correction=False):
+        """`correction`: the recording is a person taking over from a policy that went wrong."""
         with self.lock:
             if self.run is not None:
                 return
@@ -54,6 +63,8 @@ class TeleopRecording:
                 "record_hz": RECORD_HZ,
                 "joint_units": "encoder steps, 4096 per turn, motor ids 1 to 6",
             }
+            if correction:
+                meta["correction"] = True
             self.run = recorder.Recorder(self.runs_dir, meta)
             self.rows = 0
             self.stop_requested.clear()
@@ -82,10 +93,34 @@ class TeleopRecording:
             self.stop_requested.set()
             self.thread.join()
             self.run.close()
+            self.last = self.run.path
             self.run = None
+            self.counts = count_episodes(self.runs_dir)
+
+    def label(self, word):
+        """Say how the recording stopped last went: "good" or "bad" (what rig_dataset.py reads), or "discard",
+        which deletes its folder. False when there is none to label, one is being recorded, or the word is unknown."""
+        with self.lock:
+            if self.run is not None or self.last is None:
+                return False
+            if not run_label.set_label(self.last, word):
+                return False
+            if word == "discard":
+                self.last = None
+            self.counts = count_episodes(self.runs_dir)
+            return True
 
     def status(self):
         with self.lock:
-            if self.run is None:
-                return {"recording": False, "steps": 0, "folder": None}
-            return {"recording": True, "steps": self.rows, "folder": str(self.run.path)}
+            last = None
+            last_label = None
+            if self.last is not None:
+                last = self.last.name
+                last_label = run_label.label_of(self.last)
+            status = {"recording": False, "steps": 0, "folder": None, "last": last, "last_label": last_label,
+                      "counts": dict(self.counts)}
+            if self.run is not None:
+                status["recording"] = True
+                status["steps"] = self.rows
+                status["folder"] = str(self.run.path)
+            return status

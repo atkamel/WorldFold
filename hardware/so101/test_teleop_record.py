@@ -1,5 +1,6 @@
 """teleop_record with stand-in arms and a FakePhone: what one tick saves, and a start/stop round trip."""
 
+import json
 import sys
 import time
 from pathlib import Path
@@ -58,6 +59,69 @@ def test_a_tick_without_a_camera_still_saves_joints(tmp_path):
     saved = recorder.load(run.path)
     assert len(saved["steps"]) == 1
     assert saved["frames"] == []
+
+
+def take(recording, correction=False):
+    """Record for a moment. Returns the run folder."""
+    recording.start(correction)
+    time.sleep(0.25)
+    folder = Path(recording.status()["folder"])
+    recording.stop()
+    return folder
+
+
+def test_the_last_recording_is_labelled_good_or_bad_and_counted(tmp_path):
+    recording = teleop_record.TeleopRecording(make_arms(), make_phone(), tmp_path)
+    assert recording.label("good") is False         # nothing recorded yet
+    folder = take(recording)
+    status = recording.status()
+    assert status["last"] == folder.name
+    assert status["counts"] == {"good": 0, "bad": 0, "unlabelled": 1}
+    assert recording.label("good") is True
+    assert json.loads((folder / "label.json").read_text())["success"] is True
+    assert recording.status()["counts"] == {"good": 1, "bad": 0, "unlabelled": 0}
+    assert recording.label("bad") is True
+    assert json.loads((folder / "label.json").read_text())["success"] is False
+    assert recording.status()["last_label"] == "bad"
+    assert recording.label("perfect") is False
+
+
+def test_discard_deletes_the_last_recording_and_no_other(tmp_path):
+    recording = teleop_record.TeleopRecording(make_arms(), make_phone(), tmp_path)
+    first = take(recording)
+    recording.label("good")
+    second = take(recording)
+    assert recording.label("discard") is True
+    assert not second.exists()
+    assert first.exists()
+    assert recording.status()["last"] is None
+    assert recording.label("discard") is False
+    assert first.exists()
+
+
+def test_a_recording_in_progress_is_not_labelled(tmp_path):
+    recording = teleop_record.TeleopRecording(make_arms(), make_phone(), tmp_path)
+    first = take(recording)
+    recording.start()
+    assert recording.label("discard") is False
+    recording.stop()
+    assert first.exists()
+
+
+def test_the_count_covers_teleop_recordings_already_in_the_folder(tmp_path):
+    earlier = teleop_record.TeleopRecording(make_arms(), make_phone(), tmp_path)
+    take(earlier)
+    earlier.label("good")
+    with recorder.Recorder(tmp_path, meta={"task": "half_fold"}):
+        pass                                        # a scripted fold's run is not an episode of teleop
+    recording = teleop_record.TeleopRecording(make_arms(), make_phone(), tmp_path)
+    assert recording.status()["counts"] == {"good": 1, "bad": 0, "unlabelled": 0}
+
+
+def test_a_takeover_is_marked_as_a_correction(tmp_path):
+    recording = teleop_record.TeleopRecording(make_arms(), make_phone(), tmp_path)
+    folder = take(recording, correction=True)
+    assert json.loads((folder / "meta.json").read_text())["correction"] is True
 
 
 def test_start_then_stop_leaves_a_finished_run(tmp_path):

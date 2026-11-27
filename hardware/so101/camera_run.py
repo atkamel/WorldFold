@@ -352,6 +352,8 @@ def parse(argv):
     p.add_argument("--stale", type=float, default=1.0, help="s without a new picture that stops the run")
     p.add_argument("--replan", type=int, default=4, help="rows played from each look at the picture")
     p.add_argument("--device", type=int, default=0, help="Record3D device index")
+    p.add_argument("--frames", metavar="URL", help="take the pictures from a running control panel, which holds the "
+                                                   "phone: its /frame.npz (panel_phone.py)")
     p.add_argument("--log", metavar="FILE")
     args = p.parse_args(argv)
     for name in (args.left, args.right):
@@ -374,8 +376,12 @@ def main(argv=None):
     followers = {"left": replay.Follower(args.left), "right": replay.Follower(args.right)}
     phone = None
     if not args.dry_run:
-        import rgbd
-        phone = rgbd.Phone(args.device)
+        if args.frames:
+            import panel_phone
+            phone = panel_phone.PanelPhone(args.frames)
+        else:
+            import rgbd
+            phone = rgbd.Phone(args.device)
         phone.start()
         phone.wait()
     return run(policy, config, followers, phone, args)

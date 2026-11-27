@@ -17,16 +17,33 @@ import test_ui_lend  # noqa: E402
 
 
 class NoCamera:
+    frame = None
+
     def latest(self):
-        return None
+        return self.frame
+
+    def count(self):
+        if self.frame is None:
+            return 0
+        return 3
 
     def status(self):
         return "no phone"
 
 
 class NoRecording:
+    def __init__(self):
+        self.calls = []
+
     def status(self):
         return {"recording": False}
+
+    def start(self, correction=False):
+        self.calls.append(("start", correction))
+
+    def label(self, word):
+        self.calls.append(("label", word))
+        return word != "bad"
 
 
 @pytest.fixture
@@ -61,17 +78,11 @@ def panel(tmp_path, monkeypatch, request):
         def tips_state(self):
             return {"arm1": None, "arm2": None}
 
-        def toggle_claw(self, name):
-            if not self.driving:
-                return False
-            self.dragged.append((name, "claw"))
-            return True
+        def press_drive(self):
+            self.dragged.append("drive")
 
-        def set_hold(self, name, what, way):
-            if not self.driving:
-                return False
-            self.dragged.append((name, what, way))
-            return True
+        def press_home(self):
+            self.dragged.append("home")
 
         def sticks_state(self):
             return {"left": [0.0, 0.0], "right": [0.0, 0.0], "raw": {"left": [0, 0], "right": [0, 0]}}
@@ -83,9 +94,21 @@ def panel(tmp_path, monkeypatch, request):
             self.started.append(mode)
             return None
 
+        def stop(self):
+            self.started.append("stop")
+
+        def label(self, word):
+            self.started.append("label " + word)
+            return word != "bad"
+
+        def status(self):
+            return {"state": "stopped"}
+
     gamepad = Gamepad() if getattr(request, "param", False) else None
     fold = Fold()
-    handler = ui.make_handler(arms_by_name, NoCamera(), NoRecording(), fold=fold,
+    camera = NoCamera()
+    recording = NoRecording()
+    handler = ui.make_handler(arms_by_name, camera, recording, fold=fold,
                               stop_fold=lambda: fold_stops.append(1), gamepad=gamepad)
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -116,10 +139,57 @@ def panel(tmp_path, monkeypatch, request):
     post.gamepad = gamepad
     post.fold_stops = fold_stops
     post.fold = fold
+    post.camera = camera
+    post.recording = recording
     yield arms_by_name, post, port
     server.shutdown()
     server.server_close()
     sys.modules.pop("ui", None)
+
+
+def test_an_episode_label_reaches_the_recording_and_a_refusal_is_reported(panel):
+    _, post, _ = panel
+    assert post("/record/label", {"label": "good"}) == 200
+    assert post.recording.calls == [("label", "good")]
+    assert post("/record/label", {"label": "bad"}) == 409      # the stand-in refuses this one
+    assert post("/record/label", {"label": "perfect"}) == 400
+    assert len(post.recording.calls) == 2
+
+
+def test_a_fold_s_label_reaches_the_fold_job_and_a_refusal_is_reported(panel):
+    _, post, _ = panel
+    assert post("/fold/label", {"label": "good"}) == 200
+    assert post("/fold/label", {"label": "bad"}) == 409         # the stand-in refuses this one
+    assert post("/fold/label", {"label": "perfect"}) == 400
+    assert post.fold.started == ["label good", "label bad"]
+
+
+def test_taking_over_stops_the_policy_and_starts_a_correction_recording(panel):
+    _, post, _ = panel
+    assert post("/policy/takeover", {}) == 200
+    assert post.fold.started == ["stop"]
+    assert post.recording.calls == [("start", True)]
+
+
+def test_the_panel_hands_its_camera_frame_to_a_script_that_asks(panel):
+    import numpy as np
+
+    import panel_phone
+    import rgbd
+
+    _, post, port = panel
+    phone = panel_phone.PanelPhone(f"http://127.0.0.1:{port}/frame.npz")
+    assert phone.latest() is None
+    rgb = np.arange(4 * 6 * 3, dtype=np.uint8).reshape(4, 6, 3)
+    depth = np.full((2, 3), 0.5, dtype=np.float32)
+    post.camera.frame = rgbd.Frame(0.0, rgb, depth, (100.0, 101.0, 3.0, 2.0))
+    frame = phone.latest()
+    assert phone.count == 3
+    assert np.array_equal(frame.rgb, rgb)
+    assert np.array_equal(frame.depth, depth)
+    assert list(frame.K) == [100.0, 101.0, 3.0, 2.0]
+    with pytest.raises(SystemExit):     # the count has not moved on: no new picture
+        phone.wait(timeout=0.3)
 
 
 def test_mirror_and_leader_are_refused_while_an_arm_is_lent(panel):
@@ -226,37 +296,14 @@ def test_a_dragged_point_is_not_taken_outside_gamepad_mode(panel):
 
 
 @pytest.mark.parametrize("panel", [True], indirect=True)
-def test_a_claw_key_reaches_the_gamepad_for_a_known_arm_while_driving(panel):
+def test_the_drive_and_idle_buttons_reach_the_gamepad(panel):
     _, post, _ = panel
-    assert post("/gamepad/claw", {"arm": "arm1"}) == 200
-    assert post.gamepad.dragged[-1] == ("arm1", "claw")
-    assert post("/gamepad/claw", {"arm": "nobody"}) == 400
-    post.gamepad.driving = False
-    assert post("/gamepad/claw", {"arm": "arm1"}) == 409
+    assert post("/gamepad/drive", {}) == 200
+    assert post("/gamepad/home", {}) == 200
+    assert post.gamepad.dragged[-2:] == ["drive", "home"]
 
 
-def test_a_claw_key_is_not_taken_outside_gamepad_mode(panel):
+def test_the_drive_and_idle_buttons_are_not_taken_outside_gamepad_mode(panel):
     _, post, _ = panel
-    assert post("/gamepad/claw", {"arm": "arm1"}) == 404
-
-
-@pytest.mark.parametrize("panel", [True], indirect=True)
-def test_a_held_key_reaches_the_gamepad_only_as_a_known_move_and_a_way(panel):
-    _, post, _ = panel
-    assert post("/gamepad/hold", {"arm": "arm1", "what": "roll", "way": -1}) == 200
-    assert post.gamepad.dragged[-1] == ("arm1", "roll", -1)
-    assert post("/gamepad/hold", {"arm": "arm1", "what": "tilt", "way": 1}) == 200
-    assert post.gamepad.dragged[-1] == ("arm1", "tilt", 1)
-    sent = len(post.gamepad.dragged)
-    for bad in (2, 0.5, "left", None, True):
-        assert post("/gamepad/hold", {"arm": "arm1", "what": "roll", "way": bad}) == 400
-    assert post("/gamepad/hold", {"arm": "arm1", "what": "spin", "way": 1}) == 400
-    assert post("/gamepad/hold", {"arm": "nobody", "what": "roll", "way": 1}) == 400
-    assert len(post.gamepad.dragged) == sent
-    post.gamepad.driving = False
-    assert post("/gamepad/hold", {"arm": "arm1", "what": "roll", "way": 1}) == 409
-
-
-def test_a_held_key_is_not_taken_outside_gamepad_mode(panel):
-    _, post, _ = panel
-    assert post("/gamepad/hold", {"arm": "arm1", "what": "roll", "way": 1}) == 404
+    assert post("/gamepad/drive", {}) == 404
+    assert post("/gamepad/home", {}) == 404
