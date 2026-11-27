@@ -37,6 +37,12 @@ to rows_<time>.npz in --store (default runs/dagger) and the network is trained o
 (dagger_train.py: a few seconds), giving round_<n>.npz, which the next run starts from. Training needs the planned
 folds of dagger_data.py at --base; without that file the rows are saved and the command to make it is printed.
 
+The intervention button (dagger_nudge.py): press the Xbox button on the controller and the fold waits; the sticks
+move a fingertip, the bumpers and triggers raise and lower it; press again and the fold goes on with that offset,
+which is kept for the folds after it. The corrected rows take the plan's place everywhere above: they are what
+the band is measured from and what the network is taught. --no-nudge leaves the controller alone; --forget-nudges
+starts again from no offsets.
+
 With --dry-run nothing moves (replay.py's own dry run); the network is then played against the plan in the arm
 model, each joint taken to be on the row before, and the share of rows it would have driven is printed.
 """
@@ -54,6 +60,7 @@ from pathlib import Path
 import numpy as np
 
 import dagger_net
+import dagger_nudge
 import fold_camera
 import fold_traj
 import replay
@@ -106,9 +113,10 @@ def capped(wanted, before, cap):
 class Driver:
     """Stands in for fold_traj.fold (`fold`) and replay.play (`play`) during one fold."""
 
-    def __init__(self, policy, trust_deg, plan, play):
+    def __init__(self, policy, trust_deg, plan, play, nudges=None, pad=None):
         self.policy, self.trust = policy, trust_deg
         self.plan, self.scripted_play = plan, play
+        self.nudges, self.pad, self.check = nudges, pad, 0
         self.inputs = None
         self.why_scripted = "the planner was never asked for a fold"
         self.rows = []          # one per arm per row played: see save_rows
@@ -118,6 +126,7 @@ class Driver:
         """fold_traj.fold, keeping what it was given when the network can act on it."""
         traj = self.plan(*args, **kwargs)
         self.inputs = None
+        self.check = traj["marks"]["check"]
         try:
             given = inspect.signature(self.plan).bind(*args, **kwargs)
             given.apply_defaults()
@@ -161,6 +170,41 @@ class Driver:
         goal, held = capped(teacher, before, cap)
         return goal, why, away, held
 
+    def intervene(self, k, followers, command, motors, log):
+        """While the fold is told to wait (dagger_nudge.Pad): hold row k and move each arm's fingertip as the
+        controller asks, 50 times a second, each move inside replay.py's rate cap. `command` ({side: {motor:
+        ticks}}) is left on what was sent last. Returns the seconds spent, 0 when the fold was not told to wait."""
+        waiting, rates = self.pad.read()
+        if not waiting:
+            return 0.0
+        started, cap, n = time.monotonic(), replay.MAX_DEG_S * replay.TICK_SECONDS * replay.STEPS_PER_DEGREE, 0
+        goal, touched = {name: dict(command[name]) for name in followers}, set()
+        print(f"\nWaiting on row {k} for the controller. Sticks move a fingertip, bumpers and triggers raise and "
+              "lower it; the Xbox button again goes on.")
+        while waiting:
+            for name, f in followers.items():
+                if rates is not None and np.any(rates[name]):
+                    step = rates[name] * [dagger_nudge.SPEED, dagger_nudge.SPEED, dagger_nudge.LIFT]
+                    row = self.nudges.step(name, k, step * replay.TICK_SECONDS)
+                    if row is not None:
+                        goal[name] = {m: row[m] for m in motors}
+                        touched.add(name)
+                command[name] = capped(goal[name], command[name], cap)[0]
+                f.send_goals(command[name])
+            n += 1
+            replay.sleep_until(started + n * replay.TICK_SECONDS)
+            waiting, rates = self.pad.read()
+        for name in touched:                # the rows still to come, with the offsets as they are now
+            self.nudges.rebuild(name, k)
+        if touched:
+            self.nudges.save()
+        print(f"Going on. Offsets now: {self.nudges.describe()}.")
+        if hasattr(log, "write"):
+            log.write({"phase": "nudge", "row": k, "seconds": round(time.monotonic() - started, 2),
+                       "offsets": {side: {phase: offset.tolist() for phase, offset in phases.items()}
+                                   for side, phases in self.nudges.offsets.items()}})
+        return time.monotonic() - started
+
     def play(self, followers, ticks, dt, speed, motors, progress, steps=None, log=None):
         """replay.play with the network proposing each row. Same arguments, same return (times the rate cap
         engaged). Rows asked for out of order (a grasp-check retry), a run without the gripper, and a plan the
@@ -181,8 +225,15 @@ class Driver:
         final = len(next(iter(ticks.values()))) - 1
         command = {name: {m: ticks[name][order[0]][m - 1] for m in motors} for name in followers}
         engaged = 0
+        if self.nudges is not None:         # the plan's rows with the stored offsets: the rows to follow from here
+            self.nudges.begin(followers, ticks, self.check, collision)
+            rows = self.nudges.rows
+        else:
+            rows = {name: [dict(zip(MOTOR_IDS, row)) for row in ticks[name]] for name in followers}
         t0 = time.monotonic()
         for i, k in enumerate(order):
+            if self.pad is not None and self.nudges is not None:
+                t0 += self.intervene(k, followers, command, motors, log)
             row_start = t0 + i * tick
             replay.sleep_until(row_start)
             progress["step"] = k
@@ -194,7 +245,7 @@ class Driver:
             wanted = self.policy.targets(self.inputs, measured, sent, k * dt)
             who, away = {}, {}
             for name, f in followers.items():
-                teacher = {m: ticks[name][k][m - 1] for m in motors}
+                teacher = {m: rows[name][k][m] for m in motors}
                 command[name], who[name], away[name], held = self.choose(
                     f, collision, teacher, wanted[name], before[name], cap, k == final)
                 engaged += held
@@ -215,6 +266,13 @@ class Driver:
                 for name, f in followers.items():
                     f.send_goals({m: before[name][m] + (command[name][m] - before[name][m]) * j / sends
                                   for m in motors})
+        if self.nudges is not None and self.nudges.changed:     # every row of this fold is taught the rows as
+            for name in followers:                              # they stand now, the ones before the nudge too
+                self.nudges.rebuild(name, 0)
+            for r in self.rows:
+                if r["side"] in followers:
+                    f, mirror = followers[r["side"]], dagger_net.MIRROR_JOINTS if r["side"] == "right" else 1.0
+                    r["teacher"] = np.array([f.to_rad(m, rows[r["side"]][r["row"]][m]) for m in MOTOR_IDS]) * mirror
         if order[-1] == final:              # a row the rate cap held short of the plan's last: step onto it
             last = {name: {m: ticks[name][final][m - 1] for m in motors} for name in followers}
             short = max(abs(last[name][m] - command[name][m]) for name in followers for m in motors)
@@ -293,6 +351,8 @@ def main(argv=None):
                          f"the scripted fold with the network watching. Default: {TRUST_DEG:g} once the network "
                          f"was that close on {100 * EARNED:.0f}%% of the last fold's rows, 0 until then")
     ap.add_argument("--device", type=int, default=0, help="Record3D device index")
+    ap.add_argument("--no-nudge", action="store_true", help="do not read the controller's intervention button")
+    ap.add_argument("--forget-nudges", action="store_true", help="put the stored offsets aside and start from none")
     ap.add_argument("--store", default=str(replay.RUNS_DIR / "dagger"), help="rows and rounds are kept here")
     ap.add_argument("--base", default=str(BASE), help="the planned folds the network is trained on with the rows")
     ap.add_argument("--no-train", action="store_true", help="save the rows and leave the network as it is")
@@ -311,7 +371,14 @@ def main(argv=None):
         ap.error("--trust-deg is 0 to 5")
     else:
         print(f"Network: {policy.path}; its rows are sent while within {args.trust_deg:g} deg of the scripted fold's.")
-    driver = Driver(policy, args.trust_deg, fold_traj.fold, replay.play)
+    stored = Path(args.store) / "nudges.json"
+    if args.forget_nudges and stored.exists():
+        stored.replace(stored.with_name(f"nudges_until_{time.strftime('%Y%m%d_%H%M%S')}.json"))
+    nudges = dagger_nudge.Nudges(stored)
+    pad = None if args.no_nudge or "--dry-run" in fold_args else dagger_nudge.Pad()
+    print(f"Stored offsets: {nudges.describe()}." + ("" if pad is None else
+          " The Xbox button on the controller makes the fold wait for a nudge."))
+    driver = Driver(policy, args.trust_deg, fold_traj.fold, replay.play, nudges, pad)
     pictures = not any(flag in fold_args for flag in ("--image", "--log", "--dry-run"))
     recorded, look = None, None
     fold_traj.fold, replay.play = driver.fold, driver.play
@@ -331,8 +398,20 @@ def main(argv=None):
             code = fold_camera.main(["fold", "--device", str(args.device), *fold_args])
     finally:
         fold_traj.fold, replay.play = driver.plan, driver.scripted_play
+        if pad is not None:
+            pad.close()
         if look is not None:
             os.unlink(look)
+        if driver.rows and nudges.changed:  # rows of earlier folds were taught other rows: kept, not trained on
+            aside = Path(args.store) / f"before_nudge_{time.strftime('%Y%m%d_%H%M%S')}"
+            aside.mkdir(parents=True)
+            for old in Path(args.store).glob("rows_*.npz"):
+                old.replace(aside / old.name)
+            print(f"The offsets changed in this fold ({nudges.describe()}): the rows of the folds before it are "
+                  f"put aside in {aside.name}.")
+        if nudges.kept_plan:
+            print(f"{nudges.kept_plan} rows could not take their offset (out of reach, a joint limit, or too "
+                  "close to the arm itself) and were the plan's.")
         if driver.rows:
             saved = save_rows(args.store, driver.rows, policy, args.trust_deg)
             report(driver.rows, args.trust_deg)

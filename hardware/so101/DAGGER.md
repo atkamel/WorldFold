@@ -44,6 +44,38 @@ Without `--trust-deg` the network has to earn the fold.
 `--trust-deg 0` keeps the scripted fold driving whatever the network has earned. `--trust-deg 2` lets the network
 drive now.
 
+## The intervention button
+
+Press the Xbox button on the controller and the fold waits on the row it is at. Press it again and the fold goes on.
+While it waits
+
+- the left stick moves the left arm's fingertip forward, back, left and right, and the right stick the right arm's
+- LB raises the left fingertip and LT lowers it. RB and RT do the same for the right arm
+
+The fingertip moves at 2 cm a second at most, 1 cm a second up and down, and no further than 3 cm from the plan on
+any axis. A move that the arm cannot reach, or that brings it too close to itself, is not taken.
+
+When the fold goes on, the fingertip keeps that offset for the rest of the fold. A nudge made before the corner is
+lifted also moves where it is placed. A nudge made during the carry moves the carry and the place alone.
+
+The offset is saved in `runs/dagger/nudges.json` and the next fold starts with it. So a correction holds from the
+next fold on without any training. The corrected rows are what the network is taught, and what its 2 degrees are
+measured from. Rows saved by folds before the offset changed are put aside in a `before_nudge_<time>` folder.
+
+`--forget-nudges` starts again from no offsets. `--no-nudge` leaves the controller alone.
+
+Check the controller first, with no arms. This prints what each control is read as.
+
+```
+python hardware/so101/dagger_nudge.py
+```
+
+On Windows the Xbox button also opens the Game Bar. Switch that off under Settings, Gaming, Xbox Game Bar. The
+button is read through a call of XInput that Microsoft does not list, and that reading has not been tried on the
+rig laptop. The check above shows whether it works.
+
+With offsets stored, the first fold is the scripted fold moved by those offsets.
+
 ## Pictures
 
 The phone's pictures and depth are saved through the fold, 5 a second, as a panel fold saves them. The script
@@ -101,7 +133,10 @@ Measured in the arm model only (results.md on `feat/cloth-world-model`, 2026-11-
 
 ## Limits
 
-- The network learns to reproduce the scripted fold. It will not fold better than the script does.
+- The network learns to reproduce the scripted fold with your offsets. An offset is one shift for the whole pinch
+  and one for the whole carry, in the arm's own frame, wherever the cloth lies.
+- The planned folds the network is also trained on have no offsets, so after a nudge it can lag the corrected rows
+  and leave more of the fold to them.
 - It reads the cloth's place from the scripted fold's look, the joints from the encoders and the time into the
   fold. It does not see the picture.
 - In a recorded run the row logged as sent is the network's where it drove. The scripted fold's row for every

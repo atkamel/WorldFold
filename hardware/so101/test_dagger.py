@@ -10,6 +10,8 @@ import json
 import math
 import sys
 import tempfile
+import threading
+import time
 import types
 from pathlib import Path
 
@@ -345,6 +347,140 @@ def test_a_fold_with_the_phone_saves_its_pictures_beside_the_log(rig, monkeypatc
     assert Path(note["rows"]).exists() and note["trust_deg"] == 2.0
     assert any(line["phase"] == "dagger" for line in step_lines(folder / "steps.jsonl"))
     assert not list(Path(tempfile.gettempdir()).glob("dagger_look_*.png"))
+
+
+# --- the intervention button ---
+
+class Hands:
+    """A stand-in controller: the fold is told to wait at the read numbered `at` (one read a row until then), for
+    each (ticks, left rate, right rate) of `moves` in turn, then to go on."""
+
+    def __init__(self, at=None, moves=()):
+        self.at, self.reads = at, 0
+        self.script = [(left, right) for ticks, left, right in moves for _ in range(ticks)]
+
+    def read(self):
+        self.reads += 1
+        if self.at is None or self.reads <= self.at or self.reads - self.at > len(self.script):
+            return False, {"left": np.zeros(3), "right": np.zeros(3)}
+        left, right = self.script[self.reads - self.at - 1]
+        return True, {"left": np.array(left, float), "right": np.array(right, float)}
+
+    def close(self):
+        pass
+
+
+def nudged(rig, monkeypatch, hands, *more):
+    import dagger_nudge
+    monkeypatch.setattr(dagger_nudge, "Pad", lambda: hands)
+    return run(rig, OnPlan(rig.traj), "--trust-deg", "0", "--no-train", *more, monkeypatch=monkeypatch)
+
+
+def tips_sent(rig, side, run_folder):
+    """(row numbers, the fingertip of each row sent to `side`, the fingertip of the plan's row) from a run's log."""
+    from kinematics import Arm
+    arm, plan = Arm(), np.array(rig.traj["arms"][side]["target"])
+    lines = [line for line in step_lines(run_folder / "steps.jsonl") if line["phase"] == "fold"]
+    rows = np.array([line["row"] for line in lines])
+    sent = np.array([arm.tip(line["target"][side][:5])[0] for line in lines])
+    return rows, sent, np.array([arm.tip(plan[k][:5])[0] for k in rows])
+
+
+def newest_run(rig):
+    return sorted(p for p in (rig.tmp / "runs").iterdir() if (p / "steps.jsonl").exists())[-1]
+
+
+def test_a_nudge_while_the_fold_waits_moves_the_rest_of_the_fold_and_is_kept(rig, monkeypatch, capsys):
+    rig.store.mkdir()
+    (rig.store / "rows_19990101_000000.npz").write_bytes(b"an earlier fold")
+    forward, down, still = (1.0, 0.0, 0.0), (0.0, 0.0, -1.0), (0.0, 0.0, 0.0)
+    hands = Hands(at=20, moves=[(25, forward, still), (10, down, still)])     # 1 cm forward, then 2 mm down
+    T = len(rig.traj["arms"]["left"]["target"])
+    assert nudged(rig, monkeypatch, hands) == 0
+    out = capsys.readouterr().out
+    assert "Waiting on row 20" in out and "Going on" in out
+    kept = json.loads((rig.store / "nudges.json").read_text())
+    assert np.allclose(kept["left"]["pinch"], [0.01, 0.0, -0.002], atol=1e-6)
+    assert kept["left"]["carry"] == kept["left"]["pinch"]            # a corrected pinch carries to the place
+    assert kept["right"] == {"pinch": [0.0, 0.0, 0.0], "carry": [0.0, 0.0, 0.0]}
+    rows, sent, plan = tips_sent(rig, "left", newest_run(rig))
+    assert list(rows) == list(range(T))                              # no row lost or played twice by the wait
+    after = (rows > 22) & (rows < T - 1)
+    assert np.allclose(sent[after] - plan[after], [0.01, 0.0, -0.002], atol=1.5e-3)
+    assert np.allclose(sent[rows < 20], plan[rows < 20], atol=1e-4)  # before the nudge: the plan
+    rows, sent, plan = tips_sent(rig, "right", newest_run(rig))
+    assert np.allclose(sent, plan, atol=1e-4)                        # the other arm: the plan throughout
+    for dev, side in (("devL", "left"), ("devR", "right")):         # and both end on the plan's last row
+        assert rig.ports[dev].writes[-1] == dict(zip(range(1, 7), np.round(plan_ticks(rig, side)[-1]).astype(int)))
+    saved = saved_rows(rig)                                          # the earlier fold's rows were put aside
+    assert len(list(rig.store.glob("before_nudge_*/rows_19990101_000000.npz"))) == 1
+    from kinematics import Arm
+    arm, left = Arm(), saved["side"] == "left"
+    taught = np.array([arm.tip(q[:5])[0] for q in saved["teacher"][left]])
+    planned = np.array([arm.tip(q[:5])[0] for q in np.array(rig.traj["arms"]["left"]["target"])])
+    assert np.allclose((taught - planned)[:-1], [0.01, 0.0, -0.002], atol=1.5e-3)    # every row, the early ones too
+    assert np.allclose(taught[-1], planned[-1], atol=1e-4)                           # but the last
+
+
+def test_the_next_fold_starts_with_the_stored_offsets_and_they_can_be_forgotten(rig, monkeypatch, capsys):
+    rig.store.mkdir()
+    (rig.store / "nudges.json").write_text(json.dumps({"right": {"pinch": [0.0, -0.008, 0.0],
+                                                                 "carry": [0.0, -0.008, 0.004]}}))
+    T, check = len(rig.traj["arms"]["left"]["target"]), rig.traj["marks"]["check"]
+    assert nudged(rig, monkeypatch, Hands()) == 0
+    assert "right pinch (+0.0, -0.8, +0.0) cm" in capsys.readouterr().out
+    rows, sent, plan = tips_sent(rig, "right", newest_run(rig))
+    early, late = (rows > 3) & (rows <= check), (rows > check + 3) & (rows < T - 1)
+    assert np.allclose(sent[early] - plan[early], [0.0, -0.008, 0.0], atol=1.5e-3)
+    assert np.allclose(sent[late] - plan[late], [0.0, -0.008, 0.004], atol=1.5e-3)
+    rows, sent, plan = tips_sent(rig, "left", newest_run(rig))
+    assert np.allclose(sent, plan, atol=1e-4)
+    assert not list(rig.store.glob("before_nudge_*"))                # nothing changed in this fold
+    assert nudged(rig, monkeypatch, Hands(), "--forget-nudges") == 0
+    assert "Stored offsets: none" in capsys.readouterr().out
+    rows, sent, plan = tips_sent(rig, "right", newest_run(rig))
+    assert np.allclose(sent, plan, atol=1e-4)
+    assert len(list(rig.store.glob("nudges_until_*.json"))) == 1
+
+
+def test_a_nudge_stops_at_its_limit_and_a_pose_too_close_to_the_arm_is_not_taken(rig, monkeypatch):
+    import collision
+    import dagger_nudge
+    hands = Hands(at=20, moves=[(120, (0.0, 1.0, 0.0), (0.0, 0.0, 0.0))])     # 4.8 cm asked to the left
+    assert nudged(rig, monkeypatch, hands) == 0
+    kept = json.loads((rig.store / "nudges.json").read_text())
+    assert kept["left"]["pinch"][1] == pytest.approx(dagger_nudge.MAX_NUDGE)
+    real = collision.closest
+    monkeypatch.setattr(collision, "closest", lambda rows: (0.001, 0, ("gripper", "base")) if len(rows) == 1
+                        else real(rows))
+    (rig.store / "nudges.json").unlink()
+    assert nudged(rig, monkeypatch, Hands(at=20, moves=[(30, (1.0, 0.0, 0.0), (0.0, 0.0, 0.0))])) == 0
+    assert not (rig.store / "nudges.json").exists()                  # no nudge was taken, so nothing was stored
+
+
+def test_the_xbox_button_turns_waiting_over_on_each_press_and_a_lost_controller_lets_the_fold_go_on(monkeypatch):
+    import dagger_nudge
+    rest = (0, 0, 0, 0)
+    feed = [(False, False, False, 0.0, 0.0, rest), (True, False, False, 0.0, 0.0, rest),
+            (True, False, True, 0.0, 1.0, (0, 32767, 0, 0)), (False, False, False, 0.0, 0.0, rest)]
+    done = threading.Event()
+
+    def samples(stopped):
+        yield from feed
+        done.set()
+        stopped.wait(5)
+
+    pad = dagger_nudge.Pad(samples)
+    assert done.wait(2)
+    waiting, rates = pad.read()
+    assert waiting and not np.any(rates["left"]) and not np.any(rates["right"])     # one press, held over two samples
+    pad.sample = ((False, False, True, 0.0, 1.0, (0, 32767, 0, 0)), time.monotonic())
+    waiting, rates = pad.read()
+    assert np.allclose(rates["left"], [1.0, 0.0, 0.0], atol=1e-3)    # left stick up: the left fingertip forward
+    assert np.allclose(rates["right"], [0.0, 0.0, 0.0])              # RB up and RT down, both all the way: still
+    pad.sample = (pad.sample[0], time.monotonic() - dagger_nudge.LOST - 0.1)
+    assert pad.read() == (False, None)                               # the controller gone: the fold goes on
+    pad.close()
 
 
 # --- the network and a round of training ---
