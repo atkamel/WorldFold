@@ -7,9 +7,15 @@ arms.json names every arm and its serial port, plus how the arms stand:
     "leaders"                 optional {follower: leader arm}: a limp SO-101 moved by
                               hand whose joint angles the follower copies (ui.py)
 Left is seen from behind the arms (side_by_side) or from the side of the
-table between them (facing). Find a port with `ls /dev/tty.usbmodem*`: plug in
-only that arm; the name carries the adapter's serial number, so it stays the
-same across replugs and reboots.
+table between them (facing).
+
+Each arm lists one port per platform; PLATFORM below picks which set is used.
+An arm with no port on that platform (null) is left out. To find a port, plug
+in only that arm, then:
+  mac:      ls /dev/tty.usbmodem*   (the name carries the adapter's serial
+            number, so it stays the same across replugs and reboots)
+  windows:  Device Manager > Ports (COM & LPT). The COM number can change when
+            the arm moves to another USB socket.
 
 Each arm has its own USB serial adapter, so each is its own bus and all arms
 use motor IDs 1-6 without clashing. An arm's calibration lives in its own
@@ -18,11 +24,39 @@ folder (arm1/, arm2/, leader/): limits.json (set_limits.py), idle_pose.json
 """
 
 import json
+import sys
 from pathlib import Path
+
+PLATFORM = "windows"  # "windows" or "mac": the computer the arms are plugged into
+PLATFORMS = ["windows", "mac"]
 
 HERE = Path(__file__).parent
 CONFIG = json.loads((HERE / "arms.json").read_text())
-ARMS = CONFIG["arms"]
+
+
+def ports_for(config_arms, platform):
+    """{arm name: serial port} for the arms that have a port on this platform."""
+    if platform not in PLATFORMS:
+        sys.exit(f"PLATFORM in arms.py is {platform!r}; it must be one of {PLATFORMS}")
+    ports = {}
+    for name in config_arms:
+        port_name = config_arms[name].get(platform)
+        if port_name is not None:
+            ports[name] = port_name
+    return ports
+
+
+ARMS = ports_for(CONFIG["arms"], PLATFORM)
+
+
+def followers(config):
+    """The arms that lead no other arm, in the order listed: left then right when side by side."""
+    leaders = set(config.get("leaders", {}).values())
+    names = []
+    for name in config["arms"]:
+        if name not in leaders:
+            names.append(name)
+    return names
 
 
 def port(name):

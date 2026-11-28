@@ -9,7 +9,10 @@ import pytest
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent))
-sys.modules.setdefault("scservo_sdk", types.ModuleType("scservo_sdk"))   # replay imports it; only validate() is used
+try:
+    import scservo_sdk  # noqa: F401
+except ImportError:      # replay imports it; only validate() is used. An empty stand-in must not hide the real SDK
+    sys.modules["scservo_sdk"] = types.ModuleType("scservo_sdk")
 
 import fold_camera  # noqa: E402
 import replay  # noqa: E402
@@ -68,6 +71,44 @@ def test_look_refuses_an_outline_with_an_arm_on_it(cal):
         fold_camera.look(np.full((*SHAPE, 3), 200, np.uint8), cal)
 
 
+def arm_cal(cal, stretch=0.0):
+    """`cal` with a map per arm, as arm_calibration.py fits them. `stretch` bends the right arm's map more the
+    further a point lies to that arm's left: true along its own centre line, wrong at the cloth's left corners."""
+    to_left = np.array([[0.0, 1.0, 0.0], [-1.0, 0.0, -SPACING / 2], [0.0, 0.0, 1.0]])     # table to (forward, left)
+    to_right = np.array([[0.0, 1.0, 0.0], [-1.0, 0.0, SPACING / 2], [0.0, 0.0, 1.0]])
+    bend = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, stretch, 1.0]])
+    with_arms = dict(cal)
+    with_arms["arms"] = {"left": {"H": (to_left @ camera()).tolist()},
+                         "right": {"H": (bend @ to_right @ camera()).tolist()}}
+    return with_arms
+
+
+def test_an_arm_s_map_that_is_off_at_the_other_arm_s_corners_still_finds_the_cloth(cal):
+    by_arm, _ = fold_camera.look_arms(render(cloth(), BASES), arm_cal(cal, stretch=1.0))
+    assert np.linalg.norm(by_arm["right"]["far_right"] - (NEAR_EDGE + SIDE, 0.0)) < 0.004
+    far_left_seen_by_the_right_arm = by_arm["right"]["far_left"]
+    assert np.linalg.norm(far_left_seen_by_the_right_arm - (NEAR_EDGE + SIDE, SIDE)) > 0.05   # the map is off there
+
+
+def test_an_arm_on_the_outline_is_refused_through_the_arms_maps(cal):
+    with pytest.raises(ValueError, match="far edge"):
+        fold_camera.look_arms(render(cloth(), [((0.19, 0.36), 0.06)]), arm_cal(cal))
+    with pytest.raises(ValueError, match="far edge"):   # one map being off elsewhere does not let it through
+        fold_camera.look_arms(render(cloth(), [((0.19, 0.36), 0.06)]), arm_cal(cal, stretch=1.0))
+
+
+def test_every_edge_is_measured_through_the_map_of_the_arm_on_its_side(cal):
+    _, px = fold_camera.look_arms(render(cloth(), BASES), arm_cal(cal))
+    corners = [px[name] for name in ("near_left", "near_right", "far_right", "far_left")]
+    true_maps = fold_camera.arm_maps(arm_cal(cal))
+    for length in fold_camera.edge_lengths(corners, true_maps).values():
+        assert abs(length - SIDE) < 0.006
+    bent_maps = fold_camera.arm_maps(arm_cal(cal, stretch=1.0))
+    bent = fold_camera.edge_lengths(corners, bent_maps)
+    assert abs(bent["left"] - SIDE) < 0.006            # the left arm's map is true, and only it measures this edge
+    assert abs(bent["right"] - SIDE) < 0.006           # the right arm's map is true along its own side
+
+
 def test_fold_points_are_in_each_arms_frame():
     corners = dict(zip(("near_left", "near_right", "far_right", "far_left"), cloth()))
     points = fold_camera.fold_points(corners, SPACING)
@@ -114,3 +155,95 @@ def test_near_edge_follows_the_bottom_layer(cal):
     slope1, y1 = fold_camera.near_edge(render(moved, BASES), cal, grid, (-0.12, 0.12))
     assert abs(y0 - NEAR_EDGE) < 0.004 and abs((y1 - y0) - 0.02) < 0.004 and abs(slope0) < 0.02 and abs(slope1) < 0.02
     assert fold_camera.near_edge(np.full((*SHAPE, 3), 200, np.uint8), cal, grid, (-0.12, 0.12)) is None
+
+
+# --- a light blue cloth among darker things ---
+
+def render_blue(corners, discs=()):
+    """A light blue cloth on a grey table, with dark discs (a laptop, a bag) that are darker than the cloth."""
+    xy, _ = fold_camera.table_grid(camera(), SHAPE)
+    cloth_here = np.ones(SHAPE, bool)
+    for a, b in zip(corners, np.roll(corners, -1, axis=0)):
+        cloth_here &= (b[0] - a[0]) * (xy[..., 1] - a[1]) - (b[1] - a[1]) * (xy[..., 0] - a[0]) >= 0
+    image = np.full((*SHAPE, 3), 200, np.uint8)
+    image[cloth_here] = (90, 150, 210)
+    for (x, y), r in discs:
+        disc_here = (xy[..., 0] - x) ** 2 + (xy[..., 1] - y) ** 2 <= r ** 2
+        image[disc_here & ~cloth_here] = (30, 30, 30)
+    return image
+
+
+CLUTTER = (((-0.30, 0.50), 0.09), ((0.31, 0.47), 0.08))      # dark things on the table, inside the searched area
+
+
+def test_a_blue_cloth_is_found_among_darker_things():
+    blue_cal = fold_camera.calibrate(render_blue(cloth(), CLUTTER), SIDE, NEAR_EDGE, colour="blue")
+    truth = cloth(shift=(0.02, 0.015), turn_deg=8.0)
+    corners, _ = fold_camera.look(render_blue(truth, CLUTTER), blue_cal)
+    for name, want in zip(("near_left", "near_right", "far_right", "far_left"), truth):
+        assert np.linalg.norm(corners[name] - want) < 0.004
+
+
+def test_a_calibration_saved_without_a_colour_still_looks_for_a_dark_cloth(cal):
+    old_cal = dict(cal)
+    old_cal.pop("colour", None)
+    truth = cloth(shift=(0.02, 0.015), turn_deg=8.0)
+    corners, _ = fold_camera.look(render(truth, BASES), old_cal)
+    assert np.linalg.norm(corners["near_left"] - truth[0]) < 0.004
+
+
+# --- one frame from the phone ---
+
+class OneFrameStream:
+    """A stand-in for record3d.Record3DStream that has a frame ready as soon as it connects."""
+
+    made = []
+
+    def __init__(self):
+        OneFrameStream.made.append(self)
+        self.on_new_frame = None
+
+    @staticmethod
+    def get_connected_devices():
+        return ["phone"]
+
+    def connect(self, device):
+        self.on_new_frame()
+        return True
+
+    def get_rgb_frame(self):
+        return np.full((960, 720, 3), 7, np.uint8)
+
+    def get_depth_frame(self):
+        return np.ones((256, 192), np.float32)
+
+    def get_intrinsic_mat(self):
+        return types.SimpleNamespace(fx=700.0, fy=700.0, tx=360.0, ty=480.0)
+
+
+def test_one_frame_from_the_phone_keeps_its_stream_alive(monkeypatch):
+    import gc
+    import weakref
+
+    OneFrameStream.made.clear()
+    monkeypatch.setitem(sys.modules, "record3d", types.SimpleNamespace(Record3DStream=OneFrameStream))
+    rgb = fold_camera.record3d_frame()
+    assert rgb.shape == (960, 720, 3)
+    stream = weakref.ref(OneFrameStream.made[0])
+    OneFrameStream.made.clear()
+    gc.collect()
+    assert stream() is not None
+
+
+def test_a_pinch_with_the_fingers_too_flat_is_not_reachable(capsys):
+    def plan_with_tilt(left, right):
+        source = {}
+        for side, tilt in (("left", left), ("right", right)):
+            source[side] = {"pinch_error_mm": 0.0, "place_error_mm": 0.0, "max_tilt_deg": tilt}
+        return {"source": source}
+
+    assert fold_camera.report(plan_with_tilt(24.0, 26.0), {})
+    assert not fold_camera.report(plan_with_tilt(24.0, fold_camera.MAX_TILT + 5.0), {})
+    assert "FLAT" in capsys.readouterr().out
+    assert fold_camera.report(plan_with_tilt(24.0, fold_camera.MAX_TILT + 5.0), {}, max_tilt=50.0)
+

@@ -1,0 +1,791 @@
+"""Gamepad routing and clearance checks with fake servo transport."""
+
+import csv
+import importlib
+import io
+import sys
+import threading
+
+import numpy as np
+import pytest
+
+from hardware.controller.gip import ControllerState
+from hardware.controller.inputs import _XInputGamepad, xinput_state
+
+pytest.importorskip("mujoco")
+pytest.importorskip("so101_nexus")
+
+import kinematics
+from pair_clearance import PairClearance
+from test_ui_lend import make_fake_sdk
+
+
+class SimulatedArm:
+    def __init__(self, mapping, angles):
+        self.name = mapping.name
+        self.lock = threading.Lock()
+        self.limits = mapping.limits
+        self.present = {i: round(mapping.to_ticks(i, angle)) for i, angle in enumerate(angles, 1)}
+        self.command = dict(self.present)
+        self.target = dict(self.present)
+        self.torque = True
+        self.pending_torque = None
+        self.speed = 50
+        self.writes = []
+        self.stuck = False
+        self.missed_reads = 0
+        self.failed_writes = 0
+        self.lent = False
+        self.reads = 0
+
+    def read_present(self):
+        self.reads += 1
+        if self.missed_reads > 0:
+            self.missed_reads -= 1
+            return False
+        if not self.stuck:
+            self.present = {m: round(v) for m, v in self.command.items()}
+        return True
+
+    def send_goals(self, goals):
+        if self.failed_writes > 0:
+            self.failed_writes -= 1
+            return False
+        self.writes.append(dict(goals))
+        return True
+
+
+def work_pose(x, y, z):
+    model = kinematics.Arm()
+    angles, error, _ = model.solve(np.array([x, y, z]), np.radians([0, 40, -30, 80, 0]))
+    assert error < 0.001
+    return [*angles, 0.4]
+
+
+def test_pair_geometry_checks_both_arms_at_independent_progress():
+    guard = PairClearance(0.30)
+    left, right = work_pose(.25, .08, .10), work_pose(.25, -.08, .10)
+    left_inward, right_inward = work_pose(.25, -.15, .10), work_pose(.25, .15, .10)
+    assert guard.obstruction([left], [right]) is None
+    assert guard.obstruction([left_inward], [right]) is None
+    assert guard.obstruction([left], [right_inward]) is None
+    assert guard.obstruction([left_inward, left], [right, right_inward]) == "between arms"
+    assert guard.obstruction([work_pose(.24, 0, -.02)], [right]) == "table"
+
+
+def test_pair_geometry_checks_neighbouring_parts_and_lets_a_close_arm_back_away():
+    guard = PairClearance(0.30)
+    folded = np.radians([0, -104, 90, -96, 0, 0])
+    deeper = np.radians([0, -104, 97, -96, 0, 0])
+    opened = np.radians([0, -104, 60, -96, 0, 0])
+    assert guard.obstruction([folded], [folded]) == "within an arm"
+    floors = guard.floors([folded], [folded])
+    assert guard.obstruction([folded], [folded], floors) is None
+    assert guard.obstruction([opened], [folded], floors) is None
+    assert guard.obstruction([deeper], [folded], floors) == "within an arm"
+
+
+def test_xinput_preserves_stick_signs_and_converts_triggers():
+    state = xinput_state(_XInputGamepad(0x2300, 255, 0, -32768, 2000, 32767, -1200))
+    assert state == ControllerState(buttons=("lb", "rb", "b"), left_trigger=1023,
+                                    left_x=-32768, left_y=2000, right_x=32767, right_y=-1200)
+    clicks = xinput_state(_XInputGamepad(0x90C0, 0, 0, 0, 0, 0, 0))
+    assert set(clicks.buttons) == {"a", "y", "left_stick", "right_stick"}
+    rest = xinput_state(_XInputGamepad(0x403F, 0, 0, 0, 0, 0, 0))
+    assert set(rest.buttons) == {"dpad_up", "dpad_down", "dpad_left", "dpad_right", "menu", "view", "x"}
+
+
+@pytest.fixture
+def mode(monkeypatch):
+    monkeypatch.setitem(sys.modules, "scservo_sdk", make_fake_sdk({}))
+    gamepad = importlib.import_module("gamepad")
+    maps = [gamepad.replay.Follower(name) for name in ("arm2", "arm1")]
+    left = SimulatedArm(maps[0], work_pose(.25, .08, .10))
+    right = SimulatedArm(maps[1], work_pose(.25, -.08, .10))
+    return gamepad.Gamepad(left, right, .30)
+
+
+class Driver:
+    """Feeds controller states to the mode on a 20 ms clock."""
+
+    def __init__(self, mode):
+        self.mode = mode
+        self.now = 10.0
+
+    def send(self, state, age=0.0, gap=0.02):
+        self.now += gap
+        self.mode.tick(state, self.now - age, self.now)
+
+    def enable(self):
+        for _ in range(30):
+            self.send(ControllerState())
+        self.mode.press_drive()
+        self.send(ControllerState())
+
+    def tips(self):
+        points = []
+        for mapping, arm in zip(self.mode.maps, self.mode.arms):
+            points.append(self.mode.kinematics.tip(self.mode.pose(mapping, arm.command)[:5])[0])
+        return points
+
+    def jaws(self):
+        angles = []
+        for mapping, arm in zip(self.mode.maps, self.mode.arms):
+            angles.append(mapping.to_rad(6, arm.command[6]))
+        return angles
+
+    def write_counts(self):
+        return [len(arm.writes) for arm in self.mode.arms]
+
+
+def test_arms_lent_to_a_cloth_fold_are_left_alone_and_drive_again_afterwards(mode):
+    driver = Driver(mode)
+    driver.enable()
+    pushed = ControllerState(left_y=32767)
+    for arm in mode.arms:
+        arm.lent = True
+    writes = driver.write_counts()
+    reads = [arm.reads for arm in mode.arms]
+    for _ in range(5):
+        driver.send(pushed)
+    assert driver.write_counts() == writes
+    assert [arm.reads for arm in mode.arms] == reads
+    assert not mode.enabled
+    lent_status = mode.status
+    for arm in mode.arms:
+        arm.lent = False
+    for _ in range(5):
+        driver.send(pushed)
+    assert driver.write_counts() == writes
+    assert mode.status != lent_status
+    mode.press_drive()
+    driver.send(ControllerState())
+    for _ in range(5):
+        driver.send(pushed)
+    assert driver.write_counts()[0] > writes[0]
+
+
+def test_the_panel_starts_driving_each_stick_drives_its_own_arm_and_the_panel_stops(mode):
+    driver = Driver(mode)
+    pushed = ControllerState(left_y=32767, right_x=32767)
+    for _ in range(30):
+        driver.send(ControllerState())
+    driver.send(pushed)
+    assert driver.write_counts() == [0, 0]
+
+    mode.press_drive()
+    driver.send(ControllerState())
+    origin = driver.tips()
+    driver.send(pushed)
+    assert driver.write_counts() == [1, 1]
+    end = driver.tips()
+    assert end[0][0] > origin[0][0]
+    assert end[1][1] < origin[1][1]
+
+    mode.stop()
+    driver.send(pushed)
+    assert driver.write_counts() == [1, 1]
+
+
+def test_driving_does_not_start_while_a_stick_is_pushed(mode):
+    driver = Driver(mode)
+    for _ in range(30):
+        driver.send(ControllerState())
+    mode.press_drive()
+    driver.send(ControllerState(left_y=32767))
+    driver.send(ControllerState(left_y=32767))
+    assert driver.write_counts() == [0, 0]
+
+
+def test_a_bumper_raises_that_arm_and_a_trigger_lowers_it_by_how_far_it_is_pulled(mode):
+    driver = Driver(mode)
+    driver.enable()
+    origin = driver.tips()
+    for _ in range(5):
+        driver.send(ControllerState(buttons=("lb",)))
+    raised = driver.tips()
+    assert raised[0][2] - origin[0][2] > 0.005
+    assert abs(raised[0][0] - origin[0][0]) < 0.002
+    assert np.allclose(raised[1], origin[1])
+
+    for _ in range(5):
+        driver.send(ControllerState(right_trigger=1023))
+    full = origin[1][2] - driver.tips()[1][2]
+    assert full > 0.005
+    before = driver.tips()[1][2]
+    for _ in range(5):
+        driver.send(ControllerState(right_trigger=560))
+    half = before - driver.tips()[1][2]
+    assert 0.2 * full < half < 0.8 * full
+
+    counts = driver.write_counts()
+    driver.send(ControllerState(right_trigger=40))
+    assert driver.write_counts() == counts
+
+
+def test_a_stick_click_does_nothing(mode):
+    driver = Driver(mode)
+    driver.enable()
+    driver.send(ControllerState(buttons=("left_stick", "right_stick")))
+    driver.send(ControllerState())
+    origin = driver.tips()
+    for _ in range(5):
+        driver.send(ControllerState(left_y=32767, right_y=32767))
+    end = driver.tips()
+    for i in range(2):
+        assert end[i][0] - origin[i][0] > 0.002
+        assert abs(end[i][2] - origin[i][2]) < 0.001
+
+
+def finger_directions(mode):
+    found = []
+    for mapping, arm in zip(mode.maps, mode.arms):
+        found.append(mode.kinematics.tip(mode.pose(mapping, arm.command)[:5])[1])
+    return found
+
+
+@pytest.mark.parametrize("index, up, down", [(0, "dpad_up", "dpad_down"), (1, "y", "a")])
+def test_a_tilt_button_tilts_that_wrist_while_it_is_held(mode, index, up, down):
+    driver = calibrated(mode)
+    for name in (up, down):
+        driver.send(ControllerState(buttons=(name,)))
+        driver.send(ControllerState())
+    assert driver.write_counts() == [0, 0]
+    assert not mode.enabled
+    assert not mode.homing
+
+    driver.enable()
+    arm = mode.arms[index]
+    mapping = mode.maps[index]
+    start = finger_directions(mode)
+    before = dict(arm.command)
+    for _ in range(5):
+        driver.send(ControllerState(buttons=(up,)))
+    assert finger_directions(mode)[index][2] > start[index][2] + 0.01
+    for m in (1, 2, 3, 5, 6):
+        assert arm.command[m] == before[m]
+    assert driver.write_counts()[1 - index] == 0
+
+    up_turn = mode.pose(mapping, arm.command)[3] - mode.pose(mapping, before)[3]
+    middle = mode.pose(mapping, arm.command)[3]
+    for _ in range(5):
+        driver.send(ControllerState(buttons=(down,)))
+    down_turn = mode.pose(mapping, arm.command)[3] - middle
+    assert abs(down_turn) > 0.05
+    assert (down_turn > 0) != (up_turn > 0)
+
+    counts = driver.write_counts()
+    driver.send(ControllerState())
+    assert driver.write_counts() == counts
+
+
+@pytest.mark.parametrize("index, one_way, other_way", [(0, "dpad_left", "dpad_right"), (1, "x", "b")])
+def test_a_roll_button_turns_that_claw_while_it_is_held(mode, index, one_way, other_way):
+    driver = calibrated(mode)
+    driver.send(ControllerState(buttons=(one_way,)))
+    assert driver.write_counts() == [0, 0]
+    driver.enable()
+    arm = mode.arms[index]
+    start = dict(arm.command)
+
+    for _ in range(5):
+        driver.send(ControllerState(buttons=(one_way,)))
+    turned = arm.command[5] - start[5]
+    assert abs(turned) > 10
+    for m in (1, 2, 3, 4, 6):
+        assert arm.command[m] == start[m]
+    assert driver.write_counts()[1 - index] == 0
+
+    for _ in range(5):
+        driver.send(ControllerState(buttons=(other_way,)))
+    assert abs(arm.command[5] - start[5]) < abs(turned)
+
+    counts = driver.write_counts()
+    driver.send(ControllerState())
+    assert driver.write_counts() == counts
+
+
+@pytest.mark.parametrize("index, button", [(0, "view"), (1, "menu")])
+def test_a_jaw_button_toggles_that_claw_open_and_closed_while_driving(mode, index, button):
+    driver = calibrated(mode)
+    arm = mode.arms[index]
+    gamepad = sys.modules["gamepad"]
+    arm.command[6] = mode.jaw_closed[index]
+    arm.present[6] = mode.jaw_closed[index]
+    driver.send(ControllerState(buttons=(button,)))
+    driver.send(ControllerState())
+    driver.enable()
+    driver.send(ControllerState())
+    assert driver.write_counts() == [0, 0]
+    start = driver.jaws()
+
+    # The button stays down all the way: one press is one toggle.
+    for _ in range(150):
+        driver.send(ControllerState(buttons=(button,)))
+    opened = driver.jaws()
+    # Open is a little way, not the jaw's whole travel.
+    assert abs(opened[index] - np.radians(gamepad.CLAW_OPEN)) < 0.02
+    low, high = arm.limits[6]
+    widest = max(mode.maps[index].to_rad(6, low), mode.maps[index].to_rad(6, high))
+    assert opened[index] < widest - 0.5
+    assert opened[1 - index] == start[1 - index]
+    counts = driver.write_counts()
+    driver.send(ControllerState())
+    assert driver.write_counts() == counts
+
+    driver.send(ControllerState(buttons=(button,)))
+    for _ in range(150):
+        driver.send(ControllerState())
+    assert abs(driver.jaws()[index] - start[index]) < 0.02
+
+
+def test_a_faster_arm_may_trail_its_command_further_before_it_waits(mode):
+    gamepad = sys.modules["gamepad"]
+    arm = mode.arms[0]
+    arm.speed = 50
+    slow = mode.lag_limit(arm)
+    arm.speed = 180
+    fast = mode.lag_limit(arm)
+    assert slow >= gamepad.MAX_LAG
+    assert fast > slow
+
+
+def test_stale_input_stops_and_driving_stays_off(mode):
+    driver = Driver(mode)
+    driver.enable()
+    pushed = ControllerState(left_y=32767)
+    driver.send(pushed, age=1.0)
+    assert driver.write_counts() == [0, 0]
+    assert "timed out" in mode.status
+    for _ in range(30):
+        driver.send(ControllerState())
+    driver.send(pushed)
+    assert driver.write_counts() == [0, 0]
+
+
+def test_clearance_refusal_sends_neither_goal(mode, monkeypatch):
+    driver = Driver(mode)
+    driver.enable()
+    monkeypatch.setattr(mode.guard, "obstruction", lambda *samples: "between arms")
+    driver.send(ControllerState(left_y=32767, right_y=32767))
+    assert driver.write_counts() == [0, 0]
+    assert "between arms" in mode.status
+
+
+def test_far_apart_parts_are_skipped_without_changing_any_distance():
+    guard = PairClearance(0.30)
+    poses = [
+        (work_pose(.25, .08, .10), work_pose(.25, -.08, .10)),
+        (work_pose(.25, -.15, .10), work_pose(.25, .15, .10)),
+        (np.radians([0, -104, 90, -96, 0, 0]), work_pose(.24, 0, .01)),
+    ]
+    for left, right in poses:
+        guard.skip_far = True
+        quick = guard.distances(left, right)
+        guard.skip_far = False
+        full = guard.distances(left, right)
+        assert np.allclose(quick, full, atol=1e-9)
+
+
+def test_a_blocked_arm_holds_while_the_other_keeps_moving(mode):
+    driver = Driver(mode)
+    driver.enable()
+    for _ in range(100):
+        driver.send(ControllerState(left_trigger=1023))
+    assert "table" in mode.status
+    assert driver.tips()[0][2] > 0
+
+    before = driver.tips()
+    counts = driver.write_counts()
+    for _ in range(5):
+        driver.send(ControllerState(left_trigger=1023, right_y=32767))
+    after = driver.tips()
+    assert driver.write_counts()[0] == counts[0]
+    assert after[1][0] - before[1][0] > 0.002
+
+
+def test_an_arm_out_of_reach_holds_while_the_other_keeps_moving(mode):
+    driver = Driver(mode)
+    driver.enable()
+    for _ in range(200):
+        driver.send(ControllerState(left_y=32767))
+    counts = driver.write_counts()
+    before = driver.tips()
+    for _ in range(5):
+        driver.send(ControllerState(left_y=32767, right_y=32767))
+    after = driver.tips()
+    assert driver.write_counts()[0] == counts[0]
+    assert after[1][0] - before[1][0] > 0.002
+
+
+def test_a_lagging_arm_waits_and_the_drive_stays_on(mode):
+    driver = Driver(mode)
+    driver.enable()
+    left = mode.arms[0]
+    left.stuck = True
+    left.present[2] = left.command[2] + 300
+    for _ in range(5):
+        driver.send(ControllerState(left_y=32767, right_y=32767))
+    assert driver.write_counts()[0] == 0
+    assert driver.write_counts()[1] == 5
+    assert mode.enabled
+
+
+def test_a_late_step_covers_the_time_that_passed(mode):
+    driver = Driver(mode)
+    driver.enable()
+    pushed = ControllerState(right_y=32767)
+    start = driver.tips()[1][0]
+    driver.send(pushed)
+    usual = driver.tips()[1][0] - start
+    driver.send(pushed, gap=0.04)
+    late = driver.tips()[1][0] - start - usual
+    assert 1.6 < late / usual < 2.4
+
+
+def test_sideways_on_a_stick_turns_the_base_and_keeps_the_reach(mode):
+    driver = Driver(mode)
+    driver.enable()
+    axis = mode.pan_axis
+    before = driver.tips()[1]
+    for _ in range(10):
+        driver.send(ControllerState(right_x=32767))
+    after = driver.tips()[1]
+    assert after[1] < before[1] - 0.005
+    assert abs(np.linalg.norm(after[:2] - axis) - np.linalg.norm(before[:2] - axis)) < 0.001
+    assert abs(after[2] - before[2]) < 0.001
+
+
+def calibrated(mode):
+    driver = Driver(mode)
+    for _ in range(30):
+        driver.send(ControllerState())
+    return driver
+
+
+def test_idle_while_paused_glides_both_arms_to_their_idle_poses(mode):
+    driver = calibrated(mode)
+    mode.press_home()
+    for _ in range(600):
+        driver.send(ControllerState())
+    for arm, idle in zip(mode.arms, mode.idle):
+        for m in idle:
+            assert abs(arm.command[m] - idle[m]) < 1
+    assert not mode.homing
+    counts = driver.write_counts()
+    driver.send(ControllerState())
+    assert driver.write_counts() == counts
+
+
+def test_idle_while_driving_does_nothing(mode):
+    driver = Driver(mode)
+    driver.enable()
+    mode.press_home()
+    driver.send(ControllerState())
+    assert driver.write_counts() == [0, 0]
+    assert mode.enabled
+
+
+def test_stop_ends_the_glide_to_idle(mode):
+    driver = calibrated(mode)
+    mode.press_home()
+    for _ in range(5):
+        driver.send(ControllerState())
+    assert driver.write_counts()[0] > 0
+    mode.stop()
+    counts = driver.write_counts()
+    for _ in range(5):
+        driver.send(ControllerState())
+    assert driver.write_counts() == counts
+
+
+def test_a_glide_to_idle_that_is_blocked_stops_and_says_why(mode, monkeypatch):
+    driver = calibrated(mode)
+    monkeypatch.setattr(mode.guard, "obstruction", lambda *samples: "table")
+    mode.press_home()
+    driver.send(ControllerState())
+    assert driver.write_counts() == [0, 0]
+    assert not mode.homing
+    assert "table" in mode.status
+
+
+def test_a_saved_idle_pose_outside_the_limits_is_held_to_them(mode):
+    for arm, idle in zip(mode.arms, mode.idle):
+        for m in idle:
+            low, high = arm.limits[m]
+            assert low <= idle[m] <= high
+
+
+def test_idle_with_a_stick_pushed_does_not_start_the_glide(mode):
+    driver = calibrated(mode)
+    mode.press_home()
+    driver.send(ControllerState(left_y=32767))
+    driver.send(ControllerState(left_y=32767))
+    assert driver.write_counts() == [0, 0]
+    assert not mode.homing
+
+
+def test_a_glide_step_is_not_sent_once_the_controller_input_is_stale(mode, monkeypatch):
+    driver = calibrated(mode)
+    gamepad = sys.modules["gamepad"]
+    clock = [100.0]
+
+    def slow_check(*samples):
+        clock[0] += 1.0
+        return None
+
+    monkeypatch.setattr(gamepad.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(mode.guard, "obstruction", slow_check)
+    mode.press_home()
+    driver.send(ControllerState())
+    assert driver.write_counts() == [0, 0]
+    assert not mode.homing
+
+
+def test_a_dragged_point_brings_that_arm_s_fingertip_to_it_and_leaves_the_other_arm(mode):
+    driver = Driver(mode)
+    driver.enable()
+    right = mode.arms[1]
+    point = driver.tips()[1] + np.array([0.03, 0.0, 0.02])
+    assert mode.set_tip(right.name, list(point))
+    assert mode.tips_state()[right.name] is not None
+    for _ in range(100):
+        driver.send(ControllerState())
+    assert np.linalg.norm(driver.tips()[1] - point) < 0.003
+    assert driver.write_counts()[0] == 0
+    assert mode.tips_state()[right.name] is None
+
+
+def test_a_dragged_point_is_refused_while_driving_is_off(mode):
+    driver = calibrated(mode)
+    right = mode.arms[1]
+    point = driver.tips()[1] + np.array([0.03, 0.0, 0.0])
+    assert not mode.set_tip(right.name, list(point))
+    assert not mode.set_tip("no such arm", list(point))
+    for _ in range(5):
+        driver.send(ControllerState())
+    assert driver.write_counts() == [0, 0]
+
+
+def test_a_stick_takes_over_from_a_dragged_point_and_stop_drops_it(mode):
+    driver = Driver(mode)
+    driver.enable()
+    right = mode.arms[1]
+    point = driver.tips()[1] + np.array([0.08, 0.0, 0.0])
+    assert mode.set_tip(right.name, list(point))
+    driver.send(ControllerState())
+    driver.send(ControllerState(right_x=32767))
+    assert mode.tips_state()[right.name] is None
+
+    assert mode.set_tip(right.name, list(point))
+    mode.stop()
+    assert mode.tips_state()[right.name] is None
+
+
+def test_a_point_dragged_past_the_arm_s_reach_snaps_to_the_nearest_place_it_can_go(mode):
+    driver = Driver(mode)
+    driver.enable()
+    right = mode.arms[1]
+    start = driver.tips()[1]
+
+    near = start + np.array([0.02, 0.0, 0.01])
+    assert mode.set_tip(right.name, list(near))
+    assert np.linalg.norm(np.array(mode.tips_state()[right.name]) - near) < 0.001
+
+    far = start + np.array([1.0, 0.0, 0.0])
+    assert mode.set_tip(right.name, list(far))
+    snapped = np.array(mode.tips_state()[right.name])
+    assert snapped[0] > start[0] + 0.02
+    assert np.linalg.norm(snapped) < 0.6
+    seed = mode.pose(mode.maps[1], right.command)[:5]
+    _, error, _ = mode.kinematics.solve(snapped, seed, iters=200, keep_direction=True)
+    assert error < 0.002
+
+    under = start + np.array([0.0, 0.0, -0.5])
+    assert mode.set_tip(right.name, list(under))
+    assert mode.tips_state()[right.name][2] > 0
+
+
+def test_a_missed_encoder_read_holds_one_step_and_driving_stays_on(mode):
+    driver = Driver(mode)
+    driver.enable()
+    pushed = ControllerState(left_y=32767, right_y=32767)
+    mode.arms[0].missed_reads = 1
+    driver.send(pushed)
+    assert driver.write_counts() == [0, 0]
+    assert mode.enabled
+    driver.send(pushed)
+    assert driver.write_counts() == [1, 1]
+
+
+def test_a_failed_write_stops_the_drive(mode):
+    driver = Driver(mode)
+    driver.enable()
+    pushed = ControllerState(right_y=32767)
+    mode.arms[1].failed_writes = 1
+    driver.send(pushed)
+    assert driver.write_counts() == [0, 0]
+    assert not mode.enabled
+
+
+def test_a_servo_link_that_stays_down_stops_the_drive(mode):
+    driver = Driver(mode)
+    driver.enable()
+    mode.arms[0].missed_reads = 1000
+    for _ in range(40):
+        driver.send(ControllerState(left_y=32767))
+    assert not mode.enabled
+    assert driver.write_counts() == [0, 0]
+
+
+def test_what_the_loop_does_is_written_down(mode):
+    mode.log = io.StringIO()
+    driver = Driver(mode)
+    driver.enable()
+    mode.record(driver.now)
+    mode.arms[0].missed_reads = 2
+    for _ in range(5):
+        driver.send(ControllerState(left_y=32767))
+    mode.record(driver.now + 5.0)
+    written = mode.log.getvalue()
+    assert "Driving" in written
+    assert "missed reads 2" in written
+
+
+def idle_mode(mode):
+    """The same mode with both simulated arms at their saved idle poses."""
+    for arm, idle in zip(mode.arms, mode.idle):
+        arm.present = {m: round(v) for m, v in idle.items()}
+        arm.command = dict(arm.present)
+        arm.target = dict(arm.present)
+    return mode
+
+
+@pytest.mark.parametrize("pushed", [
+    ControllerState(left_y=32767, right_y=32767),
+    ControllerState(left_x=32767, right_x=-32767),
+    ControllerState(left_x=-32767, right_x=32767),
+])
+def test_from_the_folded_pose_the_sticks_are_not_refused_by_the_arm_s_own_parts(mode, pushed):
+    driver = Driver(idle_mode(mode))
+    driver.enable()
+    refused = 0
+    for _ in range(100):
+        driver.send(pushed)
+        if "blocked" in mode.status:
+            refused += 1
+    assert refused == 0
+    assert driver.write_counts()[0] > 50
+    assert driver.write_counts()[1] > 50
+
+
+def test_a_forearm_deep_in_the_shoulder_housing_is_still_refused(mode):
+    idle = [mode.pose(mapping, ticks) for mapping, ticks in zip(mode.maps, mode.idle)]
+    deep = np.radians([0, 20, 91, -96, 0, 0])
+    floors = mode.guard.floors([idle[0]], [idle[1]])
+    assert mode.guard.obstruction([idle[0]], [idle[1]], floors) is None
+    assert mode.guard.obstruction([deep], [idle[1]], floors) == "within an arm"
+
+
+def test_the_stick_readings_are_reported(mode):
+    driver = Driver(mode)
+    driver.enable()
+    driver.send(ControllerState(left_x=32767, right_y=-32767))
+    shown = mode.sticks_state()
+    assert shown["left"][0] > 0.9
+    assert abs(shown["left"][1]) < 0.01
+    assert shown["right"][1] < -0.9
+    assert shown["raw"]["left"][0] == 32767
+
+
+def test_a_stick_resting_a_little_off_centre_moves_nothing(mode):
+    driver = Driver(mode)
+    driver.enable()
+    for _ in range(10):
+        driver.send(ControllerState(left_x=-6000, left_y=5000, right_x=6000, right_y=-5500))
+    assert driver.write_counts() == [0, 0]
+    assert mode.sticks_state()["right"] == [0.0, 0.0]
+
+
+def test_the_log_holds_how_far_the_sticks_were_pushed(mode):
+    mode.log = io.StringIO()
+    driver = Driver(mode)
+    driver.enable()
+    mode.record(driver.now)
+    driver.send(ControllerState(right_x=32767))
+    driver.send(ControllerState(right_x=1200, right_y=-800))
+    mode.record(driver.now + 5.0)
+    written = mode.log.getvalue()
+    assert "right 1.00" in written
+    assert "(1200, -800)" in written
+
+
+def test_the_solver_works_inside_each_arm_s_own_recorded_limits(mode):
+    for arm, mapping, solver in zip(mode.arms, mode.maps, mode.solvers):
+        for i in range(5):
+            m = i + 1
+            ends = [mapping.to_rad(m, arm.limits[m][0]), mapping.to_rad(m, arm.limits[m][1])]
+            assert abs(solver.low[i] - min(ends)) < 1e-9
+            assert abs(solver.high[i] - max(ends)) < 1e-9
+
+
+def test_a_lift_with_the_elbow_folded_and_the_wrist_at_its_limit_still_raises_the_arm(mode):
+    left = mode.arms[0]
+    mapping = mode.maps[0]
+    solver = mode.solvers[0]
+    left.speed = 180
+    rng = np.random.default_rng(1)
+    raised = 0
+    tried = 0
+    while tried < 40:
+        angles = rng.uniform(solver.low, solver.high)
+        angles[0] = 0.0
+        angles[2] = solver.high[2]
+        angles[3] = solver.low[3]
+        angles[4] = 0.0
+        tip = mode.kinematics.tip(angles)[0]
+        if tip[2] < 0.03 or tip[2] > 0.30 or tip[0] < 0.08:
+            continue
+        tried += 1
+        ticks = {m: round(mapping.to_ticks(m, angles[m - 1])) for m in range(1, 6)}
+        ticks[6] = left.command[6]
+        left.command = dict(ticks)
+        start = mode.kinematics.tip(mode.pose(mapping, left.command)[:5])[0]
+        for _ in range(10):
+            goal, _ = mode.proposed(left, mapping, np.array([0.0, 0.0, 0.004]), 0.0, 0.0, 0.0, None, 0.02)
+            left.command = goal
+        end = mode.kinematics.tip(mode.pose(mapping, left.command)[:5])[0]
+        if end[2] - start[2] > 0.02:
+            raised += 1
+    assert raised >= 38
+
+
+def test_every_stretch_of_driving_is_written_to_its_own_csv_file(mode, tmp_path):
+    mode.csv_folder = tmp_path
+    driver = Driver(mode)
+    driver.enable()
+    mode.drive_log(driver.now)
+    for _ in range(5):
+        driver.send(ControllerState(left_y=32767, buttons=("lb",)))
+        mode.drive_log(driver.now)
+    mode.stop()
+    mode.drive_log(driver.now)
+    assert len(list(tmp_path.glob("*.csv"))) == 1
+
+    mode.press_drive()
+    driver.send(ControllerState())
+    mode.drive_log(driver.now)
+    mode.stop()
+    mode.drive_log(driver.now)
+    files = sorted(tmp_path.glob("*.csv"))
+    assert len(files) == 2
+
+    with open(files[0], newline="", encoding="utf-8") as first:
+        rows = list(csv.DictReader(first))
+    assert len(rows) == 7
+    assert float(rows[3]["left_stick_y"]) > 0.9
+    assert "lb" in rows[3]["buttons"]
+    assert float(rows[5]["left_command_2"]) != float(rows[0]["left_command_2"])
+    assert rows[5]["left_present_2"] != ""
+    assert float(rows[5]["left_tip_z_cm"]) > 0
+    assert "Stopped" in rows[6]["status"]

@@ -2,7 +2,7 @@ import struct
 
 import numpy as np
 
-from hardware.iphone_lidar.pointcloud import depth_to_points, pack_points, scale_intrinsics
+from hardware.iphone_lidar.pointcloud import depth_to_points, pack_frame, pack_points, scale_intrinsics
 
 
 def test_pixel_at_principal_point_lies_on_the_optical_axis():
@@ -55,3 +55,13 @@ def test_packed_frame_round_trips():
     unpacked_colors = np.frombuffer(blob, dtype=np.uint8, count=6, offset=4 + 24).reshape(2, 3)
     np.testing.assert_array_equal(unpacked_points, points)
     np.testing.assert_array_equal(unpacked_colors, colors)
+
+
+def test_packed_camera_frame_uses_intrinsics_scaled_to_the_depth_image():
+    rgb = np.zeros((4, 4, 3), dtype=np.uint8)
+    depth = np.ones((2, 2), dtype=np.float32)
+    blob = pack_frame(rgb, depth, (2.0, 2.0, 2.0, 2.0))
+    count = struct.unpack("<i", blob[0:4])[0]
+    assert count == 4
+    points = np.frombuffer(blob, dtype="<f4", count=12, offset=4).reshape(4, 3)
+    np.testing.assert_allclose(points[3], [0.0, 0.0, 1.0], atol=1e-6)
